@@ -8,9 +8,7 @@
     "migrate": "knex migrate:latest",
     "migrate:rollback": "knex migrate:rollback",
     "migrate:status": "knex migrate:status",
-    "migrate:make": "knex migrate:make",
-    "seed": "knex seed:run",
-    "seed:make": "knex seed:make"
+    "migrate:make": "knex migrate:make"
   },
   "keywords": [],
   "author": "",
