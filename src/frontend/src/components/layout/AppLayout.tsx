@@ -1,18 +1,17 @@
 import { useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
+import { NavLink } from 'react-router-dom'
 import { BellIcon, ChevronLeftIcon, LogoutIcon, PlusIcon } from '../ui'
 import './layout.css'
 
 export type NavItem = {
-  id: string
+  path: string
   label: string
   icon: ComponentType<{ size?: number }>
 }
 
 type AppLayoutProps = {
   navItems: NavItem[]
-  activeId: string
-  onNavigate: (id: string) => void
   title: string
   actionLabel?: string
   onAction?: () => void
@@ -33,8 +32,6 @@ function initialsOf(name: string) {
 
 export function AppLayout({
   navItems,
-  activeId,
-  onNavigate,
   title,
   actionLabel,
   onAction,
@@ -67,17 +64,16 @@ export function AppLayout({
         {!collapsed && <span className="sidebar__section">Menu</span>}
 
         <nav className="sidebar__nav" aria-label="Navegação principal">
-          {navItems.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              className={`sidebar__item ${id === activeId ? 'sidebar__item--active' : ''}`.trim()}
-              onClick={() => onNavigate(id)}
+          {navItems.map(({ path, label, icon: Icon }) => (
+            <NavLink
+              key={path}
+              to={path}
+              className={({ isActive }) => `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`.trim()}
               title={collapsed ? label : undefined}
-              aria-current={id === activeId ? 'page' : undefined}
             >
               <Icon size={20} />
               {!collapsed && <span>{label}</span>}
-            </button>
+            </NavLink>
           ))}
         </nav>
 

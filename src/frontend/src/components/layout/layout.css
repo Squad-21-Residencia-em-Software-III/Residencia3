@@ -76,6 +76,7 @@
 .sidebar--collapsed .sidebar__nav { padding-top: 20px; }
 
 .sidebar__item {
+  text-decoration: none;
   display: flex;
   align-items: center;
   gap: 14px;
