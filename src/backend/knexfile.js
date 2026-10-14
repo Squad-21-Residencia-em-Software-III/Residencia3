@@ -15,7 +15,4 @@ module.exports = {
     directory: path.resolve(__dirname, 'database/migrations'),
     tableName: 'knex_migrations',
   },
-    seeds: {
-    directory: './database/seeds',
-  },
 };
