@@ -40,6 +40,14 @@ Abra o `.env` e preencha com as suas credenciais locais:
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=a_sua_senha_aqui
 POSTGRES_DB=frotas_svo
+JWT_SECRET=um_segredo_longo_e_aleatorio
+JWT_EXPIRES_IN=8h
+```
+
+O `JWT_SECRET` assina os tokens de login e é **obrigatório** (a API não sobe sem ele). Para gerar um valor aleatório:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
 > [!IMPORTANT]
@@ -76,8 +84,27 @@ Em outro terminal:
 cd src/backend
 npm install
 npm run migrate   # cria/atualiza as tabelas
+npm run seed      # opcional: dados fictícios de desenvolvimento (apaga os dados atuais)
 npm run dev
 ```
+
+O back-end é escrito em **TypeScript** (`src/backend/src/`), no padrão MVC:
+
+| Pasta | Responsabilidade |
+|---|---|
+| `routes/` | Define as URLs e quais middlewares cada rota usa |
+| `controllers/` | Lê e valida a requisição e devolve a resposta HTTP |
+| `services/` | Regras de negócio (ex.: o administrador não pode desativar a própria conta) |
+| `models/` | Acesso ao banco com o Knex |
+| `validators/` | Schemas Zod que validam o corpo, os parâmetros e a query |
+| `middlewares/` | Autenticação (JWT), autorização por perfil, limite de tentativas de login e tratamento de erros |
+
+| Comando (em `src/backend`) | O que faz |
+|---|---|
+| `npm run dev` | Sobe a API em modo desenvolvimento (reinicia ao salvar) |
+| `npm run typecheck` | Verifica os tipos sem gerar arquivos |
+| `npm run build` | Compila para `dist/` |
+| `npm start` | Roda a versão compilada (`dist/server.js`) |
 
 ### Migrations (Knex)
 O schema do banco é versionado em `src/backend/database/migrations/`, executados em ordem pelo nome. A migration inicial (`..._create_initial_schema.js`) cria todas as tabelas do modelo de dados; cada mudança posterior no schema é uma nova migration. O Knex registra o que já foi aplicado na tabela `knex_migrations`.
@@ -110,6 +137,30 @@ Resultado esperado (confirma que a API e o banco estão se comunicando):
 ```
 
 Se aparecer `"banco_conectado": false`, confira se o Docker está rodando (`docker ps`) e se o `.env` está na raiz com os valores corretos.
+
+### Autenticação e usuários (RF01 e RF02)
+Depois do `npm run seed`, todos os usuários de teste usam a senha `Senha@123` (ex.: `admin@exemplo.com`).
+
+1. Faça login com `POST /api/auth/login` e o corpo `{ "email": "admin@exemplo.com", "senha": "Senha@123" }`.
+2. Copie o `token` da resposta e envie nas demais requisições no cabeçalho `Authorization: Bearer <token>`.
+
+| Método | Rota | Quem pode | O que faz |
+|---|---|---|---|
+| POST | `/api/auth/login` | Todos | Login. Devolve o token e os dados do usuário |
+| GET | `/api/auth/me` | Autenticado | Dados do usuário logado |
+| PATCH | `/api/auth/senha` | Autenticado | Troca a própria senha (`senhaAtual`, `novaSenha`) |
+| GET | `/api/usuarios/perfis` | Administrador | Lista os perfis de acesso |
+| GET | `/api/usuarios` | Administrador | Lista paginada. Filtros: `pagina`, `limite`, `busca`, `perfil`, `ativo` |
+| GET | `/api/usuarios/:id` | Administrador | Detalhe de um usuário |
+| POST | `/api/usuarios` | Administrador | Cadastra (`nome`, `email`, `senha`, `perfil`) |
+| PATCH | `/api/usuarios/:id` | Administrador | Altera `nome`, `email`, `perfil` e/ou `ativo` |
+| PATCH | `/api/usuarios/:id/senha` | Administrador | Redefine a senha de um usuário (`senha`) |
+
+Regras importantes:
+- Usuários não são apagados: para remover o acesso, envie `{ "ativo": false }`. O histórico e a auditoria continuam ligados a eles.
+- A senha precisa ter de 8 a 72 caracteres, com ao menos uma letra e um número.
+- O login bloqueia o IP por 15 minutos depois de 10 tentativas que falharam.
+- Login, cadastro, alteração e troca de senha ficam registrados na tabela `auditorias`.
 
 ## 5. Rodar o front-end
 Em outro terminal:
