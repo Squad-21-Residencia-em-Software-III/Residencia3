@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  /* Fontes */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  /* Texto */
+  --color-text: #0e172e;
+  --color-text-secondary: #2a3d54;
+  --color-text-strong: #334155;
+  --color-text-muted: #8da2b5;
+  --color-text-subtle: #94a3b8;
+
+  /* Marca */
+  --color-primary: #1554b8;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #eff6ff;
+  --color-navy-900: #0d1b35;
+
+  /* Estados */
+  --color-success: #15803d;
+  --color-success-bg: #dcfce7;
+  --color-success-ring: #bbf7d0;
+  --color-warning: #b45309;
+  --color-warning-bg: #fef3c7;
+  --color-warning-ring: #fde68a;
+  --color-info: #1d4ed8;
+  --color-info-bg: #dbeafe;
+  --color-info-ring: #bfdbfe;
+  --color-danger: #dc2626;
+  --color-danger-strong: #b91c1c;
+  --color-danger-bg: #fee2e2;
+  --color-danger-ring: #fecaca;
+  --color-danger-soft: #fef2f2;
+  --color-neutral: #475569;
+  --color-neutral-bg: #f1f5f9;
+  --color-neutral-ring: #e2e8f0;
+  --color-purple: #7c3aed;
+  --color-purple-bg: #faf5ff;
+  --color-purple-ring: #e9d5ff;
+
+  /* Superfícies e bordas */
+  --color-page-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-surface-alt: #fafbfc;
+  --color-surface-hover: #f4f6f8;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-divider: #f0f2f6;
+  --color-row-divider: #f5f7f9;
+  --color-card-border: #eff2f6;
+
+  /* Formas */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-modal: 18px;
+  --radius-full: 9999px;
+
+  /* Sombras */
+  --shadow-card: 0 1px 3px rgba(13, 27, 53, 0.07), 0 4px 16px rgba(13, 27, 53, 0.04);
+  --shadow-menu: 0 8px 24px rgba(13, 27, 53, 0.14), 0 1px 4px rgba(13, 27, 53, 0.06);
+  --shadow-modal: 0 24px 60px rgba(13, 27, 53, 0.18);
+  --overlay: rgba(13, 27, 53, 0.45);
+
+  /* Espaçamentos */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
