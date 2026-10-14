@@ -1,2 +1,3 @@
 # Ignorar arquivos de variáveis de ambiente com senhas
 .env
+node_modules/
