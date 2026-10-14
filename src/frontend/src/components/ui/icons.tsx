@@ -91,3 +91,16 @@ export const DotsIcon = ({ size = 14 }: IconProps) => (
     <circle cx="7" cy="11.5" r="1.2" fill="currentColor" />
   </svg>
 )
+
+export const ChevronLeftIcon = ({ size = 16 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 10 10" fill="none" aria-hidden="true">
+    <path d="M6.5 2L3.5 5L6.5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+export const LogoutIcon = ({ size = 18 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <path d="M7 3H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M12 12l3-3-3-3M15 9H7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
