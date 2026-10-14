@@ -52,9 +52,9 @@ Com o Docker Desktop aberto, na raiz do projeto:
 docker compose up -d
 ```
 
-O banco sobe **vazio**. As tabelas são criadas pelas migrations (passo 4).
+Na primeira subida, o script `database/init.sql` cria as tabelas automaticamente.
 
-Para conferir as tabelas depois das migrations (use os valores do seu `.env`):
+Para conferir as tabelas (use os valores do seu `.env`):
 
 ```bash
 docker exec -it bd_frotas_svo psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "\dt"
@@ -67,7 +67,7 @@ docker compose down
 ```
 
 > [!WARNING]
-> O banco não tem volume persistente. Se o container for removido (`docker compose down`), os dados são apagados e é preciso rodar `npm run migrate` de novo.
+> O banco não tem volume persistente. Se o container for removido (`docker compose down`), os dados são apagados e o `init.sql` roda de novo na próxima subida.
 
 ## 4. Rodar o back-end (API)
 Em outro terminal:
@@ -75,22 +75,8 @@ Em outro terminal:
 ```bash
 cd src/backend
 npm install
-npm run migrate   # cria/atualiza as tabelas
 npm run dev
 ```
-
-### Migrations (Knex)
-O schema do banco é versionado em `src/backend/database/migrations/`, executados em ordem pelo nome. A migration inicial (`..._create_initial_schema.js`) cria todas as tabelas do modelo de dados; cada mudança posterior no schema é uma nova migration. O Knex registra o que já foi aplicado na tabela `knex_migrations`.
-
-| Comando (em `src/backend`) | O que faz |
-|---|---|
-| `npm run migrate` | Aplica as migrations pendentes |
-| `npm run migrate:rollback` | Desfaz o último lote aplicado |
-| `npm run migrate:status` | Lista as migrations aplicadas e as pendentes |
-| `npm run migrate:make -- nome_da_migration` | Cria um novo arquivo de migration |
-
-> [!IMPORTANT]
-> Nunca edite uma migration que já foi aplicada (ou que já está na `main`). Para alterar o schema, crie uma **nova** migration.
 
 A API sobe na porta `3000`.
 
@@ -139,7 +125,7 @@ npm run build
 | Parte | Pasta | Comando | Endereço |
 |---|---|---|---|
 | Banco | raiz | `docker compose up -d` | porta 5432 |
-| API | `src/backend` | `npm install`, `npm run migrate` e `npm run dev` | http://localhost:3000/api/status |
+| API | `src/backend` | `npm install` e `npm run dev` | http://localhost:3000/api/status |
 | Front | `src/frontend` | `npm install` e `npm run dev` | http://localhost:5173/ |
 
 ## Problemas comuns
