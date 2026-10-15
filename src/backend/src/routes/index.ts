@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../config/database';
 import { authRoutes } from './authRoutes';
 import { usuarioRoutes } from './usuarioRoutes';
+import { veiculoRoutes } from './veiculoRoutes';
 
 export const routes = Router();
 
@@ -17,3 +18,4 @@ routes.get('/status', async (_req, res) => {
 
 routes.use('/auth', authRoutes);
 routes.use('/usuarios', usuarioRoutes);
+routes.use('/veiculos', veiculoRoutes);
