@@ -46,7 +46,7 @@ src/frontend/
 | `/veiculos` | `VeiculosPage` | implementada (mock) |
 | `/motoristas` | `MotoristasPage` | implementada (mock) |
 | `/viagens` | `ViagensPage` | provisória |
-| `/usuarios` | `UsuariosPage` | provisória |
+| `/usuarios` | `UsuariosPage` | implementada (mock) |
 | qualquer outra | `NotFoundPage` | pronta |
 
 Ainda não há tela de login nem proteção de rotas.
@@ -59,6 +59,7 @@ Ainda não há tela de login nem proteção de rotas.
 |---|---|---|
 | Veículos | `services/mocks/veiculosMock.ts` | dados baseados nos 5 veículos do seed (`src/backend/database/seeds/01_dados_iniciais.js`) |
 | Motoristas | `services/mocks/motoristasMock.ts` | lista de motoristas simulados (respeitando o schema de `motoristas` e perfis de `usuarios`) |
+| Usuários | `services/mocks/usuariosMock.ts` | dados baseados nos 7 usuários do seed (`src/backend/database/seeds/01_dados_iniciais.js`) e regras dos 6 perfis oficiais |
 
 ## 7. Tela de Veículos
 Tabela `veiculos`, conforme `docs/dicionario-de-dados.md` e as migrations.
@@ -101,12 +102,47 @@ Tabela `motoristas`, conforme as migrations e o seed.
 4. Alterne os filtros rápidos: **Todos**, **Motoristas Frota** e **Motoristas SVO**.
 5. Clique em **Novo Motorista**, preencha os dados e confirme o cadastro para ver a nova linha ser inserida instantaneamente no topo da tabela.
 
-## 9. Pontos em aberto com o back-end
+## 9. Tela de Usuários
+Tabela `usuarios`, conforme as migrations (`20261014000001_create_initial_schema.js`, `20261014200000_regras_usuarios.js` e `20261015000000_integridade_usuarios.js`), o seed e a API backend.
+
+| Coluna no banco | Regra | Campo no front (`types/usuario.ts`) | Onde aparece |
+|---|---|---|---|
+| `id` | serial, PK | `id` | gerado localmente nos mocks / PK relacional |
+| `nome` | varchar(255), mín. 3 caracteres | `nome` | tabela, avatar e modais |
+| `email` | varchar(255), formato de e-mail, único (lower) | `email` | tabela, busca e modais |
+| `senha` | varchar(255), hash bcrypt | `senha` | apenas nos modais de cadastro e redefinição; **nunca exposto em listagens** |
+| `tipo_usuario` | varchar(50), constraint `chk_usuarios_tipo_usuario` | `tipo_usuario` | tabela (badge secundária de categoria) e métricas |
+| `perfil` | varchar(50), constraint `chk_usuarios_perfil` | `perfil` | tabela, badges coloridas, abas de filtro e modais |
+| `ativo` | boolean, NOT NULL, default `true` | `ativo` | tabela (badge Ativo/Inativo), cards e alternador de status |
+
+- **Perfis válidos**: restrito aos 6 perfis oficiais da FSPH (`ADMINISTRADOR`, `SOLICITANTE`, `GESTOR_FROTA`, `GESTOR_SVO`, `MOTORISTA_FROTA`, `MOTORISTA_SVO`).
+- **`tipo_usuario` derivado**: usuários com perfil `MOTORISTA_FROTA` ou `MOTORISTA_SVO` recebem `tipo_usuario = 'MOTORISTA'`. Para os demais perfis, o valor é idêntico ao próprio perfil.
+- **Proteção do Administrador**: o backend impede que um administrador desative sua própria conta (`ativo: false`) ou retire seu próprio perfil de administrador. A tela possui travas visuais para o usuário logado (Carlos Silva - ID #1).
+- **Removido do protótipo do Figma**:
+  - Coluna "Último Acesso" (`ultimo`): não existe na tabela `usuarios`.
+  - Status "Licença": no banco o status de conta é puramente booleano (`ativo: true/false`).
+  - Perfis genéricos ("Administrador", "Gestor", "Operacional", "Motorista"): substituídos pelos 6 perfis oficiais da FSPH.
+  - Toggle "É motorista?" e criação de CNH/Veículo no modal de usuário: `motoristas` é tabela e tela separada (`/motoristas`); veículos são alocados por viagem/ordem de serviço, não no cadastro do usuário.
+- **Faltava no protótipo do Figma e foi incorporado**:
+  - Modal administrativo para Redefinir Senha (`PATCH /api/usuarios/:id/senha`) com regras de senha forte.
+  - Ação rápida para Ativar / Inativar usuário (`PATCH /api/usuarios/:id`).
+  - Filtros rápidos por categoria e busca por nome ou e-mail.
+
+### Como testar a Tela de Usuários:
+1. Abra `http://localhost:5173/usuarios`.
+2. Verifique os 4 cards de métricas no topo (`Total de Usuários`, `Ativos`, `Inativos` e `Motoristas Operacionais`).
+3. Digite no campo de busca para filtrar por nome ou e-mail em tempo real.
+4. Alterne entre as abas rápidas (`Todos`, `Administradores`, `Gestores`, `Solicitantes`, `Motoristas`, `Inativos`).
+5. Clique em **Novo Usuário**, preencha os campos obrigatórios com perfil e senha forte (mínimo 8 dígitos com maiúscula, minúscula, número e símbolo) e salve para conferir o usuário inserido na lista.
+6. Clique no botão **Senha** de qualquer usuário para abrir o modal de redefinição de senha.
+7. Clique no botão **Desativar / Ativar** para alternar o status do usuário (note que o usuário administrador com tag "Você" tem o botão desativado por proteção de segurança).
+
+## 10. Pontos em aberto com o back-end
 - O banco **não tem CHECK na coluna `status`** de `veiculos` nem de `motoristas`. Os valores válidos estão só no dicionário de dados.
 - O dicionário cita `EM_USO` para veículos, mas nenhum código do back-end usa esse valor ainda.
 - **O dicionário de dados está desatualizado para `motoristas`**: ele lista `cnh` e `validade_cnh`, mas o banco tem `numero_cnh`, `categoria_cnh`, `validade_cnh`, `tipo_motorista` e `status`. O front segue o banco.
 - Para `motoristas.status`, só se conhece `DISPONIVEL` (padrão). Falta definir os demais valores (ex.: em viagem, afastado).
-- Não existe endpoint de listagem nem de cadastro de veículos ou motoristas. Só há `GET /api/veiculos/svo/disponiveis`.
+- Os endpoints de `usuarios` estão totalmente prontos e documentados no backend (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`). A integração do front com o backend poderá ser realizada assim que a camada de autenticação/token JWT for conectada.
 
-## 10. Próximas telas
-Usuários, Dashboard, Viagens, Login e Agenda, nessa ordem de facilidade. Cada uma ganha uma subseção neste documento ao ser implementada.
+## 11. Próximas telas
+Dashboard, Viagens, Login e Agenda, nessa ordem de facilidade. Cada uma ganha uma subseção neste documento ao ser implementada.
