@@ -6,6 +6,7 @@ Documento único do front-end. Atualize-o a cada nova tela ou mudança de padrã
 - React 19 + TypeScript (modo estrito) + Vite
 - CSS puro com variáveis (sem Tailwind)
 - `react-router-dom` para as rotas
+- `lucide-react` para ícones vetoriais padronizados (sem emojis)
 
 ## 2. Como rodar
 ```bash
@@ -14,6 +15,10 @@ npm install
 npm run dev      # http://localhost:5173/
 npm run build    # confere tipos e gera o build
 ```
+
+> [!IMPORTANT]
+> **Atenção aos desenvolvedores**: Foi adicionada a dependência `lucide-react`. Ao atualizar ou clonar a branch, é obrigatório rodar `npm install` dentro de `src/frontend` antes de iniciar o servidor ou rodar o build.
+
 O front **ainda não está conectado ao back-end**. Todos os dados são fictícios (ver seção 6).
 
 ## 3. Estrutura de pastas
@@ -41,7 +46,7 @@ src/frontend/
 | Rota | Página | Situação |
 |---|---|---|
 | `/` | redireciona para `/dashboard` | pronta |
-| `/dashboard` | `DashboardPage` | provisória |
+| `/dashboard` | `DashboardPage` | implementada (mock) |
 | `/agenda` | `AgendaPage` | provisória |
 | `/veiculos` | `VeiculosPage` | implementada (mock) |
 | `/motoristas` | `MotoristasPage` | implementada (mock) |
@@ -60,6 +65,7 @@ Ainda não há tela de login nem proteção de rotas.
 | Veículos | `services/mocks/veiculosMock.ts` | dados baseados nos 5 veículos do seed (`src/backend/database/seeds/01_dados_iniciais.js`) |
 | Motoristas | `services/mocks/motoristasMock.ts` | lista de motoristas simulados (respeitando o schema de `motoristas` e perfis de `usuarios`) |
 | Usuários | `services/mocks/usuariosMock.ts` | dados baseados nos 7 usuários do seed (`src/backend/database/seeds/01_dados_iniciais.js`) e regras dos 6 perfis oficiais |
+| Dashboard / Solicitações | `services/mocks/solicitacoesMock.ts` | resumo de solicitações de viagens e viagens ativas consolidando dados com veículos e motoristas |
 
 ## 7. Tela de Veículos
 Tabela `veiculos`, conforme `docs/dicionario-de-dados.md` e as migrations.
@@ -137,12 +143,43 @@ Tabela `usuarios`, conforme as migrations (`20261014000001_create_initial_schema
 6. Clique no botão **Senha** de qualquer usuário para abrir o modal de redefinição de senha.
 7. Clique no botão **Desativar / Ativar** para alternar o status do usuário (note que o usuário administrador com tag "Você" tem o botão desativado por proteção de segurança).
 
-## 10. Pontos em aberto com o back-end
+## 10. Tela de Dashboard
+Painel central consolidado que agrega indicadores operacionais das tabelas `solicitacoes_viagem`, `viagens_frota`, `veiculos`, `motoristas` e `usuarios`.
+
+| Métrica / Elemento | Origem no Banco | Regra de Cálculo no Front | Onde aparece |
+|---|---|---|---|
+| `Solicitações Pendentes` | `solicitacoes_viagem.status` | Contagem com status `PENDENTE_APROVACAO` | Card 1 de resumo |
+| `Viagens em Andamento` | `viagens_frota.status` | Contagem com status `EM_ANDAMENTO` | Card 2 de resumo |
+| `Veículos Disponíveis` | `veiculos.status` | Contagem com status `DISPONIVEL` | Card 3 de resumo |
+| `Frota Administrativa / SVO` | `veiculos.tipo_frota` | Subdivisão de veículos disponíveis (`ADMINISTRATIVA` vs `SVO`) | Card 3 (badges de rodapé) |
+| `Alertas da Operação` | `veiculos.status` e `motoristas.validade_cnh` | Veículos em `MANUTENCAO` + motoristas com CNH vencida | Card 4 de resumo |
+| `Tabela de Solicitações Recentes` | `solicitacoes_viagem` (join `usuarios`) | Lista das últimas solicitações com solicitante, trajeto e status | Tabela principal |
+
+- **Cards de Sumário**:
+  1. *Solicitações Pendentes*: exibe pedidos que exigem despacho do gestor, com botão de navegação direta para `/viagens`.
+  2. *Viagens em Andamento*: resumo das viagens em curso no dia, discriminando horário, rota e veículo.
+  3. *Veículos no Pátio*: quantitativo de veículos prontos para operação, segregados pela regra de negócio do banco (`ADMINISTRATIVA` e `SVO`).
+  4. *Alertas da Operação*: monitoramento proativo de veículos em manutenção e motoristas com habilitação vencida.
+- **Tabela de Solicitações**:
+  - Exibe o **Solicitante** (`usuarios.nome`), trajeto (`origem → destino`), data desejada, finalidade e status real do banco (`PENDENTE_APROVACAO`, `APROVADA`, `REJEITADA`).
+- **Removido do protótipo do Figma**:
+  - Sub-rótulos "Passeio" e "Amb.": substituídos pelas categorias reais da modelagem do banco (`ADMINISTRATIVA` e `SVO`).
+  - Status "Manutenção" em solicitações: no banco, manutenção é exclusiva de `veiculos` e `manutencoes`.
+  - Motorista em solicitações pendentes: no modelo relacional, a solicitação pertence a `solicitante_id`. O motorista só é alocado na viagem após a aprovação do gestor.
+  - IDs alfanuméricos fictícios (`SOL-1042`): no banco os IDs são inteiros (`#1042`).
+
+### Como testar a Tela de Dashboard:
+1. Abra `http://localhost:5173/dashboard` (ou a raiz `http://localhost:5173/`).
+2. Confira os 4 cards de sumário no topo e a consistência dos números com os dados cadastrados em Veículos e Motoristas.
+3. Teste os botões de navegação dos cards (ex: "Ver frota →" e "Ver motoristas →") para confirmar o direcionamento às respectivas telas.
+4. Confira a tabela de solicitações recentes com solicitante, trajeto formatado e badges de status.
+
+## 11. Pontos em aberto com o back-end
 - O banco **não tem CHECK na coluna `status`** de `veiculos` nem de `motoristas`. Os valores válidos estão só no dicionário de dados.
 - O dicionário cita `EM_USO` para veículos, mas nenhum código do back-end usa esse valor ainda.
 - **O dicionário de dados está desatualizado para `motoristas`**: ele lista `cnh` e `validade_cnh`, mas o banco tem `numero_cnh`, `categoria_cnh`, `validade_cnh`, `tipo_motorista` e `status`. O front segue o banco.
 - Para `motoristas.status`, só se conhece `DISPONIVEL` (padrão). Falta definir os demais valores (ex.: em viagem, afastado).
 - Os endpoints de `usuarios` estão totalmente prontos e documentados no backend (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`). A integração do front com o backend poderá ser realizada assim que a camada de autenticação/token JWT for conectada.
 
-## 11. Próximas telas
-Dashboard, Viagens, Login e Agenda, nessa ordem de facilidade. Cada uma ganha uma subseção neste documento ao ser implementada.
+## 12. Próximas telas
+Viagens, Login e Agenda, nessa ordem de facilidade. Cada uma ganha uma subseção neste documento ao ser implementada.

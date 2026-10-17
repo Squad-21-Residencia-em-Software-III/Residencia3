@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import { Info } from 'lucide-react';
 import { Button, Input, Modal, Select } from '../../components/ui';
 import {
   DESCRICAO_PERFIS,
@@ -132,9 +133,13 @@ export function ModalUsuario({
               fontSize: '12px',
               color: 'var(--color-text-muted)',
               marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
             }}
           >
-            ℹ️ Você está editando sua própria conta. Por segurança, seu perfil e status ativo estão fixados.
+            <Info size={16} color="var(--color-primary)" style={{ flexShrink: 0 }} />
+            <span>Você está editando sua própria conta. Por segurança, seu perfil e status ativo estão fixados.</span>
           </div>
         )}
 

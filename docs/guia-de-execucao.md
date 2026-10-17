@@ -171,6 +171,9 @@ npm install
 npm run dev
 ```
 
+> [!NOTE]
+> O `npm install` é obrigatório para instalar a biblioteca de ícones `lucide-react`.
+
 O front sobe em http://localhost:5173/.
 
 ### Teste

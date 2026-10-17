@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import {
   Avatar,
   Badge,
@@ -178,7 +179,8 @@ export default function UsuariosPage() {
             boxShadow: 'var(--shadow-sm)',
           }}
         >
-          ✓ {mensagemSucesso}
+          <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+          <span>{mensagemSucesso}</span>
         </div>
       )}
 
