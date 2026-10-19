@@ -50,7 +50,7 @@ src/frontend/
 | `/agenda` | `AgendaPage` | provisória |
 | `/veiculos` | `VeiculosPage` | implementada (mock) |
 | `/motoristas` | `MotoristasPage` | implementada (mock) |
-| `/viagens` | `ViagensPage` | provisória |
+| `/viagens` | `ViagensPage` | implementada (mock) |
 | `/usuarios` | `UsuariosPage` | implementada (mock) |
 | qualquer outra | `NotFoundPage` | pronta |
 
@@ -66,6 +66,7 @@ Ainda não há tela de login nem proteção de rotas.
 | Motoristas | `services/mocks/motoristasMock.ts` | lista de motoristas simulados (respeitando o schema de `motoristas` e perfis de `usuarios`) |
 | Usuários | `services/mocks/usuariosMock.ts` | dados baseados nos 7 usuários do seed (`src/backend/database/seeds/01_dados_iniciais.js`) e regras dos 6 perfis oficiais |
 | Dashboard / Solicitações | `services/mocks/solicitacoesMock.ts` | resumo de solicitações de viagens e viagens ativas consolidando dados com veículos e motoristas |
+| Viagens | `services/mocks/viagensMock.ts` | dados estruturados conforme as tabelas `viagens_frota` e `ordens_svo` do banco de dados |
 
 ## 7. Tela de Veículos
 Tabela `veiculos`, conforme `docs/dicionario-de-dados.md` e as migrations.
@@ -174,12 +175,82 @@ Painel central consolidado que agrega indicadores operacionais das tabelas `soli
 3. Teste os botões de navegação dos cards (ex: "Ver frota →" e "Ver motoristas →") para confirmar o direcionamento às respectivas telas.
 4. Confira a tabela de solicitações recentes com solicitante, trajeto formatado e badges de status.
 
-## 11. Pontos em aberto com o back-end
+## 11. Tela de Viagens
+Tabelas `viagens_frota`, `solicitacoes_viagem` e `ordens_svo`, conforme as migrations e as regras de negócio do Squad 21 (RN01–RN05, RN07, RN21 e RF11–RF15).
+
+| Coluna no banco | Regra / Tipo | Campo no front (`types/viagem.ts`) | Onde aparece |
+|---|---|---|---|
+| `id` | serial, PK | `id` | gerado localmente nos mocks / PK relacional |
+| `solicitacao_id` | FK `solicitacoes_viagem.id` | `solicitacao_id` | vínculo relacional com o pedido institucional |
+| `tipo_operacao` | regra do banco (tabela) | `tipo_operacao` (`ADMINISTRATIVA` ou `SVO`) | tabela (badge), filtros e modais |
+| `veiculo_id` | FK `veiculos.id` | `veiculo_id`, `veiculo_modelo`, `veiculo_placa` | tabela, badge de placa e modais |
+| `motorista_id` | FK `motoristas.id` | `motorista_id`, `motorista_nome` | tabela, avatar e modais |
+| `km_inicial` | integer, odômetro de saída | `km_inicial` | tabela e modais de agendamento/retorno |
+| `km_final` | integer, odômetro de retorno | `km_final` | tabela e modal de finalização |
+| `data_hora_efetiva_saida` | timestamp | `data_hora_efetiva_saida` | tabela e modal de detalhes |
+| `data_hora_efetiva_chegada` | timestamp | `data_hora_efetiva_chegada` | tabela e modal de detalhes |
+| `status` | varchar(30), default `AGENDADA` | `status` (`AGENDADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA`) | tabela (badges) e abas de filtro |
+
+### Rastreabilidade: Figma vs. Banco de Dados / Produto Real (Viagens)
+| Critério | No Protótipo do Figma | No Banco / Back-end Real | Decisão de Projeto & Motivo |
+|---|---|---|---|
+| **Vínculo da Viagem** | Viagem criada de forma solta/avulsa | Toda viagem nasce de uma solicitação aprovada (`solicitacoes_viagem.id`) | **Adequado ao Banco**: cumpre o fluxo de governança RN01–RN03 (Solicitação → Análise do Gestor → Agendamento). |
+| **Quilometragem / Distância** | Distância estática em texto ("99 km") | Odômetro de saída (`km_inicial`) e retorno (`km_final`) | **Adequado ao Banco**: a distância percorrida é apurada por `km_final - km_inicial`. |
+| **Identificadores (IDs)** | Strings fictícias (`VIA-0881`) | Identificadores inteiros seriais (`id: integer`) | **Adequado ao Banco**: IDs formatados visualmente como `#881`, mantendo a integridade com o banco. |
+| **Separação de Frotas** | Itinerários misturados sem divisão de operação | Separação explícita entre Frota Administrativa (`viagens_frota`) e SVO (`ordens_svo`) | **O Banco tem a mais**: implementadas abas e identificadores de operação para cumprir a **RN21**. |
+| **Passageiros / Carga** | Lista de passageiros avulsos no modal | O pedido institucional registra solicitante e finalidade | **Removido do Figma**: não existe tabela de passageiros individuais no banco de dados. |
+| **Status da Viagem** | "Em Andamento", "Agendada", "Concluída" | `AGENDADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA` | **Alinhado ao Banco**: suporte aos 4 estados operacionais previstos na modelagem. |
+
+### Composição e Otimização da Tabela & Ticket de Viagem Inline:
+- **Linha Clicável com Ticket de Viagem Expansível**: Toda a linha da tabela é interativa (`cursor: pointer` com hover suave e destaque ativo `is-expanded`). Ao clicar em qualquer viagem, ela expande inline um **Ticket de Viagem / Manifesto de Bordo** corporativo e limpo.
+- **Cabeçalho Corporativo e Limpo**: Fundo neutro suave (`var(--color-surface-alt)`), identificador em destaque `Viagem #ID`, tipo de frota institucional (`Frota Administrativa` ou `SVO`) e referência da `Solicitação #ID`, com botão discreto de fechar e sem bordas ou gradientes artificiais.
+- **Percurso Cronológico e Rótulos Claros**:
+  - Origem e Destino com rótulos diretos ("Origem" e "Destino"), trazendo o horário de saída (`Saída: HH:mm`) logo abaixo da origem e a previsão/retorno (`Chegada: HH:mm`) abaixo do destino.
+  - Ponto central da rota com indicador de distância consolidada (`35 km`), sem duplicar a duração no centro do trajeto.
+- **Auditoria de Odômetro e Tempo (Canhoto Lateral)**:
+  - Controle estrito de `Km Inicial` e `Km Final`, calculando a `Distância percorrida` apurada.
+  - Métrica técnica de `Duração do Percurso` calculada dinamicamente entre as datas efetivas de saída e chegada (`data_hora_efetiva_chegada - data_hora_efetiva_saida`), sem requerer colunas extras no banco.
+  - Botão **Imprimir Manifesto** preservado esteticamente como esboço de interface no canhoto.
+- **Blocos Contextuais de Agentes**:
+  - **Condutor Responsável**: Nome do motorista e categoria da CNH (dados reais da tabela `motoristas`).
+  - **Veículo Alocado**: Modelo e placa do veículo (dados reais da tabela `veiculos`).
+  - **Solicitante Institucional**: Nome do solicitante e cargo/vínculo, eliminando redundâncias visuais de repetição do ID da solicitação.
+  - **Finalidade / Justificativa**: Exibe o motivo oficial registrado na solicitação de viagem.
+- **Remoção do Botão de Detalhes**: Com a abertura direta do Ticket pelo clique na linha, o botão "Detalhes" foi removido da última coluna, liberando espaço horizontal sem poluição visual.
+- **Unificação de Horários na Tabela**: Em vez de ocupar duas colunas inteiras isoladas para `Partida` e `Chegada`, os horários foram unificados em uma única coluna hierárquica **Horários**, exibindo Saída, Chegada / Em trânsito / Aguardando saída com micro-indicadores de status.
+- **Hierarquia do Trajeto**: A coluna **Origem / Destino** utiliza indicador visual com ícone de pin na origem e conector `↳` no destino, permitindo que trajetos longos respirem com limite de quebra em 2 linhas sem espremer o restante da tabela.
+- **Contenção e Espaçamentos do Card**: Ajustado o padding horizontal padrão de células da tabela para 14px (com 20px nas extremidades alinhados à barra de ferramentas) e aplicada contenção `min-width: 0; max-width: 100%` no container `.card`, evitando estouros horizontais quando a sidebar estiver aberta em desktops e laptops.
+- **Ações Otimizadas**: A última coluna agora acomoda apenas a ação operacional ativa (`Finalizar`, restrita a viagens em andamento) com botão contextual e o ícone rotativo de expansão do ticket.
+
+### Como testar a Tela de Viagens:
+1. Abra `http://localhost:5173/viagens`.
+2. Confira os 4 cards de métricas no topo (`Total de Viagens`, `Em Andamento`, `Agendadas` e `Concluídas`).
+3. Alterne as abas de filtro: `Todas`, `Em Andamento`, `Agendadas`, `Concluídas`, `Frota` e `SVO`.
+4. Digite no campo de busca para filtrar por trajeto, condutor ou placa em tempo real.
+5. Clique em qualquer linha da tabela para expandir o **Ticket de Viagem** inline, com detalhes completos do manifesto, odômetro e rota. Clique novamente ou no botão 'X' para recolher.
+6. Clique em **Nova Viagem** para vincular uma solicitação aprovada a um veículo e motorista disponíveis com registro de odômetro inicial.
+7. Em uma viagem com status `Em Andamento`, clique em **Finalizar** (na tabela ou dentro do próprio ticket) para preencher o odômetro final (`km_final`) e registrar a conclusão da viagem.
+
+## 12. Matriz de Rastreabilidade Geral (Figma vs. Banco de Dados / Produto Real)
+
+Visão geral consolidada de todas as adequações realizadas entre o protótipo visual (Figma) e o sistema real (Banco e Back-end):
+
+| Módulo / Tela | O que o Figma tinha a mais (Removido do produto real) | O que o Banco / Produto Real tem a mais (Não existia no Figma) |
+|---|---|---|
+| **Veículos (`/veiculos`)** | - Ano de fabricação e Km atual no cadastro estático<br>- Motorista fixo vinculado ao veículo<br>- Categorias "Caminhão" e "Van"<br>- Status "Inativo" e "Em Viagem" | - `tipo_frota`: `ADMINISTRATIVA` e `SVO` obrigatórios<br>- `capacidade_maxima` de lotação obrigatória<br>- Status oficiais: `DISPONIVEL`, `EM_USO`, `MANUTENCAO` |
+| **Motoristas (`/motoristas`)** | - Telefone e contador de viagens acumuladas<br>- Veículo fixo vinculado<br>- Status "Ativo", "Em Viagem" e "Licença" | - `numero_cnh`, `categoria_cnh` (A–E) e `validade_cnh`<br>- Alerta proativo de CNH vencida calculado no front<br>- `tipo_motorista`: `FROTA` e `SVO`<br>- Vínculo relacional `usuario_id` com a tabela `usuarios` |
+| **Usuários (`/usuarios`)** | - Coluna "Último Acesso" (`ultimo`)<br>- Status "Licença"<br>- Perfis fictícios ("Gestor", "Operacional")<br>- Toggle "É motorista?" criando CNH e alocando veículo no modal | - 6 perfis oficiais FSPH (`ADMINISTRADOR`, `SOLICITANTE`, `GESTOR_FROTA`, `GESTOR_SVO`, `MOTORISTA_FROTA`, `MOTORISTA_SVO`)<br>- `tipo_usuario` derivado por constraint<br>- Rota de Redefinir Senha (`PATCH /api/usuarios/:id/senha`) com regras de senha forte<br>- Ação de Ativar/Desativar conta com autoproteção do admin logado |
+| **Dashboard (`/dashboard`)** | - Sub-rótulos "Passeio" e "Amb."<br>- Status "Manutenção" em solicitações de viagem<br>- IDs com string (`SOL-1042`)<br>- Motorista fixado antes da aprovação da solicitação | - Segregação real da frota (`ADMINISTRATIVA` vs `SVO`)<br>- Alertas unificados de manutenção de veículos e CNH vencida<br>- Vínculos relacionais com solicitantes institucionais (`solicitacoes_viagem`) |
+| **Viagens (`/viagens`)** | - Viagem avulsa sem solicitação institucional vinculada<br>- Distância fixa como texto arbitrário ("99 km")<br>- Lista fictícia de passageiros avulsos<br>- IDs com string (`VIA-0881`) | - Vínculo relacional obrigatório com `solicitacao_id` aprovada (RN01–RN03)<br>- Controle estrito por odômetro (`km_inicial`, `km_final`, distância apurada)<br>- Segregação de frotas (Frota Adm vs SVO) conforme RN21<br>- Ação de despacho e registro de retorno pelo motorista/gestor |
+| **Identidade / Ícones** | - Emojis textuais e SVGs soltos | - Biblioteca profissional padronizada `lucide-react` em todas as telas |
+
+## 13. Pontos em aberto com o back-end
 - O banco **não tem CHECK na coluna `status`** de `veiculos` nem de `motoristas`. Os valores válidos estão só no dicionário de dados.
 - O dicionário cita `EM_USO` para veículos, mas nenhum código do back-end usa esse valor ainda.
 - **O dicionário de dados está desatualizado para `motoristas`**: ele lista `cnh` e `validade_cnh`, mas o banco tem `numero_cnh`, `categoria_cnh`, `validade_cnh`, `tipo_motorista` e `status`. O front segue o banco.
 - Para `motoristas.status`, só se conhece `DISPONIVEL` (padrão). Falta definir os demais valores (ex.: em viagem, afastado).
-- Os endpoints de `usuarios` estão totalmente prontos e documentados no backend (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`). A integração do front com o backend poderá ser realizada assim que a camada de autenticação/token JWT for conectada.
+- Os endpoints de `usuarios` estão totalmente prontos e documentados no backend (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`).
+- **Ainda não há endpoints para Viagens no back-end**: a tela de viagens consome os dados mockados em `services/mocks/viagensMock.ts`. Quando os endpoints forem desenvolvidos pela equipe de back-end, basta conectar a camada de serviços sem alterar a interface.
 
-## 12. Próximas telas
-Viagens, Login e Agenda, nessa ordem de facilidade. Cada uma ganha uma subseção neste documento ao ser implementada.
+## 14. Próximas telas
+Agenda e Login, nessa ordem. Cada uma ganha uma subseção neste documento ao ser implementada.
