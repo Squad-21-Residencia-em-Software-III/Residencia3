@@ -15,7 +15,8 @@
 .app-layout__content {
   flex: 1;
   overflow-y: auto;
-  padding: 28px var(--space-8);
+  min-width: 0;
+  padding: 24px var(--space-6);
 }
 
 /* ── Sidebar ──────────────────────────── */
