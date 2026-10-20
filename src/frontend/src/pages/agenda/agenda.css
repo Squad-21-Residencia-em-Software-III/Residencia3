@@ -1,0 +1,716 @@
+/* ── Estilos da Tela de Agenda (Vanilla CSS com Design Tokens FSPH) ── */
+
+.agenda-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Barra de Cabeçalho e Controles ── */
+.agenda-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px var(--space-6);
+  flex-shrink: 0;
+}
+
+.agenda-header__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.agenda-header__nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.agenda-header__nav-btn:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+
+.agenda-header__date-title {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.agenda-header__date-sub {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-left: var(--space-3);
+}
+
+/* Segmented Control de visualização */
+.agenda-view-toggle {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.agenda-view-toggle__btn {
+  padding: 6px 16px;
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border-right: 1px solid var(--color-border);
+}
+
+.agenda-view-toggle__btn:last-child {
+  border-right: none;
+}
+
+.agenda-view-toggle__btn:hover:not(.is-active) {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.agenda-view-toggle__btn.is-active {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+/* ── Card Principal de Conteúdo ── */
+.agenda-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── 1. MODO HOJE (GANTT HORÁRIO) ── */
+.gantt-header-sticky {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  position: relative;
+  z-index: 5;
+}
+
+.gantt-corner-label {
+  flex-shrink: 0;
+  width: 190px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  border-right: 1px solid var(--color-border);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.gantt-hours-scroll {
+  flex: 1;
+  overflow-x: hidden; /* Scroll sincronizado via JS com o body */
+}
+
+.gantt-hours-track {
+  display: flex;
+}
+
+.gantt-hour-cell {
+  flex-shrink: 0;
+  width: 80px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding-left: var(--space-2);
+  border-right: 1px solid var(--color-border-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.gantt-body-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.gantt-resource-labels {
+  flex-shrink: 0;
+  width: 190px;
+  overflow-y: hidden; /* Sincronizado com o scroll vertical */
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.gantt-resource-row {
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.gantt-resource-model {
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-resource-sub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 2px;
+}
+
+.gantt-resource-plate {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.gantt-resource-driver {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-grid-scroll {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.gantt-grid-canvas {
+  position: relative;
+}
+
+/* Linhas verticais de horas */
+.gantt-grid-line-hour {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--color-border-subtle);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Linhas horizontais de recursos */
+.gantt-grid-line-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--color-border-subtle);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Linha do "Agora" */
+.gantt-now-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.gantt-now-badge {
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(21, 84, 184, 0.3);
+}
+
+.gantt-now-bar {
+  flex: 1;
+  width: 2px;
+  background: var(--color-primary);
+  box-shadow: 0 0 4px rgba(21, 84, 184, 0.4);
+}
+
+/* Blocos de viagem no Gantt */
+.gantt-block {
+  position: absolute;
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  z-index: 3;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  box-shadow: 0 1px 3px rgba(13, 27, 53, 0.08);
+}
+
+.gantt-block:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(13, 27, 53, 0.15);
+  z-index: 8;
+}
+
+.gantt-block--concluida {
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  color: #475569;
+}
+.gantt-block--concluida:hover { border-color: #64748b; }
+
+.gantt-block--em_andamento {
+  background: #eff6ff;
+  border: 1.5px solid #93c5fd;
+  color: #1d4ed8;
+}
+.gantt-block--em_andamento:hover { border-color: #2563eb; }
+
+.gantt-block--agendada {
+  background: #faf5ff;
+  border: 1.5px solid #c4b5fd;
+  color: #6d28d9;
+}
+.gantt-block--agendada:hover { border-color: #7c3aed; }
+
+.gantt-block__content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+}
+
+.gantt-block__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.gantt-block--concluida .gantt-block__dot { background: #94a3b8; }
+.gantt-block--em_andamento .gantt-block__dot { background: #1d4ed8; }
+.gantt-block--agendada .gantt-block__dot { background: #7c3aed; }
+
+.gantt-block__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.gantt-block__route {
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-block__meta {
+  font-size: 11px;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 2. MODO SEMANA (MINI-TIMELINE) ── */
+.semana-header {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+}
+
+.semana-day-col-header {
+  flex: 1;
+  height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--color-border);
+}
+
+.semana-day-col-header.is-today {
+  background: rgba(21, 84, 184, 0.06);
+}
+
+.semana-day-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.semana-day-number {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: var(--color-text);
+}
+
+.semana-day-col-header.is-today .semana-day-label {
+  color: var(--color-primary);
+}
+
+.semana-day-col-header.is-today .semana-day-number {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.semana-row {
+  display: flex;
+  height: 54px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.semana-day-cell {
+  flex: 1;
+  position: relative;
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.semana-day-cell.is-today {
+  background: rgba(21, 84, 184, 0.02);
+}
+
+.semana-guide-line {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  height: 2px;
+  background: var(--color-border-subtle);
+  border-radius: 1px;
+}
+
+.semana-micro-bar {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  z-index: 2;
+  transition: all var(--transition-fast);
+}
+
+.semana-micro-bar:hover {
+  transform: translateY(-50%) scaleY(1.3);
+  z-index: 10;
+}
+
+.semana-micro-bar--concluida { background: #94a3b8; }
+.semana-micro-bar--em_andamento { background: #2563eb; }
+.semana-micro-bar--agendada { background: #7c3aed; }
+
+/* Tooltip customizado flutuante */
+.semana-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0e172e;
+  color: #ffffff;
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  white-space: nowrap;
+  font-size: 11px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 4px 12px rgba(13, 27, 53, 0.3);
+  z-index: 50;
+}
+
+.semana-micro-bar:hover .semana-tooltip {
+  opacity: 1;
+}
+
+/* ── 3. MODO MÊS (GESTÃO POR EXCEÇÃO) ── */
+.mes-header-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  flex-shrink: 0;
+}
+
+.mes-header-col {
+  padding: 10px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  border-right: 1px solid var(--color-border);
+}
+
+.mes-header-col:last-child {
+  border-right: none;
+}
+
+.mes-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: minmax(96px, 1fr);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.mes-day-cell {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-3);
+  border-right: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+  border-radius: 0;
+  border-top: none;
+  border-left: none;
+}
+
+.mes-day-cell:hover {
+  background: var(--color-surface-alt);
+}
+
+.mes-day-cell.is-today {
+  background: rgba(21, 84, 184, 0.04);
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.mes-day-cell.is-passado {
+  background: #fafbfc;
+}
+
+.mes-day-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.mes-day-num {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.mes-day-cell.is-today .mes-day-num {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.mes-day-cell.is-passado .mes-day-num {
+  color: var(--color-text-muted);
+}
+
+.mes-day-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.mes-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mes-chip--gargalo {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.mes-chip--pico {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.mes-chip--normal {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.mes-day-past-total {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+/* ── Rodapé de Legenda ── */
+.agenda-footer-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--space-5);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  flex-shrink: 0;
+}
+
+.agenda-footer-tip {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.agenda-legend-items {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.agenda-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.agenda-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+/* ── Modal de Detalhes da Rota ── */
+.modal-rota-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.modal-rota-route-title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 800;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.modal-rota-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-2);
+}
+
+.modal-rota-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.modal-rota-card {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.modal-rota-card__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.modal-rota-card__value {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.modal-rota-card__sub {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.modal-rota-purpose {
+  padding: var(--space-3) var(--space-4);
+  background: #f8fafc;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  margin-bottom: var(--space-6);
+}
+
+.modal-rota-purpose__text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+  margin-top: 4px;
+}
