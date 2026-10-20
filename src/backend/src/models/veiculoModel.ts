@@ -11,7 +11,40 @@ export interface VeiculoSvoDisponivel {
   vagas_disponiveis: number;
 }
 
+export interface NovoVeiculo {
+  placa: string;
+  modelo: string;
+  tipo_frota: 'ADMINISTRATIVA' | 'SVO';
+  capacidade_maxima: number;
+}
+
 export const veiculoModel = {
+   async listarVeiculos() {
+    return db('veiculos')
+      .select(
+        'id',
+        'placa',
+        'modelo',
+        'tipo_frota',
+        'capacidade_maxima',
+        'status'
+      )
+      .orderBy('id', 'asc');
+  },
+    async cadastrarVeiculo(dados: NovoVeiculo) {
+    const [veiculo] = await db('veiculos')
+      .insert(dados)
+      .returning([
+        'id',
+        'placa',
+        'modelo',
+        'tipo_frota',
+        'capacidade_maxima',
+        'status'
+      ]);
+
+    return veiculo;
+  },
   async listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
     const resultado = await db.raw<{ rows: VeiculoSvoDisponivel[] }>(`
       SELECT
