@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 import {
   Avatar,
   Badge,
@@ -17,7 +17,7 @@ import {
   type Perfil,
   type Usuario,
 } from '../types/usuario';
-import { MOCK_USUARIOS } from '../services/mocks/usuariosMock';
+import { storageService } from '../services/storageService';
 import { ModalUsuario } from './usuarios/ModalUsuario';
 import { ModalRedefinirSenha } from './usuarios/ModalRedefinirSenha';
 
@@ -48,20 +48,30 @@ function obterBadgeTonePerfil(perfil: Perfil): BadgeTone {
 }
 
 export default function UsuariosPage() {
-  const [usuarios, setUsuarios] = useState<Usuario[]>(MOCK_USUARIOS);
+  const [usuarios, setUsuarios] = useState<Usuario[]>(storageService.getUsuarios());
   const [filtro, setFiltro] = useState<FiltroCategoria>('TODOS');
   const [busca, setBusca] = useState('');
   const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
   const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
   const [usuarioRedefinirSenha, setUsuarioRedefinirSenha] = useState<Usuario | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
+  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
   // Usuário 1 (Carlos Silva - Admin) simula o usuário logado
   const usuarioLogadoId = 1;
 
-  const exibirFeedback = (msg: string) => {
-    setMensagemSucesso(msg);
-    setTimeout(() => setMensagemSucesso(null), 4000);
+  const exibirFeedback = (msg: string, isError = false) => {
+    if (isError) {
+      setMensagemErro(msg);
+      setMensagemSucesso(null);
+    } else {
+      setMensagemSucesso(msg);
+      setMensagemErro(null);
+    }
+    setTimeout(() => {
+      setMensagemSucesso(null);
+      setMensagemErro(null);
+    }, 4000);
   };
 
   const totais = useMemo(
@@ -104,38 +114,32 @@ export default function UsuariosPage() {
     perfil: Perfil;
     ativo?: boolean;
   }) => {
-    if (usuarioEditando) {
-      // Edição
-      setUsuarios((prev) =>
-        prev.map((u) =>
-          u.id === usuarioEditando.id
-            ? {
-                ...u,
-                nome: dados.nome,
-                email: dados.email,
-                perfil: dados.perfil,
-                tipo_usuario: tipoUsuarioDoPerfil(dados.perfil),
-                ativo: dados.ativo !== undefined ? dados.ativo : u.ativo,
-              }
-            : u,
-        ),
-      );
-      exibirFeedback(`Usuário "${dados.nome}" atualizado com sucesso.`);
-    } else {
-      // Novo cadastro
-      const novoId = Math.max(0, ...usuarios.map((u) => u.id)) + 1;
-      const novo: Usuario = {
-        id: novoId,
-        nome: dados.nome,
-        email: dados.email,
-        perfil: dados.perfil,
-        tipo_usuario: tipoUsuarioDoPerfil(dados.perfil),
-        ativo: true,
-      };
-      setUsuarios([novo, ...usuarios]);
-      exibirFeedback(`Usuário "${dados.nome}" cadastrado com sucesso.`);
+    try {
+      if (usuarioEditando) {
+        // Edição
+        const usuarioAtualizado = storageService.updateUsuario(usuarioEditando.id, {
+          nome: dados.nome,
+          email: dados.email,
+          perfil: dados.perfil,
+          ativo: dados.ativo,
+        });
+        setUsuarios(storageService.getUsuarios());
+        exibirFeedback(`Usuário "${dados.nome}" atualizado com sucesso.`);
+      } else {
+        // Novo cadastro
+        const novoUsuario = storageService.createUsuario({
+          nome: dados.nome,
+          email: dados.email,
+          senha: dados.senha || '',
+          perfil: dados.perfil,
+        });
+        setUsuarios(storageService.getUsuarios());
+        exibirFeedback(`Usuário "${dados.nome}" cadastrado com sucesso.`);
+      }
+      setUsuarioEditando(null);
+    } catch (error: any) {
+      exibirFeedback(error.message, true);
     }
-    setUsuarioEditando(null);
   };
 
   const handleAlternarStatus = (usuario: Usuario) => {
@@ -143,13 +147,15 @@ export default function UsuariosPage() {
       alert('Você não pode desativar a sua própria conta de administrador.');
       return;
     }
-    const novoStatus = !usuario.ativo;
-    setUsuarios((prev) =>
-      prev.map((u) => (u.id === usuario.id ? { ...u, ativo: novoStatus } : u)),
-    );
-    exibirFeedback(
-      `Usuário "${usuario.nome}" foi ${novoStatus ? 'ativado' : 'desativado'} com sucesso.`,
-    );
+    try {
+      storageService.toggleStatusUsuario(usuario.id, !usuario.ativo);
+      setUsuarios(storageService.getUsuarios());
+      exibirFeedback(
+        `Usuário "${usuario.nome}" foi ${!usuario.ativo ? 'ativado' : 'desativado'} com sucesso.`,
+      );
+    } catch (error: any) {
+      exibirFeedback(error.message, true);
+    }
   };
 
   const handleSalvarNovaSenha = (novaSenha: string) => {
@@ -162,15 +168,15 @@ export default function UsuariosPage() {
 
   return (
     <div style={{ display: 'grid', gap: '24px' }}>
-      {/* Feedback de sucesso */}
-      {mensagemSucesso && (
+      {/* Feedback de sucesso e erro */}
+      {(mensagemSucesso || mensagemErro) && (
         <div
           style={{
             padding: '12px 20px',
             borderRadius: 'var(--radius-sm)',
             background: 'var(--color-surface)',
-            border: '1px solid var(--color-success)',
-            color: 'var(--color-success)',
+            border: `1px solid ${mensagemErro ? 'var(--color-danger)' : 'var(--color-success)'}`,
+            color: mensagemErro ? 'var(--color-danger)' : 'var(--color-success)',
             fontSize: '14px',
             fontWeight: 600,
             display: 'flex',
@@ -179,8 +185,8 @@ export default function UsuariosPage() {
             boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
-          <span>{mensagemSucesso}</span>
+          {mensagemErro ? <AlertCircle size={18} style={{ flexShrink: 0 }} /> : <CheckCircle2 size={18} style={{ flexShrink: 0 }} />}
+          <span>{mensagemErro || mensagemSucesso}</span>
         </div>
       )}
 
