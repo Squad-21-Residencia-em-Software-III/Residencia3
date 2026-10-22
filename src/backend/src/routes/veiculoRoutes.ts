@@ -1,7 +1,7 @@
 
 import { Router } from 'express';
-import { listarVeiculosSvoDisponiveis } from '../controllers/veiculoController';
+import { veiculoController } from '../controllers/veiculoController';
 
 export const veiculoRoutes = Router();
 
-veiculoRoutes.get('/svo/disponiveis', listarVeiculosSvoDisponiveis);
+veiculoRoutes.get('/svo/disponiveis', veiculoController.listarVeiculosSvoDisponiveis);
