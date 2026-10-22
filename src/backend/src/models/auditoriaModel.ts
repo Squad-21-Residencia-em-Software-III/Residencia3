@@ -4,6 +4,7 @@ import { db } from '../config/database';
 export const MODULOS_AUDITORIA = {
   AUTENTICACAO: 'AUTENTICACAO',
   USUARIOS: 'USUARIOS',
+  VEICULOS: 'VEICULOS',
 } as const;
 
 export type ModuloAuditoria = (typeof MODULOS_AUDITORIA)[keyof typeof MODULOS_AUDITORIA];
