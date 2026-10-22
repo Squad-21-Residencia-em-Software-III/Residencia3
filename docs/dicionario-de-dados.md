@@ -25,7 +25,7 @@ Armazena a frota disponível para as solicitações (RF03 / RF16).
 | `modelo` | Varchar | NOT NULL | Descrição do veículo (Ex: Fiat Uno). |
 | `capacidade_maxima` | Integer | CHECK (>= 0) | Lotação máxima de passageiros. |
 | `tipo_frota` | Varchar | NOT NULL, CHECK | Valores: `SVO`, `ADMINISTRATIVA`. |
-| `status` | Varchar | NOT NULL | Valores: `DISPONIVEL`, `EM_USO`, `MANUTENCAO`. |
+| `status` | Varchar | NOT NULL, CHECK | Valores: `DISPONIVEL`, `EM_USO`, `MANUTENCAO`. |
 
 ## 3. Tabela: `motoristas`
 Armazena os dados específicos dos motoristas da frota (RF04).
@@ -34,7 +34,8 @@ Armazena os dados específicos dos motoristas da frota (RF04).
 | :--- | :--- | :--- | :--- |
 | `id` | Integer / Serial | PRIMARY KEY | Identificador único do motorista. |
 | `usuario_id` | Integer | FOREIGN KEY | Vínculo com a tabela `usuarios`. |
-| `cnh` | Varchar | NOT NULL, UNIQUE | Número da Carteira de Habilitação. |
+| `numero_cnh` | Varchar | NOT NULL, UNIQUE | Número da Carteira de Habilitação. |
+| `categoria_cnh` | Varchar | NOT NULL | Categoria da habilitação (Ex: B, D). |
 | `validade_cnh` | Date | NOT NULL | Data de vencimento do documento. |
 
 ## 4. Tabela: `auditorias`
@@ -45,5 +46,5 @@ Registra o histórico de alterações críticas no sistema (RF27 / RN18).
 | `id` | Integer / Serial | PRIMARY KEY | Identificador único do registro. |
 | `usuario_id` | Integer | FOREIGN KEY | Quem executou a ação. |
 | `acao` | Varchar | NOT NULL | Qual operação foi feita (Ex: `LOGIN`, `CRIAR_USUARIO`). |
-| `tabela_afetada`| Varchar | NOT NULL | Qual tabela sofreu alteração. |
+| `modulo` | Varchar | NOT NULL | Qual módulo ou tabela sofreu alteração. |
 | `data_hora` | Timestamp | DEFAULT now() | Momento exato da ação. |
