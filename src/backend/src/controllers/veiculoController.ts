@@ -1,20 +1,22 @@
+import type { Request, Response } from 'express';
+import { usuarioAutenticado } from '../middlewares/autenticar';
+import { veiculoService } from '../services/veiculoService';
+import { criarVeiculoSchema } from '../validators/veiculoSchemas';
 
-import { Request, Response } from 'express';
-import { veiculoModel } from '../models/veiculoModel';
+export const veiculoController = {
+  async listar(_req: Request, res: Response): Promise<void> {
+    res.json(await veiculoService.listar());
+  },
 
-export async function listarVeiculosSvoDisponiveis(
-  _req: Request,
-  res: Response
-) {
-  try {
-    const veiculos = await veiculoModel.listarSvoDisponiveis();
+  async listarVeiculosSvoDisponiveis(_req: Request, res: Response): Promise<void> {
+    res.json(await veiculoService.listarSvoDisponiveis());
+  },
 
-    return res.status(200).json(veiculos);
-  } catch (erro) {
-    console.error('Erro ao consultar veículos SVO:', erro);
+  async criar(req: Request, res: Response): Promise<void> {
+    const dados = criarVeiculoSchema.parse(req.body);
+    const autor = usuarioAutenticado(req);
+    const veiculo = await veiculoService.criar(dados, autor.id);
 
-    return res.status(500).json({
-      erro: 'Erro ao consultar veículos SVO disponíveis'
-    });
-  }
-}
+    res.status(201).location(`/api/veiculos/${veiculo.id}`).json(veiculo);
+  },
+};

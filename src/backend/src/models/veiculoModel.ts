@@ -1,4 +1,4 @@
-
+import type { Knex } from 'knex';
 import { db } from '../config/database';
 
 export interface VeiculoSvoDisponivel {
@@ -11,7 +11,39 @@ export interface VeiculoSvoDisponivel {
   vagas_disponiveis: number;
 }
 
+export interface NovoVeiculo {
+  placa: string;
+  modelo: string;
+  tipo_frota: 'ADMINISTRATIVA' | 'SVO';
+  capacidade_maxima: number;
+}
+
+export interface Veiculo extends NovoVeiculo {
+  id: number;
+  status: string;
+}
+
 export const veiculoModel = {
+  async listarVeiculos(): Promise<Veiculo[]> {
+    return db('veiculos')
+      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status')
+      .orderBy('id', 'asc');
+  },
+
+  async buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
+    const conexao = trx || db;
+    return conexao('veiculos').where({ placa }).first();
+  },
+
+  async cadastrarVeiculo(dados: NovoVeiculo, trx?: Knex.Transaction): Promise<Veiculo> {
+    const conexao = trx || db;
+    const [veiculo] = await conexao('veiculos')
+      .insert(dados)
+      .returning(['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status']);
+
+    return veiculo;
+  },
+
   async listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
     const resultado = await db.raw<{ rows: VeiculoSvoDisponivel[] }>(`
       SELECT
@@ -44,5 +76,5 @@ export const veiculoModel = {
     `);
 
     return resultado.rows;
-  }
+  },
 };
