@@ -1,9 +1,20 @@
-import type { Request, Response } from 'express';
+
+import { Request, Response } from 'express';
 import { veiculoModel } from '../models/veiculoModel';
 
-export const veiculoController = {
-  async listarVeiculosSvoDisponiveis(_req: Request, res: Response): Promise<void> {
+export async function listarVeiculosSvoDisponiveis(
+  _req: Request,
+  res: Response
+) {
+  try {
     const veiculos = await veiculoModel.listarSvoDisponiveis();
-    res.status(200).json(veiculos);
+
+    return res.status(200).json(veiculos);
+  } catch (erro) {
+    console.error('Erro ao consultar veículos SVO:', erro);
+
+    return res.status(500).json({
+      erro: 'Erro ao consultar veículos SVO disponíveis'
+    });
   }
-};
+}
