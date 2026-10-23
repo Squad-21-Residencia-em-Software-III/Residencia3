@@ -72,6 +72,7 @@ export function ModalMotorista({
       categoria_cnh: categoriasSelecionadas.join(''),
       validade_cnh: validade,
       tipo_motorista: tipo,
+      status: 'DISPONIVEL',
     });
 
     onClose();
