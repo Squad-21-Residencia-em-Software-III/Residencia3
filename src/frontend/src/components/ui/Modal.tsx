@@ -8,15 +8,25 @@ type ModalProps = {
   onClose: () => void
   onConfirm?: () => void
   confirmLabel?: string
+  hideFooter?: boolean
   children: ReactNode
 }
 
-export function Modal({ title, onClose, onConfirm, confirmLabel = 'Salvar', children }: ModalProps) {
+export function Modal({
+  title,
+  onClose,
+  onConfirm,
+  confirmLabel = 'Salvar',
+  hideFooter = false,
+  children,
+}: ModalProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  const showFooter = !hideFooter && onConfirm !== undefined
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -26,12 +36,14 @@ export function Modal({ title, onClose, onConfirm, confirmLabel = 'Salvar', chil
         </button>
         <h2 className="modal__title">{title}</h2>
         {children}
-        <div className="modal__footer">
-          <Button variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={onConfirm ?? onClose}>{confirmLabel}</Button>
-        </div>
+        {showFooter && (
+          <div className="modal__footer">
+            <Button variant="ghost" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button onClick={onConfirm}>{confirmLabel}</Button>
+          </div>
+        )}
       </div>
     </div>
   )
