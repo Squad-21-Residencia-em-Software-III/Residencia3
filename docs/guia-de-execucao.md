@@ -192,7 +192,7 @@ npm run build
 
 | Parte | Pasta | Comando | Endereço |
 |---|---|---|---|
-| Banco | raiz | `docker compose up -d` | porta 5432 |
+| Banco | raiz | `docker compose up -d` | porta 5433 (host) |
 | API | `src/backend` | `npm install`, `npm run migrate` e `npm run dev` | http://localhost:3000/api/status |
 | Front | `src/frontend` | `npm install` e `npm run dev` | http://localhost:5173/ |
 
