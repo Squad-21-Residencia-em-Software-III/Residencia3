@@ -17,6 +17,7 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    setErro('');
 
     const capacidadeNum = Number(capacidade);
     if (!placa.trim() || !modelo.trim()) {
@@ -25,6 +26,10 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
     }
     if (!Number.isInteger(capacidadeNum) || capacidadeNum < 0) {
       setErro('A capacidade deve ser um número inteiro maior ou igual a 0.');
+      return;
+    }
+    if (capacidadeNum > 20) {
+      setErro('A capacidade máxima permitida por veículo é de 20 pessoas.');
       return;
     }
 
@@ -41,7 +46,7 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
 
   return (
     <Modal title="Cadastrar Veículo" onClose={onClose}>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} noValidate>
         {erro && (
           <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
         )}
@@ -51,7 +56,7 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
           placeholder="Ex: ABC1D23"
           value={placa}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setPlaca(e.target.value.toUpperCase())}
-          maxLength={10}
+          maxLength={7}
           required
         />
 
@@ -78,9 +83,15 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
             label="Capacidade Máxima"
             type="number"
             min="0"
+            max="20"
             step="1"
             value={capacidade}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setCapacidade(e.target.value)}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              const val = e.target.value;
+              if (val.length <= 2) {
+                setCapacidade(val);
+              }
+            }}
           />
         </div>
 
