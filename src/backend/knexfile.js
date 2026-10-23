@@ -6,16 +6,17 @@ module.exports = {
   client: 'pg',
   connection: {
     host: process.env.POSTGRES_HOST || 'localhost',
-    port: Number(process.env.POSTGRES_PORT) || 5433,
+    port: Number(process.env.POSTGRES_PORT) || 5432,
     user: process.env.POSTGRES_USER,
     password: process.env.POSTGRES_PASSWORD,
     database: process.env.POSTGRES_DB,
+    ssl: { rejectUnauthorized: false } // Configuração obrigatória para a Neon/Render
   },
   migrations: {
     directory: path.resolve(__dirname, 'database/migrations'),
     tableName: 'knex_migrations',
   },
-    seeds: {
-    directory: './database/seeds',
+  seeds: {
+    directory: path.resolve(__dirname, 'database/seeds'),
   },
 };

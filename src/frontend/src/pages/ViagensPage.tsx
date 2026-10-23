@@ -17,10 +17,7 @@ import {
   TableToolbar,
   type BadgeTone,
 } from '../components/ui';
-import { MOCK_VEICULOS } from '../services/mocks/veiculosMock';
-import { MOCK_MOTORISTAS } from '../services/mocks/motoristasMock';
-import { MOCK_SOLICITACOES } from '../services/mocks/solicitacoesMock';
-import { MOCK_VIAGENS } from '../services/mocks/viagensMock';
+import { storageService } from '../services/storageService';
 import {
   LABELS_STATUS_VIAGEM,
   type StatusViagem,
@@ -66,7 +63,7 @@ function formatarDataHora(isoString?: string | null): string {
 }
 
 export default function ViagensPage() {
-  const [viagens, setViagens] = useState<Viagem[]>(MOCK_VIAGENS);
+  const [viagens, setViagens] = useState<Viagem[]>(storageService.getViagens());
   const [filtro, setFiltro] = useState<FiltroAba>('TODAS');
   const [busca, setBusca] = useState('');
 
@@ -75,10 +72,20 @@ export default function ViagensPage() {
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
   const [viagemExpandidaId, setViagemExpandidaId] = useState<number | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
+  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
-  const exibirFeedback = (msg: string) => {
-    setMensagemSucesso(msg);
-    setTimeout(() => setMensagemSucesso(null), 4000);
+  const exibirFeedback = (msg: string, isError = false) => {
+    if (isError) {
+      setMensagemErro(msg);
+      setMensagemSucesso(null);
+    } else {
+      setMensagemSucesso(msg);
+      setMensagemErro(null);
+    }
+    setTimeout(() => {
+      setMensagemSucesso(null);
+      setMensagemErro(null);
+    }, 4000);
   };
 
   const totais = useMemo(
@@ -93,14 +100,12 @@ export default function ViagensPage() {
 
   const filtradas = useMemo(() => {
     return viagens.filter((v) => {
-      // 1. Abas
       if (filtro === 'EM_ANDAMENTO' && v.status !== 'EM_ANDAMENTO') return false;
       if (filtro === 'AGENDADAS' && v.status !== 'AGENDADA') return false;
       if (filtro === 'CONCLUIDAS' && v.status !== 'CONCLUIDA') return false;
       if (filtro === 'FROTA' && v.tipo_operacao !== 'ADMINISTRATIVA') return false;
       if (filtro === 'SVO' && v.tipo_operacao !== 'SVO') return false;
 
-      // 2. Busca por texto
       if (busca.trim()) {
         const termo = busca.trim().toLowerCase();
         const matchOrigem = v.origem.toLowerCase().includes(termo);
@@ -112,44 +117,37 @@ export default function ViagensPage() {
           return false;
         }
       }
-
       return true;
     });
   }, [viagens, filtro, busca]);
 
-  const solicitacoesAprovadas = useMemo(
-    () => MOCK_SOLICITACOES.filter((s) => s.status === 'APROVADA'),
-    [],
-  );
-
   const handleSalvarNovaViagem = (nova: Omit<Viagem, 'id'>) => {
-    const novoId = Math.max(0, ...viagens.map((v) => v.id)) + 1;
-    const viagemCriada: Viagem = { id: novoId, ...nova };
-    setViagens([viagemCriada, ...viagens]);
-    exibirFeedback(`Viagem #${novoId} agendada com sucesso.`);
+    try {
+      storageService.createViagem(nova);
+      setViagens(storageService.getViagens());
+      exibirFeedback(`Viagem agendada com sucesso!`);
+    } catch (error: any) {
+      exibirFeedback(error.message, true);
+    }
   };
 
   const handleFinalizarViagem = (dados: { km_final: number; data_hora_efetiva_chegada: string }) => {
     if (!viagemFinalizar) return;
-    setViagens((prev) =>
-      prev.map((v) =>
-        v.id === viagemFinalizar.id
-          ? {
-              ...v,
-              km_final: dados.km_final,
-              data_hora_efetiva_chegada: dados.data_hora_efetiva_chegada,
-              status: 'CONCLUIDA',
-            }
-          : v,
-      ),
-    );
-    exibirFeedback(`Viagem #${viagemFinalizar.id} finalizada com sucesso.`);
-    setViagemFinalizar(null);
+    try {
+      storageService.updateViagem(viagemFinalizar.id, {
+        ...dados,
+        status: 'CONCLUIDA',
+      });
+      setViagens(storageService.getViagens());
+      exibirFeedback(`Viagem #${viagemFinalizar.id} finalizada com sucesso.`);
+      setViagemFinalizar(null);
+    } catch (error: any) {
+      exibirFeedback(error.message, true);
+    }
   };
 
   return (
     <div style={{ display: 'grid', gap: '20px', minWidth: 0, width: '100%' }}>
-      {/* Banner de Feedback */}
       {mensagemSucesso && (
         <div
           style={{
@@ -171,7 +169,27 @@ export default function ViagensPage() {
         </div>
       )}
 
-      {/* 4 Cards de Resumo */}
+      {mensagemErro && (
+        <div
+          style={{
+            padding: '12px 20px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-danger)',
+            color: 'var(--color-danger)',
+            fontSize: '14px',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: 'var(--shadow-sm)',
+          }}
+        >
+          <span style={{ fontSize: '18px' }}>❌</span>
+          <span>{mensagemErro}</span>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
         <Card style={{ padding: '16px 20px' }}>
           <div style={cardValor('var(--color-text)')}>{totais.total}</div>
@@ -199,7 +217,6 @@ export default function ViagensPage() {
           onNew={() => setModalNovaAberto(true)}
         />
 
-        {/* Barra de Filtros e Busca */}
         <div
           style={{
             display: 'flex',
@@ -212,18 +229,15 @@ export default function ViagensPage() {
             justifyContent: 'space-between',
           }}
         >
-          {/* Abas Rápidas */}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {(
-              [
-                { id: 'TODAS', label: 'Todas' },
-                { id: 'EM_ANDAMENTO', label: 'Em Andamento' },
-                { id: 'AGENDADAS', label: 'Agendadas' },
-                { id: 'CONCLUIDAS', label: 'Concluídas' },
-                { id: 'FROTA', label: 'Frota' },
-                { id: 'SVO', label: 'SVO' },
-              ] as const
-            ).map((aba) => (
+            {([
+              { id: 'TODAS', label: 'Todas' },
+              { id: 'EM_ANDAMENTO', label: 'Em Andamento' },
+              { id: 'AGENDADAS', label: 'Agendadas' },
+              { id: 'CONCLUIDAS', label: 'Concluídas' },
+              { id: 'FROTA', label: 'Frota' },
+              { id: 'SVO', label: 'SVO' },
+            ] as const).map((aba) => (
               <button
                 key={aba.id}
                 onClick={() => setFiltro(aba.id)}
@@ -244,7 +258,6 @@ export default function ViagensPage() {
             ))}
           </div>
 
-          {/* Campo de Busca */}
           <div style={{ minWidth: '220px', flex: '1', maxWidth: '320px' }}>
             <input
               type="text"
@@ -265,7 +278,6 @@ export default function ViagensPage() {
           </div>
         </div>
 
-        {/* Tabela de Viagens */}
         <Table>
           <thead>
             <tr>
@@ -489,17 +501,16 @@ export default function ViagensPage() {
               })
             )}
           </tbody>
+          <Pagination showing={`1–${filtradas.length}`} total={filtradas.length} />
         </Table>
-
-        <Pagination showing={`1–${filtradas.length}`} total={filtradas.length} />
       </Card>
 
       {/* Modais */}
       {modalNovaAberto && (
         <ModalNovaViagem
-          solicitacoesAprovadas={solicitacoesAprovadas}
-          veiculos={MOCK_VEICULOS}
-          motoristas={MOCK_MOTORISTAS}
+          solicitacoesAprovadas={[]} // Aqui precisaremos de um mock/service de solicitações
+          veiculos={storageService.getVeiculos()}
+          motoristas={storageService.getMotoristas()}
           onClose={() => setModalNovaAberto(false)}
           onSalvar={handleSalvarNovaViagem}
         />

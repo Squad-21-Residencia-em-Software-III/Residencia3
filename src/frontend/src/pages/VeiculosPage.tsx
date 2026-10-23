@@ -9,7 +9,7 @@ import {
 } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
 import type { StatusVeiculo, Veiculo } from '../types/veiculo';
-import { MOCK_VEICULOS } from '../services/mocks/veiculosMock';
+import { storageService } from '../services/storageService';
 import { ModalVeiculo } from './veiculos/ModalVeiculo';
 
 const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
@@ -19,9 +19,25 @@ const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
 };
 
 export default function VeiculosPage() {
-  const [veiculos, setVeiculos] = useState<Veiculo[]>(MOCK_VEICULOS);
+  const [veiculos, setVeiculos] = useState<Veiculo[]>(storageService.getVeiculos());
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [modalAberto, setModalAberto] = useState(false);
+  const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
+  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
+
+  const exibirFeedback = (msg: string, isError = false) => {
+    if (isError) {
+      setMensagemErro(msg);
+      setMensagemSucesso(null);
+    } else {
+      setMensagemSucesso(msg);
+      setMensagemErro(null);
+    }
+    setTimeout(() => {
+      setMensagemSucesso(null);
+      setMensagemErro(null);
+    }, 4000);
+  };
 
   // Métricas do topo
   const totais = useMemo(() => {
@@ -40,12 +56,40 @@ export default function VeiculosPage() {
   }, [veiculos, filtroTipo]);
 
   const handleSalvarVeiculo = (novo: Omit<Veiculo, 'id'>) => {
-    const id = veiculos.length > 0 ? Math.max(...veiculos.map((v) => v.id)) + 1 : 1;
-    setVeiculos([{ id, ...novo }, ...veiculos]);
+    try {
+      storageService.createVeiculo(novo);
+      setVeiculos(storageService.getVeiculos());
+      exibirFeedback(`Veículo com placa ${novo.placa} cadastrado com sucesso!`);
+    } catch (error: any) {
+      exibirFeedback(error.message, true);
+    }
   };
 
   return (
     <div style={{ display: 'grid', gap: '24px' }}>
+      {/* Feedback de sucesso e erro */}
+      {(mensagemSucesso || mensagemErro) && (
+        <div
+          style={{
+            padding: '12px 20px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--color-surface)',
+            border: `1px solid ${mensagemErro ? 'var(--color-danger)' : 'var(--color-success)'}`,
+            color: mensagemErro ? 'var(--color-danger)' : 'var(--color-success)',
+            fontSize: '14px',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: 'var(--shadow-sm)',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {mensagemErro ? '❌' : '✅'} {mensagemErro || mensagemSucesso}
+          </span>
+        </div>
+      )}
+
       {/* ── Cards de Resumo ── */}
       <div
         style={{
@@ -119,7 +163,6 @@ export default function VeiculosPage() {
         </Card>
       </div>
 
-      {/* ── Tabela de Veículos ── */}
       <Card>
         <TableToolbar
           title="Frota de Veículos"
@@ -212,9 +255,8 @@ export default function VeiculosPage() {
               })
             )}
           </tbody>
+          <Pagination showing={`1–${veiculosFiltrados.length}`} total={veiculosFiltrados.length} />
         </Table>
-
-        <Pagination showing={`1–${veiculosFiltrados.length}`} total={veiculosFiltrados.length} />
       </Card>
 
       {/* ── Modal de Cadastro ── */}
