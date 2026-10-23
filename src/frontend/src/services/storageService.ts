@@ -5,13 +5,16 @@ import type { Veiculo } from '../types/veiculo';
 import { MOCK_VEICULOS } from './mocks/veiculosMock';
 import type { Motorista } from '../types/motorista';
 import { MOCK_MOTORISTAS } from './mocks/motoristasMock';
-import type { Viagem, NovaViagemInput, FinalizarViagemInput } from '../types/viagem';
+import type { Viagem } from '../types/viagem';
 import { MOCK_VIAGENS } from './mocks/viagensMock';
+import type { Abastecimento, NovoAbastecimentoInput } from '../types/abastecimento';
+import { MOCK_ABASTECIMENTOS } from './mocks/abastecimentosMock';
 
 const STORAGE_KEY_USUARIOS = '@fsph:usuarios';
 const STORAGE_KEY_VEICULOS = '@fsph:veiculos';
 const STORAGE_KEY_MOTORISTAS = '@fsph:motoristas';
 const STORAGE_KEY_VIAGENS = '@fsph:viagens';
+const STORAGE_KEY_ABASTECIMENTOS = '@fsph:abastecimentos';
 
 /**
  * Serviço de persistência local para a aplicação.
@@ -210,4 +213,62 @@ export const storageService = {
     storageService.saveTodosViagens(viagens);
     return viagemAtualizada;
   },
+
+  // --- GESTÃO DE ABASTECIMENTOS ---
+  getAbastecimentos: (): Abastecimento[] => {
+    const stored = localStorage.getItem(STORAGE_KEY_ABASTECIMENTOS);
+    if (!stored) {
+      localStorage.setItem(STORAGE_KEY_ABASTECIMENTOS, JSON.stringify(MOCK_ABASTECIMENTOS));
+      return MOCK_ABASTECIMENTOS;
+    }
+    return JSON.parse(stored);
+  },
+
+  saveTodosAbastecimentos: (abastecimentos: Abastecimento[]): void => {
+    localStorage.setItem(STORAGE_KEY_ABASTECIMENTOS, JSON.stringify(abastecimentos));
+  },
+
+  createAbastecimento: (input: NovoAbastecimentoInput): Abastecimento => {
+    const abastecimentos = storageService.getAbastecimentos();
+    const veiculos = storageService.getVeiculos();
+    const motoristas = storageService.getMotoristas();
+
+    const veiculo = veiculos.find(v => v.id === input.veiculo_id);
+    const motorista = motoristas.find(m => m.id === input.motorista_id);
+
+    const valorLitro = input.litros > 0 ? Number((input.valor_total / input.litros).toFixed(2)) : 0;
+    const abastecimentoAnterior = abastecimentos.find(a => a.veiculo_id === input.veiculo_id);
+    let consumoKml = 9.0;
+    if (abastecimentoAnterior && input.quilometragem > abastecimentoAnterior.quilometragem && input.litros > 0) {
+      consumoKml = Number(((input.quilometragem - abastecimentoAnterior.quilometragem) / input.litros).toFixed(1));
+    }
+
+    const novoAbastecimento: Abastecimento = {
+      id: abastecimentos.length > 0 ? Math.max(...abastecimentos.map(a => a.id)) + 1 : 1,
+      veiculo_id: input.veiculo_id,
+      motorista_id: input.motorista_id,
+      fornecedor_id: input.fornecedor_id ?? null,
+      data_abastecimento: input.data_abastecimento,
+      quilometragem: input.quilometragem,
+      litros: input.litros,
+      valor_total: input.valor_total,
+      posto_combustivel: input.posto_combustivel ?? 'Posto não informado',
+      veiculo_placa: veiculo?.placa ?? 'N/D',
+      veiculo_modelo: veiculo?.modelo ?? '',
+      motorista_nome: motorista?.nome ?? 'N/D',
+      valor_litro: valorLitro,
+      consumo_kml: consumoKml,
+      status: 'CONFIRMADO',
+    };
+
+    const atualizados = [novoAbastecimento, ...abastecimentos];
+    storageService.saveTodosAbastecimentos(atualizados);
+    return novoAbastecimento;
+  },
+
+  deleteAbastecimento: (id: number): void => {
+    const abastecimentos = storageService.getAbastecimentos().filter(a => a.id !== id);
+    storageService.saveTodosAbastecimentos(abastecimentos);
+  },
 };
+

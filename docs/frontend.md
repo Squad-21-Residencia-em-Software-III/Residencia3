@@ -17,23 +17,29 @@ npm run build    # confere tipos e gera o build
 ```
 
 > [!IMPORTANT]
-> **Atenção aos desenvolvedores**: Foi adicionada a dependência `lucide-react`. Ao atualizar ou clonar a branch, é obrigatório rodar `npm install` dentro de `src/frontend` antes de iniciar o servidor ou rodar o build.
+> **Atenção aos desenvolvedores**:
+> 1. Foi adicionada a dependência `lucide-react`. Ao atualizar ou clonar a branch, é obrigatório rodar `npm install` dentro de `src/frontend`.
+> 2. Crie o arquivo `src/frontend/.env` com `VITE_API_URL=http://localhost:3000/api` para comunicação correta com o back-end em desenvolvimento.
 
-O front **ainda não está conectado ao back-end**. Todos os dados são fictícios (ver seção 6).
+O front-end **está oficialmente conectado ao back-end para Autenticação e Sessão** (`POST /api/auth/login`, `GET /api/auth/me`). Os módulos operacionais (Veículos, Motoristas, Viagens) utilizam persistência no navegador via `storageService` enquanto aguardam a conexão de seus endpoints REST definitivos.
 
 ## 3. Estrutura de pastas
 ```
 src/frontend/
 ├─ public/assets/        logos e ícone
 └─ src/
+   ├─ contexts/          AuthContext (estado global da sessão e usuário logado)
    ├─ styles/            tokens.css (cores, fontes, raios...) e global.css
    ├─ components/
    │  ├─ ui/             Button, Card, Badge, Avatar, Input, Select, Modal, Table, ícones
-   │  └─ layout/         AppLayout (barra lateral e topo)
-   ├─ pages/             uma página por rota (ex.: VeiculosPage.tsx)
-   ├─ routes/            definição das rotas e do menu
-   ├─ services/mocks/    dados fictícios
-   └─ types/             tipos TypeScript espelhando as tabelas do banco
+   │  └─ layout/         AppLayout (barra lateral dinâmica por perfil e topo)
+   ├─ pages/             uma página por rota (ex.: LoginPage.tsx, VeiculosPage.tsx)
+   ├─ routes/            index.tsx (roteamento) e guards.tsx (proteção de rotas e RBAC)
+   ├─ services/
+   │  ├─ api/            http.ts (cliente HTTP com interceptors) e authApi.ts (endpoints de auth)
+   │  ├─ mocks/          dados fictícios iniciais
+   │  └─ storageService.ts persistência local no localStorage para os módulos operacionais
+   └─ types/             tipos TypeScript espelhando as entidades do banco e domínio
 ```
 
 ## 4. Padrões
@@ -42,21 +48,104 @@ src/frontend/
 - **Tipos**: cada tipo em `types/` espelha uma tabela do banco (ver `docs/dicionario-de-dados.md`). Não adicionar campos que não existam na tabela.
 - **Dados**: a tela consome uma lista de `services/`. Quando houver API, troca-se só essa origem.
 
-## 5. Rotas
-| Rota | Página | Situação |
+## 5. Rotas e Permissões
+
+| Rota | Página | Tipo de Acesso | Permissões |
+|---|---|---|---|
+| `/login` | `LoginPage` | Pública (`RotaPublica`) | Qualquer visitante (usuário logado é redirecionado para `/dashboard`) |
+| `/` | Redirecionamento | Protegida | Redireciona para `/dashboard` |
+| `/dashboard` | `DashboardPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/agenda` | `AgendaPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/veiculos` | `VeiculosPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/abastecimento` | `AbastecimentoPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/motoristas` | `MotoristasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/viagens` | `ViagensPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/usuarios` | `UsuariosPage` | Restrita por Perfil (`RotaPorPerfil`) | Exclusivo para perfil `ADMINISTRADOR` |
+| qualquer outra | `NotFoundPage` | Protegida | Exibida dentro do layout para rotas não mapeadas |
+
+---
+
+## 6. Arquitetura de Autenticação e Sessão
+
+A autenticação é baseada em tokens **JWT (JSON Web Tokens)** e conecta o front-end diretamente à API do back-end (`http://localhost:3000/api`).
+
+### 6.1 Fluxo Arquitetural
+
+```text
+[ Tela de Login (LoginPage) ]
+              ↓
+[ AuthContext (useAuth Hook) ]
+              ↓
+[ authApi.ts (Contrato de Endpoints) ]
+              ↓
+[ http.ts (Cliente HTTP com Interceptors & LocalStorage) ]
+              ↓
+[ API REST Express (JWT + PostgreSQL) ]
+```
+
+### 6.2 Componente Raiz (`App.tsx`)
+O arquivo `src/frontend/src/App.tsx` é o componente raiz da aplicação. O provedor `<AuthProvider>` **obrigatoriamente** envolve o `<AppRoutes />` para fornecer o contexto de autenticação global para todos os componentes e guardas de rota:
+
+```tsx
+import { BrowserRouter } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext'
+import { AppRoutes } from './routes'
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  )
+}
+```
+
+### 6.3 Cliente HTTP e Gestão de Tokens (`services/api/http.ts`)
+Construído como um wrapper limpo e tipado sobre a Fetch API nativa do navegador:
+- **Armazenamento de Token**: O token é persistido no `localStorage` sob a chave `'fsph.token'` pelo utilitário `tokenStorage`.
+- **Injeção de Cabeçalho**: Em toda requisição autenticada, adiciona automaticamente `Authorization: Bearer <token>`.
+- **Tratamento de Sessão Expirada (401)**: Se a API responder `401 Unauthorized` (ex.: após 8h de expiração do JWT), o token é limpo e um evento global `auth:expirada` é disparado, deslogando o usuário sem acoplamento direto com o React.
+- **Tratamento de Erros (`ApiError`)**: Converte respostas de erro da API no formato padronizado `{ erro, detalhes }`, permitindo feedback amigável na interface.
+
+### 6.4 Serviço de Autenticação (`services/api/authApi.ts`)
+Encapsula os endpoints de autenticação do back-end:
+- `login(email, senha)`: Dispara `POST /api/auth/login`. Recebe `{ token, tipo, expiraEm, usuario }`.
+- `me()`: Dispara `GET /api/auth/me`. Restaura a sessão do usuário logado através do token salvo.
+- `alterarSenha(senhaAtual, novaSenha)`: Dispara `PATCH /api/auth/senha`.
+
+### 6.5 Estado Global e Hook `useAuth` (`contexts/AuthContext.tsx`)
+Gerencia o ciclo de vida do usuário:
+- **Auto-login ao iniciar (F5)**: Ao carregar a página, se houver token salvo, chama `authApi.me()` em segundo plano com indicador `carregando = true`.
+- **Funções e Dados Expostos**:
+  - `usuario`: Objeto com `id`, `nome`, `email`, `perfil`, `tipo_usuario`, `ativo`.
+  - `carregando`: `true` enquanto verifica o token inicial.
+  - `login(email, senha)`: Realiza a autenticação e armazena o token.
+  - `logout()`: Limpa o token e encerra a sessão.
+  - `temPerfil(...perfis)`: Helper booleano para validar se o usuário atual possui um determinado perfil (ex.: `temPerfil('ADMINISTRADOR')`).
+
+### 6.6 Guardas de Rota e RBAC (`routes/guards.tsx` e `routes/index.tsx`)
+- **`RotaPublica`**: Impede que usuários já autenticados acessem a tela de login (redireciona para `/dashboard`).
+- **`RotaProtegida`**: Bloqueia acessos anônimos às telas do sistema. Grava em `location.state.de` a página que o usuário tentou acessar para redirecioná-lo automaticamente após o login.
+- **`RotaPorPerfil`**: Implementa o controle de acesso baseado em papéis (RBAC). Bloqueia acesso a rotas não permitidas para o perfil do usuário logado.
+- **Menu Lateral Dinâmico**: A barra lateral (`AppLayout`) filtra os itens navegáveis (`navItems`), exibindo apenas as abas compatíveis com o perfil do usuário logado.
+
+### 6.7 Credenciais Padrão de Teste (Ambiente de Desenvolvimento)
+Todos os usuários de teste usam a senha padrão: **`Senha@123`**
+
+| Perfil | E-mail de Teste | Acesso no Front-end |
 |---|---|---|
-| `/` | redireciona para `/dashboard` | pronta |
-| `/dashboard` | `DashboardPage` | implementada (mock) |
-| `/agenda` | `AgendaPage` | implementada (mock) |
-| `/veiculos` | `VeiculosPage` | implementada (mock) |
-| `/motoristas` | `MotoristasPage` | implementada (mock) |
-| `/viagens` | `ViagensPage` | implementada (mock) |
-| `/usuarios` | `UsuariosPage` | implementada (mock) |
-| qualquer outra | `NotFoundPage` | pronta |
+| Administrador | `admin@exemplo.com` | Acesso completo, incluindo gestão de Usuários (`/usuarios`) |
+| Gestor de Frota | `gestor.frota@exemplo.com` | Dashboard, Agenda, Veículos, Motoristas, Viagens |
+| Gestor SVO | `gestor.svo@exemplo.com` | Dashboard, Agenda, Veículos, Motoristas, Viagens do SVO |
+| Solicitante | `solicitante@exemplo.com` | Dashboard, Agenda, Solicitações de Viagens |
+| Motorista Frota | `motorista.frota@exemplo.com` | Dashboard, Agenda, Viagens |
+| Motorista SVO | `motorista.svo@exemplo.com` | Dashboard, Agenda, Viagens |
 
-Ainda não há tela de login nem proteção de rotas.
+---
 
-## 6. Origem dos dados
+## 7. Origem dos dados
 > [!WARNING]
 > Os dados exibidos são **fictícios (mock)**. Não vêm do banco nem da API. Itens cadastrados pela tela existem só na memória do navegador e somem ao recarregar.
 

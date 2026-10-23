@@ -13,7 +13,6 @@ import {
 } from '../components/ui';
 import {
   LABELS_PERFIS,
-  tipoUsuarioDoPerfil,
   type Perfil,
   type Usuario,
 } from '../types/usuario';
@@ -117,7 +116,7 @@ export default function UsuariosPage() {
     try {
       if (usuarioEditando) {
         // Edição
-        const usuarioAtualizado = storageService.updateUsuario(usuarioEditando.id, {
+        storageService.updateUsuario(usuarioEditando.id, {
           nome: dados.nome,
           email: dados.email,
           perfil: dados.perfil,
@@ -127,7 +126,7 @@ export default function UsuariosPage() {
         exibirFeedback(`Usuário "${dados.nome}" atualizado com sucesso.`);
       } else {
         // Novo cadastro
-        const novoUsuario = storageService.createUsuario({
+        storageService.createUsuario({
           nome: dados.nome,
           email: dados.email,
           senha: dados.senha || '',
