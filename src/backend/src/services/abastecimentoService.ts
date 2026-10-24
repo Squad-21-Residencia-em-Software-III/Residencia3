@@ -28,35 +28,21 @@ export const abastecimentoService = {
     if (!motorista) {
       throw new AppError('Motorista não encontrado', 404);
     }
-
-    if (dados.fornecedor_id != null) {
-      const fornecedor = await db('fornecedores')
-        .where({ id: dados.fornecedor_id })
-        .first();
-
-      if (!fornecedor) {
-        throw new AppError('Fornecedor não encontrado', 404);
-      }
-    }
-
-    if (
-      dados.fornecedor_id == null &&
-      !dados.posto_combustivel?.trim()
-    ) {
-      throw new AppError(
-        'Informe o fornecedor ou o nome do posto utilizado',
-        400
-      );
-    }
+    
+   if (!dados.posto_combustivel?.trim()) {
+  throw new AppError(
+    'Informe o nome do posto utilizado',
+    400
+  );
+}
 
     return db.transaction(async (trx) => {
-      // Verifica a maior quilometragem já registrada para o veículo
       const ultimoAbastecimento = await trx('abastecimentos')
         .where({ veiculo_id: dados.veiculo_id })
         .orderBy('quilometragem', 'desc')
         .first();
 
-      // Impede o cadastro com quilometragem inferior à registrada
+
       if (
         ultimoAbastecimento &&
         dados.quilometragem < Number(ultimoAbastecimento.quilometragem)
