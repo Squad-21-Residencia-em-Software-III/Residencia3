@@ -48,3 +48,18 @@ Registra o histórico de alterações críticas no sistema (RF27 / RN18).
 | `acao` | Varchar | NOT NULL | Qual operação foi feita (Ex: `LOGIN`, `CRIAR_USUARIO`). |
 | `modulo` | Varchar | NOT NULL | Qual módulo ou tabela sofreu alteração. |
 | `data_hora` | Timestamp | DEFAULT now() | Momento exato da ação. |
+
+## 5. Tabela: `multas`
+Armazena o registro de infrações de trânsito vinculadas aos veículos e motoristas da frota.
+
+| Coluna | Tipo | Restrições / Notas | Descrição |
+| :--- | :--- | :--- | :--- |
+| `id` | Integer / Serial | PRIMARY KEY | Identificador único da multa. |
+| `veiculo_id` | Integer | FOREIGN KEY | Vínculo com a tabela `veiculos`. |
+| `motorista_id` | Integer | FOREIGN KEY | Vínculo com a tabela `motoristas` (se identificado). |
+| `id_infracao` | Varchar | NULLABLE | Código da infração registrado pelo Detran. |
+| `orgao_autuador` | Varchar | NULLABLE | Órgão responsável pela autuação (Ex: PRF, SMTT). |
+| `data_infracao` | Timestamp | NOT NULL | Data e hora exatas da ocorrência da infração. |
+| `data_vencimento`| Date | NULLABLE | Data limite para pagamento com desconto. |
+| `status_pagamento`| Varchar | DEFAULT 'PENDENTE' | Valores: `PENDENTE`, `PAGO`, `CANCELADO`. |
+| `valor` | Decimal | NOT NULL | Valor original da autuação. |
