@@ -1,6 +1,6 @@
- Dicionário de Dados - Gestão de Frotas
+# Dicionário de Dados - Gestão de Frotas
 
- 1. Tabela: `fornecedores`
+## 1. Tabela: `fornecedores`
 Armazena os dados das entidades que prestam serviços de manutenção ou fornecem combustível.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -11,7 +11,7 @@ Armazena os dados das entidades que prestam serviços de manutenção ou fornece
 | `tipo_servico` | Varchar(100) | NULLABLE | Categoria do serviço prestado. |
 | `contrato` | Varchar(100) | NULLABLE | Número ou referência do contrato. |
 
- 2. Tabela: `usuarios`
+## 2. Tabela: `usuarios`
 Armazena os utilizadores com acesso ao sistema e as respetivas credenciais e perfis.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -24,7 +24,7 @@ Armazena os utilizadores com acesso ao sistema e as respetivas credenciais e per
 | `perfil` | Varchar(50) | NOT NULL | CHECK: `ADMINISTRADOR`, `SOLICITANTE`, `GESTOR_FROTA`, `GESTOR_SVO`, `MOTORISTA_FROTA`, `MOTORISTA_SVO`. |
 | `ativo` | Boolean | NOT NULL, DEFAULT true | Indica se a conta tem permissão de acesso. |
 
- 3. Tabela: `veiculos`
+## 3. Tabela: `veiculos`
 Registo dos veículos pertencentes à frota geral e ao Serviço de Verificação de Óbitos (SVO).
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -36,7 +36,7 @@ Registo dos veículos pertencentes à frota geral e ao Serviço de Verificação
 | `capacidade_maxima` | Integer | NOT NULL | Lotação (CHECK: `>= 0`). |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `EM_USO`, `MANUTENCAO`. |
 
- 4. Tabela: `equipes_svo`
+## 4. Tabela: `equipes_svo`
 Registo das equipas alocadas ao serviço SVO.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -44,7 +44,7 @@ Registo das equipas alocadas ao serviço SVO.
 | `id` | Integer / Serial | PRIMARY KEY | Identificador da equipa. |
 | `nome_equipe` | Varchar(100) | NOT NULL | Nome ou identificação da equipa de SVO. |
 
- 5. Tabela: `auditorias`
+## 5. Tabela: `auditorias`
 Registo de ações realizadas no sistema (logs de segurança).
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -55,7 +55,7 @@ Registo de ações realizadas no sistema (logs de segurança).
 | `modulo` | Varchar(100) | NOT NULL | Módulo afetado pela ação. |
 | `data_hora` | Timestamp | DEFAULT now() | Data e hora exatas da operação. |
 
- 6. Tabela: `motoristas`
+## 6. Tabela: `motoristas`
 Registo detalhado das habilitações dos utilizadores com perfil de condução.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -65,10 +65,10 @@ Registo detalhado das habilitações dos utilizadores com perfil de condução.
 | `numero_cnh` | Varchar(20) | NOT NULL, UNIQUE | Número da carta de condução. |
 | `categoria_cnh` | Varchar(5) | NOT NULL | Categoria da carta (Ex: B, C, D). |
 | `validade_cnh` | Date | NOT NULL | Data de validade do documento. |
-| `tipo_motorista` | Varchar(20) | NOT NULL | Categoria de alocação do condutor. |
-| `status` | Varchar(30) | DEFAULT 'DISPONIVEL' | Estado de disponibilidade operacional. |
+| `tipo_motorista` | Varchar(20) | NOT NULL | CHECK: `FROTA`, `SVO`. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `EM_VIAGEM`, `INATIVO`, `AFASTADO`. |
 
- 7. Tabela: `manutencoes`
+## 7. Tabela: `manutencoes`
 Histórico de manutenções preventivas e corretivas da frota.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -82,7 +82,7 @@ Histórico de manutenções preventivas e corretivas da frota.
 | `custo` | Decimal(10,2) | NOT NULL | CHECK: `>= 0`. |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'AGENDADA' | CHECK: `AGENDADA`, `EM_ANDAMENTO`, `CONCLUIDA`. |
 
- 8. Tabela: `documentos_veiculo`
+## 8. Tabela: `documentos_veiculo`
 Controlo de documentação legal e seguros dos veículos.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -92,7 +92,7 @@ Controlo de documentação legal e seguros dos veículos.
 | `tipo` | Varchar(100) | NOT NULL | Natureza do documento (Ex: Seguro, Inspeção). |
 | `data_vencimento` | Date | NOT NULL | Data limite de validade legal. |
 
- 9. Tabela: `solicitacoes_viagem`
+## 9. Tabela: `solicitacoes_viagem`
 Pedidos de deslocação da frota administrativa.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -103,10 +103,10 @@ Pedidos de deslocação da frota administrativa.
 | `destino` | Varchar(255) | NOT NULL | Local de chegada. |
 | `finalidade` | Text | NOT NULL | Motivo da deslocação. |
 | `data_saida_desejada` | Timestamp | NOT NULL | Início planeado. |
-| `data_chegada_desejada`| Timestamp | NULLABLE | Fim planeado da viagem. |
-| `status` | Varchar(30) | DEFAULT 'PENDENTE_APROVACAO' | Estado da aprovação da viagem. |
+| `data_chegada_desejada`| Timestamp | NULLABLE, CHECK: `>= data_saida_desejada` | Fim planeado da viagem. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'PENDENTE_APROVACAO' | CHECK: `PENDENTE_APROVACAO`, `APROVADA`, `RECUSADA`, `CANCELADA`. |
 
- 10. Tabela: `solicitacoes_svo`
+## 10. Tabela: `solicitacoes_svo`
 Triagem de pedidos para o Serviço de Verificação de Óbitos.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -116,9 +116,9 @@ Triagem de pedidos para o Serviço de Verificação de Óbitos.
 | `dados_solicitante` | Text | NOT NULL | Informação de quem contactou a instituição. |
 | `local_ocorrencia` | Varchar(255) | NOT NULL | Morada do incidente. |
 | `material_sensivel` | Boolean | DEFAULT false | Exige protocolos específicos de transporte. |
-| `status` | Varchar(30) | DEFAULT 'EM_TRIAGEM' | Estado de processamento operacional. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'EM_TRIAGEM' | CHECK: `EM_TRIAGEM`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA`. |
 
- 11. Tabela: `escalas_svo`
+## 11. Tabela: `escalas_svo`
 Planeamento de horários das equipas SVO.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -126,9 +126,9 @@ Planeamento de horários das equipas SVO.
 | `id` | Integer / Serial | PRIMARY KEY | Identificador do turno. |
 | `equipe_id` | Integer | FOREIGN KEY | Equipa escalada (RESTRICT). |
 | `data_inicio` | Timestamp | NOT NULL | Início do turno. |
-| `data_fim` | Timestamp | NOT NULL | Fim do turno. |
+| `data_fim` | Timestamp | NOT NULL, CHECK: `>= data_inicio` | Fim do turno. |
 
- 12. Tabela: `multas`
+## 12. Tabela: `multas`
 Armazena o registo de infrações de trânsito vinculadas aos veículos e motoristas.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -141,11 +141,11 @@ Armazena o registo de infrações de trânsito vinculadas aos veículos e motori
 | `data_infracao` | Timestamp | NOT NULL | Data e hora exatas da ocorrência da infração. |
 | `data_vencimento`| Date | NULLABLE | Data limite para pagamento com desconto. |
 | `status_pagamento`| Varchar(255) | NOT NULL, DEFAULT 'PENDENTE' | CHECK: `PENDENTE`, `PAGO`, `CANCELADO`. |
-| `valor` | Decimal(10,2) | NOT NULL | Valor original da autuação. |
+| `valor` | Decimal(10,2) | NOT NULL | CHECK: `> 0`. |
 | `descricao` | Text | NULLABLE | Detalhes adicionais. |
-| `pontos` | Integer | NOT NULL | Pontuação deduzida na carta de condução. |
+| `pontos` | Integer | NOT NULL | CHECK: `>= 0`. |
 
- 13. Tabela: `abastecimentos`
+## 13. Tabela: `abastecimentos`
 Controlo de consumo de combustível da frota.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -155,12 +155,12 @@ Controlo de consumo de combustível da frota.
 | `motorista_id` | Integer | FOREIGN KEY | Motorista que conduzia (RESTRICT). |
 | `fornecedor_id` | Integer | FOREIGN KEY | Empresa que forneceu o combustível (RESTRICT). |
 | `data_abastecimento`| Date | NOT NULL | Data do evento. |
-| `quilometragem` | Integer | NOT NULL | Valor do conta-quilómetros no momento. |
-| `litros` | Decimal(10,2) | NOT NULL | Volume abastecido. |
-| `valor_total` | Decimal(10,2) | NOT NULL | Custo pago. |
+| `quilometragem` | Integer | NOT NULL | CHECK: `>= 0`. |
+| `litros` | Decimal(10,2) | NOT NULL | CHECK: `> 0`. |
+| `valor_total` | Decimal(10,2) | NOT NULL | CHECK: `> 0`. |
 | `posto_combustivel` | Varchar(150) | NULLABLE | Nome comercial da estação de serviço. |
 
- 14. Tabela: `viagens_frota`
+## 14. Tabela: `viagens_frota`
 Execução efetiva das deslocações administrativas aprovadas.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -169,13 +169,13 @@ Execução efetiva das deslocações administrativas aprovadas.
 | `solicitacao_id` | Integer | FOREIGN KEY | Pedido de origem (RESTRICT). |
 | `veiculo_id` | Integer | FOREIGN KEY | Veículo utilizado (RESTRICT). |
 | `motorista_id` | Integer | FOREIGN KEY | Motorista encarregue (RESTRICT). |
-| `km_inicial` | Integer | NULLABLE | Conta-quilómetros à partida. |
-| `km_final` | Integer | NULLABLE | Conta-quilómetros à chegada. |
+| `km_inicial` | Integer | NULLABLE | CHECK: `>= 0`. |
+| `km_final` | Integer | NULLABLE | CHECK: `>= km_inicial`. |
 | `data_hora_efetiva_saida` | Timestamp | NULLABLE | Hora de início real. |
 | `data_hora_efetiva_chegada`| Timestamp | NULLABLE | Hora de conclusão real. |
-| `status` | Varchar(30) | DEFAULT 'AGENDADA' | Estado operacional da deslocação. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'AGENDADA' | CHECK: `AGENDADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA`. |
 
- 15. Tabela: `ordens_svo`
+## 15. Tabela: `ordens_svo`
 Alocação e execução de chamadas do Serviço de Verificação de Óbitos.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -185,9 +185,9 @@ Alocação e execução de chamadas do Serviço de Verificação de Óbitos.
 | `veiculo_id` | Integer | FOREIGN KEY | Veículo de transporte alocado (RESTRICT). |
 | `motorista_id` | Integer | FOREIGN KEY | Condutor do SVO (RESTRICT). |
 | `equipe_id` | Integer | FOREIGN KEY | Profissionais alocados (RESTRICT). |
-| `capacidade_utilizada`| Integer | DEFAULT 1 | Espaço ocupado no transporte. |
+| `capacidade_utilizada`| Integer | NOT NULL, DEFAULT 1 | CHECK: `> 0`. |
 | `data_hora_chamado` | Timestamp | DEFAULT now() | Momento da ativação da equipa. |
 | `data_hora_conclusao`| Timestamp | NULLABLE | Regresso e término da operação. |
-| `km_inicial` | Integer | NULLABLE | Conta-quilómetros de saída. |
-| `km_final` | Integer | NULLABLE | Conta-quilómetros de regresso. |
-| `status` | Varchar(30) | DEFAULT 'ALOCADA' | Situação tática da equipa. |
+| `km_inicial` | Integer | NULLABLE | CHECK: `>= 0`. |
+| `km_final` | Integer | NULLABLE | CHECK: `>= km_inicial`. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'ALOCADA' | CHECK: `ALOCADA`, `EM_DESLOCAMENTO`, `CONCLUIDA`, `CANCELADA`. |
