@@ -19,15 +19,14 @@ exports.up = function(knex) {
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.down = function(knex) {
-  return knex.schema.alterTable('multas', (table) => {
-    // Remove as colunas em caso de rollback
+exports.down = async function(knex) {
+  await knex.schema.alterTable('multas', (table) => {
     table.dropColumn('status_pagamento');
     table.dropColumn('data_vencimento');
     table.dropColumn('id_infracao');
     table.dropColumn('orgao_autuador');
-
-    // Reverte a coluna para date
-    table.date('data_infracao').alter();
   });
+
+  // Cast seguro de timestamp para date
+  await knex.raw('ALTER TABLE multas ALTER COLUMN data_infracao TYPE date USING data_infracao::date;');
 };
