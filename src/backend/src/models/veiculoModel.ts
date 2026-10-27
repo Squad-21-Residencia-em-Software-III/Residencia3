@@ -24,15 +24,27 @@ export interface Veiculo extends NovoVeiculo {
 }
 
 export const veiculoModel = {
-  async listarVeiculos(): Promise<Veiculo[]> {
-    return db('veiculos')
-      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status')
-      .orderBy('id', 'asc');
+  // Modificado para aceitar o filtro de status que você precisa na interface
+  async listarVeiculos(statusFiltro?: string): Promise<Veiculo[]> {
+    const query = db('veiculos')
+      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status');
+
+    if (statusFiltro && statusFiltro !== 'TODOS') {
+      query.where({ status: statusFiltro });
+    }
+
+    return query.orderBy('id', 'asc');
   },
 
   async buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
     const conexao = trx || db;
     return conexao('veiculos').where({ placa }).first();
+  },
+
+  // Adicionado: Busca por ID direta, essencial para validar a existência na viagem
+  async buscarPorId(id: number, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
+    const conexao = trx || db;
+    return conexao('veiculos').where({ id }).first();
   },
 
   async cadastrarVeiculo(dados: NovoVeiculo, trx?: Knex.Transaction): Promise<Veiculo> {
@@ -42,6 +54,12 @@ export const veiculoModel = {
       .returning(['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status']);
 
     return veiculo;
+  },
+
+  // Adicionado: Função crucial para a sincronização das viagens e manutenções
+  async atualizarStatus(id: number, status: string, trx?: Knex.Transaction): Promise<void> {
+    const conexao = trx || db;
+    await conexao('veiculos').where({ id }).update({ status });
   },
 
   async listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
