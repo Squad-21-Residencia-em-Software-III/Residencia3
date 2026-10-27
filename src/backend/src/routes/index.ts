@@ -4,6 +4,7 @@ import { authRoutes } from './authRoutes';
 import { usuarioRoutes } from './usuarioRoutes';
 import { veiculoRoutes } from './veiculoRoutes';
 import { abastecimentoRoutes } from './abastecimentoRoutes';
+import { solicitacaoViagemRoutes } from './solicitacaoViagemRoutes';
 
 export const routes = Router();
 
@@ -21,3 +22,4 @@ routes.use('/auth', authRoutes);
 routes.use('/usuarios', usuarioRoutes);
 routes.use('/veiculos', veiculoRoutes);
 routes.use('/abastecimentos', abastecimentoRoutes);
+routes.use('/solicitacoes-viagem', solicitacaoViagemRoutes);
