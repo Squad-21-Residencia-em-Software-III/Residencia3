@@ -5,6 +5,7 @@ export const MODULOS_AUDITORIA = {
   AUTENTICACAO: 'AUTENTICACAO',
   USUARIOS: 'USUARIOS',
   VEICULOS: 'VEICULOS',
+  MANUTENCOES: 'MANUTENCOES',
 } as const;
 
 export type ModuloAuditoria = (typeof MODULOS_AUDITORIA)[keyof typeof MODULOS_AUDITORIA];
