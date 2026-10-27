@@ -55,7 +55,7 @@ exports.seed = async function(knex) {
   ]);
 
   await knex('manutencoes').insert([
-    { veiculo_id: idVeic('GHI3F45'), fornecedor_id: fornecedores[1].id, tipo_manutencao: 'Corretiva', data_manutencao: '2026-10-20', descricao: 'Troca de pastilhas', custo: 850.00, status: 'CONCLUIDA' }
+    { veiculo_id: idVeic('GHI3F45'), fornecedor_id: fornecedores[1].id, tipo_manutencao: 'CORRETIVA', data_manutencao: '2026-10-20', descricao: 'Troca de pastilhas', custo: 850.00, status: 'CONCLUIDA' }
   ]);
 
   await knex('abastecimentos').insert([
