@@ -1,8 +1,9 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
-import { CalendarIcon, GridIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
+import { CalendarIcon, FuelIcon, GridIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
+import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
 import DashboardPage from '../pages/DashboardPage'
 import LoginPage from '../pages/LoginPage'
@@ -22,6 +23,7 @@ export const navItems: NavItemComPerfil[] = [
   { path: '/dashboard', label: 'Dashboard', icon: GridIcon },
   { path: '/agenda', label: 'Agenda', icon: CalendarIcon },
   { path: '/veiculos', label: 'Veículos', icon: TruckIcon },
+  { path: '/abastecimento', label: 'Abastecimento', icon: FuelIcon },
   { path: '/motoristas', label: 'Motoristas', icon: UsersIcon },
   { path: '/viagens', label: 'Viagens', icon: RouteIcon },
   { path: '/usuarios', label: 'Usuários', icon: UsersIcon, perfis: [PERFIS.ADMINISTRADOR] },
@@ -59,6 +61,7 @@ export function AppRoutes() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/agenda" element={<AgendaPage />} />
           <Route path="/veiculos" element={<VeiculosPage />} />
+          <Route path="/abastecimento" element={<AbastecimentoPage />} />
           <Route path="/motoristas" element={<MotoristasPage />} />
           <Route path="/viagens" element={<ViagensPage />} />
 

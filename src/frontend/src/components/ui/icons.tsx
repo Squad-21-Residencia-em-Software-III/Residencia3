@@ -104,3 +104,13 @@ export const LogoutIcon = ({ size = 18 }: IconProps) => (
     <path d="M12 12l3-3-3-3M15 9H7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
+
+export const FuelIcon = ({ size = 16 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <rect x="2.5" y="2" width="10" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    <rect x="4.5" y="4" width="6" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M12.5 6h1.7l2.3 2.5v5.8a1.7 1.7 0 0 0 3.4 0V8.6l-2.2-2.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4.5 15h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
+

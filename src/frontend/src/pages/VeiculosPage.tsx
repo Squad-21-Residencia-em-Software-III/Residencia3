@@ -163,6 +163,7 @@ export default function VeiculosPage() {
         </Card>
       </div>
 
+      {/* ── Tabela de Veículos ── */}
       <Card>
         <TableToolbar
           title="Frota de Veículos"
@@ -255,8 +256,9 @@ export default function VeiculosPage() {
               })
             )}
           </tbody>
-          <Pagination showing={`1–${veiculosFiltrados.length}`} total={veiculosFiltrados.length} />
         </Table>
+
+        <Pagination showing={`1–${veiculosFiltrados.length}`} total={veiculosFiltrados.length} />
       </Card>
 
       {/* ── Modal de Cadastro ── */}

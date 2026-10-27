@@ -10,7 +10,13 @@ module.exports = {
     user: process.env.POSTGRES_USER,
     password: process.env.POSTGRES_PASSWORD,
     database: process.env.POSTGRES_DB,
-    ssl: { rejectUnauthorized: false } // Configuração obrigatória para a Neon/Render
+    ssl:
+      process.env.POSTGRES_SSL === 'true' ||
+      (process.env.POSTGRES_HOST &&
+        process.env.POSTGRES_HOST !== 'localhost' &&
+        process.env.POSTGRES_HOST !== '127.0.0.1')
+        ? { rejectUnauthorized: false }
+        : false,
   },
   migrations: {
     directory: path.resolve(__dirname, 'database/migrations'),
