@@ -6,6 +6,8 @@ import { veiculoRoutes } from './veiculoRoutes';
 import { abastecimentoRoutes } from './abastecimentoRoutes';
 import { solicitacaoViagemRoutes } from './solicitacaoViagemRoutes';
 import { manutencaoRoutes } from './manutencaoRoutes';
+import { documentoRoutes } from './documentoRoutes';
+
 
 export const routes = Router();
 
@@ -25,3 +27,4 @@ routes.use('/veiculos', veiculoRoutes);
 routes.use('/abastecimentos', abastecimentoRoutes);
 routes.use('/solicitacoes-viagem', solicitacaoViagemRoutes);
 routes.use('/manutencoes', manutencaoRoutes);
+routes.use('/documentos', documentoRoutes);
