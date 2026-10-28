@@ -5,6 +5,7 @@ import { usuarioRoutes } from './usuarioRoutes';
 import { veiculoRoutes } from './veiculoRoutes';
 import { abastecimentoRoutes } from './abastecimentoRoutes';
 import { solicitacaoViagemRoutes } from './solicitacaoViagemRoutes';
+import { manutencaoRoutes } from './manutencaoRoutes';
 
 export const routes = Router();
 
