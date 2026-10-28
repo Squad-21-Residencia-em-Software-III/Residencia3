@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Input, Modal, Select } from '../../components/ui';
+import { Input, Modal, Select } from '../../components/ui';
 import { storageService } from '../../services/storageService';
 import { LABELS_STATUS_MULTA, STATUS_MULTA } from '../../types/multa';
 import type { Multa, NovaMultaInput, StatusPagamentoMulta } from '../../types/multa';
@@ -37,8 +37,8 @@ export function ModalMulta({ multa, onClose, onSalvar }: ModalMultaProps) {
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: FormEvent) => {
+    e?.preventDefault();
     if (enviando) return;
 
     const vId = Number(veiculoId);
@@ -72,7 +72,12 @@ export function ModalMulta({ multa, onClose, onSalvar }: ModalMultaProps) {
   };
 
   return (
-    <Modal title={multa ? 'Editar multa/infração' : 'Registrar multa/infração'} onClose={onClose}>
+    <Modal
+      title={multa ? 'Editar multa/infração' : 'Registrar multa/infração'}
+      onClose={onClose}
+      onConfirm={() => handleSubmit()}
+      confirmLabel={multa ? 'Salvar alterações' : 'Registrar multa'}
+    >
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
           <p role="alert" style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>
@@ -178,18 +183,6 @@ export function ModalMulta({ multa, onClose, onSalvar }: ModalMultaProps) {
           value={descricao}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setDescricao(e.target.value)}
         />
-
-        <div
-          className="modal__footer"
-          style={{ borderTop: 'none', padding: '16px 0 0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}
-        >
-          <Button variant="ghost" type="button" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={enviando}>
-            {multa ? 'Salvar alterações' : 'Registrar multa'}
-          </Button>
-        </div>
       </form>
     </Modal>
   );
