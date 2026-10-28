@@ -1,54 +1,49 @@
 import { z } from 'zod';
 
-export const TIPOS_MANUTENCAO = ['PREVENTIVA', 'CORRETIVA'] as const;
-export const STATUS_MANUTENCAO = ['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA'] as const;
-
-function dataDeHoje(): string {
-  const hoje = new Date();
-  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-  const dia = String(hoje.getDate()).padStart(2, '0');
-  return `${hoje.getFullYear()}-${mes}-${dia}`;
-}
-
 export const criarManutencaoSchema = z
   .object({
     veiculo_id: z
-      .number({ error: 'O veículo é obrigatório' })
-      .int('ID do veículo inválido')
-      .positive('ID do veículo inválido'),
+      .number({ error: 'ID do veículo é obrigatório' })
+      .int('ID do veículo deve ser inteiro')
+      .positive('ID do veículo deve ser positivo'),
+
     fornecedor_id: z
-      .number({ error: 'ID do fornecedor inválido' })
-      .int('ID do fornecedor inválido')
-      .positive('ID do fornecedor inválido')
+      .number()
+      .int('ID do fornecedor deve ser inteiro')
+      .positive('ID do fornecedor deve ser positivo')
+      .nullable()
       .optional(),
-    tipo_manutencao: z
-      .string({ error: 'O tipo de manutenção é obrigatório' })
+
+    tipo_manutencao: z.enum(['PREVENTIVA', 'CORRETIVA'], {
+      error: 'Tipo de manutenção inválido. Aceitos: PREVENTIVA, CORRETIVA',
+    }),
+
+    data_manutencao: z
+      .string({ error: 'Data da manutenção é obrigatória' })
       .trim()
-      .toUpperCase()
-      .pipe(
-        z.enum(TIPOS_MANUTENCAO, {
-          error: 'Tipo de manutenção inválido. Valores aceitos: PREVENTIVA, CORRETIVA',
-        })
-      ),
-    data_manutencao: z.iso.date({ error: 'Data da manutenção inválida (formato AAAA-MM-DD)' }),
+      .min(1, 'Data da manutenção é obrigatória'),
+
     descricao: z
-      .string({ error: 'A descrição é obrigatória' })
+      .string()
       .trim()
-      .min(3, 'A descrição deve ter no mínimo 3 caracteres'),
-    custo: z
-      .number({ error: 'O custo é obrigatório' })
-      .finite('Custo inválido')
-      .nonnegative('O custo não pode ser negativo'),
-    status: z
-      .enum(STATUS_MANUTENCAO, {
-        error: 'Status inválido. Valores aceitos: AGENDADA, EM_ANDAMENTO, CONCLUIDA',
-      })
+      .nullable()
       .optional(),
-  })
-  .strict()
-  .refine((dados) => dados.status !== 'CONCLUIDA' || dados.data_manutencao <= dataDeHoje(), {
-    message: 'Uma manutenção concluída não pode ter data futura',
-    path: ['data_manutencao'],
+
+    custo: z
+      .number()
+      .nonnegative('Custo deve ser maior ou igual a zero')
+      .nullable()
+      .optional(),
+
+    status: z
+      .enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'])
+      .optional(),
   });
+
+export const atualizarStatusManutencaoSchema = z.object({
+  status: z.enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'], {
+    error: 'Status de manutenção inválido',
+  }),
+});
 
 export type CriarManutencaoInput = z.infer<typeof criarManutencaoSchema>;

@@ -11,6 +11,7 @@ import type { BadgeTone } from '../components/ui';
 import type { StatusVeiculo, Veiculo } from '../types/veiculo';
 import { storageService } from '../services/storageService';
 import { ModalVeiculo } from './veiculos/ModalVeiculo';
+import { ModalManutencoesVeiculo } from './veiculos/ModalManutencoesVeiculo';
 
 const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
   DISPONIVEL: { label: 'Disponível', tone: 'success' },
@@ -21,9 +22,16 @@ const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
 export default function VeiculosPage() {
   const [veiculos, setVeiculos] = useState<Veiculo[]>(storageService.getVeiculos());
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [modalAberto, setModalAberto] = useState(false);
+  const [veiculoManutencao, setVeiculoManutencao] = useState<Veiculo | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
+
+  const handleManutencaoSalva = (msg: string) => {
+    setVeiculos(storageService.getVeiculos());
+    exibirFeedback(msg);
+  };
 
   const exibirFeedback = (msg: string, isError = false) => {
     if (isError) {
@@ -49,11 +57,14 @@ export default function VeiculosPage() {
     };
   }, [veiculos]);
 
-  // Filtragem
+  // Filtragem combinada por Tipo de Frota e Status
   const veiculosFiltrados = useMemo(() => {
-    if (filtroTipo === 'TODOS') return veiculos;
-    return veiculos.filter((v) => v.tipo_frota === filtroTipo);
-  }, [veiculos, filtroTipo]);
+    return veiculos.filter((v) => {
+      const bateTipo = filtroTipo === 'TODOS' || v.tipo_frota === filtroTipo;
+      const bateStatus = filtroStatus === 'TODOS' || v.status === filtroStatus;
+      return bateTipo && bateStatus;
+    });
+  }, [veiculos, filtroTipo, filtroStatus]);
 
   const handleSalvarVeiculo = (novo: Omit<Veiculo, 'id'>) => {
     try {
@@ -91,6 +102,7 @@ export default function VeiculosPage() {
       )}
 
       {/* ── Cards de Resumo ── */}
+      {/* ── Cards de Resumo (Clicáveis como Filtros Rápidos) ── */}
       <div
         style={{
           display: 'grid',
@@ -98,7 +110,19 @@ export default function VeiculosPage() {
           gap: '16px',
         }}
       >
-        <Card style={{ padding: '16px 20px' }}>
+        <Card
+          onClick={() => setFiltroStatus('TODOS')}
+          style={{
+            padding: '16px 20px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            border:
+              filtroStatus === 'TODOS'
+                ? '2px solid var(--color-primary)'
+                : '1px solid var(--color-border)',
+            boxShadow: filtroStatus === 'TODOS' ? 'var(--shadow-sm)' : undefined,
+          }}
+        >
           <div
             style={{
               fontSize: '24px',
@@ -110,11 +134,23 @@ export default function VeiculosPage() {
             {totais.total}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Total na Frota
+            Total na Frota {filtroStatus === 'TODOS' ? '• Ativo' : ''}
           </div>
         </Card>
 
-        <Card style={{ padding: '16px 20px' }}>
+        <Card
+          onClick={() => setFiltroStatus(filtroStatus === 'DISPONIVEL' ? 'TODOS' : 'DISPONIVEL')}
+          style={{
+            padding: '16px 20px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            border:
+              filtroStatus === 'DISPONIVEL'
+                ? '2px solid var(--color-success)'
+                : '1px solid var(--color-border)',
+            boxShadow: filtroStatus === 'DISPONIVEL' ? 'var(--shadow-sm)' : undefined,
+          }}
+        >
           <div
             style={{
               fontSize: '24px',
@@ -126,11 +162,23 @@ export default function VeiculosPage() {
             {totais.disponiveis}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Disponíveis
+            Disponíveis {filtroStatus === 'DISPONIVEL' ? '• Ativo' : ''}
           </div>
         </Card>
 
-        <Card style={{ padding: '16px 20px' }}>
+        <Card
+          onClick={() => setFiltroStatus(filtroStatus === 'EM_USO' ? 'TODOS' : 'EM_USO')}
+          style={{
+            padding: '16px 20px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            border:
+              filtroStatus === 'EM_USO'
+                ? '2px solid var(--color-primary)'
+                : '1px solid var(--color-border)',
+            boxShadow: filtroStatus === 'EM_USO' ? 'var(--shadow-sm)' : undefined,
+          }}
+        >
           <div
             style={{
               fontSize: '24px',
@@ -142,11 +190,23 @@ export default function VeiculosPage() {
             {totais.emUso}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Em Uso
+            Em Uso {filtroStatus === 'EM_USO' ? '• Ativo' : ''}
           </div>
         </Card>
 
-        <Card style={{ padding: '16px 20px' }}>
+        <Card
+          onClick={() => setFiltroStatus(filtroStatus === 'MANUTENCAO' ? 'TODOS' : 'MANUTENCAO')}
+          style={{
+            padding: '16px 20px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            border:
+              filtroStatus === 'MANUTENCAO'
+                ? '2px solid var(--color-danger)'
+                : '1px solid var(--color-border)',
+            boxShadow: filtroStatus === 'MANUTENCAO' ? 'var(--shadow-sm)' : undefined,
+          }}
+        >
           <div
             style={{
               fontSize: '24px',
@@ -158,7 +218,7 @@ export default function VeiculosPage() {
             {totais.manutencao}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Em Manutenção
+            Em Manutenção {filtroStatus === 'MANUTENCAO' ? '• Ativo' : ''}
           </div>
         </Card>
       </div>
@@ -167,40 +227,123 @@ export default function VeiculosPage() {
       <Card>
         <TableToolbar
           title="Frota de Veículos"
-          subtitle={`${veiculosFiltrados.length} veículos listados`}
+          subtitle={`${veiculosFiltrados.length} de ${veiculos.length} veículos listados`}
           newLabel="Novo Veículo"
           onNew={() => setModalAberto(true)}
         />
 
-        {/* Barra de Filtros Rápida */}
+        {/* Barra de Filtros: Tipo de Frota + Status do Veículo */}
         <div
           style={{
             display: 'flex',
-            gap: '8px',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
             padding: '12px 24px',
             borderBottom: '1px solid var(--color-divider)',
             background: 'var(--color-surface-alt)',
           }}
         >
-          {(['TODOS', 'ADMINISTRATIVA', 'SVO'] as const).map((tipo) => (
-            <button
-              key={tipo}
-              onClick={() => setFiltroTipo(tipo)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '12px',
-                fontWeight: 600,
-                background: filtroTipo === tipo ? 'var(--color-primary)' : 'transparent',
-                color: filtroTipo === tipo ? '#fff' : 'var(--color-text-secondary)',
-                border: '1px solid',
-                borderColor: filtroTipo === tipo ? 'var(--color-primary)' : 'var(--color-border)',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {tipo === 'TODOS' ? 'Todos os Veículos' : tipo === 'SVO' ? 'Frota SVO' : 'Frota Administrativa'}
-            </button>
-          ))}
+          {/* Grupo 1: Tipo de Frota */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text-secondary)' }}>
+              Frota:
+            </span>
+            {(['TODOS', 'ADMINISTRATIVA', 'SVO'] as const).map((tipo) => (
+              <button
+                key={tipo}
+                type="button"
+                onClick={() => setFiltroTipo(tipo)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  background: filtroTipo === tipo ? 'var(--color-primary)' : 'var(--color-surface)',
+                  color: filtroTipo === tipo ? '#fff' : 'var(--color-text-secondary)',
+                  border: '1px solid',
+                  borderColor: filtroTipo === tipo ? 'var(--color-primary)' : 'var(--color-border)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {tipo === 'TODOS' ? 'Todas' : tipo === 'SVO' ? 'SVO' : 'Administrativa'}
+              </button>
+            ))}
+          </div>
+
+          {/* Grupo 2: Status do Veículo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text-secondary)' }}>
+              Status:
+            </span>
+            {[
+              { id: 'TODOS', label: 'Todos' },
+              { id: 'DISPONIVEL', label: 'Disponível', cor: 'var(--color-success)' },
+              { id: 'EM_USO', label: 'Em Uso', cor: 'var(--color-primary)' },
+              { id: 'MANUTENCAO', label: 'Manutenção', cor: 'var(--color-danger)' },
+            ].map((st) => {
+              const ativo = filtroStatus === st.id;
+              return (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => setFiltroStatus(st.id)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '5px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    background: ativo ? 'var(--color-primary)' : 'var(--color-surface)',
+                    color: ativo ? '#fff' : 'var(--color-text-secondary)',
+                    border: '1px solid',
+                    borderColor: ativo ? 'var(--color-primary)' : 'var(--color-border)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {st.cor && (
+                    <span
+                      style={{
+                        width: '7px',
+                        height: '7px',
+                        borderRadius: '50%',
+                        background: ativo ? '#fff' : st.cor,
+                      }}
+                    />
+                  )}
+                  {st.label}
+                </button>
+              );
+            })}
+
+            {/* Botão Limpar Filtros quando algum filtro estiver ativo */}
+            {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFiltroTipo('TODOS');
+                  setFiltroStatus('TODOS');
+                }}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: 'var(--color-text-muted)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Limpar
+              </button>
+            )}
+          </div>
         </div>
 
         <Table>
@@ -211,13 +354,35 @@ export default function VeiculosPage() {
               <th>Tipo de Frota</th>
               <th>Capacidade Máxima</th>
               <th>Status</th>
+              <th style={{ textAlign: 'right' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
             {veiculosFiltrados.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-muted)' }}>
-                  Nenhum veículo encontrado para este filtro.
+                <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
+                  <div>Nenhum veículo encontrado com os filtros selecionados.</div>
+                  {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFiltroTipo('TODOS');
+                        setFiltroStatus('TODOS');
+                      }}
+                      style={{
+                        marginTop: '8px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--color-primary)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Remover filtros
+                    </button>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -251,6 +416,37 @@ export default function VeiculosPage() {
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        onClick={() => setVeiculoManutencao(v)}
+                        title={`Histórico e registro de manutenções de ${v.modelo}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: 'var(--color-primary)',
+                          background: 'var(--color-surface-alt)',
+                          border: '1px solid var(--color-border)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'var(--color-surface-hover)';
+                          e.currentTarget.style.borderColor = 'var(--color-primary)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'var(--color-surface-alt)';
+                          e.currentTarget.style.borderColor = 'var(--color-border)';
+                        }}
+                      >
+                        <span>🔧</span> Manutenções
+                      </button>
+                    </td>
                   </tr>
                 );
               })
@@ -261,11 +457,20 @@ export default function VeiculosPage() {
         <Pagination showing={`1–${veiculosFiltrados.length}`} total={veiculosFiltrados.length} />
       </Card>
 
-      {/* ── Modal de Cadastro ── */}
+      {/* ── Modal de Cadastro de Veículo ── */}
       {modalAberto && (
         <ModalVeiculo
           onClose={() => setModalAberto(false)}
           onSalvar={handleSalvarVeiculo}
+        />
+      )}
+
+      {/* ── Modal de Histórico e Registro de Manutenções ── */}
+      {veiculoManutencao && (
+        <ModalManutencoesVeiculo
+          veiculo={veiculoManutencao}
+          onClose={() => setVeiculoManutencao(null)}
+          onManutencaoSalva={handleManutencaoSalva}
         />
       )}
     </div>
