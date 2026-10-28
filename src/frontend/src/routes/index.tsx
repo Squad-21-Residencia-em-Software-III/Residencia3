@@ -1,13 +1,14 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
-import { CalendarIcon, FuelIcon, GridIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
+import { AlertIcon, CalendarIcon, FuelIcon, GridIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
 import DashboardPage from '../pages/DashboardPage'
 import LoginPage from '../pages/LoginPage'
 import MotoristasPage from '../pages/MotoristasPage'
+import MultasPage from '../pages/MultasPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import UsuariosPage from '../pages/UsuariosPage'
 import VeiculosPage from '../pages/VeiculosPage'
@@ -25,6 +26,7 @@ export const navItems: NavItemComPerfil[] = [
   { path: '/veiculos', label: 'Veículos', icon: TruckIcon },
   { path: '/abastecimento', label: 'Abastecimento', icon: FuelIcon },
   { path: '/motoristas', label: 'Motoristas', icon: UsersIcon },
+  { path: '/multas', label: 'Multas', icon: AlertIcon },
   { path: '/viagens', label: 'Viagens', icon: RouteIcon },
   { path: '/usuarios', label: 'Usuários', icon: UsersIcon, perfis: [PERFIS.ADMINISTRADOR] },
 ]
@@ -63,6 +65,7 @@ export function AppRoutes() {
           <Route path="/veiculos" element={<VeiculosPage />} />
           <Route path="/abastecimento" element={<AbastecimentoPage />} />
           <Route path="/motoristas" element={<MotoristasPage />} />
+          <Route path="/multas" element={<MultasPage />} />
           <Route path="/viagens" element={<ViagensPage />} />
 
           {/* Só administrador (o backend também bloqueia com 403) */}

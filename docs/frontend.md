@@ -21,7 +21,7 @@ npm run build    # confere tipos e gera o build
 > 1. Foi adicionada a dependência `lucide-react`. Ao atualizar ou clonar a branch, é obrigatório rodar `npm install` dentro de `src/frontend`.
 > 2. Crie o arquivo `src/frontend/.env` com `VITE_API_URL=http://localhost:3000/api` para comunicação correta com o back-end em desenvolvimento.
 
-O front-end **está oficialmente conectado ao back-end para Autenticação e Sessão** (`POST /api/auth/login`, `GET /api/auth/me`). Os módulos operacionais (Veículos, Motoristas, Viagens) utilizam persistência no navegador via `storageService` enquanto aguardam a conexão de seus endpoints REST definitivos.
+O front-end **está oficialmente conectado ao back-end para Autenticação e Sessão** (`POST /api/auth/login`, `GET /api/auth/me`). Os módulos operacionais (Veículos, Motoristas, Viagens, Abastecimento, Multas) utilizam persistência no navegador via `storageService` enquanto aguardam a conexão de seus endpoints REST definitivos.
 
 ## 3. Estrutura de pastas
 ```
@@ -60,6 +60,7 @@ src/frontend/
 | `/abastecimento` | `AbastecimentoPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/motoristas` | `MotoristasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/viagens` | `ViagensPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/multas` | `MultasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/usuarios` | `UsuariosPage` | Restrita por Perfil (`RotaPorPerfil`) | Exclusivo para perfil `ADMINISTRADOR` |
 | qualquer outra | `NotFoundPage` | Protegida | Exibida dentro do layout para rotas não mapeadas |
 
