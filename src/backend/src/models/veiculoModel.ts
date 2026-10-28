@@ -1,12 +1,15 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
+export type TipoFrota = 'ADMINISTRATIVA' | 'SVO';
+export type StatusVeiculo = 'DISPONIVEL' | 'EM_VIAGEM' | 'MANUTENCAO' | 'INATIVO';
+
 export interface VeiculoSvoDisponivel {
   id: number;
   placa: string;
   modelo: string;
   capacidade_maxima: number;
-  status: string;
+  status: StatusVeiculo | string;
   capacidade_utilizada: number;
   vagas_disponiveis: number;
 }
@@ -14,37 +17,30 @@ export interface VeiculoSvoDisponivel {
 export interface NovoVeiculo {
   placa: string;
   modelo: string;
-  tipo_frota: 'ADMINISTRATIVA' | 'SVO';
+  tipo_frota: TipoFrota;
   capacidade_maxima: number;
 }
 
 export interface Veiculo extends NovoVeiculo {
   id: number;
-  status: string;
+  status: StatusVeiculo | string;
 }
 
 export const veiculoModel = {
-  // Modificado para aceitar o filtro de status que você precisa na interface
-  async listarVeiculos(statusFiltro?: string): Promise<Veiculo[]> {
-    const query = db('veiculos')
-      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status');
+  async listarVeiculos(): Promise<Veiculo[]> {
+    return db('veiculos')
+      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status')
+      .orderBy('id', 'asc');
+  },
 
-    if (statusFiltro && statusFiltro !== 'TODOS') {
-      query.where({ status: statusFiltro });
-    }
-
-    return query.orderBy('id', 'asc');
+  async buscarPorId(id: number, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
+    const conexao = trx || db;
+    return conexao('veiculos').where({ id }).first();
   },
 
   async buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
     const conexao = trx || db;
     return conexao('veiculos').where({ placa }).first();
-  },
-
-  // Adicionado: Busca por ID direta, essencial para validar a existência na viagem
-  async buscarPorId(id: number, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
-    const conexao = trx || db;
-    return conexao('veiculos').where({ id }).first();
   },
 
   async cadastrarVeiculo(dados: NovoVeiculo, trx?: Knex.Transaction): Promise<Veiculo> {
@@ -56,8 +52,7 @@ export const veiculoModel = {
     return veiculo;
   },
 
-  // Adicionado: Função crucial para a sincronização das viagens e manutenções
-  async atualizarStatus(id: number, status: string, trx?: Knex.Transaction): Promise<void> {
+  async atualizarStatus(id: number, status: StatusVeiculo, trx?: Knex.Transaction): Promise<void> {
     const conexao = trx || db;
     await conexao('veiculos').where({ id }).update({ status });
   },
