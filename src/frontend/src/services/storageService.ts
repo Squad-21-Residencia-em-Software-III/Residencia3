@@ -11,6 +11,8 @@ import type { Abastecimento, NovoAbastecimentoInput } from '../types/abastecimen
 import { MOCK_ABASTECIMENTOS } from './mocks/abastecimentosMock';
 import type { Multa, NovaMultaInput, AtualizarMultaInput } from '../types/multa';
 import { MOCK_MULTAS } from './mocks/multasMock';
+import type { Manutencao, NovaManutencaoInput, StatusManutencao } from '../types/manutencao';
+import { MOCK_MANUTENCOES } from './mocks/manutencoesMock';
 
 const STORAGE_KEY_USUARIOS = '@fsph:usuarios';
 const STORAGE_KEY_VEICULOS = '@fsph:veiculos';
@@ -18,6 +20,7 @@ const STORAGE_KEY_MOTORISTAS = '@fsph:motoristas';
 const STORAGE_KEY_VIAGENS = '@fsph:viagens';
 const STORAGE_KEY_ABASTECIMENTOS = '@fsph:abastecimentos';
 const STORAGE_KEY_MULTAS = '@fsph:multas';
+const STORAGE_KEY_MANUTENCOES = '@fsph:manutencoes';
 
 /**
  * Serviço de persistência local para a aplicação.
@@ -272,6 +275,117 @@ export const storageService = {
   deleteAbastecimento: (id: number): void => {
     const abastecimentos = storageService.getAbastecimentos().filter(a => a.id !== id);
     storageService.saveTodosAbastecimentos(abastecimentos);
+  },
+
+  // --- GESTÃO DE MANUTENÇÕES ---
+  getManutencoes: (): Manutencao[] => {
+    const stored = localStorage.getItem(STORAGE_KEY_MANUTENCOES);
+    if (!stored) {
+      localStorage.setItem(STORAGE_KEY_MANUTENCOES, JSON.stringify(MOCK_MANUTENCOES));
+      return MOCK_MANUTENCOES;
+    }
+    return JSON.parse(stored);
+  },
+
+  getManutencoesPorVeiculo: (veiculoId: number): Manutencao[] => {
+    return storageService
+      .getManutencoes()
+      .filter((m) => m.veiculo_id === veiculoId)
+      .sort((a, b) => new Date(b.data_manutencao).getTime() - new Date(a.data_manutencao).getTime());
+  },
+
+  saveTodosManutencoes: (manutencoes: Manutencao[]): void => {
+    localStorage.setItem(STORAGE_KEY_MANUTENCOES, JSON.stringify(manutencoes));
+  },
+
+  createManutencao: (input: NovaManutencaoInput): Manutencao => {
+    const manutencoes = storageService.getManutencoes();
+    const veiculos = storageService.getVeiculos();
+    const veiculo = veiculos.find((v) => v.id === input.veiculo_id);
+
+    if (!veiculo) {
+      throw new Error('Veículo não encontrado.');
+    }
+
+    if (input.custo < 0) {
+      throw new Error('O custo da manutenção não pode ser negativo.');
+    }
+
+    if (!input.descricao?.trim()) {
+      throw new Error('A descrição da intervenção é obrigatória.');
+    }
+
+    const novaManutencao: Manutencao = {
+      id: manutencoes.length > 0 ? Math.max(...manutencoes.map((m) => m.id)) + 1 : 1,
+      veiculo_id: input.veiculo_id,
+      fornecedor_id: input.fornecedor_id ?? null,
+      tipo_manutencao: input.tipo_manutencao,
+      data_manutencao: input.data_manutencao,
+      descricao: input.descricao.trim(),
+      custo: Number(input.custo),
+      status: input.status,
+      veiculo_placa: veiculo.placa,
+      veiculo_modelo: veiculo.modelo,
+      fornecedor_nome: input.fornecedor_id ? 'Oficina Autorizada' : undefined,
+    };
+
+    const atualizadas = [novaManutencao, ...manutencoes];
+    storageService.saveTodosManutencoes(atualizadas);
+
+    // Se o status for EM_ANDAMENTO ou se o usuário marcou para atualizar o veículo:
+    if (input.status === 'EM_ANDAMENTO' || input.atualizar_status_veiculo) {
+      storageService.updateVeiculo(input.veiculo_id, { status: 'MANUTENCAO' });
+    } else if (input.status === 'CONCLUIDA' && veiculo.status === 'MANUTENCAO') {
+      const temOutraEmAndamento = atualizadas.some(
+        (m) => m.veiculo_id === input.veiculo_id && m.status === 'EM_ANDAMENTO'
+      );
+      if (!temOutraEmAndamento) {
+        storageService.updateVeiculo(input.veiculo_id, { status: 'DISPONIVEL' });
+      }
+    }
+
+    return novaManutencao;
+  },
+
+  atualizarStatusManutencao: (
+    id: number,
+    novoStatus: StatusManutencao
+  ): { manutencao: Manutencao; veiculoLiberado: boolean } => {
+    const manutencoes = storageService.getManutencoes();
+    const index = manutencoes.findIndex((m) => m.id === id);
+    if (index === -1) {
+      throw new Error('Manutenção não encontrada.');
+    }
+
+    const manutencao = manutencoes[index];
+    const veiculoId = manutencao.veiculo_id;
+
+    manutencoes[index] = {
+      ...manutencao,
+      status: novoStatus,
+    };
+    storageService.saveTodosManutencoes(manutencoes);
+
+    let veiculoLiberado = false;
+
+    if (novoStatus === 'EM_ANDAMENTO') {
+      storageService.updateVeiculo(veiculoId, { status: 'MANUTENCAO' });
+    } else if (novoStatus === 'CONCLUIDA' || novoStatus === 'AGENDADA') {
+      const temOutraEmAndamento = manutencoes.some(
+        (m) => m.veiculo_id === veiculoId && m.id !== id && m.status === 'EM_ANDAMENTO'
+      );
+      if (!temOutraEmAndamento) {
+        storageService.updateVeiculo(veiculoId, { status: 'DISPONIVEL' });
+        veiculoLiberado = true;
+      }
+    }
+
+    return { manutencao: manutencoes[index], veiculoLiberado };
+  },
+
+  deleteManutencao: (id: number): void => {
+    const manutencoes = storageService.getManutencoes().filter((m) => m.id !== id);
+    storageService.saveTodosManutencoes(manutencoes);
   },
 
   // --- GESTÃO DE MULTAS / INFRAÇÕES ---

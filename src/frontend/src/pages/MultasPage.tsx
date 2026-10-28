@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Badge, Card, IdBadge, Pagination, Table, TableToolbar } from '../components/ui';
+import { Badge, Button, Card, IdBadge, Input, Pagination, Select, Table, TableToolbar } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
 import { storageService } from '../services/storageService';
 import { LABELS_STATUS_MULTA } from '../types/multa';
@@ -19,14 +19,6 @@ function formatarDataHora(iso: string): string {
   const d = data.split('-').reverse().join('/');
   return hora ? `${d} ${hora.slice(0, 5)}` : d;
 }
-
-const campoFiltro = {
-  padding: '8px 14px',
-  borderRadius: 'var(--radius-sm)',
-  border: '1px solid var(--color-border)',
-  fontSize: '13px',
-  outline: 'none',
-} as const;
 
 export default function MultasPage() {
   const [multas, setMultas] = useState<Multa[]>(() => storageService.getMultas());
@@ -166,43 +158,42 @@ export default function MultasPage() {
           onNew={abrirNova}
         />
 
-        <div style={{ padding: '0 24px 16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            aria-label="Buscar multas"
-            placeholder="Buscar por placa, motorista, código ou descrição..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            style={{ ...campoFiltro, maxWidth: '360px', width: '100%' }}
-          />
-          <select
-            aria-label="Filtrar por status"
-            value={filtroStatus}
-            onChange={(e) => setFiltroStatus(e.target.value as '' | StatusPagamentoMulta)}
-            style={campoFiltro}
-          >
-            <option value="">Todos os status</option>
-            {(Object.keys(LABELS_STATUS_MULTA) as StatusPagamentoMulta[]).map((s) => (
-              <option key={s} value={s}>
-                {LABELS_STATUS_MULTA[s]}
-              </option>
-            ))}
-          </select>
-          <label style={{ fontSize: '12px', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            De
-            <input type="date" value={de} onChange={(e) => setDe(e.target.value)} style={campoFiltro} />
-          </label>
-          <label style={{ fontSize: '12px', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            Até
-            <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} style={campoFiltro} />
-          </label>
-          {temFiltro && (
-            <button
-              onClick={limparFiltros}
-              style={{ background: 'transparent', border: 'none', color: 'var(--color-primary)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+        <div style={{ padding: '0 24px 16px', display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 280px', maxWidth: '360px' }}>
+            <Input
+              label="Buscar"
+              type="text"
+              placeholder="Placa, motorista, código ou descrição..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </div>
+          <div style={{ width: '180px' }}>
+            <Select
+              label="Status"
+              value={filtroStatus}
+              onChange={(e) => setFiltroStatus(e.target.value as '' | StatusPagamentoMulta)}
             >
-              Limpar filtros
-            </button>
+              <option value="">Todos os status</option>
+              {(Object.keys(LABELS_STATUS_MULTA) as StatusPagamentoMulta[]).map((s) => (
+                <option key={s} value={s}>
+                  {LABELS_STATUS_MULTA[s]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div style={{ width: '170px' }}>
+            <Input label="De" type="date" value={de} onChange={(e) => setDe(e.target.value)} />
+          </div>
+          <div style={{ width: '170px' }}>
+            <Input label="Até" type="date" value={ate} onChange={(e) => setAte(e.target.value)} />
+          </div>
+          {temFiltro && (
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <Button variant="ghost" size="sm" onClick={limparFiltros}>
+                Limpar filtros
+              </Button>
+            </div>
           )}
         </div>
 
@@ -280,20 +271,18 @@ export default function MultasPage() {
                     <Badge tone={TOM_STATUS[m.status_pagamento]}>{LABELS_STATUS_MULTA[m.status_pagamento]}</Badge>
                   </td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button
-                      onClick={() => abrirEdicao(m)}
-                      title="Editar multa"
-                      style={{ background: 'transparent', border: 'none', color: 'var(--color-primary)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '4px 8px' }}
-                    >
+                    <Button variant="ghost" size="sm" title="Editar multa" onClick={() => abrirEdicao(m)}>
                       Editar
-                    </button>
-                    <button
-                      onClick={() => handleExcluir(m.id)}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       title="Excluir multa"
-                      style={{ background: 'transparent', border: 'none', color: 'var(--color-danger)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '4px 8px' }}
+                      style={{ color: 'var(--color-danger)' }}
+                      onClick={() => handleExcluir(m.id)}
                     >
                       Excluir
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))

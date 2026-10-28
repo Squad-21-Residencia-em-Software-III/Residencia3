@@ -1,14 +1,15 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
-export type StatusVeiculo = 'DISPONIVEL' | 'EM_USO' | 'MANUTENCAO' | 'RESERVADO';
+export type TipoFrota = 'ADMINISTRATIVA' | 'SVO';
+export type StatusVeiculo = 'DISPONIVEL' | 'EM_VIAGEM' | 'MANUTENCAO' | 'INATIVO';
 
 export interface VeiculoSvoDisponivel {
   id: number;
   placa: string;
   modelo: string;
   capacidade_maxima: number;
-  status: string;
+  status: StatusVeiculo | string;
   capacidade_utilizada: number;
   vagas_disponiveis: number;
 }
@@ -16,38 +17,37 @@ export interface VeiculoSvoDisponivel {
 export interface NovoVeiculo {
   placa: string;
   modelo: string;
-  tipo_frota: 'ADMINISTRATIVA' | 'SVO';
+  tipo_frota: TipoFrota;
   capacidade_maxima: number;
-  km_atual: number;
 }
 
 export interface Veiculo extends NovoVeiculo {
   id: number;
-  status: StatusVeiculo;
+  status: StatusVeiculo | string;
 }
 
 export const veiculoModel = {
-  listarVeiculos(): Promise<Veiculo[]> {
+  async listarVeiculos(): Promise<Veiculo[]> {
     return db('veiculos')
-      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'km_atual', 'status')
+      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status')
       .orderBy('id', 'asc');
   },
 
-  buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
-    const conexao = trx || db;
-    return conexao('veiculos').where({ placa }).first();
-  },
-
-  buscarPorId(id: number, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
+  async buscarPorId(id: number, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
     const conexao = trx || db;
     return conexao('veiculos').where({ id }).first();
+  },
+
+  async buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
+    const conexao = trx || db;
+    return conexao('veiculos').where({ placa }).first();
   },
 
   async cadastrarVeiculo(dados: NovoVeiculo, trx?: Knex.Transaction): Promise<Veiculo> {
     const conexao = trx || db;
     const [veiculo] = await conexao('veiculos')
       .insert(dados)
-      .returning(['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'km_atual', 'status']);
+      .returning(['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status']);
 
     return veiculo;
   },
@@ -57,8 +57,8 @@ export const veiculoModel = {
     await conexao('veiculos').where({ id }).update({ status });
   },
 
-  listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
-    return db.raw<{ rows: VeiculoSvoDisponivel[] }>(`
+  async listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
+    const resultado = await db.raw<{ rows: VeiculoSvoDisponivel[] }>(`
       SELECT
         v.id,
         v.placa,
@@ -86,6 +86,8 @@ export const veiculoModel = {
       HAVING v.capacidade_maxima >
         COALESCE(SUM(o.capacidade_utilizada), 0)
       ORDER BY v.id
-    `).then((r) => r.rows);
+    `);
+
+    return resultado.rows;
   },
 };
