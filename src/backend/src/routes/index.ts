@@ -24,3 +24,4 @@ routes.use('/usuarios', usuarioRoutes);
 routes.use('/veiculos', veiculoRoutes);
 routes.use('/abastecimentos', abastecimentoRoutes);
 routes.use('/solicitacoes-viagem', solicitacaoViagemRoutes);
+routes.use('/manutencoes', manutencaoRoutes);

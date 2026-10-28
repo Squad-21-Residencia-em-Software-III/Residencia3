@@ -55,7 +55,7 @@ export const solicitacaoViagemService = {
         {
           usuario_id: solicitanteId,
           acao: `CRIOU_SOLICITACAO_VIAGEM id=${solicitacao.id}`,
-          modulo: MODULOS_AUDITORIA.VEICULOS ?? 'VEICULOS',
+          modulo: MODULOS_AUDITORIA.SOLICITACOES_VIAGEM,
         },
         trx
       );
