@@ -17,6 +17,7 @@ const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
   DISPONIVEL: { label: 'Disponível', tone: 'success' },
   EM_USO: { label: 'Em Uso', tone: 'info' },
   MANUTENCAO: { label: 'Manutenção', tone: 'danger' },
+  RESERVADO: { label: 'Reservado', tone: 'warning' },
 };
 
 export default function VeiculosPage() {
@@ -282,6 +283,7 @@ export default function VeiculosPage() {
               { id: 'TODOS', label: 'Todos' },
               { id: 'DISPONIVEL', label: 'Disponível', cor: 'var(--color-success)' },
               { id: 'EM_USO', label: 'Em Uso', cor: 'var(--color-primary)' },
+	      { id: 'RESERVADO', label: 'Reservado', cor: 'var(--color-warning)' },
               { id: 'MANUTENCAO', label: 'Manutenção', cor: 'var(--color-danger)' },
             ].map((st) => {
               const ativo = filtroStatus === st.id;
