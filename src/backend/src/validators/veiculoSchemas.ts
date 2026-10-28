@@ -24,6 +24,10 @@ export const criarVeiculoSchema = z
       .number({ error: 'A capacidade máxima é obrigatória' })
       .int('A capacidade máxima deve ser um número inteiro')
       .min(1, 'A capacidade máxima deve ser de no mínimo 1 passageiro/óbito'),
+    km_atual: z
+      .number({ error: 'A quilometragem atual é obrigatória' })
+      .int('A quilometragem deve ser um número inteiro')
+      .nonnegative('A quilometragem não pode ser negativa'),
   })
   .refine(
     (dados) => {

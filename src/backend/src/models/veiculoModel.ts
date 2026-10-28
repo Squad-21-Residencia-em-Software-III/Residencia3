@@ -1,12 +1,15 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
+export type TipoFrota = 'ADMINISTRATIVA' | 'SVO';
+export type StatusVeiculo = 'DISPONIVEL' | 'EM_VIAGEM' | 'MANUTENCAO' | 'INATIVO';
+
 export interface VeiculoSvoDisponivel {
   id: number;
   placa: string;
   modelo: string;
   capacidade_maxima: number;
-  status: string;
+  status: StatusVeiculo | string;
   capacidade_utilizada: number;
   vagas_disponiveis: number;
 }
@@ -14,13 +17,13 @@ export interface VeiculoSvoDisponivel {
 export interface NovoVeiculo {
   placa: string;
   modelo: string;
-  tipo_frota: 'ADMINISTRATIVA' | 'SVO';
+  tipo_frota: TipoFrota;
   capacidade_maxima: number;
 }
 
 export interface Veiculo extends NovoVeiculo {
   id: number;
-  status: string;
+  status: StatusVeiculo | string;
 }
 
 export const veiculoModel = {
@@ -28,6 +31,11 @@ export const veiculoModel = {
     return db('veiculos')
       .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status')
       .orderBy('id', 'asc');
+  },
+
+  async buscarPorId(id: number, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
+    const conexao = trx || db;
+    return conexao('veiculos').where({ id }).first();
   },
 
   async buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
@@ -42,6 +50,11 @@ export const veiculoModel = {
       .returning(['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status']);
 
     return veiculo;
+  },
+
+  async atualizarStatus(id: number, status: StatusVeiculo, trx?: Knex.Transaction): Promise<void> {
+    const conexao = trx || db;
+    await conexao('veiculos').where({ id }).update({ status });
   },
 
   async listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
