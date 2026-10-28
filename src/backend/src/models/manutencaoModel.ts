@@ -1,24 +1,36 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
+export type TipoManutencao = 'PREVENTIVA' | 'CORRETIVA';
+export type StatusManutencao = 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+
 export interface NovaManutencao {
   veiculo_id: number;
   fornecedor_id?: number | null;
-  tipo_manutencao: 'PREVENTIVA' | 'CORRETIVA';
+  tipo_manutencao: TipoManutencao;
   data_manutencao: string;
-  descricao: string;
-  custo: number;
-  status: 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA';
+  descricao?: string | null;
+  custo?: number | null;
+  status?: StatusManutencao;
 }
 
 export interface Manutencao extends NovaManutencao {
   id: number;
+  status: StatusManutencao;
 }
 
 export interface ManutencaoDetalhada extends Manutencao {
   veiculo_placa?: string;
   veiculo_modelo?: string;
   fornecedor_nome?: string;
+}
+
+// O PostgreSQL devolve colunas do tipo decimal/numeric como string, convertemos para number
+function normalizar<T extends { custo?: any }>(manutencao: T): T {
+  return {
+    ...manutencao,
+    custo: manutencao.custo !== undefined && manutencao.custo !== null ? Number(manutencao.custo) : 0,
+  };
 }
 
 export const manutencaoModel = {
@@ -32,10 +44,7 @@ export const manutencaoModel = {
       .insert(dados)
       .returning('*');
 
-    return {
-      ...manutencao,
-      custo: Number(manutencao.custo),
-    };
+    return normalizar(manutencao);
   },
 
   async listarPorVeiculo(
@@ -54,10 +63,7 @@ export const manutencaoModel = {
       .orderBy('manutencoes.data_manutencao', 'desc')
       .orderBy('manutencoes.id', 'desc');
 
-    return registros.map((r) => ({
-      ...r,
-      custo: Number(r.custo),
-    }));
+    return registros.map(normalizar);
   },
 
   async buscarPorId(
@@ -79,15 +85,12 @@ export const manutencaoModel = {
 
     if (!registro) return undefined;
 
-    return {
-      ...registro,
-      custo: Number(registro.custo),
-    };
+    return normalizar(registro);
   },
 
   async atualizarStatus(
     id: number,
-    status: 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA',
+    status: StatusManutencao,
     trx?: Knex.Transaction
   ): Promise<Manutencao | undefined> {
     const conexao = trx || db;
@@ -98,10 +101,7 @@ export const manutencaoModel = {
 
     if (!atualizado) return undefined;
 
-    return {
-      ...atualizado,
-      custo: Number(atualizado.custo),
-    };
+    return normalizar(atualizado);
   },
 
   async temManutencaoEmAndamento(
@@ -121,4 +121,3 @@ export const manutencaoModel = {
     return !!registro;
   },
 };
-

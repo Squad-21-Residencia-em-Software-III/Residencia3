@@ -4,6 +4,7 @@ import {
   criarManutencaoSchema,
   atualizarStatusManutencaoSchema,
 } from '../validators/manutencaoSchemas';
+import { idParamSchema } from '../validators/comuns';
 import { AppError } from '../errors/AppError';
 import { usuarioAutenticado } from '../middlewares/autenticar';
 
@@ -35,11 +36,7 @@ export const manutencaoController = {
   },
 
   async listarPorVeiculo(req: Request, res: Response): Promise<void> {
-    const veiculoId = Number(req.params.veiculoId);
-
-    if (!Number.isInteger(veiculoId) || veiculoId <= 0) {
-      throw new AppError('ID do veículo inválido', 400);
-    }
+    const { id: veiculoId } = idParamSchema.parse({ id: req.params.veiculoId });
 
     const manutencoes = await manutencaoService.listarPorVeiculo(veiculoId);
     res.json(manutencoes);

@@ -24,32 +24,26 @@ export const criarManutencaoSchema = z
       .min(1, 'Data da manutenção é obrigatória'),
 
     descricao: z
-      .string({ error: 'Descrição é obrigatória' })
+      .string()
       .trim()
-      .min(1, 'A descrição da manutenção é obrigatória')
-      .max(1000, 'A descrição deve ter no máximo 1000 caracteres'),
+      .nullable()
+      .optional(),
 
     custo: z
-      .number({ error: 'Custo é obrigatório' })
-      .min(0, 'O custo não pode ser negativo'),
+      .number()
+      .nonnegative('Custo deve ser maior ou igual a zero')
+      .nullable()
+      .optional(),
 
     status: z
-      .enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA'], {
-        error: 'Status inválido. Aceitos: AGENDADA, EM_ANDAMENTO, CONCLUIDA',
-      })
-      .default('AGENDADA'),
-  })
-  .strict();
+      .enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'])
+      .optional(),
+  });
+
+export const atualizarStatusManutencaoSchema = z.object({
+  status: z.enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'], {
+    error: 'Status de manutenção inválido',
+  }),
+});
 
 export type CriarManutencaoInput = z.infer<typeof criarManutencaoSchema>;
-
-export const atualizarStatusManutencaoSchema = z
-  .object({
-    status: z.enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA'], {
-      error: 'Status inválido. Aceitos: AGENDADA, EM_ANDAMENTO, CONCLUIDA',
-    }),
-  })
-  .strict();
-
-export type AtualizarStatusManutencaoInput = z.infer<typeof atualizarStatusManutencaoSchema>;
-

@@ -5,23 +5,23 @@ import {
   manutencaoModel,
   type Manutencao,
   type ManutencaoDetalhada,
+  type StatusManutencao,
 } from '../models/manutencaoModel';
 import type { CriarManutencaoInput } from '../validators/manutencaoSchemas';
 
+async function garantirVeiculoExiste(veiculoId: number) {
+  const veiculo = await db('veiculos').where({ id: veiculoId }).first();
+  if (!veiculo) {
+    throw new AppError('Veículo não encontrado', 404);
+  }
+  return veiculo;
+}
+
 export const manutencaoService = {
-  async criar(
-    dados: CriarManutencaoInput,
-    autorId: number
-  ): Promise<Manutencao> {
-    const veiculo = await db('veiculos')
-      .where({ id: dados.veiculo_id })
-      .first();
+  async criar(dados: CriarManutencaoInput, autorId: number): Promise<Manutencao> {
+    const veiculo = await garantirVeiculoExiste(dados.veiculo_id);
 
-    if (!veiculo) {
-      throw new AppError('Veículo não encontrado', 404);
-    }
-
-    if (dados.fornecedor_id) {
+    if (dados.fornecedor_id !== undefined && dados.fornecedor_id !== null) {
       const fornecedor = await db('fornecedores')
         .where({ id: dados.fornecedor_id })
         .first();
@@ -32,7 +32,6 @@ export const manutencaoService = {
     }
 
     return db.transaction(async (trx) => {
-      // 1. Cadastra a manutenção no banco
       const manutencao = await manutencaoModel.cadastrar(
         {
           veiculo_id: dados.veiculo_id,
@@ -46,8 +45,6 @@ export const manutencaoService = {
         trx
       );
 
-      // 2. Se o status for EM_ANDAMENTO, atualiza o status do veículo para MANUTENCAO.
-      // Se for CONCLUIDA e o veículo estiver em MANUTENCAO, verifica se ainda há outras pendências.
       if (dados.status === 'EM_ANDAMENTO') {
         await trx('veiculos')
           .where({ id: dados.veiculo_id })
@@ -65,12 +62,11 @@ export const manutencaoService = {
         }
       }
 
-      // 3. Registra auditoria
       await auditoriaModel.registrar(
         {
           usuario_id: autorId,
-          acao: `CRIOU_MANUTENCAO id=${manutencao.id} veiculo=${dados.veiculo_id} tipo=${dados.tipo_manutencao} custo=${dados.custo} status=${dados.status}`,
-          modulo: MODULOS_AUDITORIA.VEICULOS,
+          acao: `CRIOU_MANUTENCAO id=${manutencao.id} veiculo=${dados.veiculo_id} tipo=${dados.tipo_manutencao}`,
+          modulo: MODULOS_AUDITORIA.MANUTENCOES,
         },
         trx
       );
@@ -81,7 +77,7 @@ export const manutencaoService = {
 
   async atualizarStatus(
     id: number,
-    novoStatus: 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA',
+    novoStatus: StatusManutencao,
     autorId: number
   ): Promise<Manutencao> {
     const manutencao = await manutencaoModel.buscarPorId(id);
@@ -97,13 +93,15 @@ export const manutencaoService = {
         throw new AppError('Erro ao atualizar status da manutenção', 500);
       }
 
-      // Atualiza o status do veículo conforme a transição
       if (novoStatus === 'EM_ANDAMENTO') {
         await trx('veiculos')
           .where({ id: manutencao.veiculo_id })
           .update({ status: 'MANUTENCAO' });
-      } else if (novoStatus === 'CONCLUIDA' || novoStatus === 'AGENDADA') {
-        // Verifica se ainda existe alguma outra manutenção em andamento para este veículo
+      } else if (
+        novoStatus === 'CONCLUIDA' ||
+        novoStatus === 'AGENDADA' ||
+        novoStatus === 'CANCELADA'
+      ) {
         const temOutraEmAndamento = await manutencaoModel.temManutencaoEmAndamento(
           manutencao.veiculo_id,
           id,
@@ -117,12 +115,11 @@ export const manutencaoService = {
         }
       }
 
-      // Auditoria
       await auditoriaModel.registrar(
         {
           usuario_id: autorId,
           acao: `ATUALIZOU_STATUS_MANUTENCAO id=${id} veiculo=${manutencao.veiculo_id} de=${manutencao.status} para=${novoStatus}`,
-          modulo: MODULOS_AUDITORIA.VEICULOS,
+          modulo: MODULOS_AUDITORIA.MANUTENCOES,
         },
         trx
       );
@@ -132,15 +129,7 @@ export const manutencaoService = {
   },
 
   async listarPorVeiculo(veiculoId: number): Promise<ManutencaoDetalhada[]> {
-    const veiculo = await db('veiculos')
-      .where({ id: veiculoId })
-      .first();
-
-    if (!veiculo) {
-      throw new AppError('Veículo não encontrado', 404);
-    }
-
+    await garantirVeiculoExiste(veiculoId);
     return manutencaoModel.listarPorVeiculo(veiculoId);
   },
 };
-

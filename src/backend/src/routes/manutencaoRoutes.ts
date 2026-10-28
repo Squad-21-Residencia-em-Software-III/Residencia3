@@ -26,3 +26,8 @@ manutencaoRoutes.patch(
   manutencaoController.atualizarStatus
 );
 
+manutencaoRoutes.use(autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA));
+
+manutencaoRoutes.post('/', manutencaoController.criar);
+
+manutencaoRoutes.get('/veiculo/:veiculoId', manutencaoController.listarPorVeiculo);
