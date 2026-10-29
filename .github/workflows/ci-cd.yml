@@ -2,6 +2,9 @@ name: CI - Verificacao do Projeto
 
 on:
   pull_request:
+    branches:
+      - develop
+      - main
   push:
     branches:
       - chore/ci-cd-pipeline
