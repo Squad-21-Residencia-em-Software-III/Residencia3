@@ -114,3 +114,10 @@ export const FuelIcon = ({ size = 16 }: IconProps) => (
   </svg>
 )
 
+
+export const AlertIcon = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M8 2.2l6 10.6H2L8 2.2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    <path d="M8 6.5v3M8 11.3v.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
