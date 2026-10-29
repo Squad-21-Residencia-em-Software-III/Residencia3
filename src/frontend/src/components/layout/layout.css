@@ -158,8 +158,51 @@
   border-bottom: 1px solid #e8ecf0;
   box-shadow: 0 4px 12px rgba(13, 27, 53, 0.1);
 }
-.topbar__title { font-size: 16px; font-weight: 700; }
-.topbar__actions { display: flex; align-items: center; gap: var(--space-3); }
+.topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.topbar__title {
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar__brand-btn {
+  display: none; /* Oculto no desktop */
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 2px;
+  margin-left: -6px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+.topbar__brand-btn:hover {
+  background: var(--color-surface-hover);
+}
+.topbar__brand-btn:active {
+  transform: scale(0.94);
+  background: var(--color-surface-hover);
+}
+.topbar__brand-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
 .topbar__bell {
   display: flex;
   align-items: center;
@@ -172,3 +215,117 @@
   border: 1.5px solid var(--color-border);
 }
 .topbar__bell:hover { background: var(--color-surface-hover); }
+
+/* Botão de fechar da sidebar móvel (oculto no desktop) */
+.sidebar__mobile-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+.sidebar__mobile-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Backdrop escuro no mobile */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(13, 27, 53, 0.55);
+  backdrop-filter: blur(2px);
+  animation: fadeInBackdrop 0.2s ease;
+}
+
+@keyframes fadeInBackdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Responsividade Mobile (< 768px) ── */
+@media (max-width: 768px) {
+  .app-layout__content {
+    padding: 16px 12px;
+  }
+
+  /* Topbar mobile usando a mesma paleta nobre e escura da sidebar */
+  .topbar {
+    height: 58px;
+    padding: 0 12px;
+    background: var(--color-text);
+    color: #fff;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  }
+
+  .topbar__title {
+    font-size: 15px;
+    color: #fff;
+  }
+
+  /* Exibe o botão de logo/toggle na topbar */
+  .topbar__brand-btn {
+    display: inline-flex;
+  }
+
+  .topbar__brand-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .topbar__brand-btn:active {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  /* Botão de notificações na topbar escura */
+  .topbar__bell {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .topbar__bell:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .btn--topbar-action .btn__label-text {
+    display: none; /* No mobile estreito, economiza espaço mantendo o ícone + */
+  }
+
+  /* Transforma a sidebar em drawer retrátil off-canvas */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 270px;
+    max-width: 82vw;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 6px 0 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .sidebar--mobile-open {
+    transform: translateX(0);
+  }
+
+  /* No mobile, a sidebar nunca usa largura colapsada (68px) */
+  .sidebar--collapsed {
+    width: 270px;
+  }
+
+  .sidebar__toggle {
+    display: none; /* Esconde a bolinha de recolher do desktop */
+  }
+
+  .sidebar__mobile-close {
+    display: flex;
+  }
+}

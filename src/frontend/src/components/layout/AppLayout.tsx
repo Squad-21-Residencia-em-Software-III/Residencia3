@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BellIcon, ChevronLeftIcon, LogoutIcon, PlusIcon } from '../ui'
+import { BellIcon, ChevronLeftIcon, CloseIcon, LogoutIcon, PlusIcon } from '../ui'
 import './layout.css'
 
 export type NavItem = {
@@ -40,16 +40,47 @@ export function AppLayout({
   children,
 }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  const handleNavClick = () => {
+    setMobileOpen(false)
+  }
+
+  const handleLogout = () => {
+    setMobileOpen(false)
+    onLogout?.()
+  }
 
   return (
     <div className="app-layout">
-      <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`.trim()}>
+      {/* Backdrop para fechar o menu ao clicar fora no mobile */}
+      {mobileOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${
+          mobileOpen ? 'sidebar--mobile-open' : ''
+        }`.trim()}
+      >
         <div className="sidebar__brand">
           <img
             src={collapsed ? '/assets/icon.png' : '/assets/logo.png'}
             alt="FSPH — Fundação de Saúde Parreiras Horta"
             className={collapsed ? 'sidebar__icon' : 'sidebar__logo'}
           />
+          {/* Botão de fechar visível apenas no mobile */}
+          <button
+            className="sidebar__mobile-close"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Fechar menu"
+          >
+            <CloseIcon size={18} />
+          </button>
         </div>
 
         <button
@@ -68,7 +99,10 @@ export function AppLayout({
             <NavLink
               key={path}
               to={path}
-              className={({ isActive }) => `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`.trim()}
+              onClick={handleNavClick}
+              className={({ isActive }) =>
+                `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`.trim()
+              }
               title={collapsed ? label : undefined}
             >
               <Icon size={20} />
@@ -89,7 +123,11 @@ export function AppLayout({
               )}
             </div>
           )}
-          <button className="sidebar__logout" onClick={onLogout} title={collapsed ? 'Sair da conta' : undefined}>
+          <button
+            className="sidebar__logout"
+            onClick={handleLogout}
+            title={collapsed ? 'Sair da conta' : undefined}
+          >
             <LogoutIcon size={18} />
             {!collapsed && <span>Sair da conta</span>}
           </button>
@@ -98,11 +136,28 @@ export function AppLayout({
 
       <div className="app-layout__main">
         <header className="topbar">
-          <h1 className="topbar__title">{title}</h1>
+          <div className="topbar__left">
+            {/* Logo FSPH exclusiva como Toggle no mobile */}
+            <button
+              className="topbar__brand-btn"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Abrir menu de navegação"
+              title="Abrir menu"
+            >
+              <img
+                src="/assets/icon.png"
+                alt="FSPH — Abrir menu"
+                className="topbar__brand-icon"
+              />
+            </button>
+
+            <h1 className="topbar__title">{title}</h1>
+          </div>
+
           <div className="topbar__actions">
             {actionLabel && (
-              <button className="btn btn--primary" onClick={onAction}>
-                <PlusIcon /> {actionLabel}
+              <button className="btn btn--primary btn--topbar-action" onClick={onAction}>
+                <PlusIcon /> <span className="btn__label-text">{actionLabel}</span>
               </button>
             )}
             <button className="topbar__bell" aria-label="Notificações">
