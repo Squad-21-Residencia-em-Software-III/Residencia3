@@ -7,7 +7,7 @@ import { abastecimentoRoutes } from './abastecimentoRoutes';
 import { solicitacaoViagemRoutes } from './solicitacaoViagemRoutes';
 import { manutencaoRoutes } from './manutencaoRoutes';
 import { documentoRoutes } from './documentoRoutes';
-
+import { multaRoutes } from './multaRoutes';
 
 export const routes = Router();
 
@@ -28,3 +28,4 @@ routes.use('/abastecimentos', abastecimentoRoutes);
 routes.use('/solicitacoes-viagem', solicitacaoViagemRoutes);
 routes.use('/manutencoes', manutencaoRoutes);
 routes.use('/documentos', documentoRoutes);
+routes.use('/multas', multaRoutes);
