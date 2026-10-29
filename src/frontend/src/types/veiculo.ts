@@ -2,7 +2,7 @@
  * Espelha a tabela `veiculos` do banco (ver docs/dicionario-de-dados.md).
  * Não adicionar campos que não existam na tabela.
  */
-export type StatusVeiculo = 'DISPONIVEL' | 'EM_USO' | 'MANUTENCAO';
+export type StatusVeiculo = 'DISPONIVEL' | 'EM_USO' | 'MANUTENCAO' | 'RESERVADO';
 export type TipoFrota = 'ADMINISTRATIVA' | 'SVO';
 
 export interface Veiculo {
