@@ -56,11 +56,11 @@ describe('POST /api/solicitacoes-viagem', () => {
 
     expect(solicitacaoViagemService.criar).toHaveBeenCalledWith(
       dadosValidos,
-      1
+      1,
     );
   });
 
-  it('deve retornar 400 quando faltar um campo obrigatório', async () => {
+  it('deve retornar 400 quando um campo obrigatório estiver vazio', async () => {
     const resposta = await request(app)
       .post(endpoint)
       .set('Authorization', 'Bearer token-teste')
@@ -70,17 +70,36 @@ describe('POST /api/solicitacoes-viagem', () => {
       });
 
     expect(resposta.status).toBe(400);
-
-    expect(
-      solicitacaoViagemService.criar
-    ).not.toHaveBeenCalled();
+    expect(solicitacaoViagemService.criar).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'origem',
+    'destino',
+    'finalidade',
+    'data_saida_desejada',
+  ] as const)(
+    'deve retornar 400 quando faltar o campo %s',
+    async (campo) => {
+      const dadosIncompletos: Record<string, unknown> = {
+        ...dadosValidos,
+      };
+
+      delete dadosIncompletos[campo];
+
+      const resposta = await request(app)
+        .post(endpoint)
+        .set('Authorization', 'Bearer token-teste')
+        .send(dadosIncompletos);
+
+      expect(resposta.status).toBe(400);
+      expect(solicitacaoViagemService.criar).not.toHaveBeenCalled();
+    },
+  );
+
   it('deve retornar 400 quando a saída estiver no passado', async () => {
-    vi.mocked(
-      solicitacaoViagemService.criar
-    ).mockRejectedValueOnce(
-      new AppError('A data de saída deve ser futura', 400)
+    vi.mocked(solicitacaoViagemService.criar).mockRejectedValueOnce(
+      new AppError('A data de saída deve ser futura', 400),
     );
 
     const resposta = await request(app)
@@ -92,19 +111,15 @@ describe('POST /api/solicitacoes-viagem', () => {
       });
 
     expect(resposta.status).toBe(400);
-    expect(resposta.body.erro).toBe(
-      'A data de saída deve ser futura'
-    );
+    expect(resposta.body.erro).toBe('A data de saída deve ser futura');
   });
 
   it('deve retornar 400 quando a chegada for anterior à saída', async () => {
-    vi.mocked(
-      solicitacaoViagemService.criar
-    ).mockRejectedValueOnce(
+    vi.mocked(solicitacaoViagemService.criar).mockRejectedValueOnce(
       new AppError(
         'A data de chegada deve ser posterior à saída',
-        400
-      )
+        400,
+      ),
     );
 
     const resposta = await request(app)
@@ -117,7 +132,7 @@ describe('POST /api/solicitacoes-viagem', () => {
 
     expect(resposta.status).toBe(400);
     expect(resposta.body.erro).toBe(
-      'A data de chegada deve ser posterior à saída'
+      'A data de chegada deve ser posterior à saída',
     );
   });
 });
