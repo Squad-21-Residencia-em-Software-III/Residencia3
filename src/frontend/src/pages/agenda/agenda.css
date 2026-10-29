@@ -714,3 +714,149 @@
   line-height: 1.4;
   margin-top: 4px;
 }
+
+/* ── Responsividade Mobile Refinada da Agenda (< 768px) ── */
+@media (max-width: 768px) {
+  .agenda-container {
+    gap: 12px;
+  }
+
+  /* 1. Cabeçalho empilhado: Controles de Data no topo, Toggle 100% abaixo */
+  .agenda-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .agenda-header__nav {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .agenda-header__date-title {
+    font-size: 14px;
+    display: block;
+    text-align: center;
+  }
+
+  .agenda-header__date-sub {
+    font-size: 11px;
+    display: block;
+    text-align: center;
+    margin-left: 0;
+    margin-top: 2px;
+  }
+
+  .agenda-view-toggle {
+    width: 100%;
+  }
+
+  .agenda-view-toggle__btn {
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 13px;
+  }
+
+  /* 2. Gantt Hoje: Coluna de veículos compacta (120px) e rolagem horizontal suave */
+  .gantt-corner-label,
+  .gantt-resource-labels {
+    width: 120px;
+  }
+
+  .gantt-corner-label {
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  .gantt-resource-row {
+    padding: 0 8px;
+  }
+
+  .gantt-resource-model {
+    font-size: 11px;
+  }
+
+  .gantt-resource-plate {
+    font-size: 10px;
+  }
+
+  .gantt-block__route {
+    font-size: 11px;
+  }
+
+  .gantt-block__meta {
+    font-size: 10px;
+  }
+
+  /* 3. Modo Semana: Permite rolagem horizontal confortável para os 7 dias */
+  .semana-day-col-header,
+  .semana-day-cell {
+    min-width: 65px;
+  }
+
+  .semana-header,
+  .semana-row {
+    min-width: calc(115px + 7 * 65px);
+  }
+
+  /* 4. Modo Mês: Células compactas e visual limpo */
+  .mes-header-col {
+    padding: 6px 2px;
+    font-size: 10px;
+  }
+
+  .mes-calendar-grid {
+    grid-auto-rows: minmax(70px, 1fr);
+  }
+
+  .mes-day-cell {
+    padding: 4px;
+  }
+
+  .mes-day-num {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+
+  .mes-status-badge {
+    font-size: 9px;
+    padding: 1px 3px;
+  }
+
+  .mes-event-pill {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+
+  /* 5. Rodapé de Legenda: Empilhado e legível */
+  .agenda-footer-legend {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .agenda-legend-items {
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-start;
+  }
+
+  .agenda-footer-tip {
+    font-size: 11px;
+  }
+
+  /* 6. Modal de Detalhes da Rota */
+  .modal-rota-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .modal-rota-route-title {
+    font-size: 16px;
+  }
+}
+
