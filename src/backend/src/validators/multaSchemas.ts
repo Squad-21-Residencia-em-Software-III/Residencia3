@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { STATUS_PAGAMENTO_MULTA } from '../models/multaModel';
 
 export const criarMultaSchema = z.object({
   veiculo_id: z
@@ -24,13 +25,15 @@ export const criarMultaSchema = z.object({
   descricao: z.string().trim().optional().nullable(),
 
   pontos: z
-    .number()
+    .number({ error: 'A pontuação é obrigatória' })
     .int('A pontuação deve ser um número inteiro')
-    .nonnegative('A pontuação não pode ser negativa')
-    .optional()
-    .nullable(),
+    .nonnegative('A pontuação não pode ser negativa'),
 
-  status_pagamento: z.enum(['PENDENTE', 'PAGA']).optional(),
+  status_pagamento: z
+    .enum(STATUS_PAGAMENTO_MULTA, {
+      error: `Status de pagamento inválido. Aceitos: ${STATUS_PAGAMENTO_MULTA.join(', ')}`,
+    })
+    .optional(),
 
   data_vencimento: z.string().optional().nullable(),
 

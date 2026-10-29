@@ -1,7 +1,10 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
-export type StatusPagamentoMulta = 'PENDENTE' | 'PAGA';
+// Espelha a constraint chk_multas_status_pagamento
+export const STATUS_PAGAMENTO_MULTA = ['PENDENTE', 'PAGO', 'CANCELADO'] as const;
+
+export type StatusPagamentoMulta = (typeof STATUS_PAGAMENTO_MULTA)[number];
 
 export interface NovaMulta {
   veiculo_id: number;
@@ -9,7 +12,7 @@ export interface NovaMulta {
   data_infracao: string;
   valor: number;
   descricao?: string | null;
-  pontos?: number | null;
+  pontos: number;
   status_pagamento?: StatusPagamentoMulta;
   data_vencimento?: string | null;
   id_infracao?: string | null;
