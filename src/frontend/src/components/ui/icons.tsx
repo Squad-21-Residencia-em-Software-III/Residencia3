@@ -8,6 +8,12 @@ export const CloseIcon = ({ size = 16 }: IconProps) => (
   </svg>
 )
 
+export const MenuIcon = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+)
+
 export const PlusIcon = ({ size = 14 }: IconProps) => (
   <svg {...base(size)}>
     <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
