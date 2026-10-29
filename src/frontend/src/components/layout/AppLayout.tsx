@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BellIcon, ChevronLeftIcon, CloseIcon, LogoutIcon, PlusIcon } from '../ui'
+import { BellIcon, ChevronLeftIcon, CloseIcon, LogoutIcon, MenuIcon, PlusIcon } from '../ui'
 import './layout.css'
 
 export type NavItem = {
@@ -137,18 +137,14 @@ export function AppLayout({
       <div className="app-layout__main">
         <header className="topbar">
           <div className="topbar__left">
-            {/* Logo FSPH exclusiva como Toggle no mobile */}
+            {/* Botão de Menu Hambúrguer Clássico (3 barras) no mobile */}
             <button
-              className="topbar__brand-btn"
+              className="topbar__menu-btn"
               onClick={() => setMobileOpen(true)}
               aria-label="Abrir menu de navegação"
               title="Abrir menu"
             >
-              <img
-                src="/assets/icon.png"
-                alt="FSPH — Abrir menu"
-                className="topbar__brand-icon"
-              />
+              <MenuIcon size={20} />
             </button>
 
             <h1 className="topbar__title">{title}</h1>

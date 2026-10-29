@@ -234,6 +234,13 @@
   gap: 12px;
 }
 
+/* Grid universal de Cards de KPI no topo das telas (Desktop fluido, Mobile 2x2) */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
 /* ── Dashboard KPI Grid (Desktop 4 cols, Mobile 2x2) ── */
 .dashboard-kpi-grid {
   display: grid;
@@ -249,9 +256,21 @@
 }
 
 @media (max-width: 640px) {
-  .dashboard-kpi-grid {
+  .dashboard-kpi-grid,
+  .kpi-grid {
     grid-template-columns: 1fr 1fr !important;
     gap: 10px !important;
+  }
+
+  .kpi-grid > .card,
+  .kpi-grid > div {
+    padding: 14px 12px !important;
+  }
+
+  /* Se houver card ímpar como 3º item, expande para 2 colunas */
+  .kpi-grid > .card:nth-child(3):last-child,
+  .kpi-grid > div:nth-child(3):last-child {
+    grid-column: span 2;
   }
 
   .dashboard-kpi-body {
@@ -378,6 +397,11 @@
     padding-left: 12px;
   }
 
+  /* Oculta avatar circular dentro de tabelas no mobile para economizar espaço horizontal */
+  .table td .avatar {
+    display: none !important;
+  }
+
   .table th:last-child,
   .table td:last-child {
     padding-right: 12px;
@@ -404,4 +428,3 @@
     border-radius: var(--radius-lg);
   }
 }
-
