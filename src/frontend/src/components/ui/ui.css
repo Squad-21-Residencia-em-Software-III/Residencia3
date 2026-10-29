@@ -427,4 +427,41 @@
   .card {
     border-radius: var(--radius-lg);
   }
+
+  /* Container universal de filtros de tabela colapsável no mobile */
+  .table-filter-collapse {
+    display: none !important;
+  }
+
+  .table-filter-collapse.is-open {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px !important;
+    padding: 12px 14px !important;
+    animation: fadeInFilters 0.15s ease-in-out;
+  }
+}
+
+@keyframes fadeInFilters {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* No desktop, os filtros de tabela ficam sempre visíveis */
+.table-filter-collapse {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-surface-alt);
 }

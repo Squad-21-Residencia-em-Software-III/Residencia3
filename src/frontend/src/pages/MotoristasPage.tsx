@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Avatar, Badge, Card, IdBadge, Pagination, Table, TableToolbar } from '../components/ui';
+import { Avatar, Badge, Card, IdBadge, Pagination, Table, TableFilterCollapse, TableToolbar } from '../components/ui';
 import type { Motorista, TipoMotorista } from '../types/motorista';
 import { storageService } from '../services/storageService';
 import { ModalMotorista } from './motoristas/ModalMotorista';
@@ -26,6 +26,7 @@ const cardRotulo = { fontSize: '12px', color: 'var(--color-text-muted)', marginT
 export default function MotoristasPage() {
   const [motoristas, setMotoristas] = useState<Motorista[]>(storageService.getMotoristas());
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
+  const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
@@ -94,7 +95,7 @@ export default function MotoristasPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+      <div className="kpi-grid">
         <Card style={{ padding: '16px 20px' }}>
           <div style={cardValor('var(--color-text)')}>{totais.total}</div>
           <div style={cardRotulo}>Total de Motoristas</div>
@@ -119,37 +120,35 @@ export default function MotoristasPage() {
           subtitle={`${filtrados.length} motoristas listados`}
           newLabel="Novo Motorista"
           onNew={() => setModalAberto(true)}
+          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+          isFilterActive={filtro !== 'TODOS' || filtrosAbertosMobile}
         />
 
-        <div
-          style={{
-            display: 'flex',
-            gap: '8px',
-            padding: '12px 24px',
-            borderBottom: '1px solid var(--color-divider)',
-            background: 'var(--color-surface-alt)',
-          }}
-        >
-          {(['TODOS', 'FROTA', 'SVO'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFiltro(f)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '12px',
-                fontWeight: 600,
-                background: filtro === f ? 'var(--color-primary)' : 'transparent',
-                color: filtro === f ? '#fff' : 'var(--color-text-secondary)',
-                border: '1px solid',
-                borderColor: filtro === f ? 'var(--color-primary)' : 'var(--color-border)',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {f === 'TODOS' ? 'Todos' : f === 'SVO' ? 'Motoristas SVO' : 'Motoristas Frota'}
-            </button>
-          ))}
-        </div>
+        <TableFilterCollapse isOpen={filtrosAbertosMobile}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {(['TODOS', 'FROTA', 'SVO'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFiltro(f)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  background: filtro === f ? 'var(--color-primary)' : 'transparent',
+                  color: filtro === f ? '#fff' : 'var(--color-text-secondary)',
+                  border: '1px solid',
+                  borderColor: filtro === f ? 'var(--color-primary)' : 'var(--color-border)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {f === 'TODOS' ? 'Todos' : f === 'SVO' ? 'Motoristas SVO' : 'Motoristas Frota'}
+              </button>
+            ))}
+          </div>
+        </TableFilterCollapse>
 
         <Table>
           <thead>

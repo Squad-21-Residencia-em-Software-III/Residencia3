@@ -14,6 +14,7 @@ import {
   IdBadge,
   Pagination,
   Table,
+  TableFilterCollapse,
   TableToolbar,
   type BadgeTone,
 } from '../components/ui';
@@ -66,6 +67,7 @@ export default function ViagensPage() {
   const [viagens, setViagens] = useState<Viagem[]>(storageService.getViagens());
   const [filtro, setFiltro] = useState<FiltroAba>('TODAS');
   const [busca, setBusca] = useState('');
+  const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
   const [viagemDetalhes, setViagemDetalhes] = useState<Viagem | null>(null);
@@ -190,7 +192,7 @@ export default function ViagensPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+      <div className="kpi-grid">
         <Card style={{ padding: '16px 20px' }}>
           <div style={cardValor('var(--color-text)')}>{totais.total}</div>
           <div style={cardRotulo}>Total de Viagens</div>
@@ -215,20 +217,11 @@ export default function ViagensPage() {
           subtitle={`${filtradas.length} viagens exibidas`}
           newLabel="Nova Viagem"
           onNew={() => setModalNovaAberto(true)}
+          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+          isFilterActive={filtro !== 'TODAS' || Boolean(busca) || filtrosAbertosMobile}
         />
 
-        <div
-          style={{
-            display: 'flex',
-            gap: '12px',
-            padding: '12px 20px',
-            borderBottom: '1px solid var(--color-divider)',
-            background: 'var(--color-surface-alt)',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
+        <TableFilterCollapse isOpen={filtrosAbertosMobile}>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {([
               { id: 'TODAS', label: 'Todas' },
@@ -276,7 +269,7 @@ export default function ViagensPage() {
               }}
             />
           </div>
-        </div>
+        </TableFilterCollapse>
 
         <Table>
           <thead>

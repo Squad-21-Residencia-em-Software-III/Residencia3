@@ -5,6 +5,7 @@ import {
   IdBadge,
   Table,
   TableToolbar,
+  TableFilterCollapse,
   Pagination,
 } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
@@ -24,6 +25,7 @@ export default function VeiculosPage() {
   const [veiculos, setVeiculos] = useState<Veiculo[]>(storageService.getVeiculos());
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [veiculoManutencao, setVeiculoManutencao] = useState<Veiculo | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
@@ -102,15 +104,8 @@ export default function VeiculosPage() {
         </div>
       )}
 
-      {/* ── Cards de Resumo ── */}
-      {/* ── Cards de Resumo (Clicáveis como Filtros Rápidos) ── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '16px',
-        }}
-      >
+      {/* ── Cards de Resumo (Clicáveis como Filtros Rápidos, 2x2 no mobile) ── */}
+      <div className="kpi-grid">
         <Card
           onClick={() => setFiltroStatus('TODOS')}
           style={{
@@ -231,21 +226,12 @@ export default function VeiculosPage() {
           subtitle={`${veiculosFiltrados.length} de ${veiculos.length} veículos listados`}
           newLabel="Novo Veículo"
           onNew={() => setModalAberto(true)}
+          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+          isFilterActive={filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || filtrosAbertosMobile}
         />
 
         {/* Barra de Filtros: Tipo de Frota + Status do Veículo */}
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px',
-            padding: '12px 24px',
-            borderBottom: '1px solid var(--color-divider)',
-            background: 'var(--color-surface-alt)',
-          }}
-        >
+        <TableFilterCollapse isOpen={filtrosAbertosMobile}>
           {/* Grupo 1: Tipo de Frota */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text-secondary)' }}>
@@ -346,7 +332,7 @@ export default function VeiculosPage() {
               </button>
             )}
           </div>
-        </div>
+        </TableFilterCollapse>
 
         <Table>
           <thead>
