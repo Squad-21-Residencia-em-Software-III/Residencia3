@@ -2,7 +2,7 @@ import type { Knex } from 'knex';
 import { db } from '../config/database';
 
 export type TipoFrota = 'ADMINISTRATIVA' | 'SVO';
-export type StatusVeiculo = 'DISPONIVEL' | 'EM_VIAGEM' | 'MANUTENCAO' | 'INATIVO';
+export type StatusVeiculo = 'DISPONIVEL' | 'EM_USO' | 'MANUTENCAO' | 'RESERVADO';
 
 export interface VeiculoSvoDisponivel {
   id: number;
