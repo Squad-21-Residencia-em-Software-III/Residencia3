@@ -88,12 +88,13 @@ export default function DashboardPage() {
 
   return (
     <div style={{ display: 'grid', gap: '24px' }}>
-      {/* 4 Cards de Sumário Operacional com ícones do Lucide */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '18px' }}>
+      {/* 4 Cards de Sumário Operacional (Desktop 4 colunas, Mobile 2x2) */}
+      <div className="dashboard-kpi-grid">
         {/* Card 1: Solicitações Pendentes */}
         <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div className="dashboard-kpi-body" style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div
+              className="dashboard-kpi-icon"
               style={{
                 width: '42px',
                 height: '42px',
@@ -109,6 +110,7 @@ export default function DashboardPage() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
+                className="dashboard-kpi-value"
                 style={{
                   fontSize: '28px',
                   fontWeight: 800,
@@ -120,12 +122,13 @@ export default function DashboardPage() {
               >
                 {metricas.pendentes}
               </div>
-              <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+              <div className="dashboard-kpi-label" style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
                 Solicitações pendentes
               </div>
             </div>
             {metricas.pendentes > 0 && (
               <span
+                className="dashboard-kpi-badge"
                 style={{
                   fontSize: '11px',
                   fontWeight: 700,
@@ -135,11 +138,12 @@ export default function DashboardPage() {
                   color: '#B45309',
                 }}
               >
-                Ação Gestor
+                Ação
               </span>
             )}
           </div>
           <div
+            className="dashboard-kpi-footer"
             style={{
               padding: '10px 20px',
               borderTop: '1px solid var(--color-border)',
@@ -150,7 +154,7 @@ export default function DashboardPage() {
               justifyContent: 'space-between',
             }}
           >
-            <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+            <span className="dashboard-kpi-footer-text" style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
               Última recebida há pouco
             </span>
             <button
@@ -168,15 +172,16 @@ export default function DashboardPage() {
                 gap: '4px',
               }}
             >
-              Revisar solicitações <ArrowRight size={13} />
+              Revisar <ArrowRight size={13} />
             </button>
           </div>
         </Card>
 
         {/* Card 2: Viagens em Andamento */}
         <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px 20px 12px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div className="dashboard-kpi-body" style={{ padding: '20px 20px 12px', display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div
+              className="dashboard-kpi-icon"
               style={{
                 width: '42px',
                 height: '42px',
@@ -192,6 +197,7 @@ export default function DashboardPage() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
+                className="dashboard-kpi-value"
                 style={{
                   fontSize: '28px',
                   fontWeight: 800,
@@ -203,43 +209,13 @@ export default function DashboardPage() {
               >
                 {metricas.viagensAtivas}
               </div>
-              <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+              <div className="dashboard-kpi-label" style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
                 Viagens em andamento
               </div>
             </div>
           </div>
-          <div style={{ padding: '0 20px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {MOCK_VIAGENS_ATIVAS.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '12px',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <span
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: 'var(--color-primary)',
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>{item.hora}</span>
-                <span style={{ color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.origem} → {item.destino}
-                </span>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '11px', flexShrink: 0 }}>
-                  ({item.veiculo_modelo})
-                </span>
-              </div>
-            ))}
-          </div>
           <div
+            className="dashboard-kpi-footer"
             style={{
               padding: '10px 20px',
               borderTop: '1px solid var(--color-border)',
@@ -265,15 +241,16 @@ export default function DashboardPage() {
                 gap: '4px',
               }}
             >
-              Ver viagens ativas <ArrowRight size={13} />
+              Ver ativas <ArrowRight size={13} />
             </button>
           </div>
         </Card>
 
         {/* Card 3: Veículos no Pátio (Disponíveis) */}
         <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px 20px 14px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div className="dashboard-kpi-body" style={{ padding: '20px 20px 14px', display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div
+              className="dashboard-kpi-icon"
               style={{
                 width: '42px',
                 height: '42px',
@@ -289,6 +266,7 @@ export default function DashboardPage() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
+                className="dashboard-kpi-value"
                 style={{
                   fontSize: '28px',
                   fontWeight: 800,
@@ -300,13 +278,16 @@ export default function DashboardPage() {
               >
                 {metricas.veiculosDisponiveis}
               </div>
-              <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                Veículos disponíveis no pátio
+              <div className="dashboard-kpi-label" style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                Veículos no pátio
               </div>
             </div>
-            <Badge tone="success">Prontos</Badge>
+            <span className="dashboard-kpi-badge">
+              <Badge tone="success">Prontos</Badge>
+            </span>
           </div>
           <div
+            className="dashboard-kpi-footer"
             style={{
               padding: '10px 20px',
               borderTop: '1px solid var(--color-border)',
@@ -317,7 +298,7 @@ export default function DashboardPage() {
               justifyContent: 'space-between',
             }}
           >
-            <div style={{ display: 'flex', gap: '6px' }}>
+            <div className="dashboard-kpi-footer-text" style={{ display: 'flex', gap: '6px' }}>
               <span
                 style={{
                   fontSize: '11px',
@@ -328,7 +309,7 @@ export default function DashboardPage() {
                   color: '#15803D',
                 }}
               >
-                {metricas.frotaAdmDisponivel} Frota Adm.
+                {metricas.frotaAdmDisponivel} Adm.
               </span>
               <span
                 style={{
@@ -365,8 +346,9 @@ export default function DashboardPage() {
 
         {/* Card 4: Alertas da Operação */}
         <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px 20px 14px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div className="dashboard-kpi-body" style={{ padding: '20px 20px 14px', display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div
+              className="dashboard-kpi-icon"
               style={{
                 width: '42px',
                 height: '42px',
@@ -382,6 +364,7 @@ export default function DashboardPage() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
+                className="dashboard-kpi-value"
                 style={{
                   fontSize: '28px',
                   fontWeight: 800,
@@ -393,13 +376,18 @@ export default function DashboardPage() {
               >
                 {metricas.alertasCriticos}
               </div>
-              <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+              <div className="dashboard-kpi-label" style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
                 Alertas da operação
               </div>
             </div>
-            {metricas.alertasCriticos > 0 && <Badge tone="danger">Atenção</Badge>}
+            {metricas.alertasCriticos > 0 && (
+              <span className="dashboard-kpi-badge">
+                <Badge tone="danger">Atenção</Badge>
+              </span>
+            )}
           </div>
           <div
+            className="dashboard-kpi-footer"
             style={{
               padding: '10px 20px',
               borderTop: '1px solid var(--color-border)',
@@ -410,8 +398,8 @@ export default function DashboardPage() {
               justifyContent: 'space-between',
             }}
           >
-            <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-              {metricas.veiculosManutencao} em manutenção • {metricas.motoristasCnhVencida} CNH vencida
+            <span className="dashboard-kpi-footer-text" style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+              {metricas.veiculosManutencao} manut. • {metricas.motoristasCnhVencida} CNH
             </span>
             <button
               onClick={() => navigate('/motoristas')}
@@ -428,7 +416,7 @@ export default function DashboardPage() {
                 gap: '4px',
               }}
             >
-              Ver motoristas <ArrowRight size={13} />
+              Ver alertas <ArrowRight size={13} />
             </button>
           </div>
         </Card>

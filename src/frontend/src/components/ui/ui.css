@@ -234,6 +234,65 @@
   gap: 12px;
 }
 
+/* ── Dashboard KPI Grid (Desktop 4 cols, Mobile 2x2) ── */
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-kpi-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-kpi-body {
+    padding: 12px 10px 10px !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-kpi-icon {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+  }
+
+  .dashboard-kpi-value {
+    font-size: 20px !important;
+  }
+
+  .dashboard-kpi-label {
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+  }
+
+  .dashboard-kpi-badge {
+    display: none !important; /* Esconde pílula extra no card 2x2 para não quebrar alinhamento */
+  }
+
+  .dashboard-kpi-footer {
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+  }
+
+  .dashboard-kpi-footer-text {
+    display: none !important; /* Mantém apenas a ação/link no rodapé */
+  }
+
+  .dashboard-kpi-footer button {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+}
+
 /* ── Responsividade Mobile dos Componentes de UI (< 768px) ── */
 @media (max-width: 768px) {
   /* Modais ocupam a quase totalidade da tela sem vazar e com scroll interno */
