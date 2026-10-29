@@ -8,6 +8,7 @@ import {
   Card,
   Pagination,
   Table,
+  TableFilterCollapse,
   TableToolbar,
   type BadgeTone,
 } from '../components/ui';
@@ -50,6 +51,7 @@ export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>(storageService.getUsuarios());
   const [filtro, setFiltro] = useState<FiltroCategoria>('TODOS');
   const [busca, setBusca] = useState('');
+  const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
   const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
   const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
   const [usuarioRedefinirSenha, setUsuarioRedefinirSenha] = useState<Usuario | null>(null);
@@ -189,8 +191,8 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* 4 Cards de Resumo */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+      {/* 4 Cards de Resumo (2x2 no mobile) */}
+      <div className="kpi-grid">
         <Card style={{ padding: '16px 20px' }}>
           <div style={cardValor('var(--color-text)')}>{totais.total}</div>
           <div style={cardRotulo}>Total de Usuários</div>
@@ -218,21 +220,12 @@ export default function UsuariosPage() {
             setUsuarioEditando(null);
             setModalUsuarioAberto(true);
           }}
+          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+          isFilterActive={filtro !== 'TODOS' || Boolean(busca) || filtrosAbertosMobile}
         />
 
         {/* Barra de Filtros e Busca */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '12px',
-            padding: '12px 24px',
-            borderBottom: '1px solid var(--color-divider)',
-            background: 'var(--color-surface-alt)',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
+        <TableFilterCollapse isOpen={filtrosAbertosMobile}>
           {/* Abas rápidas */}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {(
@@ -284,7 +277,7 @@ export default function UsuariosPage() {
               }}
             />
           </div>
-        </div>
+        </TableFilterCollapse>
 
         {/* Tabela de Usuários */}
         <Table>

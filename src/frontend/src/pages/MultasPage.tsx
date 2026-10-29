@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Badge, Button, Card, IdBadge, Input, Pagination, Select, Table, TableToolbar } from '../components/ui';
+import { Badge, Button, Card, IdBadge, Input, Pagination, Select, Table, TableFilterCollapse, TableToolbar } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
 import { storageService } from '../services/storageService';
 import { LABELS_STATUS_MULTA } from '../types/multa';
@@ -28,6 +28,7 @@ export default function MultasPage() {
   const [filtroStatus, setFiltroStatus] = useState<'' | StatusPagamentoMulta>('');
   const [de, setDe] = useState('');
   const [ate, setAte] = useState('');
+  const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
   const [feedback, setFeedback] = useState<{ msg: string; erro: boolean } | null>(null);
 
   const exibirFeedback = (msg: string, erro = false) => {
@@ -132,7 +133,7 @@ export default function MultasPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+      <div className="kpi-grid">
         <Card style={{ padding: '20px' }}>
           <div style={kpiTitulo}>Multas registradas</div>
           <div style={kpiValor}>{kpis.total}</div>
@@ -156,9 +157,11 @@ export default function MultasPage() {
           subtitle={`${filtradas.length} registros`}
           newLabel="Registrar multa"
           onNew={abrirNova}
+          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+          isFilterActive={temFiltro || filtrosAbertosMobile}
         />
 
-        <div style={{ padding: '0 24px 16px', display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <TableFilterCollapse isOpen={filtrosAbertosMobile}>
           <div style={{ flex: '1 1 280px', maxWidth: '360px' }}>
             <Input
               label="Buscar"
@@ -189,13 +192,13 @@ export default function MultasPage() {
             <Input label="Até" type="date" value={ate} onChange={(e) => setAte(e.target.value)} />
           </div>
           {temFiltro && (
-            <div style={{ marginBottom: 'var(--space-4)' }}>
+            <div style={{ alignSelf: 'flex-end', marginBottom: '4px' }}>
               <Button variant="ghost" size="sm" onClick={limparFiltros}>
                 Limpar filtros
               </Button>
             </div>
           )}
-        </div>
+        </TableFilterCollapse>
 
         <Table>
           <thead>

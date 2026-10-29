@@ -15,9 +15,18 @@ type TableToolbarProps = {
   subtitle?: string
   newLabel?: string
   onNew?: () => void
+  onFilter?: () => void
+  isFilterActive?: boolean
 }
 
-export function TableToolbar({ title, subtitle, newLabel, onNew }: TableToolbarProps) {
+export function TableToolbar({
+  title,
+  subtitle,
+  newLabel,
+  onNew,
+  onFilter,
+  isFilterActive,
+}: TableToolbarProps) {
   return (
     <div className="table-toolbar">
       <div>
@@ -25,7 +34,12 @@ export function TableToolbar({ title, subtitle, newLabel, onNew }: TableToolbarP
         {subtitle && <p className="table-toolbar__subtitle">{subtitle}</p>}
       </div>
       <div className="table-toolbar__actions">
-        <Button variant="outline" size="sm">
+        <Button
+          variant={isFilterActive ? 'primary' : 'outline'}
+          size="sm"
+          onClick={onFilter}
+          title="Alternar filtros"
+        >
           <FilterIcon /> Filtrar
         </Button>
         {onNew && (
@@ -51,6 +65,20 @@ export function Pagination({ showing, total }: { showing: string; total: number 
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+export function TableFilterCollapse({
+  isOpen,
+  children,
+}: {
+  isOpen: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div className={`table-filter-collapse ${isOpen ? 'is-open' : ''}`}>
+      {children}
     </div>
   )
 }

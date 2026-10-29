@@ -4,6 +4,7 @@ import {
   Card,
   IdBadge,
   Table,
+  TableFilterCollapse,
   TableToolbar,
   Pagination,
 } from '../components/ui';
@@ -17,6 +18,7 @@ export default function AbastecimentoPage() {
   );
   const [modalAberto, setModalAberto] = useState(false);
   const [busca, setBusca] = useState('');
+  const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
@@ -142,14 +144,8 @@ export default function AbastecimentoPage() {
         </div>
       )}
 
-      {/* ── 4 Top KPI Cards ── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '16px',
-        }}
-      >
+      {/* ── 4 Top KPI Cards (2x2 no mobile) ── */}
+      <div className="kpi-grid">
         {/* Card 1: Gasto no mês */}
         <Card style={{ padding: '20px' }}>
           <div
@@ -437,41 +433,45 @@ export default function AbastecimentoPage() {
           subtitle={`${abastecimentosFiltrados.length} registros recentes`}
           newLabel="Registrar"
           onNew={() => setModalAberto(true)}
+          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+          isFilterActive={Boolean(busca) || filtrosAbertosMobile}
         />
 
         {/* Campo de busca e filtro rápido */}
-        <div style={{ padding: '0 24px 16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="Buscar por placa, motorista ou posto..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            style={{
-              padding: '8px 14px',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-border)',
-              fontSize: '13px',
-              maxWidth: '360px',
-              width: '100%',
-              outline: 'none',
-            }}
-          />
-          {busca && (
-            <button
-              onClick={() => setBusca('')}
+        <TableFilterCollapse isOpen={filtrosAbertosMobile}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', width: '100%', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              placeholder="Buscar por placa, motorista ou posto..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
               style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--color-primary)',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
+                padding: '8px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-border)',
+                fontSize: '13px',
+                maxWidth: '360px',
+                width: '100%',
+                outline: 'none',
               }}
-            >
-              Limpar busca
-            </button>
-          )}
-        </div>
+            />
+            {busca && (
+              <button
+                onClick={() => setBusca('')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--color-primary)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Limpar busca
+              </button>
+            )}
+          </div>
+        </TableFilterCollapse>
 
         <Table>
           <thead>
