@@ -2,7 +2,8 @@
  * Espelha a tabela `veiculos` do banco (ver docs/dicionario-de-dados.md).
  * Não adicionar campos que não existam na tabela.
  */
-export type StatusVeiculo = 'DISPONIVEL' | 'EM_USO' | 'MANUTENCAO' | 'RESERVADO';
+// Status controlado pelo backend (viagemService): RESERVADO ao criar viagem, EM_USO ao iniciar.
+export type StatusVeiculo = 'DISPONIVEL' | 'RESERVADO' | 'EM_USO' | 'MANUTENCAO';
 export type TipoFrota = 'ADMINISTRATIVA' | 'SVO';
 
 export interface Veiculo {
