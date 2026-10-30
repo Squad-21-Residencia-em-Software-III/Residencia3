@@ -32,11 +32,16 @@ export function ModalNovaViagem({
   const [finalidade, setFinalidade] = useState('');
   const [solicitanteNome, setSolicitanteNome] = useState('');
 
-  const [veiculoId, setVeiculoId] = useState<string>(
-    veiculos[0] ? String(veiculos[0].id) : '',
-  );
+  // Só recursos livres podem ser escalados; RESERVADO/DESIGNADO etc. são atribuídos pelo backend.
+  const veiculosDisponiveis = veiculos.filter((v) => v.status === 'DISPONIVEL');
+  const motoristasDisponiveis = motoristas.filter((m) => m.status === 'DISPONIVEL');
+
+  const [veiculoId, setVeiculoId] = useState<string>(() => {
+    const primeiro = veiculosDisponiveis.find((v) => v.tipo_frota === 'ADMINISTRATIVA');
+    return primeiro ? String(primeiro.id) : '';
+  });
   const [motoristaId, setMotoristaId] = useState<string>(
-    motoristas[0] ? String(motoristas[0].id) : '',
+    motoristasDisponiveis[0] ? String(motoristasDisponiveis[0].id) : '',
   );
   const [kmInicial, setKmInicial] = useState<string>('35000');
   const [dataHoraSaida, setDataHoraSaida] = useState<string>(agoraIso);
@@ -58,7 +63,7 @@ export function ModalNovaViagem({
     }
   };
 
-  const veiculosFiltrados = veiculos.filter(
+  const veiculosFiltrados = veiculosDisponiveis.filter(
     (v) => (tipoOperacao === 'ADMINISTRATIVA' ? v.tipo_frota === 'ADMINISTRATIVA' : v.tipo_frota === 'SVO'),
   );
 
@@ -76,15 +81,15 @@ export function ModalNovaViagem({
       return;
     }
 
-    const veic = veiculos.find((v) => String(v.id) === veiculoId);
+    const veic = veiculosDisponiveis.find((v) => String(v.id) === veiculoId);
     if (!veic) {
-      setErro('Selecione um veículo.');
+      setErro('Selecione um veículo disponível.');
       return;
     }
 
-    const mot = motoristas.find((m) => String(m.id) === motoristaId);
+    const mot = motoristasDisponiveis.find((m) => String(m.id) === motoristaId);
     if (!mot) {
-      setErro('Selecione um motorista.');
+      setErro('Selecione um motorista disponível.');
       return;
     }
 
@@ -131,10 +136,10 @@ export function ModalNovaViagem({
             onChange={(e: ChangeEvent<HTMLSelectElement>) => {
               const novoTipo = e.target.value as TipoOperacaoViagem;
               setTipoOperacao(novoTipo);
-              const primeiroCompativel = veiculos.find((v) =>
+              const primeiroCompativel = veiculosDisponiveis.find((v) =>
                 novoTipo === 'ADMINISTRATIVA' ? v.tipo_frota === 'ADMINISTRATIVA' : v.tipo_frota === 'SVO',
               );
-              if (primeiroCompativel) setVeiculoId(String(primeiroCompativel.id));
+              setVeiculoId(primeiroCompativel ? String(primeiroCompativel.id) : '');
             }}
           >
             <option value="ADMINISTRATIVA">Frota Administrativa (Institucional)</option>
@@ -205,6 +210,7 @@ export function ModalNovaViagem({
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setVeiculoId(e.target.value)}
             required
           >
+            {veiculosFiltrados.length === 0 && <option value="">Nenhum veículo disponível</option>}
             {veiculosFiltrados.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.modelo} ({v.placa})
@@ -218,7 +224,8 @@ export function ModalNovaViagem({
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setMotoristaId(e.target.value)}
             required
           >
-            {motoristas.map((m) => (
+            {motoristasDisponiveis.length === 0 && <option value="">Nenhum motorista disponível</option>}
+            {motoristasDisponiveis.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.nome} (CNH {m.categoria_cnh})
               </option>

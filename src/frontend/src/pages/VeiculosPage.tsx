@@ -16,9 +16,9 @@ import { ModalManutencoesVeiculo } from './veiculos/ModalManutencoesVeiculo';
 
 const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
   DISPONIVEL: { label: 'Disponível', tone: 'success' },
+  RESERVADO: { label: 'Reservado', tone: 'warning' },
   EM_USO: { label: 'Em Uso', tone: 'info' },
   MANUTENCAO: { label: 'Manutenção', tone: 'danger' },
-  RESERVADO: { label: 'Reservado', tone: 'warning' },
 };
 
 export default function VeiculosPage() {
@@ -55,6 +55,7 @@ export default function VeiculosPage() {
     return {
       total: veiculos.length,
       disponiveis: veiculos.filter((v) => v.status === 'DISPONIVEL').length,
+      reservados: veiculos.filter((v) => v.status === 'RESERVADO').length,
       emUso: veiculos.filter((v) => v.status === 'EM_USO').length,
       manutencao: veiculos.filter((v) => v.status === 'MANUTENCAO').length,
     };
@@ -159,6 +160,34 @@ export default function VeiculosPage() {
           </div>
           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
             Disponíveis {filtroStatus === 'DISPONIVEL' ? '• Ativo' : ''}
+          </div>
+        </Card>
+
+        <Card
+          onClick={() => setFiltroStatus(filtroStatus === 'RESERVADO' ? 'TODOS' : 'RESERVADO')}
+          style={{
+            padding: '16px 20px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            border:
+              filtroStatus === 'RESERVADO'
+                ? '2px solid var(--color-warning)'
+                : '1px solid var(--color-border)',
+            boxShadow: filtroStatus === 'RESERVADO' ? 'var(--shadow-sm)' : undefined,
+          }}
+        >
+          <div
+            style={{
+              fontSize: '24px',
+              fontWeight: 800,
+              color: 'var(--color-warning)',
+              fontFamily: 'var(--font-display)',
+            }}
+          >
+            {totais.reservados}
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+            Reservados {filtroStatus === 'RESERVADO' ? '• Ativo' : ''}
           </div>
         </Card>
 
@@ -268,8 +297,8 @@ export default function VeiculosPage() {
             {[
               { id: 'TODOS', label: 'Todos' },
               { id: 'DISPONIVEL', label: 'Disponível', cor: 'var(--color-success)' },
+              { id: 'RESERVADO', label: 'Reservado', cor: 'var(--color-warning)' },
               { id: 'EM_USO', label: 'Em Uso', cor: 'var(--color-primary)' },
-	      { id: 'RESERVADO', label: 'Reservado', cor: 'var(--color-warning)' },
               { id: 'MANUTENCAO', label: 'Manutenção', cor: 'var(--color-danger)' },
             ].map((st) => {
               const ativo = filtroStatus === st.id;

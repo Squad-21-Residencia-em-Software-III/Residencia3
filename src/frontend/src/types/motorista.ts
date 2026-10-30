@@ -3,7 +3,8 @@
  * `nome` NÃO é coluna de `motoristas`: vem de `usuarios.nome` via `usuario_id`.
  */
 export type TipoMotorista = 'FROTA' | 'SVO';
-export type StatusMotorista = 'DISPONIVEL'; // único valor conhecido (padrão do banco)
+// Status controlado pelo backend (viagemService): DESIGNADO ao criar viagem, EM_VIAGEM ao iniciar.
+export type StatusMotorista = 'DISPONIVEL' | 'DESIGNADO' | 'EM_VIAGEM' | 'AFASTADO' | 'INATIVO';
 
 export interface Motorista {
   id: number;
