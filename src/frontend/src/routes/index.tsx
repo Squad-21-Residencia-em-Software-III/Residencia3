@@ -1,11 +1,12 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
-import { AlertIcon, CalendarIcon, FuelIcon, GridIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
+import { AlertIcon, CalendarIcon, FuelIcon, GridIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
 import DashboardPage from '../pages/DashboardPage'
+import HomePage from '../pages/HomePage'
 import LoginPage from '../pages/LoginPage'
 import MotoristasPage from '../pages/MotoristasPage'
 import MultasPage from '../pages/MultasPage'
@@ -21,6 +22,7 @@ type NavItemComPerfil = NavItem & { perfis?: Perfil[] }
 
 /** `perfis` ausente = qualquer usuário logado pode ver. */
 export const navItems: NavItemComPerfil[] = [
+  { path: '/inicio', label: 'Início', icon: HomeIcon },
   { path: '/dashboard', label: 'Dashboard', icon: GridIcon },
   { path: '/agenda', label: 'Agenda', icon: CalendarIcon },
   { path: '/veiculos', label: 'Veículos', icon: TruckIcon },
@@ -59,7 +61,8 @@ export function AppRoutes() {
 
       <Route element={<RotaProtegida />}>
         <Route element={<LayoutRoute />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<Navigate to="/inicio" replace />} />
+          <Route path="/inicio" element={<HomePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/agenda" element={<AgendaPage />} />
           <Route path="/veiculos" element={<VeiculosPage />} />
