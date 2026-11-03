@@ -1,7 +1,8 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { LayoutDashboard, UserRoundCog } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
-import { AlertIcon, CalendarIcon, FuelIcon, GridIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
+import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
@@ -22,15 +23,22 @@ type NavItemComPerfil = NavItem & { perfis?: Perfil[] }
 
 /** `perfis` ausente = qualquer usuário logado pode ver. */
 export const navItems: NavItemComPerfil[] = [
-  { path: '/inicio', label: 'Início', icon: HomeIcon },
-  { path: '/dashboard', label: 'Dashboard', icon: GridIcon },
-  { path: '/agenda', label: 'Agenda', icon: CalendarIcon },
-  { path: '/veiculos', label: 'Veículos', icon: TruckIcon },
-  { path: '/abastecimento', label: 'Abastecimento', icon: FuelIcon },
-  { path: '/motoristas', label: 'Motoristas', icon: UsersIcon },
-  { path: '/multas', label: 'Multas', icon: AlertIcon },
-  { path: '/viagens', label: 'Viagens', icon: RouteIcon },
-  { path: '/usuarios', label: 'Usuários', icon: UsersIcon, perfis: [PERFIS.ADMINISTRADOR] },
+  // Visão Geral (Topo / F-Pattern)
+  { path: '/inicio', label: 'Início', icon: HomeIcon, section: 'Visão Geral' },
+  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Visão Geral' },
+
+  // Operação
+  { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação' },
+  { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação' },
+
+  // Frota
+  { path: '/veiculos', label: 'Veículos', icon: TruckIcon, section: 'Frota' },
+  { path: '/abastecimento', label: 'Abastecimento', icon: FuelIcon, section: 'Frota' },
+  { path: '/multas', label: 'Multas', icon: AlertIcon, section: 'Frota' },
+
+  // Pessoas
+  { path: '/motoristas', label: 'Motoristas', icon: UsersIcon, section: 'Pessoas' },
+  { path: '/usuarios', label: 'Usuários', icon: UserRoundCog, section: 'Pessoas', perfis: [PERFIS.ADMINISTRADOR] },
 ]
 
 function LayoutRoute() {

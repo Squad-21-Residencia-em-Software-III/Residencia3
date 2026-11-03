@@ -8,6 +8,9 @@ export type NavItem = {
   path: string
   label: string
   icon: ComponentType<{ size?: number }>
+  section?: string
+  badge?: number | string
+  badgeTone?: 'warning' | 'danger' | 'info' | 'neutral'
 }
 
 type AppLayoutProps = {
@@ -92,23 +95,51 @@ export function AppLayout({
           <ChevronLeftIcon size={12} />
         </button>
 
-        {!collapsed && <span className="sidebar__section">Menu</span>}
-
         <nav className="sidebar__nav" aria-label="Navegação principal">
-          {navItems.map(({ path, label, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              onClick={handleNavClick}
-              className={({ isActive }) =>
-                `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`.trim()
-              }
-              title={collapsed ? label : undefined}
-            >
-              <Icon size={20} />
-              {!collapsed && <span>{label}</span>}
-            </NavLink>
-          ))}
+          {navItems.reduce<ReactNode[]>((acc, item, index) => {
+            const prevSection = index > 0 ? navItems[index - 1].section : null
+            const isNewSection = item.section && item.section !== prevSection
+
+            if (isNewSection && !collapsed) {
+              acc.push(
+                <div key={`section-${item.section}`} className="sidebar__section-title">
+                  {item.section}
+                </div>
+              )
+            } else if (isNewSection && collapsed) {
+              acc.push(<div key={`section-divider-${item.section}`} className="sidebar__section-divider" />)
+            }
+
+            const { path, label, icon: Icon, badge, badgeTone } = item
+
+            acc.push(
+              <NavLink
+                key={path}
+                to={path}
+                onClick={handleNavClick}
+                className={({ isActive }) =>
+                  `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`.trim()
+                }
+                title={collapsed ? label : undefined}
+              >
+                <div className="sidebar__item-icon">
+                  <Icon size={18} />
+                </div>
+                {!collapsed && (
+                  <div className="sidebar__item-content">
+                    <span className="sidebar__item-label">{label}</span>
+                    {badge !== undefined && (
+                      <span className={`sidebar__item-badge sidebar__item-badge--${badgeTone ?? 'neutral'}`}>
+                        {badge}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </NavLink>
+            )
+
+            return acc
+          }, [])}
         </nav>
 
         <div className="sidebar__footer">
