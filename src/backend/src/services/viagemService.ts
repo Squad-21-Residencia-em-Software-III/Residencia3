@@ -3,6 +3,12 @@ import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { motoristaModel } from '../models/motoristaModel';
 import { veiculoModel } from '../models/veiculoModel';
+import {
+  periodoDaSolicitacao,
+  STATUS_MOTORISTA_BLOQUEADO,
+  STATUS_VEICULO_BLOQUEADO,
+  viagensConflitantes,
+} from './disponibilidadeService';
 
 interface CriarViagemInput {
   solicitacao_id: number;
@@ -13,25 +19,44 @@ interface CriarViagemInput {
 export const viagemService = {
   async criar(dados: CriarViagemInput, autorId: number) {
     return db.transaction(async (trx) => {
-      // 1. Valida veiculo
-      const veiculo = await veiculoModel.buscarPorId(dados.veiculo_id, trx);
+      // 1. Busca a solicitação para obter o período da viagem
+      const solicitacao = await trx('solicitacoes_viagem').where({ id: dados.solicitacao_id }).first();
+      if (!solicitacao) {
+        throw new AppError('Solicitação de viagem não encontrada', 404);
+      }
+      const { inicio, fim } = periodoDaSolicitacao(solicitacao);
+
+      // 2. Valida veiculo (bloqueia a linha para evitar agendamentos simultâneos)
+      const veiculo = await trx('veiculos').where({ id: dados.veiculo_id }).forUpdate().first();
       if (!veiculo) {
         throw new AppError('Veículo não encontrado', 404);
       }
-      if (veiculo.status !== 'DISPONIVEL') {
+      if (STATUS_VEICULO_BLOQUEADO.includes(veiculo.status)) {
         throw new AppError('O veículo não está disponível', 400);
       }
+      const conflitoVeiculo = await viagensConflitantes(trx, inicio, fim)
+        .where('vf.veiculo_id', dados.veiculo_id)
+        .first('vf.id');
+      if (conflitoVeiculo) {
+        throw new AppError('O veículo já possui viagem no período solicitado', 409);
+      }
 
-      // 2. Valida motorista
-      const motorista = await motoristaModel.buscarPorId(dados.motorista_id, trx);
+      // 3. Valida motorista (bloqueia a linha para evitar agendamentos simultâneos)
+      const motorista = await trx('motoristas').where({ id: dados.motorista_id }).forUpdate().first();
       if (!motorista) {
         throw new AppError('Motorista não encontrado', 404);
       }
-      if (motorista.status !== 'DISPONIVEL') {
+      if (STATUS_MOTORISTA_BLOQUEADO.includes(motorista.status)) {
         throw new AppError('O motorista não está disponível', 400);
       }
+      const conflitoMotorista = await viagensConflitantes(trx, inicio, fim)
+        .where('vf.motorista_id', dados.motorista_id)
+        .first('vf.id');
+      if (conflitoMotorista) {
+        throw new AppError('O motorista já possui viagem no período solicitado', 409);
+      }
 
-      // 3. Cria o registro da viagem
+      // 4. Cria o registro da viagem
       const [viagem] = await trx('viagens_frota')
         .insert({
           solicitacao_id: dados.solicitacao_id,
@@ -41,11 +66,15 @@ export const viagemService = {
         })
         .returning('*');
 
-      // 4. Atualiza status do veiculo e motorista
-      await veiculoModel.atualizarStatus(dados.veiculo_id, 'RESERVADO', trx);
-      await motoristaModel.atualizarStatus(dados.motorista_id, 'DESIGNADO', trx);
+      // 5. Atualiza status do veiculo e motorista sem sobrescrever EM_USO/EM_VIAGEM
+      if (veiculo.status === 'DISPONIVEL') {
+        await veiculoModel.atualizarStatus(dados.veiculo_id, 'RESERVADO', trx);
+      }
+      if (motorista.status === 'DISPONIVEL') {
+        await motoristaModel.atualizarStatus(dados.motorista_id, 'DESIGNADO', trx);
+      }
 
-      // 5. Registra auditoria
+      // 6. Registra auditoria
       await auditoriaModel.registrar(
         {
           usuario_id: autorId,

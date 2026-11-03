@@ -23,7 +23,10 @@ vi.mock('../config/database', () => ({
   db: mockDb,
 }));
 
-import { disponibilidadeService } from '../services/disponibilidadeService';
+import {
+  disponibilidadeService,
+  periodoDaSolicitacao,
+} from '../services/disponibilidadeService';
 
 describe('disponibilidadeService.consultar', () => {
   const solicitacao = {
@@ -40,6 +43,14 @@ describe('disponibilidadeService.consultar', () => {
     consultas.push({ tabela, metodo, argumentos });
   };
 
+  const mockSolicitacao = (dados: object | undefined) => {
+    mockDb.mockImplementationOnce(() => ({
+      where: () => ({
+        first: async () => dados,
+      }),
+    }));
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     consultas.length = 0;
@@ -53,7 +64,7 @@ describe('disponibilidadeService.consultar', () => {
         'whereNotIn',
         'whereIn',
         'whereRaw',
-        'from',
+        'whereNotExists',
         'join',
       ]) {
         query[metodo] = (...argumentos: unknown[]) => {
@@ -61,29 +72,6 @@ describe('disponibilidadeService.consultar', () => {
           return query;
         };
       }
-
-      query.whereNotExists = (callback: Function) => {
-        registrar(tabela, 'whereNotExists', []);
-
-        const subquery: Record<string, any> = {};
-
-        for (const metodo of [
-          'select',
-          'from',
-          'join',
-          'whereRaw',
-          'whereIn',
-          'where',
-        ]) {
-          subquery[metodo] = (...argumentos: unknown[]) => {
-            registrar(tabela, metodo, argumentos);
-            return subquery;
-          };
-        }
-
-        callback.call(subquery);
-        return query;
-      };
 
       query.first = vi.fn().mockResolvedValue(solicitacao);
       query.orderBy = vi.fn().mockResolvedValue([]);
@@ -103,11 +91,7 @@ describe('disponibilidadeService.consultar', () => {
   });
 
   it('deve rejeitar solicitação inexistente', async () => {
-    mockDb.mockImplementationOnce(() => ({
-      where: () => ({
-        first: async () => undefined,
-      }),
-    }));
+    mockSolicitacao(undefined);
 
     await expect(
       disponibilidadeService.consultar(999)
@@ -116,30 +100,26 @@ describe('disponibilidadeService.consultar', () => {
     });
   });
 
-  it('deve rejeitar solicitação sem data de chegada', async () => {
-    mockDb.mockImplementationOnce(() => ({
-      where: () => ({
-        first: async () => ({
-          ...solicitacao,
-          data_chegada_desejada: null,
-        }),
-      }),
-    }));
+  it('deve considerar o fim do dia da saída quando não há data de chegada', async () => {
+    mockSolicitacao({
+      ...solicitacao,
+      data_saida_desejada: '2026-11-10T08:00:00',
+      data_chegada_desejada: null,
+    });
 
-    await expect(
-      disponibilidadeService.consultar(1)
-    ).rejects.toBeInstanceOf(AppError);
+    const resultado = await disponibilidadeService.consultar(1);
+
+    expect(resultado.periodo).toEqual({
+      inicio: new Date('2026-11-10T08:00:00'),
+      fim: new Date('2026-11-11T00:00:00'),
+    });
   });
 
   it('deve rejeitar período inválido', async () => {
-    mockDb.mockImplementationOnce(() => ({
-      where: () => ({
-        first: async () => ({
-          ...solicitacao,
-          data_chegada_desejada: '2026-11-09T17:00:00-03:00',
-        }),
-      }),
-    }));
+    mockSolicitacao({
+      ...solicitacao,
+      data_chegada_desejada: '2026-11-09T17:00:00-03:00',
+    });
 
     await expect(
       disponibilidadeService.consultar(1)
@@ -164,44 +144,53 @@ describe('disponibilidadeService.consultar', () => {
     });
   });
 
-  it('deve verificar conflitos de veículos com viagens ativas', async () => {
+  it('deve bloquear por status apenas veículos em manutenção', async () => {
     await disponibilidadeService.consultar(1);
 
-    const registros = consultas.filter(
-      (item) => item.tabela === 'veiculos as v'
+    expect(consultas).toContainEqual({
+      tabela: 'veiculos as v',
+      metodo: 'whereNotIn',
+      argumentos: ['v.status', ['MANUTENCAO']],
+    });
+  });
+
+  it('deve bloquear por status apenas motoristas inativos ou afastados', async () => {
+    await disponibilidadeService.consultar(1);
+
+    expect(consultas).toContainEqual({
+      tabela: 'motoristas as m',
+      metodo: 'whereNotIn',
+      argumentos: ['m.status', ['INATIVO', 'AFASTADO']],
+    });
+  });
+
+  it('deve verificar conflitos de veículos e motoristas com viagens ativas', async () => {
+    await disponibilidadeService.consultar(1);
+
+    for (const tabela of ['veiculos as v', 'motoristas as m']) {
+      expect(consultas).toContainEqual(
+        expect.objectContaining({ tabela, metodo: 'whereNotExists' })
+      );
+    }
+
+    const subconsultas = consultas.filter(
+      (item) => item.tabela === 'viagens_frota as vf'
     );
 
-    expect(registros).toContainEqual({
-      tabela: 'veiculos as v',
+    expect(subconsultas).toContainEqual({
+      tabela: 'viagens_frota as vf',
       metodo: 'whereRaw',
       argumentos: ['vf.veiculo_id = v.id'],
     });
 
-    expect(registros).toContainEqual({
-      tabela: 'veiculos as v',
-      metodo: 'whereIn',
-      argumentos: [
-        'vf.status',
-        ['AGENDADA', 'EM_ANDAMENTO'],
-      ],
-    });
-  });
-
-  it('deve verificar conflitos de motoristas com viagens ativas', async () => {
-    await disponibilidadeService.consultar(1);
-
-    const registros = consultas.filter(
-      (item) => item.tabela === 'motoristas as m'
-    );
-
-    expect(registros).toContainEqual({
-      tabela: 'motoristas as m',
+    expect(subconsultas).toContainEqual({
+      tabela: 'viagens_frota as vf',
       metodo: 'whereRaw',
       argumentos: ['vf.motorista_id = m.id'],
     });
 
-    expect(registros).toContainEqual({
-      tabela: 'motoristas as m',
+    expect(subconsultas).toContainEqual({
+      tabela: 'viagens_frota as vf',
       metodo: 'whereIn',
       argumentos: [
         'vf.status',
@@ -213,31 +202,28 @@ describe('disponibilidadeService.consultar', () => {
   it('deve verificar sobreposição dos períodos', async () => {
     await disponibilidadeService.consultar(1);
 
-    for (const tabela of ['veiculos as v', 'motoristas as m']) {
-      const registros = consultas.filter(
-        (item) => item.tabela === tabela
-      );
+    const subconsultas = consultas.filter(
+      (item) => item.tabela === 'viagens_frota as vf'
+    );
 
-      expect(registros).toContainEqual({
-        tabela,
-        metodo: 'where',
-        argumentos: [
-          'sv.data_saida_desejada',
-          '<',
-          new Date('2026-11-10T17:00:00-03:00'),
-        ],
-      });
+    expect(subconsultas).toContainEqual({
+      tabela: 'viagens_frota as vf',
+      metodo: 'where',
+      argumentos: [
+        'sv.data_saida_desejada',
+        '<',
+        new Date('2026-11-10T17:00:00-03:00'),
+      ],
+    });
 
-      expect(registros).toContainEqual({
-        tabela,
-        metodo: 'where',
-        argumentos: [
-          'sv.data_chegada_desejada',
-          '>',
-          new Date('2026-11-10T08:00:00-03:00'),
-        ],
-      });
-    }
+    expect(subconsultas).toContainEqual({
+      tabela: 'viagens_frota as vf',
+      metodo: 'whereRaw',
+      argumentos: [
+        expect.stringContaining('COALESCE(sv.data_chegada_desejada'),
+        [new Date('2026-11-10T08:00:00-03:00')],
+      ],
+    });
   });
 
   it('deve validar a CNH até o dia de chegada', async () => {
@@ -252,5 +238,37 @@ describe('disponibilidadeService.consultar', () => {
         '2026-11-10',
       ],
     });
+  });
+});
+
+describe('periodoDaSolicitacao', () => {
+  it('deve usar a data de chegada quando informada', () => {
+    expect(
+      periodoDaSolicitacao({
+        data_saida_desejada: '2026-11-10T08:00:00',
+        data_chegada_desejada: '2026-11-12T10:00:00',
+      })
+    ).toEqual({
+      inicio: new Date('2026-11-10T08:00:00'),
+      fim: new Date('2026-11-12T10:00:00'),
+    });
+  });
+
+  it('deve ir até o fim do dia da saída quando não há chegada', () => {
+    expect(
+      periodoDaSolicitacao({
+        data_saida_desejada: '2026-11-10T23:30:00',
+        data_chegada_desejada: null,
+      }).fim
+    ).toEqual(new Date('2026-11-11T00:00:00'));
+  });
+
+  it('deve rejeitar chegada igual à saída', () => {
+    expect(() =>
+      periodoDaSolicitacao({
+        data_saida_desejada: '2026-11-10T08:00:00',
+        data_chegada_desejada: '2026-11-10T08:00:00',
+      })
+    ).toThrow(AppError);
   });
 });

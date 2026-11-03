@@ -1,6 +1,67 @@
 
+import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
+
+// Status de viagem que ocupam o veículo e o motorista
+const STATUS_VIAGEM_ATIVA = ['AGENDADA', 'EM_ANDAMENTO'];
+
+// Status que deixam o recurso indisponível em qualquer período
+export const STATUS_VEICULO_BLOQUEADO = ['MANUTENCAO'];
+export const STATUS_MOTORISTA_BLOQUEADO = ['INATIVO', 'AFASTADO'];
+
+// Sem data de chegada, a viagem ocupa até o fim do dia da saída
+const FIM_VIAGEM_SQL =
+  "COALESCE(sv.data_chegada_desejada, date_trunc('day', sv.data_saida_desejada) + interval '1 day')";
+
+interface SolicitacaoComPeriodo {
+  data_saida_desejada: Date | string;
+  data_chegada_desejada?: Date | string | null;
+}
+
+// Calcula o período ocupado por uma solicitação
+export function periodoDaSolicitacao(solicitacao: SolicitacaoComPeriodo) {
+  const inicio = new Date(solicitacao.data_saida_desejada);
+
+  // Mesma regra de FIM_VIAGEM_SQL: sem chegada, vai até o fim do dia da saída
+  const fim = solicitacao.data_chegada_desejada
+    ? new Date(solicitacao.data_chegada_desejada)
+    : new Date(
+        inicio.getFullYear(),
+        inicio.getMonth(),
+        inicio.getDate() + 1
+      );
+
+  if (
+    Number.isNaN(inicio.getTime()) ||
+    Number.isNaN(fim.getTime()) ||
+    fim.getTime() <= inicio.getTime()
+  ) {
+    throw new AppError(
+      'Período da solicitação inválido',
+      400
+    );
+  }
+
+  return { inicio, fim };
+}
+
+// Viagens agendadas ou em andamento que se sobrepõem ao período
+export function viagensConflitantes(
+  conexao: Knex | Knex.Transaction,
+  inicio: Date,
+  fim: Date
+) {
+  return conexao('viagens_frota as vf')
+    .join(
+      'solicitacoes_viagem as sv',
+      'sv.id',
+      'vf.solicitacao_id'
+    )
+    .whereIn('vf.status', STATUS_VIAGEM_ATIVA)
+    .where('sv.data_saida_desejada', '<', fim)
+    .whereRaw(`${FIM_VIAGEM_SQL} > ?`, [inicio]);
+}
 
 export const disponibilidadeService = {
   async consultar(solicitacaoId: number) {
@@ -21,36 +82,21 @@ export const disponibilidadeService = {
       );
     }
 
-    // 3. Verificar se existe data de chegada
-    if (!solicitacao.data_chegada_desejada) {
-      throw new AppError(
-        'A solicitação precisa ter uma data de chegada para consultar a disponibilidade',
-        400
-      );
-    }
+    // 3. Calcular e validar o período solicitado
+    const { inicio, fim } = periodoDaSolicitacao(solicitacao);
 
-    // 4. Validar o período solicitado
-    const inicio = new Date(solicitacao.data_saida_desejada);
-    const fim = new Date(solicitacao.data_chegada_desejada);
-
-    if (
-      Number.isNaN(inicio.getTime()) ||
-      Number.isNaN(fim.getTime()) ||
-      fim.getTime() <= inicio.getTime()
-    ) {
-      throw new AppError(
-        'Período da solicitação inválido',
-        400
-      );
-    }
-
-    // Considerar a data de chegada no horário de Brasília
+    // Considerar o último dia da viagem no horário de Brasília
     const partesData = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Sao_Paulo',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).formatToParts(fim);
+    }).formatToParts(
+      new Date(
+        solicitacao.data_chegada_desejada ??
+          solicitacao.data_saida_desejada
+      )
+    );
 
     const ano = partesData.find(
       (parte) => parte.type === 'year'
@@ -66,7 +112,7 @@ export const disponibilidadeService = {
 
     const dataFimBrasil = `${ano}-${mes}-${dia}`;
 
-    // 5. Consultar veículos disponíveis
+    // 4. Consultar veículos disponíveis no período
     const veiculosDisponiveis = await db('veiculos as v')
       .select(
         'v.id',
@@ -76,29 +122,15 @@ export const disponibilidadeService = {
         'v.status'
       )
       .where('v.tipo_frota', 'ADMINISTRATIVA')
-      .whereNotIn('v.status', [
-        'MANUTENCAO',
-        'EM_USO',
-      ])
-      .whereNotExists(function () {
-        this.select(db.raw('1'))
-          .from('viagens_frota as vf')
-          .join(
-            'solicitacoes_viagem as sv',
-            'sv.id',
-            'vf.solicitacao_id'
-          )
+      .whereNotIn('v.status', STATUS_VEICULO_BLOQUEADO)
+      .whereNotExists(
+        viagensConflitantes(db, inicio, fim)
+          .select(db.raw('1'))
           .whereRaw('vf.veiculo_id = v.id')
-          .whereIn('vf.status', [
-            'AGENDADA',
-            'EM_ANDAMENTO',
-          ])
-          .where('sv.data_saida_desejada', '<', fim)
-          .where('sv.data_chegada_desejada', '>', inicio);
-      })
+      )
       .orderBy('v.id', 'asc');
 
-    // 6. Consultar motoristas disponíveis
+    // 5. Consultar motoristas disponíveis no período
     const motoristasDisponiveis = await db('motoristas as m')
       .select(
         'm.id',
@@ -108,31 +140,16 @@ export const disponibilidadeService = {
         'm.status'
       )
       .where('m.tipo_motorista', 'FROTA')
-      .whereNotIn('m.status', [
-        'INATIVO',
-        'AFASTADO',
-        'EM_VIAGEM',
-      ])
+      .whereNotIn('m.status', STATUS_MOTORISTA_BLOQUEADO)
       .where('m.validade_cnh', '>=', dataFimBrasil)
-      .whereNotExists(function () {
-        this.select(db.raw('1'))
-          .from('viagens_frota as vf')
-          .join(
-            'solicitacoes_viagem as sv',
-            'sv.id',
-            'vf.solicitacao_id'
-          )
+      .whereNotExists(
+        viagensConflitantes(db, inicio, fim)
+          .select(db.raw('1'))
           .whereRaw('vf.motorista_id = m.id')
-          .whereIn('vf.status', [
-            'AGENDADA',
-            'EM_ANDAMENTO',
-          ])
-          .where('sv.data_saida_desejada', '<', fim)
-          .where('sv.data_chegada_desejada', '>', inicio);
-      })
+      )
       .orderBy('m.id', 'asc');
 
-    // 7. Retornar os recursos disponíveis
+    // 6. Retornar os recursos disponíveis
     return {
       solicitacao_id: solicitacao.id,
       periodo: {
