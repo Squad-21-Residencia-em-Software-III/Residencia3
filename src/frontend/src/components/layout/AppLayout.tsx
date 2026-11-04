@@ -55,7 +55,7 @@ export function AppLayout({
   }
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${collapsed ? 'app-layout--collapsed' : 'app-layout--expanded'}`}>
       {/* Backdrop para fechar o menu ao clicar fora no mobile */}
       {mobileOpen && (
         <div

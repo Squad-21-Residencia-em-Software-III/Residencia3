@@ -40,6 +40,7 @@
   background: var(--badge-bg);
   color: var(--badge-color);
   box-shadow: inset 0 0 0 1px var(--badge-ring);
+  white-space: nowrap;
 }
 .badge__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--badge-color); }
 .badge--success { --badge-bg: var(--color-success-bg); --badge-color: var(--color-success); --badge-ring: var(--color-success-ring); }
@@ -166,6 +167,28 @@
 .table td {
   padding: 12px 14px;
   vertical-align: middle;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Utilitários de tabela */
+.table-col--compact {
+  width: 1%;
+  white-space: nowrap;
+}
+.table-cell--truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Largura dinâmica da coluna de Origem/Destino de acordo com a Sidebar */
+.viagem-trajeto-col {
+  min-width: 160px;
+  max-width: 220px;
+}
+.app-layout--collapsed .viagem-trajeto-col {
+  max-width: 320px;
 }
 .table th:first-child,
 .table td:first-child {
