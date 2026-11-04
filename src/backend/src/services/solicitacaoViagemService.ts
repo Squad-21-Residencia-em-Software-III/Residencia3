@@ -63,4 +63,75 @@ export const solicitacaoViagemService = {
       return solicitacao;
     });
   },
+
+  async aprovar(
+    id: number,
+    autorId: number
+  ): Promise<SolicitacaoViagem> {
+    return analisar(id, 'APROVADA', autorId);
+  },
+
+  async recusar(
+    id: number,
+    autorId: number,
+    motivo?: string
+  ): Promise<SolicitacaoViagem> {
+    return analisar(id, 'RECUSADA', autorId, motivo);
+  },
 };
+
+// Aprova ou recusa uma solicitação pendente
+async function analisar(
+  id: number,
+  novoStatus: 'APROVADA' | 'RECUSADA',
+  autorId: number,
+  motivo?: string
+): Promise<SolicitacaoViagem> {
+  return db.transaction(async (trx) => {
+    const solicitacao =
+      await solicitacaoViagemModel.buscarParaAtualizar(id, trx);
+
+    if (!solicitacao) {
+      throw new AppError(
+        'Solicitação de viagem não encontrada',
+        404
+      );
+    }
+
+    if (solicitacao.status !== 'PENDENTE_APROVACAO') {
+      throw new AppError(
+        'Apenas solicitações pendentes podem ser aprovadas ou recusadas',
+        400
+      );
+    }
+
+    const saidaJaPassou =
+      new Date(solicitacao.data_saida_desejada).getTime() <= Date.now();
+
+    if (novoStatus === 'APROVADA' && saidaJaPassou) {
+      throw new AppError(
+        'Não é possível aprovar: a data de saída já passou',
+        400
+      );
+    }
+
+    const atualizada =
+      await solicitacaoViagemModel.atualizarStatus(id, novoStatus, trx);
+
+    // O motivo da recusa fica registrado na auditoria
+    const acao = novoStatus === 'APROVADA'
+      ? `APROVOU_SOLICITACAO_VIAGEM id=${id}`
+      : `RECUSOU_SOLICITACAO_VIAGEM id=${id}${motivo ? ` motivo="${motivo}"` : ''}`;
+
+    await auditoriaModel.registrar(
+      {
+        usuario_id: autorId,
+        acao,
+        modulo: MODULOS_AUDITORIA.SOLICITACOES_VIAGEM,
+      },
+      trx
+    );
+
+    return atualizada;
+  });
+}

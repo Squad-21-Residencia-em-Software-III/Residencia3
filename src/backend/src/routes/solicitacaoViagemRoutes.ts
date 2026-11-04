@@ -24,3 +24,16 @@ solicitacaoViagemRoutes.get(
   autorizar(PERFIS.GESTOR_FROTA),
   disponibilidadeController.consultar
 );
+
+// Aprova ou recusa uma solicitação pendente
+solicitacaoViagemRoutes.patch(
+  '/:id/aprovar',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  solicitacaoViagemController.aprovar
+);
+
+solicitacaoViagemRoutes.patch(
+  '/:id/recusar',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  solicitacaoViagemController.recusar
+);

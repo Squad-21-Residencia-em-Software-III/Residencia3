@@ -29,4 +29,30 @@ export const solicitacaoViagemModel = {
 
     return solicitacao;
   },
+
+  // Busca e bloqueia a linha para evitar análises simultâneas
+  async buscarParaAtualizar(
+    id: number,
+    trx: Knex.Transaction
+  ): Promise<SolicitacaoViagem | undefined> {
+    return trx('solicitacoes_viagem')
+      .where({ id })
+      .forUpdate()
+      .first();
+  },
+
+  async atualizarStatus(
+    id: number,
+    status: string,
+    trx?: Knex.Transaction
+  ): Promise<SolicitacaoViagem> {
+    const conexao = trx || db;
+
+    const [solicitacao] = await conexao('solicitacoes_viagem')
+      .where({ id })
+      .update({ status })
+      .returning('*');
+
+    return solicitacao;
+  },
 };
