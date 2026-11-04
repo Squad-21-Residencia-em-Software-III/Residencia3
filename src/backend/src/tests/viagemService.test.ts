@@ -283,7 +283,10 @@ describe('viagemService.criar (administrativa)', () => {
       mockTrx
     );
     // solicitacoes_viagem segue APROVADA durante a viagem
-    expect(ref.estado.updates.some((u) => u.tabela === 'solicitacoes_viagem')).toBe(false);
+      expect(ref.estado.updates).toContainEqual({
+        tabela: 'solicitacoes_viagem',
+        valores: { status: 'AGENDADA' },
+      });
   });
 
   it('não deve sobrescrever o status de recursos em outra viagem em andamento', async () => {
@@ -410,7 +413,11 @@ describe('viagemService.iniciarViagem', () => {
 
     expect(ref.estado.updates).toContainEqual({
       tabela: 'ordens_svo',
-      valores: { status: 'EM_DESLOCAMENTO', km_inicial: 1000 },
+      valores: expect.objectContaining({
+        status: 'EM_DESLOCAMENTO',
+        km_inicial: 1000,
+        data_hora_saida: expect.any(Date),
+      }),
     });
   });
 });
@@ -434,6 +441,10 @@ describe('viagemService.finalizarViagem', () => {
     expect(ref.estado.updates).toContainEqual({
       tabela: 'viagens_frota',
       valores: expect.objectContaining({ status: 'CONCLUIDA', km_final: 1050 }),
+    });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_viagem',
+      valores: { status: 'CONCLUIDA' },
     });
     expect(ref.estado.updates).toContainEqual({
       tabela: 'veiculos',
@@ -487,7 +498,10 @@ describe('viagemService.cancelarViagem', () => {
     await viagemService.cancelarViagem('ADMINISTRATIVA', 5, gestorFrota);
 
     expect(ref.estado.updates).toContainEqual({ tabela: 'viagens_frota', valores: { status: 'CANCELADA' } });
-    expect(ref.estado.updates.some((u) => u.tabela === 'solicitacoes_viagem')).toBe(false);
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_viagem',
+      valores: { status: 'APROVADA' },
+    });
     expect(veiculoModel.atualizarStatus).toHaveBeenCalledWith(10, 'DISPONIVEL', mockTrx);
     expect(motoristaModel.atualizarStatus).toHaveBeenCalledWith(20, 'DISPONIVEL', mockTrx);
   });

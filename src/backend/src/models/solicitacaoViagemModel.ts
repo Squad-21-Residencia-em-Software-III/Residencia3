@@ -1,6 +1,13 @@
-
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+
+export type StatusSolicitacaoViagem =
+  | 'PENDENTE_APROVACAO'
+  | 'APROVADA'
+  | 'AGENDADA'
+  | 'CONCLUIDA'
+  | 'RECUSADA'
+  | 'CANCELADA';
 
 export interface NovaSolicitacaoViagem {
   solicitante_id: number;
@@ -13,7 +20,8 @@ export interface NovaSolicitacaoViagem {
 
 export interface SolicitacaoViagem extends NovaSolicitacaoViagem {
   id: number;
-  status: string;
+  status: StatusSolicitacaoViagem;
+  motivo_recusa?: string | null;
 }
 
 export const solicitacaoViagemModel = {
@@ -43,14 +51,22 @@ export const solicitacaoViagemModel = {
 
   async atualizarStatus(
     id: number,
-    status: string,
-    trx?: Knex.Transaction
+    status: StatusSolicitacaoViagem,
+    trx?: Knex.Transaction,
+    motivoRecusa?: string | null
   ): Promise<SolicitacaoViagem> {
     const conexao = trx || db;
+    const dadosAtualizacao: { status: StatusSolicitacaoViagem; motivo_recusa?: string | null } = {
+      status,
+    };
+
+    if (motivoRecusa !== undefined) {
+      dadosAtualizacao.motivo_recusa = motivoRecusa;
+    }
 
     const [solicitacao] = await conexao('solicitacoes_viagem')
       .where({ id })
-      .update({ status })
+      .update(dadosAtualizacao)
       .returning('*');
 
     return solicitacao;
