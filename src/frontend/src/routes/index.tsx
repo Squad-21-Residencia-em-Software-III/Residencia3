@@ -7,11 +7,13 @@ import { useAuth } from '../contexts/AuthContext'
 import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
 import DashboardPage from '../pages/DashboardPage'
+import ForbiddenPage from '../pages/ForbiddenPage'
 import HomePage from '../pages/HomePage'
 import LoginPage from '../pages/LoginPage'
 import MotoristasPage from '../pages/MotoristasPage'
 import MultasPage from '../pages/MultasPage'
 import NotFoundPage from '../pages/NotFoundPage'
+import ServerErrorPage from '../pages/ServerErrorPage'
 import UsuariosPage from '../pages/UsuariosPage'
 import VeiculosPage from '../pages/VeiculosPage'
 import ViagensPage from '../pages/ViagensPage'
@@ -67,6 +69,11 @@ export function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
       </Route>
 
+      {/* Rotas de demonstração direta das páginas de erro */}
+      <Route path="/404" element={<NotFoundPage />} />
+      <Route path="/500" element={<ServerErrorPage />} />
+      <Route path="/403" element={<ForbiddenPage />} />
+
       <Route element={<RotaProtegida />}>
         <Route element={<LayoutRoute />}>
           <Route index element={<Navigate to="/inicio" replace />} />
@@ -83,10 +90,11 @@ export function AppRoutes() {
           <Route element={<RotaPorPerfil perfis={[PERFIS.ADMINISTRADOR]} />}>
             <Route path="/usuarios" element={<UsuariosPage />} />
           </Route>
-
-          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
+
+      {/* Catch-all global para páginas inexistentes fora do layout */}
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }
