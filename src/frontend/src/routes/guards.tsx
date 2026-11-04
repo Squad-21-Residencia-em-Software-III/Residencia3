@@ -20,10 +20,10 @@ export function RotaProtegida() {
   return <Outlet />
 }
 
-/** Só deixa passar quem tem um dos perfis. Os demais voltam ao dashboard. */
+/** Só deixa passar quem tem um dos perfis. Se não tiver permissão, redireciona para a página 403. */
 export function RotaPorPerfil({ perfis }: { perfis: Perfil[] }) {
   const { temPerfil } = useAuth()
-  return temPerfil(...perfis) ? <Outlet /> : <Navigate to="/dashboard" replace />
+  return temPerfil(...perfis) ? <Outlet /> : <Navigate to="/403" replace />
 }
 
 /** Rotas públicas (login): quem já está logado vai direto ao dashboard. */
