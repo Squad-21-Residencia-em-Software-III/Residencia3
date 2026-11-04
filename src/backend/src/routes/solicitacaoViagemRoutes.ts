@@ -11,6 +11,16 @@ export const solicitacaoViagemRoutes = Router();
 // Exige autenticação para acessar as rotas
 solicitacaoViagemRoutes.use(autenticar);
 
+// Perfis que analisam solicitações; o Gestor SVO apenas as da unidade SVO a que está associado
+const ANALISTAS = [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO];
+
+// Lista as solicitações encaminhadas ao usuário, conforme a unidade
+solicitacaoViagemRoutes.get(
+  '/',
+  autorizar(...ANALISTAS),
+  solicitacaoViagemController.listar
+);
+
 // Registra uma nova solicitação de viagem
 solicitacaoViagemRoutes.post(
   '/',
@@ -28,12 +38,12 @@ solicitacaoViagemRoutes.get(
 // Aprova ou recusa uma solicitação pendente
 solicitacaoViagemRoutes.patch(
   '/:id/aprovar',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  autorizar(...ANALISTAS),
   solicitacaoViagemController.aprovar
 );
 
 solicitacaoViagemRoutes.patch(
   '/:id/recusar',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  autorizar(...ANALISTAS),
   solicitacaoViagemController.recusar
 );
