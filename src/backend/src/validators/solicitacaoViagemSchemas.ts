@@ -17,6 +17,11 @@ export const criarSolicitacaoViagemSchema = z.object({
   }).nullish(),
 });
 
+export const recusarSolicitacaoViagemSchema = z.object({
+  // Limitado para caber no campo de ação da auditoria (255 caracteres)
+  motivo: z.string().trim().min(1, 'Informe o motivo').max(200, 'O motivo deve ter no máximo 200 caracteres').optional(),
+});
+
 export type CriarSolicitacaoViagemInput = z.infer<
   typeof criarSolicitacaoViagemSchema
 >;

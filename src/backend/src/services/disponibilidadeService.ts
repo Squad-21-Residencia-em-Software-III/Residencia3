@@ -46,6 +46,35 @@ export function periodoDaSolicitacao(solicitacao: SolicitacaoComPeriodo) {
   return { inicio, fim };
 }
 
+// Último dia da viagem (AAAA-MM-DD) no horário de Brasília, usado na validade da CNH
+export function ultimoDiaDaSolicitacao(solicitacao: SolicitacaoComPeriodo): string {
+  const partesData = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(
+    new Date(
+      solicitacao.data_chegada_desejada ??
+        solicitacao.data_saida_desejada
+    )
+  );
+
+  const ano = partesData.find(
+    (parte) => parte.type === 'year'
+  )?.value;
+
+  const mes = partesData.find(
+    (parte) => parte.type === 'month'
+  )?.value;
+
+  const dia = partesData.find(
+    (parte) => parte.type === 'day'
+  )?.value;
+
+  return `${ano}-${mes}-${dia}`;
+}
+
 // Viagens agendadas ou em andamento que se sobrepõem ao período
 export function viagensConflitantes(
   conexao: Knex | Knex.Transaction,
@@ -84,33 +113,7 @@ export const disponibilidadeService = {
 
     // 3. Calcular e validar o período solicitado
     const { inicio, fim } = periodoDaSolicitacao(solicitacao);
-
-    // Considerar o último dia da viagem no horário de Brasília
-    const partesData = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Sao_Paulo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(
-      new Date(
-        solicitacao.data_chegada_desejada ??
-          solicitacao.data_saida_desejada
-      )
-    );
-
-    const ano = partesData.find(
-      (parte) => parte.type === 'year'
-    )?.value;
-
-    const mes = partesData.find(
-      (parte) => parte.type === 'month'
-    )?.value;
-
-    const dia = partesData.find(
-      (parte) => parte.type === 'day'
-    )?.value;
-
-    const dataFimBrasil = `${ano}-${mes}-${dia}`;
+    const dataFimBrasil = ultimoDiaDaSolicitacao(solicitacao);
 
     // 4. Consultar veículos disponíveis no período
     const veiculosDisponiveis = await db('veiculos as v')
