@@ -1,4 +1,3 @@
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
@@ -17,7 +16,13 @@ vi.mock('../config/database', () => ({
 vi.mock('../models/solicitacaoViagemModel', () => ({
   solicitacaoViagemModel: {
     buscarParaAtualizar: vi.fn(),
-    atualizarStatus: vi.fn(async (id: number, status: string) => ({ id, status })),
+    atualizarStatus: vi.fn(
+      async (id: number, status: string, _trx?: unknown, motivo_recusa?: string | null) => ({
+        id,
+        status,
+        ...(motivo_recusa ? { motivo_recusa } : {}),
+      })
+    ),
   },
 }));
 
@@ -68,12 +73,14 @@ describe('solicitacaoViagemService.aprovar / recusar', () => {
     );
   });
 
-  it('deve recusar registrando o motivo na auditoria', async () => {
+  it('deve recusar registrando o motivo na solicitação e na auditoria', async () => {
     await expect(solicitacaoViagemService.recusar(1, 3, 'Sem veículo')).resolves.toEqual({
       id: 1,
       status: 'RECUSADA',
+      motivo_recusa: 'Sem veículo',
     });
 
+    expect(solicitacaoViagemModel.atualizarStatus).toHaveBeenCalledWith(1, 'RECUSADA', 'trx', 'Sem veículo');
     expect(auditoriaModel.registrar).toHaveBeenCalledWith(
       expect.objectContaining({ acao: 'RECUSOU_SOLICITACAO_VIAGEM id=1 motivo="Sem veículo"' }),
       'trx'

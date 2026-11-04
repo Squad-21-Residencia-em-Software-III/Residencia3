@@ -1,4 +1,3 @@
-
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
 import {
@@ -115,10 +114,12 @@ async function analisar(
       );
     }
 
-    const atualizada =
-      await solicitacaoViagemModel.atualizarStatus(id, novoStatus, trx);
+    const motivoRecusa = novoStatus === 'RECUSADA' ? (motivo ?? null) : null;
 
-    // O motivo da recusa fica registrado na auditoria
+    const atualizada =
+      await solicitacaoViagemModel.atualizarStatus(id, novoStatus, trx, motivoRecusa);
+
+    // O motivo da recusa fica registrado na coluna motivo_recusa e na auditoria
     const acao = novoStatus === 'APROVADA'
       ? `APROVOU_SOLICITACAO_VIAGEM id=${id}`
       : `RECUSOU_SOLICITACAO_VIAGEM id=${id}${motivo ? ` motivo="${motivo}"` : ''}`;
