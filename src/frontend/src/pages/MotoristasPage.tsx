@@ -250,8 +250,9 @@ export default function MotoristasPage() {
               })
             )}
           </tbody>
-          <Pagination showing={`1–${filtrados.length}`} total={filtrados.length} />
         </Table>
+
+        <Pagination showing={`1–${filtrados.length}`} total={filtrados.length} />
       </Card>
 
       {modalAberto && (
