@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { solicitacaoViagemService } from '../services/solicitacaoViagemService';
 import {
   criarSolicitacaoViagemSchema,
+  listarSolicitacoesViagemSchema,
   recusarSolicitacaoViagemSchema,
 } from '../validators/solicitacaoViagemSchemas';
 import { idParamSchema } from '../validators/comuns';
@@ -28,11 +29,18 @@ export const solicitacaoViagemController = {
       .json(solicitacao);
   },
 
+  async listar(req: Request, res: Response): Promise<void> {
+    const filtros = listarSolicitacoesViagemSchema.parse(req.query);
+    const analista = usuarioAutenticado(req);
+
+    res.json(await solicitacaoViagemService.listar(analista, filtros));
+  },
+
   async aprovar(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
     const gestor = usuarioAutenticado(req);
 
-    res.json(await solicitacaoViagemService.aprovar(id, gestor.id));
+    res.json(await solicitacaoViagemService.aprovar(id, gestor));
   },
 
   async recusar(req: Request, res: Response): Promise<void> {
@@ -41,6 +49,6 @@ export const solicitacaoViagemController = {
     const { motivo } = recusarSolicitacaoViagemSchema.parse(req.body ?? {});
     const gestor = usuarioAutenticado(req);
 
-    res.json(await solicitacaoViagemService.recusar(id, gestor.id, motivo));
+    res.json(await solicitacaoViagemService.recusar(id, gestor, motivo));
   },
 };

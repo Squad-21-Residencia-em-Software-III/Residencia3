@@ -20,6 +20,7 @@ import {
 import { storageService } from '../services/storageService';
 import { ModalUsuario } from './usuarios/ModalUsuario';
 import { ModalRedefinirSenha } from './usuarios/ModalRedefinirSenha';
+import { GestoresUnidadesSecao } from './usuarios/GestoresUnidadesSecao';
 
 type FiltroCategoria = 'TODOS' | 'ADMIN' | 'GESTAO' | 'SOLICITANTE' | 'MOTORISTA' | 'INATIVOS';
 
@@ -402,6 +403,9 @@ export default function UsuariosPage() {
 
         <Pagination showing={`1–${filtrados.length}`} total={filtrados.length} />
       </Card>
+
+      {/* Associação de gestores às unidades (BL15) — dados vêm da API */}
+      <GestoresUnidadesSecao onFeedback={exibirFeedback} />
 
       {/* Modal de Cadastro / Edição */}
       {modalUsuarioAberto && (

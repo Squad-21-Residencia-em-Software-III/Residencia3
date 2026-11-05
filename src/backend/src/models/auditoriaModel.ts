@@ -9,6 +9,7 @@ export const MODULOS_AUDITORIA = {
   SOLICITACOES_VIAGEM: 'SOLICITACOES_VIAGEM',
   MULTAS: 'MULTAS',
   VIAGENS: 'VIAGENS',
+  UNIDADES: 'UNIDADES',
 } as const;
 
 export type ModuloAuditoria = (typeof MODULOS_AUDITORIA)[keyof typeof MODULOS_AUDITORIA];
