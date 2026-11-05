@@ -19,12 +19,7 @@ import {
   TableToolbar,
   type BadgeTone,
 } from '../components/ui';
-import { MOCK_VEICULOS } from '../services/mocks/veiculosMock';
-import { MOCK_MOTORISTAS } from '../services/mocks/motoristasMock';
-import {
-  MOCK_SOLICITACOES,
-  MOCK_VIAGENS_ATIVAS,
-} from '../services/mocks/solicitacoesMock';
+import { storageService } from '../services/storageService';
 import {
   LABELS_STATUS_SOLICITACAO,
   type StatusSolicitacao,
@@ -49,8 +44,11 @@ function obterBadgeToneStatus(status: StatusSolicitacao): BadgeTone {
     case 'PENDENTE_APROVACAO':
       return 'warning';
     case 'APROVADA':
+    case 'CONCLUIDA':
       return 'success';
-    case 'REJEITADA':
+    case 'AGENDADA':
+      return 'info';
+    case 'RECUSADA':
       return 'danger';
     case 'CANCELADA':
     default:
@@ -61,17 +59,21 @@ function obterBadgeToneStatus(status: StatusSolicitacao): BadgeTone {
 export default function DashboardPage() {
   const navigate = useNavigate();
 
-  // Métricas dinâmicas calculadas a partir dos dados do banco/mocks
-  const metricas = useMemo(() => {
-    const pendentes = MOCK_SOLICITACOES.filter((s) => s.status === 'PENDENTE_APROVACAO').length;
-    const viagensAtivas = MOCK_VIAGENS_ATIVAS.length;
+  // Dados e métricas calculados a partir do cache central (storageService)
+  const solicitacoes = useMemo(() => storageService.getSolicitacoes(), []);
 
-    const veiculosDisponiveis = MOCK_VEICULOS.filter((v) => v.status === 'DISPONIVEL');
+  const metricas = useMemo(() => {
+    const veiculos = storageService.getVeiculos();
+    const motoristas = storageService.getMotoristas();
+    const pendentes = solicitacoes.filter((s) => s.status === 'PENDENTE_APROVACAO').length;
+    const viagensAtivas = storageService.getViagens().filter((v) => v.status === 'EM_ANDAMENTO').length;
+
+    const veiculosDisponiveis = veiculos.filter((v) => v.status === 'DISPONIVEL');
     const frotaAdmDisponivel = veiculosDisponiveis.filter((v) => v.tipo_frota === 'ADMINISTRATIVA').length;
     const svoDisponivel = veiculosDisponiveis.filter((v) => v.tipo_frota === 'SVO').length;
 
-    const veiculosManutencao = MOCK_VEICULOS.filter((v) => v.status === 'MANUTENCAO').length;
-    const motoristasCnhVencida = MOCK_MOTORISTAS.filter((m) => cnhVencida(m.validade_cnh)).length;
+    const veiculosManutencao = veiculos.filter((v) => v.status === 'MANUTENCAO').length;
+    const motoristasCnhVencida = motoristas.filter((m) => cnhVencida(m.validade_cnh)).length;
     const alertasCriticos = veiculosManutencao + motoristasCnhVencida;
 
     return {
@@ -84,7 +86,7 @@ export default function DashboardPage() {
       motoristasCnhVencida,
       alertasCriticos,
     };
-  }, []);
+  }, [solicitacoes]);
 
   return (
     <div style={{ display: 'grid', gap: '24px' }}>
@@ -426,7 +428,7 @@ export default function DashboardPage() {
       <Card>
         <TableToolbar
           title="Solicitações Recentes de Viagem"
-          subtitle={`${MOCK_SOLICITACOES.length} solicitações registradas no sistema`}
+          subtitle={`${solicitacoes.length} solicitações registradas no sistema`}
           newLabel="Nova Solicitação"
           onNew={() => navigate('/viagens')}
         />
@@ -444,7 +446,7 @@ export default function DashboardPage() {
             </tr>
           </thead>
           <tbody>
-            {MOCK_SOLICITACOES.map((s) => (
+            {solicitacoes.map((s) => (
               <tr key={s.id}>
                 <td>
                   <IdBadge id={`#${s.id}`} />
@@ -506,7 +508,7 @@ export default function DashboardPage() {
           </tbody>
         </Table>
 
-        <Pagination showing={`1–${MOCK_SOLICITACOES.length}`} total={MOCK_SOLICITACOES.length} />
+        <Pagination showing={`1–${solicitacoes.length}`} total={solicitacoes.length} />
       </Card>
     </div>
   );

@@ -1,13 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card } from '../components/ui';
 import type { DiaAgendaSemana, ModoVisualizacaoAgenda, RotaAgenda } from '../types/agenda';
-import {
-  MOCK_AGENDA_HOJE,
-  MOCK_AGENDA_SEMANA,
-  MOCK_EXCECOES_MES,
-  MOCK_HISTORICO_MES,
-} from '../services/mocks/agendaMock';
+import { storageService } from '../services/storageService';
 import { AgendaGanttHoje } from './agenda/AgendaGanttHoje';
 import { AgendaSemana } from './agenda/AgendaSemana';
 import { AgendaMes } from './agenda/AgendaMes';
@@ -27,10 +22,11 @@ const DIAS_SEMANA_DADOS: DiaAgendaSemana[] = [
 export default function AgendaPage() {
   const [modoVisualizacao, setModoVisualizacao] = useState<ModoVisualizacaoAgenda>('hoje');
   const [rotaSelecionada, setRotaSelecionada] = useState<RotaAgenda | null>(null);
+  const agenda = useMemo(() => storageService.getAgenda(), []);
 
   // Totais do dia
-  const totalRotasHoje = MOCK_AGENDA_HOJE.length;
-  const veiculosUnicosHoje = new Set(MOCK_AGENDA_HOJE.map((r) => r.veiculo_id)).size;
+  const totalRotasHoje = agenda.hoje.length;
+  const veiculosUnicosHoje = new Set(agenda.hoje.map((r) => r.veiculo_id)).size;
 
   const handleSelecionarDiaNoMes = (_dia: number) => {
     // Ao clicar em um dia no mês, abre a timeline daquele dia
@@ -97,14 +93,14 @@ export default function AgendaPage() {
       {/* ── Visualização Ativa ── */}
       {modoVisualizacao === 'hoje' && (
         <AgendaGanttHoje
-          rotas={MOCK_AGENDA_HOJE}
+          rotas={agenda.hoje}
           onSelecionarRota={setRotaSelecionada}
         />
       )}
 
       {modoVisualizacao === 'semana' && (
         <AgendaSemana
-          rotas={MOCK_AGENDA_SEMANA}
+          rotas={agenda.semana}
           diasSemana={DIAS_SEMANA_DADOS}
           onSelecionarRota={setRotaSelecionada}
         />
@@ -112,8 +108,8 @@ export default function AgendaPage() {
 
       {modoVisualizacao === 'mes' && (
         <AgendaMes
-          excecoes={MOCK_EXCECOES_MES}
-          historicoMes={MOCK_HISTORICO_MES}
+          excecoes={agenda.excecoesMes}
+          historicoMes={agenda.historicoMes}
           diaAtualNumero={19}
           onSelecionarDia={handleSelecionarDiaNoMes}
         />
