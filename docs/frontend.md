@@ -238,6 +238,31 @@ Tabela `usuarios`, conforme as migrations (`20261014000001_create_initial_schema
 6. Clique no botão **Senha** de qualquer usuário para abrir o modal de redefinição de senha.
 7. Clique no botão **Desativar / Ativar** para alternar o status do usuário (note que o usuário administrador com tag "Você" tem o botão desativado por proteção de segurança).
 
+### Gestores por unidade (BL15)
+Seção abaixo da tabela de usuários (`pages/usuarios/GestoresUnidadesSecao.tsx`), visível só para `ADMINISTRADOR`. Consome a API diretamente, sem cache local, e recarrega após cada remoção.
+
+- **Arquivos**: `types/unidade.ts` (tipos e regra de perfis), `services/api/unidadesApi.ts` (contrato) e a seção acima, renderizada em `UsuariosPage.tsx`.
+- **Rotas consumidas** (backend da BL15, PR #76):
+
+| Método | Rota | Uso no front |
+|---|---|---|
+| `GET` | `/api/unidades/gestores` | Lista as unidades com os gestores associados (`UnidadeComGestores[]`) |
+| `POST` | `/api/unidades/:id/gestores` | Associa, com body `{ gestor_id }`; o 201 devolve a unidade atualizada, que substitui só aquela unidade na tela |
+| `DELETE` | `/api/unidades/:id/gestores/:gestorId` | Remove a associação (204) |
+| `GET` | `/api/usuarios?perfil=&ativo=true&limite=100` | Candidatos a gestor |
+| `GET` | `/api/unidades` | `unidadesApi.listarOpcoes()`: opções `{ id, nome, tipo }` para a solicitação de viagem (ainda não usada na tela) |
+
+- **Regra de perfis por unidade** (`PERFIS_GESTORES_POR_UNIDADE`, espelho de `backend/src/constants/unidades.ts`): **SVO** aceita Gestor de Frota e Gestor SVO; **HEMOSE** e **LACEN** aceitam só Gestor de Frota. O seletor de cada unidade já mostra só os perfis aceitos e esconde quem já está associado.
+- **Estados da tela**: carregando, erro com "Tentar novamente", nenhuma unidade, unidade sem gestor e gestor inativo (badge). Erros 400, 403, 404 e 409 da API viram mensagens de feedback.
+- **Dependência de banco**: as tabelas `unidades` e `gestores_unidades` e a coluna `solicitacoes_viagem.unidade_id` ainda não têm migration (ver seção 14). Até lá, a API responde 500 e a seção mostra o estado de erro.
+
+#### Como testar (depois da migration)
+1. Entre como administrador e abra `/usuarios`; role até **Gestores por unidade**.
+2. Confira as 3 unidades (SVO, HEMOSE, LACEN) e o aviso "Nenhum gestor associado" nas que estiverem vazias.
+3. No SVO, o seletor deve listar Gestores de Frota e Gestores SVO; em HEMOSE e LACEN, só Gestores de Frota.
+4. Associe um gestor e confira que ele aparece na unidade e some do seletor dela.
+5. Clique em **Remover**, confirme e veja o gestor voltar ao seletor.
+
 ## 10. Tela de Dashboard
 Painel central consolidado que agrega indicadores operacionais das tabelas `solicitacoes_viagem`, `viagens_frota`, `veiculos`, `motoristas` e `usuarios`.
 
@@ -405,6 +430,7 @@ Visão geral consolidada de todas as adequações realizadas entre o protótipo 
 - Para `motoristas.status`, só se conhece `DISPONIVEL` (padrão). Falta definir os demais valores (ex.: em viagem, afastado).
 - Os endpoints de `usuarios` estão totalmente prontos e documentados no backend (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`).
 - **Ainda não há endpoints para Viagens no back-end**: a tela de viagens consome os dados mockados em `services/mocks/viagensMock.ts`. Quando os endpoints forem desenvolvidos pela equipe de back-end, basta conectar a camada de serviços sem alterar a interface.
+- **Falta a migration da BL15** (responsabilidade do time de banco): tabelas `unidades` (com SVO, HEMOSE e LACEN) e `gestores_unidades`, e a coluna `solicitacoes_viagem.unidade_id`. A especificação está na descrição do PR #76. Sem ela, `/api/unidades*` e `POST /api/solicitacoes-viagem` respondem 500.
 
 ## 15. Roadmap de Funcionalidades & Entregas (Ordenado por Complexidade)
 
