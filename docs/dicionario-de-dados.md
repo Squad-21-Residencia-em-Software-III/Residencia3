@@ -34,6 +34,7 @@ Registo dos veículos pertencentes à frota geral e ao Serviço de Verificação
 | `modelo` | Varchar(100) | NOT NULL | Marca e modelo. |
 | `tipo_frota` | Varchar(20) | NOT NULL | CHECK: `ADMINISTRATIVA`, `SVO`. |
 | `capacidade_maxima` | Integer | NOT NULL | Lotação (CHECK: `>= 0`). |
+| `km_atual` | Integer | NOT NULL, DEFAULT 0 | Quilometragem atual do veículo (CHECK: `>= 0`). |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `RESERVADO`, `EM_USO`, `MANUTENCAO`. |
 
 ## 4. Tabela: `equipes_svo`
@@ -99,6 +100,7 @@ Pedidos de deslocação da frota administrativa.
 | :--- | :--- | :--- | :--- |
 | `id` | Integer / Serial | PRIMARY KEY | Identificador do pedido. |
 | `solicitante_id` | Integer | FOREIGN KEY | Utilizador que realizou o pedido (RESTRICT). |
+| `unidade_id` | Integer | FOREIGN KEY, NULLABLE | Unidade da FSPH vinculada ao pedido (`unidades.id`, RESTRICT). |
 | `origem` | Varchar(255) | NOT NULL | Ponto de partida. |
 | `destino` | Varchar(255) | NOT NULL | Local de chegada. |
 | `finalidade` | Text | NOT NULL | Motivo da deslocação. |
@@ -188,7 +190,25 @@ Alocação e execução de chamadas do Serviço de Verificação de Óbitos.
 | `equipe_id` | Integer | FOREIGN KEY | Profissionais alocados (RESTRICT). |
 | `capacidade_utilizada`| Integer | NOT NULL, DEFAULT 1 | CHECK: `> 0`. |
 | `data_hora_chamado` | Timestamp | DEFAULT now() | Momento da ativação da equipa. |
-| `data_hora_conclusao`| Timestamp | NULLABLE | Regresso e término da operação. |
+| `data_hora_saida` | Timestamp | NULLABLE | Momento de início do deslocamento. |
+| `data_hora_conclusao`| Timestamp | NULLABLE, CHECK: `>= data_hora_saida` | Regresso e término da operação. |
 | `km_inicial` | Integer | NULLABLE | CHECK: `>= 0`. |
 | `km_final` | Integer | NULLABLE | CHECK: `>= km_inicial`. |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'ALOCADA' | CHECK: `ALOCADA`, `EM_DESLOCAMENTO`, `CONCLUIDA`, `CANCELADA`. |
+
+## 16. Tabela: `unidades`
+Unidades da FSPH disponíveis para encaminhamento e gestão de solicitações (BL15).
+
+| Coluna | Tipo | Restrições / Notas | Descrição |
+| :--- | :--- | :--- | :--- |
+| `id` | Integer / Serial | PRIMARY KEY | Identificador único da unidade. |
+| `nome` | Varchar(50) | NOT NULL, UNIQUE | CHECK: `SVO`, `HEMOSE`, `LACEN`. |
+| `tipo` | Varchar(30) | NOT NULL | CHECK: `SVO`, `ADMINISTRATIVA`. |
+
+## 17. Tabela: `gestores_unidades`
+Relação associativa (N:N) entre gestores e unidades da FSPH (BL15).
+
+| Coluna | Tipo | Restrições / Notas | Descrição |
+| :--- | :--- | :--- | :--- |
+| `unidade_id` | Integer | PRIMARY KEY, FOREIGN KEY | Unidade gerida (`unidades.id`, CASCADE). |
+| `usuario_id` | Integer | PRIMARY KEY, FOREIGN KEY | Utilizador gestor associado (`usuarios.id`, CASCADE, indexado). |
