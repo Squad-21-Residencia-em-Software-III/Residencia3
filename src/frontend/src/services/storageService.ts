@@ -13,6 +13,15 @@ import type { Multa, NovaMultaInput, AtualizarMultaInput } from '../types/multa'
 import { MOCK_MULTAS } from './mocks/multasMock';
 import type { Manutencao, NovaManutencaoInput, StatusManutencao } from '../types/manutencao';
 import { MOCK_MANUTENCOES } from './mocks/manutencoesMock';
+import type { SolicitacaoViagem, NovaSolicitacaoInput } from '../types/solicitacao';
+import { MOCK_SOLICITACOES } from './mocks/solicitacoesMock';
+import type { ExcecaoAgenda, RotaAgenda } from '../types/agenda';
+import {
+  MOCK_AGENDA_HOJE,
+  MOCK_AGENDA_SEMANA,
+  MOCK_EXCECOES_MES,
+  MOCK_HISTORICO_MES,
+} from './mocks/agendaMock';
 
 const STORAGE_KEY_USUARIOS = '@fsph:usuarios';
 const STORAGE_KEY_VEICULOS = '@fsph:veiculos';
@@ -21,6 +30,16 @@ const STORAGE_KEY_VIAGENS = '@fsph:viagens';
 const STORAGE_KEY_ABASTECIMENTOS = '@fsph:abastecimentos';
 const STORAGE_KEY_MULTAS = '@fsph:multas';
 const STORAGE_KEY_MANUTENCOES = '@fsph:manutencoes';
+const STORAGE_KEY_SOLICITACOES = '@fsph:solicitacoes';
+const STORAGE_KEY_AGENDA = '@fsph:agenda';
+
+/** Estrutura da agenda operacional mantida no cache. */
+export interface AgendaCache {
+  hoje: RotaAgenda[];
+  semana: RotaAgenda[];
+  excecoesMes: Record<number, ExcecaoAgenda[]>;
+  historicoMes: Record<number, number>;
+}
 
 /**
  * Serviço de persistência local para a aplicação.
@@ -202,6 +221,75 @@ export const storageService = {
     };
     const viagensAtualizadas = [novaViagem, ...viagens];
     storageService.saveTodosViagens(viagensAtualizadas);
+
+    // Espelha a regra do backend: viagem criada a partir de solicitação aprovada
+    // move a solicitação para AGENDADA.
+    const solicitacao = storageService.getSolicitacoes().find((s) => s.id === input.solicitacao_id);
+    if (solicitacao?.status === 'APROVADA') {
+      storageService.atualizarStatusSolicitacao(solicitacao.id, 'AGENDADA');
+    }
+
+    // Atualiza status do veículo (se DISPONIVEL -> RESERVADO ou EM_USO)
+    const veiculos = storageService.getVeiculos();
+    const veiculoIndex = veiculos.findIndex(v => v.id === input.veiculo_id);
+    if (veiculoIndex !== -1 && veiculos[veiculoIndex].status === 'DISPONIVEL') {
+      veiculos[veiculoIndex].status = input.status === 'EM_ANDAMENTO' ? 'EM_USO' : 'RESERVADO';
+      storageService.saveTodosVeiculos(veiculos);
+    }
+
+    // Atualiza status do motorista (se DISPONIVEL -> DESIGNADO ou EM_VIAGEM)
+    const motoristas = storageService.getMotoristas();
+    const motoristaIndex = motoristas.findIndex(m => m.id === input.motorista_id);
+    if (motoristaIndex !== -1 && motoristas[motoristaIndex].status === 'DISPONIVEL') {
+      motoristas[motoristaIndex].status = input.status === 'EM_ANDAMENTO' ? 'EM_VIAGEM' : 'DESIGNADO';
+      storageService.saveTodosMotoristas(motoristas);
+    }
+
+    // Sincroniza rota na Agenda operacional (@fsph:agenda)
+    try {
+      const agenda = storageService.getAgenda();
+      const veiculo = veiculos.find((v) => v.id === input.veiculo_id);
+      const dataHoraSaida = input.data_hora_efetiva_saida || '2026-10-19T08:00:00';
+      const [dataSaida, horaCompleta] = dataHoraSaida.split('T');
+      const horaInicio = horaCompleta ? horaCompleta.slice(0, 5) : '08:00';
+      const horaFim = input.data_hora_efetiva_chegada
+        ? input.data_hora_efetiva_chegada.split('T')[1]?.slice(0, 5) || '10:30'
+        : '10:30';
+
+      const novaRota: RotaAgenda = {
+        id: novaViagem.id,
+        solicitacao_id: input.solicitacao_id || novaViagem.id,
+        tipo_operacao: input.tipo_operacao,
+        origem: input.origem,
+        destino: input.destino,
+        finalidade: input.finalidade || 'Atendimento de viagem programada',
+        solicitante_nome: input.solicitante_nome,
+        veiculo_id: input.veiculo_id,
+        veiculo_modelo: input.veiculo_modelo,
+        veiculo_placa: input.veiculo_placa,
+        capacidade_maxima: veiculo?.capacidade_maxima || 4,
+        motorista_id: input.motorista_id,
+        motorista_nome: input.motorista_nome,
+        data: dataSaida || '2026-10-19',
+        hora_inicio: horaInicio,
+        hora_fim: horaFim,
+        km_estimado: 35,
+        status: input.status,
+      };
+
+      const ehHoje = dataSaida === '2026-10-19' || dataSaida === new Date().toISOString().slice(0, 10);
+      const hojeAtualizado = ehHoje ? [novaRota, ...agenda.hoje] : agenda.hoje;
+      const semanaAtualizada = [novaRota, ...agenda.semana];
+
+      storageService.saveAgenda({
+        ...agenda,
+        hoje: hojeAtualizado,
+        semana: semanaAtualizada,
+      });
+    } catch {
+      // Ignora erro em sincronização secundária
+    }
+
     return novaViagem;
   },
 
@@ -217,6 +305,63 @@ export const storageService = {
 
     viagens[index] = viagemAtualizada;
     storageService.saveTodosViagens(viagens);
+
+    // Se a viagem foi concluída:
+    if (input.status === 'CONCLUIDA') {
+      // 1. Conclui solicitação associada, se houver
+      if (viagemAtualizada.solicitacao_id) {
+        const solicitacao = storageService.getSolicitacoes().find((s) => s.id === viagemAtualizada.solicitacao_id);
+        if (solicitacao && solicitacao.status !== 'CONCLUIDA') {
+          storageService.atualizarStatusSolicitacao(solicitacao.id, 'CONCLUIDA');
+        }
+      }
+
+      // 2. Libera veículo para DISPONIVEL (se estava RESERVADO ou EM_USO)
+      const veiculos = storageService.getVeiculos();
+      const veiculoIndex = veiculos.findIndex(v => v.id === viagemAtualizada.veiculo_id);
+      if (veiculoIndex !== -1 && (veiculos[veiculoIndex].status === 'EM_USO' || veiculos[veiculoIndex].status === 'RESERVADO')) {
+        veiculos[veiculoIndex].status = 'DISPONIVEL';
+        storageService.saveTodosVeiculos(veiculos);
+      }
+
+      // 3. Libera motorista para DISPONIVEL (se estava EM_VIAGEM ou DESIGNADO)
+      const motoristas = storageService.getMotoristas();
+      const motoristaIndex = motoristas.findIndex(m => m.id === viagemAtualizada.motorista_id);
+      if (motoristaIndex !== -1 && (motoristas[motoristaIndex].status === 'EM_VIAGEM' || motoristas[motoristaIndex].status === 'DESIGNADO')) {
+        motoristas[motoristaIndex].status = 'DISPONIVEL';
+        storageService.saveTodosMotoristas(motoristas);
+      }
+    }
+
+    // Sincroniza status na Agenda operacional (@fsph:agenda) se a rota constar na agenda
+    try {
+      const agenda = storageService.getAgenda();
+      let alterou = false;
+      const hojeAtualizado = agenda.hoje.map((r) => {
+        if (r.id === id) {
+          alterou = true;
+          return { ...r, status: viagemAtualizada.status };
+        }
+        return r;
+      });
+      const semanaAtualizada = agenda.semana.map((r) => {
+        if (r.id === id) {
+          alterou = true;
+          return { ...r, status: viagemAtualizada.status };
+        }
+        return r;
+      });
+      if (alterou) {
+        storageService.saveAgenda({
+          ...agenda,
+          hoje: hojeAtualizado,
+          semana: semanaAtualizada,
+        });
+      }
+    } catch {
+      // Ignora erro
+    }
+
     return viagemAtualizada;
   },
 
@@ -468,5 +613,111 @@ export const storageService = {
   deleteMulta: (id: number): void => {
     const multas = storageService.getMultas().filter(m => m.id !== id);
     storageService.saveTodasMultas(multas);
+  },
+
+  // --- GESTÃO DE SOLICITAÇÕES DE VIAGEM ---
+  getSolicitacoes: (): SolicitacaoViagem[] => {
+    const stored = localStorage.getItem(STORAGE_KEY_SOLICITACOES);
+    if (!stored) {
+      localStorage.setItem(STORAGE_KEY_SOLICITACOES, JSON.stringify(MOCK_SOLICITACOES));
+      return MOCK_SOLICITACOES;
+    }
+    return JSON.parse(stored);
+  },
+
+  saveTodasSolicitacoes: (solicitacoes: SolicitacaoViagem[]): void => {
+    localStorage.setItem(STORAGE_KEY_SOLICITACOES, JSON.stringify(solicitacoes));
+  },
+
+  getSolicitacoesPendentes: (): SolicitacaoViagem[] => {
+    return storageService.getSolicitacoes().filter((s) => s.status === 'PENDENTE_APROVACAO');
+  },
+
+  /** Solicitações aprovadas que ainda não viraram viagem (disponíveis para despacho). */
+  getSolicitacoesAprovadas: (): SolicitacaoViagem[] => {
+    return storageService.getSolicitacoes().filter((s) => s.status === 'APROVADA');
+  },
+
+  createSolicitacao: (input: NovaSolicitacaoInput): SolicitacaoViagem => {
+    if (!input.origem?.trim() || !input.destino?.trim() || !input.finalidade?.trim()) {
+      throw new Error('Origem, destino e finalidade são obrigatórios.');
+    }
+    if (input.data_chegada_desejada && input.data_chegada_desejada < input.data_saida_desejada) {
+      throw new Error('A data de chegada deve ser posterior à saída.');
+    }
+
+    const solicitacoes = storageService.getSolicitacoes();
+    const nova: SolicitacaoViagem = {
+      id: solicitacoes.length > 0 ? Math.max(...solicitacoes.map((s) => s.id)) + 1 : 1,
+      ...input,
+      origem: input.origem.trim(),
+      destino: input.destino.trim(),
+      finalidade: input.finalidade.trim(),
+      status: 'PENDENTE_APROVACAO',
+      motivo_recusa: null,
+    };
+
+    storageService.saveTodasSolicitacoes([nova, ...solicitacoes]);
+    return nova;
+  },
+
+  /**
+   * Atualiza o status da solicitação.
+   * O motivo só é gravado em RECUSADA (como no backend); nos demais status é limpo.
+   */
+  atualizarStatusSolicitacao: (
+    id: number,
+    status: SolicitacaoViagem['status'],
+    motivoRecusa?: string
+  ): SolicitacaoViagem => {
+    const solicitacoes = storageService.getSolicitacoes();
+    const index = solicitacoes.findIndex((s) => s.id === id);
+    if (index === -1) throw new Error('Solicitação de viagem não encontrada.');
+
+    solicitacoes[index] = {
+      ...solicitacoes[index],
+      status,
+      motivo_recusa: status === 'RECUSADA' ? motivoRecusa?.trim() || null : null,
+    };
+    storageService.saveTodasSolicitacoes(solicitacoes);
+    return solicitacoes[index];
+  },
+
+  aprovarSolicitacao: (id: number): SolicitacaoViagem => {
+    const solicitacao = storageService.getSolicitacoes().find((s) => s.id === id);
+    if (!solicitacao) throw new Error('Solicitação de viagem não encontrada.');
+    if (solicitacao.status !== 'PENDENTE_APROVACAO') {
+      throw new Error('Apenas solicitações pendentes podem ser aprovadas ou recusadas.');
+    }
+    return storageService.atualizarStatusSolicitacao(id, 'APROVADA');
+  },
+
+  recusarSolicitacao: (id: number, motivo?: string): SolicitacaoViagem => {
+    const solicitacao = storageService.getSolicitacoes().find((s) => s.id === id);
+    if (!solicitacao) throw new Error('Solicitação de viagem não encontrada.');
+    if (solicitacao.status !== 'PENDENTE_APROVACAO') {
+      throw new Error('Apenas solicitações pendentes podem ser aprovadas ou recusadas.');
+    }
+    return storageService.atualizarStatusSolicitacao(id, 'RECUSADA', motivo);
+  },
+
+  // --- AGENDA OPERACIONAL ---
+  getAgenda: (): AgendaCache => {
+    const stored = localStorage.getItem(STORAGE_KEY_AGENDA);
+    if (!stored) {
+      const inicial: AgendaCache = {
+        hoje: MOCK_AGENDA_HOJE,
+        semana: MOCK_AGENDA_SEMANA,
+        excecoesMes: MOCK_EXCECOES_MES,
+        historicoMes: MOCK_HISTORICO_MES,
+      };
+      localStorage.setItem(STORAGE_KEY_AGENDA, JSON.stringify(inicial));
+      return inicial;
+    }
+    return JSON.parse(stored);
+  },
+
+  saveAgenda: (agenda: AgendaCache): void => {
+    localStorage.setItem(STORAGE_KEY_AGENDA, JSON.stringify(agenda));
   },
 };
