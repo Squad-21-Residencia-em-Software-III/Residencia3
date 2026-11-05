@@ -1,4 +1,5 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { ChangeEvent } from 'react';
 import {
   CheckCircle2,
@@ -63,13 +64,25 @@ function formatarDataHora(isoString?: string | null): string {
   return `${dia}/${mes} ${horas}:${minutos}`;
 }
 
+function limitarTexto(texto: string, maximo = 28): string {
+  if (!texto) return '';
+  return texto.length > maximo ? `${texto.slice(0, maximo)}...` : texto;
+}
+
 export default function ViagensPage() {
+  const location = useLocation();
   const [viagens, setViagens] = useState<Viagem[]>(storageService.getViagens());
   const [filtro, setFiltro] = useState<FiltroAba>('TODAS');
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.solicitacaoId) {
+      setModalNovaAberto(true);
+    }
+  }, [location.state]);
   const [viagemDetalhes, setViagemDetalhes] = useState<Viagem | null>(null);
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
   const [viagemExpandidaId, setViagemExpandidaId] = useState<number | null>(null);
@@ -272,17 +285,28 @@ export default function ViagensPage() {
         </TableFilterCollapse>
 
         <Table>
+          <colgroup>
+            <col style={{ width: '65px' }} />
+            <col style={{ width: '85px' }} />
+            <col style={{ width: 'auto' }} />
+            <col style={{ width: '140px' }} />
+            <col style={{ width: '160px' }} />
+            <col style={{ width: '120px' }} />
+            <col style={{ width: '130px' }} />
+            <col style={{ width: '120px' }} />
+            <col style={{ width: '80px' }} />
+          </colgroup>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Operação</th>
+              <th style={{ paddingRight: '6px' }}>ID</th>
+              <th style={{ paddingLeft: '6px', paddingRight: '12px' }}>Operação</th>
               <th>Origem / Destino</th>
               <th>Horários</th>
               <th>Motorista</th>
               <th>Veículo</th>
               <th>Odômetro / Km</th>
               <th>Status</th>
-              <th style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '100px' }}>Ações</th>
+              <th style={{ textAlign: 'right' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -311,10 +335,10 @@ export default function ViagensPage() {
                       }}
                       title="Clique para ver o manifesto / ticket desta viagem"
                     >
-                      <td>
+                      <td style={{ paddingRight: '6px' }}>
                         <IdBadge id={`#${v.id}`} />
                       </td>
-                      <td>
+                      <td style={{ paddingLeft: '6px', paddingRight: '12px' }}>
                         <span
                           style={{
                             fontSize: '10px',
@@ -331,17 +355,38 @@ export default function ViagensPage() {
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '170px', maxWidth: '240px' }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px' }}>
-                            <MapPin size={13} style={{ color: 'var(--color-primary)', flexShrink: 0, marginTop: '2px' }} />
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3 }}>
-                              {v.origem}
+                        <div className="viagem-trajeto-col" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <MapPin size={13} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+                            <span
+                              style={{
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                color: 'var(--color-text)',
+                                lineHeight: 1.3,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                              title={v.origem}
+                            >
+                              {limitarTexto(v.origem, 26)}
                             </span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', paddingLeft: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '8px' }}>
                             <span style={{ color: 'var(--color-text-subtle)', fontSize: '11px', flexShrink: 0 }}>↳</span>
-                            <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
-                              {v.destino}
+                            <span
+                              style={{
+                                fontSize: '12px',
+                                color: 'var(--color-text-muted)',
+                                lineHeight: 1.3,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                              title={v.destino}
+                            >
+                              {limitarTexto(v.destino, 26)}
                             </span>
                           </div>
                         </div>
@@ -380,9 +425,19 @@ export default function ViagensPage() {
                         </div>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '170px' }}>
                           <Avatar name={v.motorista_nome} size={26} />
-                          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text)' }}>
+                          <span
+                            style={{
+                              fontSize: '13px',
+                              fontWeight: 500,
+                              color: 'var(--color-text)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={v.motorista_nome}
+                          >
                             {v.motorista_nome}
                           </span>
                         </div>
@@ -494,16 +549,18 @@ export default function ViagensPage() {
               })
             )}
           </tbody>
-          <Pagination showing={`1–${filtradas.length}`} total={filtradas.length} />
         </Table>
+
+        <Pagination showing={`1–${filtradas.length}`} total={filtradas.length} />
       </Card>
 
       {/* Modais */}
       {modalNovaAberto && (
         <ModalNovaViagem
-          solicitacoesAprovadas={[]} // Aqui precisaremos de um mock/service de solicitações
+          solicitacoesAprovadas={storageService.getSolicitacoesAprovadas()}
           veiculos={storageService.getVeiculos()}
           motoristas={storageService.getMotoristas()}
+          solicitacaoIdInicial={location.state?.solicitacaoId}
           onClose={() => setModalNovaAberto(false)}
           onSalvar={handleSalvarNovaViagem}
         />

@@ -8,6 +8,9 @@ import { solicitacaoViagemRoutes } from './solicitacaoViagemRoutes';
 import { manutencaoRoutes } from './manutencaoRoutes';
 import { documentoRoutes } from './documentoRoutes';
 import { multaRoutes } from './multaRoutes';
+import { viagemRoutes } from './viagemRoutes';
+import { motoristaRoutes } from './motoristaRoutes';
+import { unidadeRoutes } from './unidadeRoutes';
 
 export const routes = Router();
 
@@ -29,3 +32,6 @@ routes.use('/solicitacoes-viagem', solicitacaoViagemRoutes);
 routes.use('/manutencoes', manutencaoRoutes);
 routes.use('/documentos', documentoRoutes);
 routes.use('/multas', multaRoutes);
+routes.use('/viagens', viagemRoutes);
+routes.use('/motoristas', motoristaRoutes);
+routes.use('/unidades', unidadeRoutes);

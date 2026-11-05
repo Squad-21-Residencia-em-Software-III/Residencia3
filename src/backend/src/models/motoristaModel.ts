@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import type { ListarMotoristasFiltros } from '../validators/motoristaSchemas';
 
 export type StatusMotorista = 'DISPONIVEL' | 'EM_VIAGEM' | 'INATIVO' | 'AFASTADO' | 'DESIGNADO';
 
@@ -13,7 +14,37 @@ export interface Motorista {
   status: StatusMotorista;
 }
 
+export interface MotoristaComNome extends Motorista {
+  nome: string;
+}
+
 export const motoristaModel = {
+  async listar(filtros: ListarMotoristasFiltros): Promise<MotoristaComNome[]> {
+    const consulta = db('motoristas as m')
+      .leftJoin('usuarios as u', 'u.id', 'm.usuario_id')
+      .select(
+        'm.id',
+        'm.usuario_id',
+        'u.nome',
+        'm.numero_cnh',
+        'm.categoria_cnh',
+        // Mantém a data no formato AAAA-MM-DD, sem conversão de fuso
+        db.raw("to_char(m.validade_cnh, 'YYYY-MM-DD') as validade_cnh"),
+        'm.tipo_motorista',
+        'm.status'
+      )
+      .orderBy('u.nome', 'asc');
+
+    if (filtros.status) {
+      consulta.where('m.status', filtros.status);
+    }
+    if (filtros.tipo_motorista) {
+      consulta.where('m.tipo_motorista', filtros.tipo_motorista);
+    }
+
+    return consulta;
+  },
+
   buscarPorId(id: number, trx?: Knex.Transaction): Promise<Motorista | undefined> {
     const conexao = trx || db;
     return conexao('motoristas').where({ id }).first();

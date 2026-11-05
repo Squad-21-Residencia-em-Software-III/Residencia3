@@ -1,13 +1,18 @@
-﻿import { Link } from 'react-router-dom'
-import { PagePlaceholder } from './PagePlaceholder'
+import { ErrorLayout } from '../components/layout/ErrorLayout';
 
 export default function NotFoundPage() {
   return (
-    <>
-      <PagePlaceholder title="Página não encontrada" />
-      <p>
-        <Link to="/dashboard">Voltar ao Dashboard</Link>
-      </p>
-    </>
-  )
+    <ErrorLayout
+      code="404"
+      signColor="#DC2626"
+      title="Página não encontrada"
+      description="Esta página não está disponível no momento. Verifique o endereço digitado ou retorne ao início."
+      primaryAction={{
+        label: 'Ir para o Início',
+        to: '/inicio',
+        icon: 'home',
+      }}
+      showBackButton={true}
+    />
+  );
 }

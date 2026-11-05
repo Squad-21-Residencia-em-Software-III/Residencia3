@@ -1,0 +1,155 @@
+/* ── Home Page Styles & Micro-interactions ── */
+.home-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.home-header {
+  margin-bottom: var(--space-2);
+}
+
+.home-header__title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.home-header__subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ── Ações Rápidas (Cards Interativos) ── */
+.home-shortcuts-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-section-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.home-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.home-shortcut-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.home-shortcut-card:hover {
+  background: var(--color-surface-alt);
+  border-color: var(--color-border-strong);
+}
+
+.home-shortcut-card:active {
+  background: var(--color-surface-hover);
+}
+
+.home-shortcut-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.home-shortcut-card__title {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+.home-shortcut-card__desc {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ── Linhas de Itens da Fila de Decisão ── */
+.home-queue-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  transition: all 0.15s ease;
+}
+
+.home-queue-row:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Blocos de Bloqueio Operacional ── */
+.home-alert-block {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  transition: all 0.15s ease;
+}
+
+.home-alert-block:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.home-alert-block--danger {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger-ring);
+}
+
+.home-alert-block--danger:hover {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.08);
+}
+
+/* ── Botões Interativos da Home (Analisar, Ver, Gerenciar, Abrir) ── */
+.home-btn-action {
+  transition: all 0.15s ease !important;
+}
+
+.home-btn-action:hover {
+  background: var(--color-primary-soft) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+}
+
+.home-btn-action:active {
+  background: #dbeafe !important;
+}
+
+

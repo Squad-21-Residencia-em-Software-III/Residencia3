@@ -1,15 +1,20 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { ClipboardCheck, LayoutDashboard, UserRoundCog } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
-import { AlertIcon, CalendarIcon, FuelIcon, GridIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
+import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
 import DashboardPage from '../pages/DashboardPage'
+import ForbiddenPage from '../pages/ForbiddenPage'
+import HomePage from '../pages/HomePage'
 import LoginPage from '../pages/LoginPage'
 import MotoristasPage from '../pages/MotoristasPage'
 import MultasPage from '../pages/MultasPage'
 import NotFoundPage from '../pages/NotFoundPage'
+import ServerErrorPage from '../pages/ServerErrorPage'
+import SolicitacoesPage from '../pages/SolicitacoesPage'
 import UsuariosPage from '../pages/UsuariosPage'
 import VeiculosPage from '../pages/VeiculosPage'
 import ViagensPage from '../pages/ViagensPage'
@@ -21,14 +26,23 @@ type NavItemComPerfil = NavItem & { perfis?: Perfil[] }
 
 /** `perfis` ausente = qualquer usuário logado pode ver. */
 export const navItems: NavItemComPerfil[] = [
-  { path: '/dashboard', label: 'Dashboard', icon: GridIcon },
-  { path: '/agenda', label: 'Agenda', icon: CalendarIcon },
-  { path: '/veiculos', label: 'Veículos', icon: TruckIcon },
-  { path: '/abastecimento', label: 'Abastecimento', icon: FuelIcon },
-  { path: '/motoristas', label: 'Motoristas', icon: UsersIcon },
-  { path: '/multas', label: 'Multas', icon: AlertIcon },
-  { path: '/viagens', label: 'Viagens', icon: RouteIcon },
-  { path: '/usuarios', label: 'Usuários', icon: UsersIcon, perfis: [PERFIS.ADMINISTRADOR] },
+  // Visão Geral (Topo / F-Pattern)
+  { path: '/inicio', label: 'Início', icon: HomeIcon, section: 'Visão Geral' },
+  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Visão Geral' },
+
+  // Operação
+  { path: '/solicitacoes', label: 'Solicitações', icon: ClipboardCheck, section: 'Operação' },
+  { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação' },
+  { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação' },
+
+  // Frota
+  { path: '/veiculos', label: 'Veículos', icon: TruckIcon, section: 'Frota' },
+  { path: '/abastecimento', label: 'Abastecimento', icon: FuelIcon, section: 'Frota' },
+  { path: '/multas', label: 'Multas', icon: AlertIcon, section: 'Frota' },
+
+  // Pessoas
+  { path: '/motoristas', label: 'Motoristas', icon: UsersIcon, section: 'Pessoas' },
+  { path: '/usuarios', label: 'Usuários', icon: UserRoundCog, section: 'Pessoas', perfis: [PERFIS.ADMINISTRADOR] },
 ]
 
 function LayoutRoute() {
@@ -57,10 +71,17 @@ export function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
       </Route>
 
+      {/* Rotas de demonstração direta das páginas de erro */}
+      <Route path="/404" element={<NotFoundPage />} />
+      <Route path="/500" element={<ServerErrorPage />} />
+      <Route path="/403" element={<ForbiddenPage />} />
+
       <Route element={<RotaProtegida />}>
         <Route element={<LayoutRoute />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<Navigate to="/inicio" replace />} />
+          <Route path="/inicio" element={<HomePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/solicitacoes" element={<SolicitacoesPage />} />
           <Route path="/agenda" element={<AgendaPage />} />
           <Route path="/veiculos" element={<VeiculosPage />} />
           <Route path="/abastecimento" element={<AbastecimentoPage />} />
@@ -72,10 +93,11 @@ export function AppRoutes() {
           <Route element={<RotaPorPerfil perfis={[PERFIS.ADMINISTRADOR]} />}>
             <Route path="/usuarios" element={<UsuariosPage />} />
           </Route>
-
-          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
+
+      {/* Catch-all global para páginas inexistentes fora do layout */}
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }

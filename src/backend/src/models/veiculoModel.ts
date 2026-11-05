@@ -19,6 +19,7 @@ export interface NovoVeiculo {
   modelo: string;
   tipo_frota: TipoFrota;
   capacidade_maxima: number;
+  km_atual: number;
 }
 
 export interface Veiculo extends NovoVeiculo {
@@ -26,10 +27,12 @@ export interface Veiculo extends NovoVeiculo {
   status: StatusVeiculo | string;
 }
 
+const COLUNAS_VEICULO = ['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'km_atual', 'status'];
+
 export const veiculoModel = {
   async listarVeiculos(): Promise<Veiculo[]> {
     return db('veiculos')
-      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status')
+      .select(COLUNAS_VEICULO)
       .orderBy('id', 'asc');
   },
 
@@ -47,7 +50,7 @@ export const veiculoModel = {
     const conexao = trx || db;
     const [veiculo] = await conexao('veiculos')
       .insert(dados)
-      .returning(['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status']);
+      .returning(COLUNAS_VEICULO);
 
     return veiculo;
   },
@@ -73,9 +76,10 @@ export const veiculoModel = {
       FROM veiculos v
       LEFT JOIN ordens_svo o
         ON o.veiculo_id = v.id
-        AND o.data_hora_conclusao IS NULL
+        AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO')
       WHERE v.tipo_frota = 'SVO'
-        AND v.status = 'DISPONIVEL'
+        -- RESERVADO: já tem ordem alocada, mas ainda pode ter vagas
+        AND v.status IN ('DISPONIVEL', 'RESERVADO')
         AND v.capacidade_maxima > 0
       GROUP BY
         v.id,
