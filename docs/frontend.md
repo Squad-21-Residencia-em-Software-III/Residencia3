@@ -21,7 +21,7 @@ npm run build    # confere tipos e gera o build
 > 1. Foi adicionada a dependência `lucide-react`. Ao atualizar ou clonar a branch, é obrigatório rodar `npm install` dentro de `src/frontend`.
 > 2. Crie o arquivo `src/frontend/.env` com `VITE_API_URL=http://localhost:3000/api` para comunicação correta com o back-end em desenvolvimento.
 
-O front-end **está oficialmente conectado ao back-end para Autenticação e Sessão** (`POST /api/auth/login`, `GET /api/auth/me`). Os módulos operacionais (Veículos, Motoristas, Viagens) utilizam persistência no navegador via `storageService` enquanto aguardam a conexão de seus endpoints REST definitivos.
+O front-end **está oficialmente conectado ao back-end para Autenticação e Sessão** (`POST /api/auth/login`, `GET /api/auth/me`). Os módulos operacionais (Veículos, Motoristas, Viagens, Abastecimento, Multas) utilizam persistência no navegador via `storageService` enquanto aguardam a conexão de seus endpoints REST definitivos.
 
 ## 3. Estrutura de pastas
 ```
@@ -52,16 +52,20 @@ src/frontend/
 
 | Rota | Página | Tipo de Acesso | Permissões |
 |---|---|---|---|
-| `/login` | `LoginPage` | Pública (`RotaPublica`) | Qualquer visitante (usuário logado é redirecionado para `/dashboard`) |
-| `/` | Redirecionamento | Protegida | Redireciona para `/dashboard` |
-| `/dashboard` | `DashboardPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/login` | `LoginPage` | Pública (`RotaPublica`) | Qualquer visitante (usuário logado é redirecionado para `/inicio`) |
+| `/` | Redirecionamento | Protegida | Redireciona para `/inicio` |
+| `/inicio` | `HomePage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (visão geral e central de operações) |
+| `/dashboard` | `DashboardPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (métricas executivas e gráficos) |
+| `/solicitacoes` | `SolicitacoesPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (triagem, análise de disponibilidade e despacho) |
+| `/viagens` | `ViagensPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/agenda` | `AgendaPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/veiculos` | `VeiculosPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/abastecimento` | `AbastecimentoPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/motoristas` | `MotoristasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
-| `/viagens` | `ViagensPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/multas` | `MultasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/usuarios` | `UsuariosPage` | Restrita por Perfil (`RotaPorPerfil`) | Exclusivo para perfil `ADMINISTRADOR` |
-| qualquer outra | `NotFoundPage` | Protegida | Exibida dentro do layout para rotas não mapeadas |
+| `/404`, `/500`, `/403` | Páginas de Erro | Pública / Erro | Telas ilustradas e padronizadas para cada código de erro HTTP |
+| qualquer outra | `NotFoundPage` | Protegida | Exibida para rotas não mapeadas |
 
 ---
 
@@ -234,6 +238,31 @@ Tabela `usuarios`, conforme as migrations (`20261014000001_create_initial_schema
 6. Clique no botão **Senha** de qualquer usuário para abrir o modal de redefinição de senha.
 7. Clique no botão **Desativar / Ativar** para alternar o status do usuário (note que o usuário administrador com tag "Você" tem o botão desativado por proteção de segurança).
 
+### Gestores por unidade (BL15)
+Seção abaixo da tabela de usuários (`pages/usuarios/GestoresUnidadesSecao.tsx`), visível só para `ADMINISTRADOR`. Consome a API diretamente, sem cache local, e recarrega após cada remoção.
+
+- **Arquivos**: `types/unidade.ts` (tipos e regra de perfis), `services/api/unidadesApi.ts` (contrato) e a seção acima, renderizada em `UsuariosPage.tsx`.
+- **Rotas consumidas** (backend da BL15, PR #76):
+
+| Método | Rota | Uso no front |
+|---|---|---|
+| `GET` | `/api/unidades/gestores` | Lista as unidades com os gestores associados (`UnidadeComGestores[]`) |
+| `POST` | `/api/unidades/:id/gestores` | Associa, com body `{ gestor_id }`; o 201 devolve a unidade atualizada, que substitui só aquela unidade na tela |
+| `DELETE` | `/api/unidades/:id/gestores/:gestorId` | Remove a associação (204) |
+| `GET` | `/api/usuarios?perfil=&ativo=true&limite=100` | Candidatos a gestor |
+| `GET` | `/api/unidades` | `unidadesApi.listarOpcoes()`: opções `{ id, nome, tipo }` para a solicitação de viagem (ainda não usada na tela) |
+
+- **Regra de perfis por unidade** (`PERFIS_GESTORES_POR_UNIDADE`, espelho de `backend/src/constants/unidades.ts`): **SVO** aceita Gestor de Frota e Gestor SVO; **HEMOSE** e **LACEN** aceitam só Gestor de Frota. O seletor de cada unidade já mostra só os perfis aceitos e esconde quem já está associado.
+- **Estados da tela**: carregando, erro com "Tentar novamente", nenhuma unidade, unidade sem gestor e gestor inativo (badge). Erros 400, 403, 404 e 409 da API viram mensagens de feedback.
+- **Dependência de banco**: as tabelas `unidades` e `gestores_unidades` e a coluna `solicitacoes_viagem.unidade_id` ainda não têm migration (ver seção 14). Até lá, a API responde 500 e a seção mostra o estado de erro.
+
+#### Como testar (depois da migration)
+1. Entre como administrador e abra `/usuarios`; role até **Gestores por unidade**.
+2. Confira as 3 unidades (SVO, HEMOSE, LACEN) e o aviso "Nenhum gestor associado" nas que estiverem vazias.
+3. No SVO, o seletor deve listar Gestores de Frota e Gestores SVO; em HEMOSE e LACEN, só Gestores de Frota.
+4. Associe um gestor e confira que ele aparece na unidade e some do seletor dela.
+5. Clique em **Remover**, confirme e veja o gestor voltar ao seletor.
+
 ## 10. Tela de Dashboard
 Painel central consolidado que agrega indicadores operacionais das tabelas `solicitacoes_viagem`, `viagens_frota`, `veiculos`, `motoristas` e `usuarios`.
 
@@ -401,6 +430,7 @@ Visão geral consolidada de todas as adequações realizadas entre o protótipo 
 - Para `motoristas.status`, só se conhece `DISPONIVEL` (padrão). Falta definir os demais valores (ex.: em viagem, afastado).
 - Os endpoints de `usuarios` estão totalmente prontos e documentados no backend (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`).
 - **Ainda não há endpoints para Viagens no back-end**: a tela de viagens consome os dados mockados em `services/mocks/viagensMock.ts`. Quando os endpoints forem desenvolvidos pela equipe de back-end, basta conectar a camada de serviços sem alterar a interface.
+- **Falta a migration da BL15** (responsabilidade do time de banco): tabelas `unidades` (com SVO, HEMOSE e LACEN) e `gestores_unidades`, e a coluna `solicitacoes_viagem.unidade_id`. A especificação está na descrição do PR #76. Sem ela, `/api/unidades*` e `POST /api/solicitacoes-viagem` respondem 500.
 
 ## 15. Roadmap de Funcionalidades & Entregas (Ordenado por Complexidade)
 
@@ -483,8 +513,11 @@ Este guia detalha o plano de chaveamento arquitetural para substituir os dados s
 | **Agenda (`/agenda`)** | Buscar visão do dia | `/api/viagens/agenda?data=YYYY-MM-DD` | `GET` | `200 OK` | `RotaAgenda[]` |
 | **Agenda (`/agenda`)** | Buscar visão semanal | `/api/viagens/agenda?semana=YYYY-MM-DD` | `GET` | `200 OK` | `RotaAgenda[]` da semana |
 | **Agenda (`/agenda`)** | Exceções do mês | `/api/viagens/agenda/excecoes?mes=MM&ano=YYYY` | `GET` | `200 OK` | `{ excecoes: Record<dia, ExcecaoAgenda[]>, totais: Record<dia, number> }` |
-| **Dashboard (`/dashboard`)** | Solicitações recentes | `/api/solicitacoes` | `GET` | `200 OK` | `SolicitacaoViagem[]` |
-| **Dashboard (`/dashboard`)** | Aprovar/Rejeitar | `/api/solicitacoes/:id/status` | `PATCH` | `200 OK` | `{ status: 'APROVADA' \| 'REJEITADA' }` |
+| **Solicitações (`/solicitacoes`)** | Listar solicitações | `/api/solicitacoes-viagem` | `GET` | `200 OK` | `SolicitacaoViagem[]` |
+| **Solicitações (`/solicitacoes`)** | Cadastrar solicitação | `/api/solicitacoes-viagem` | `POST` | `201 Created` | `{ origem, destino, finalidade, data_saida_desejada, data_chegada_desejada }` |
+| **Solicitações (`/solicitacoes`)** | Consultar disponibilidade | `/api/solicitacoes-viagem/:id/disponibilidade` | `GET` | `200 OK` | `{ solicitacao_id, periodo, veiculos_disponiveis, motoristas_disponiveis }` (SCRUM-73) |
+| **Solicitações (`/solicitacoes`)** | Aprovar solicitação | `/api/solicitacoes-viagem/:id/aprovar` | `PATCH` | `200 OK` | Solicitação aprovada (SCRUM-74) |
+| **Solicitações (`/solicitacoes`)** | Recusar solicitação | `/api/solicitacoes-viagem/:id/recusar` | `PATCH` | `200 OK` | `{ motivo?: string }` gravando motivo_recusa (SCRUM-74) |
 | **Login (`/login`)** | Autenticar operador | `/api/auth/login` | `POST` | `200 OK` | `{ token: string, usuario: Usuario }` |
 
 ---
@@ -606,3 +639,24 @@ Aproveitando que todas as telas do projeto foram construídas rigorosamente sobr
 #### 6. Agenda (`/agenda`)
 - **Estado Atual**: `MOCK_AGENDA_HOJE`, `MOCK_AGENDA_SEMANA` e `MOCK_EXCECOES_MES`.
 - **Transição no Front**: Como a Agenda utiliza a mesma estrutura relacional de `Viagem`, a rota `GET /api/viagens/agenda?data=...` retornará as viagens agrupadas por veículo para alimentar o Gantt e a timeline de 7 dias sem alterar nenhuma linha de CSS ou componente de renderização.
+
+
+---
+
+## 17. Módulo de Solicitações de Viagem (`/solicitacoes`)
+
+O módulo de solicitações conecta o solicitante institucional ao despacho da frota, operando em total conformidade com a modelagem do banco (tabela `solicitacoes_viagem`, migrations `20261014000001` e `20261104133113`) e os endpoints do backend.
+
+### 17.1 Ciclo de Vida da Solicitação
+1. **Criação (`PENDENTE_APROVACAO`)**: O usuário preenche origem, destino, finalidade e período pretendido (saída e retorno previsto opcional).
+2. **Análise de Disponibilidade (SCRUM-73)**: Antes de decidir, o gestor visualiza automaticamente no modal a quantidade de veículos livres e condutores com CNH válida no período pretendido (`storageService.consultarDisponibilidade()`).
+3. **Decisão do Gestor (SCRUM-74)**:
+   - **Aprovação**: Muda o status para `APROVADA`, habilitando o atalho imediato de despacho.
+   - **Recusa**: Exige o preenchimento opcional do campo `motivo_recusa` (máx. 200 caracteres), gravado de forma auditável e exibido para consulta.
+4. **Agendamento (`AGENDADA`)**: Ao associar veículo e motorista na tela de Viagens, a solicitação vinculada vira `AGENDADA`, o veículo passa a `RESERVADO` (ou `EM_USO`), o motorista a `DESIGNADO` (ou `EM_VIAGEM`) e a rota é gerada automaticamente na Agenda (`@fsph:agenda`).
+5. **Conclusão (`CONCLUIDA`)**: Quando a viagem é finalizada, a solicitação vinculada é concluída e os recursos liberados de volta para `DISPONIVEL`.
+
+### 17.2 Componentes e Estrutura
+- **`SolicitacoesPage.tsx`**: Página com cards de métricas (total, pendentes, aprovadas, agendadas, recusadas), busca textual à esquerda, dropdown de filtro de status e tabela de solicitações com avatares e badges.
+- **`ModalAnaliseSolicitacao.tsx`**: Painel de análise com resumo institucional, checagem de recursos em tempo real e ações de Aprovar / Recusar (com justificativa) / Agendar Viagem.
+- **`ModalNovaSolicitacao.tsx`**: Modal de cadastro validado conforme os schemas do backend.

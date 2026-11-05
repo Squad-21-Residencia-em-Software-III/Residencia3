@@ -1,12 +1,15 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
+export type TipoFrota = 'ADMINISTRATIVA' | 'SVO';
+export type StatusVeiculo = 'DISPONIVEL' | 'EM_USO' | 'MANUTENCAO' | 'RESERVADO';
+
 export interface VeiculoSvoDisponivel {
   id: number;
   placa: string;
   modelo: string;
   capacidade_maxima: number;
-  status: string;
+  status: StatusVeiculo | string;
   capacidade_utilizada: number;
   vagas_disponiveis: number;
 }
@@ -14,20 +17,28 @@ export interface VeiculoSvoDisponivel {
 export interface NovoVeiculo {
   placa: string;
   modelo: string;
-  tipo_frota: 'ADMINISTRATIVA' | 'SVO';
+  tipo_frota: TipoFrota;
   capacidade_maxima: number;
+  km_atual: number;
 }
 
 export interface Veiculo extends NovoVeiculo {
   id: number;
-  status: string;
+  status: StatusVeiculo | string;
 }
+
+const COLUNAS_VEICULO = ['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'km_atual', 'status'];
 
 export const veiculoModel = {
   async listarVeiculos(): Promise<Veiculo[]> {
     return db('veiculos')
-      .select('id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status')
+      .select(COLUNAS_VEICULO)
       .orderBy('id', 'asc');
+  },
+
+  async buscarPorId(id: number, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
+    const conexao = trx || db;
+    return conexao('veiculos').where({ id }).first();
   },
 
   async buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
@@ -39,9 +50,14 @@ export const veiculoModel = {
     const conexao = trx || db;
     const [veiculo] = await conexao('veiculos')
       .insert(dados)
-      .returning(['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'status']);
+      .returning(COLUNAS_VEICULO);
 
     return veiculo;
+  },
+
+  async atualizarStatus(id: number, status: StatusVeiculo, trx?: Knex.Transaction): Promise<void> {
+    const conexao = trx || db;
+    await conexao('veiculos').where({ id }).update({ status });
   },
 
   async listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
@@ -60,9 +76,10 @@ export const veiculoModel = {
       FROM veiculos v
       LEFT JOIN ordens_svo o
         ON o.veiculo_id = v.id
-        AND o.data_hora_conclusao IS NULL
+        AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO')
       WHERE v.tipo_frota = 'SVO'
-        AND v.status = 'DISPONIVEL'
+        -- RESERVADO: já tem ordem alocada, mas ainda pode ter vagas
+        AND v.status IN ('DISPONIVEL', 'RESERVADO')
         AND v.capacidade_maxima > 0
       GROUP BY
         v.id,

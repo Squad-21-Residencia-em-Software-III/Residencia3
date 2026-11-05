@@ -9,6 +9,7 @@ type ModalProps = {
   onConfirm?: () => void
   confirmLabel?: string
   hideFooter?: boolean
+  maxWidth?: string | number
   children: ReactNode
 }
 
@@ -18,6 +19,7 @@ export function Modal({
   onConfirm,
   confirmLabel = 'Salvar',
   hideFooter = false,
+  maxWidth,
   children,
 }: ModalProps) {
   useEffect(() => {
@@ -30,7 +32,7 @@ export function Modal({
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={title} style={maxWidth ? { maxWidth } : undefined}>
         <button className="modal__close" onClick={onClose} aria-label="Fechar">
           <CloseIcon />
         </button>

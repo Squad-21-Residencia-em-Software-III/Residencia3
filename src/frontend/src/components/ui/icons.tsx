@@ -8,6 +8,12 @@ export const CloseIcon = ({ size = 16 }: IconProps) => (
   </svg>
 )
 
+export const MenuIcon = ({ size = 18 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+)
+
 export const PlusIcon = ({ size = 14 }: IconProps) => (
   <svg {...base(size)}>
     <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -111,6 +117,30 @@ export const FuelIcon = ({ size = 16 }: IconProps) => (
     <rect x="4.5" y="4" width="6" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
     <path d="M12.5 6h1.7l2.3 2.5v5.8a1.7 1.7 0 0 0 3.4 0V8.6l-2.2-2.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M4.5 15h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
+
+
+export const AlertIcon = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M8 2.2l6 10.6H2L8 2.2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    <path d="M8 6.5v3M8 11.3v.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
+
+export const HomeIcon = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M2.5 7L8 2.5 13.5 7v6.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    <path d="M6 14.5v-5h4v5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+  </svg>
+)
+
+export const ChartBarIcon = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M2.5 13.5h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <rect x="3.5" y="7" width="2" height="5" rx="0.5" fill="currentColor" />
+    <rect x="7" y="4" width="2" height="8" rx="0.5" fill="currentColor" />
+    <rect x="10.5" y="2" width="2" height="10" rx="0.5" fill="currentColor" />
   </svg>
 )
 

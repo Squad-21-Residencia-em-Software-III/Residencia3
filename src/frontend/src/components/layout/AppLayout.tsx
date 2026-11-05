@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BellIcon, ChevronLeftIcon, LogoutIcon, PlusIcon } from '../ui'
+import { BellIcon, ChevronLeftIcon, CloseIcon, LogoutIcon, MenuIcon, PlusIcon } from '../ui'
 import './layout.css'
 
 export type NavItem = {
   path: string
   label: string
   icon: ComponentType<{ size?: number }>
+  section?: string
+  badge?: number | string
+  badgeTone?: 'warning' | 'danger' | 'info' | 'neutral'
 }
 
 type AppLayoutProps = {
@@ -40,16 +43,47 @@ export function AppLayout({
   children,
 }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  const handleNavClick = () => {
+    setMobileOpen(false)
+  }
+
+  const handleLogout = () => {
+    setMobileOpen(false)
+    onLogout?.()
+  }
 
   return (
-    <div className="app-layout">
-      <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`.trim()}>
+    <div className={`app-layout ${collapsed ? 'app-layout--collapsed' : 'app-layout--expanded'}`}>
+      {/* Backdrop para fechar o menu ao clicar fora no mobile */}
+      {mobileOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${
+          mobileOpen ? 'sidebar--mobile-open' : ''
+        }`.trim()}
+      >
         <div className="sidebar__brand">
           <img
             src={collapsed ? '/assets/icon.png' : '/assets/logo.png'}
             alt="FSPH — Fundação de Saúde Parreiras Horta"
             className={collapsed ? 'sidebar__icon' : 'sidebar__logo'}
           />
+          {/* Botão de fechar visível apenas no mobile */}
+          <button
+            className="sidebar__mobile-close"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Fechar menu"
+          >
+            <CloseIcon size={18} />
+          </button>
         </div>
 
         <button
@@ -61,20 +95,51 @@ export function AppLayout({
           <ChevronLeftIcon size={12} />
         </button>
 
-        {!collapsed && <span className="sidebar__section">Menu</span>}
-
         <nav className="sidebar__nav" aria-label="Navegação principal">
-          {navItems.map(({ path, label, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              className={({ isActive }) => `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`.trim()}
-              title={collapsed ? label : undefined}
-            >
-              <Icon size={20} />
-              {!collapsed && <span>{label}</span>}
-            </NavLink>
-          ))}
+          {navItems.reduce<ReactNode[]>((acc, item, index) => {
+            const prevSection = index > 0 ? navItems[index - 1].section : null
+            const isNewSection = item.section && item.section !== prevSection
+
+            if (isNewSection && !collapsed) {
+              acc.push(
+                <div key={`section-${item.section}`} className="sidebar__section-title">
+                  {item.section}
+                </div>
+              )
+            } else if (isNewSection && collapsed) {
+              acc.push(<div key={`section-divider-${item.section}`} className="sidebar__section-divider" />)
+            }
+
+            const { path, label, icon: Icon, badge, badgeTone } = item
+
+            acc.push(
+              <NavLink
+                key={path}
+                to={path}
+                onClick={handleNavClick}
+                className={({ isActive }) =>
+                  `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`.trim()
+                }
+                title={collapsed ? label : undefined}
+              >
+                <div className="sidebar__item-icon">
+                  <Icon size={18} />
+                </div>
+                {!collapsed && (
+                  <div className="sidebar__item-content">
+                    <span className="sidebar__item-label">{label}</span>
+                    {badge !== undefined && (
+                      <span className={`sidebar__item-badge sidebar__item-badge--${badgeTone ?? 'neutral'}`}>
+                        {badge}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </NavLink>
+            )
+
+            return acc
+          }, [])}
         </nav>
 
         <div className="sidebar__footer">
@@ -89,7 +154,11 @@ export function AppLayout({
               )}
             </div>
           )}
-          <button className="sidebar__logout" onClick={onLogout} title={collapsed ? 'Sair da conta' : undefined}>
+          <button
+            className="sidebar__logout"
+            onClick={handleLogout}
+            title={collapsed ? 'Sair da conta' : undefined}
+          >
             <LogoutIcon size={18} />
             {!collapsed && <span>Sair da conta</span>}
           </button>
@@ -98,11 +167,24 @@ export function AppLayout({
 
       <div className="app-layout__main">
         <header className="topbar">
-          <h1 className="topbar__title">{title}</h1>
+          <div className="topbar__left">
+            {/* Botão de Menu Hambúrguer Clássico (3 barras) no mobile */}
+            <button
+              className="topbar__menu-btn"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Abrir menu de navegação"
+              title="Abrir menu"
+            >
+              <MenuIcon size={20} />
+            </button>
+
+            <h1 className="topbar__title">{title}</h1>
+          </div>
+
           <div className="topbar__actions">
             {actionLabel && (
-              <button className="btn btn--primary" onClick={onAction}>
-                <PlusIcon /> {actionLabel}
+              <button className="btn btn--primary btn--topbar-action" onClick={onAction}>
+                <PlusIcon /> <span className="btn__label-text">{actionLabel}</span>
               </button>
             )}
             <button className="topbar__bell" aria-label="Notificações">
