@@ -1,7 +1,9 @@
 import { db } from '../config/database';
 import { DESCRICAO_PERFIS, LISTA_PERFIS, PERFIS, tipoUsuarioDoPerfil, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
+import { unidadesQuePodeGerir } from '../constants/unidades';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
+import { unidadeModel } from '../models/unidadeModel';
 import { usuarioModel, type AlteracoesUsuario, type Usuario } from '../models/usuarioModel';
 import type { AtualizarUsuarioInput, CriarUsuarioInput, ListarUsuariosInput } from '../validators/usuarioSchemas';
 import { senhaService } from './senhaService';
@@ -90,6 +92,10 @@ export const usuarioService = {
       const usuario = await usuarioModel.atualizar(id, alteracoes, trx);
       if (!usuario) {
         throw new AppError('Usuário não encontrado', 404);
+      }
+      if (dados.perfil) {
+        // O novo perfil pode não gerir mais as unidades associadas ao usuário
+        await unidadeModel.removerAssociacoesInvalidas(id, unidadesQuePodeGerir(dados.perfil), trx);
       }
       await auditoriaModel.registrar(
         {

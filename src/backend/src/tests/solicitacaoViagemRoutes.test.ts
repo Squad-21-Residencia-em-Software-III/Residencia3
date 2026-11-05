@@ -23,6 +23,7 @@ describe('POST /api/solicitacoes-viagem', () => {
   const endpoint = '/api/solicitacoes-viagem';
 
   const dadosValidos = {
+    unidade_id: 2,
     origem: 'Aracaju',
     destino: 'Itabaiana',
     finalidade: 'Visita técnica institucional',
@@ -74,6 +75,18 @@ describe('POST /api/solicitacoes-viagem', () => {
     expect(
       solicitacaoViagemService.criar
     ).not.toHaveBeenCalled();
+  });
+
+  it('deve retornar 400 quando a unidade não for informada', async () => {
+    const { unidade_id: _ignorada, ...semUnidade } = dadosValidos;
+
+    const resposta = await request(app)
+      .post(endpoint)
+      .set('Authorization', 'Bearer token-teste')
+      .send(semUnidade);
+
+    expect(resposta.status).toBe(400);
+    expect(solicitacaoViagemService.criar).not.toHaveBeenCalled();
   });
 
   it('deve retornar 400 quando a saída estiver no passado', async () => {
