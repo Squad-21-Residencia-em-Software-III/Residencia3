@@ -52,17 +52,20 @@ src/frontend/
 
 | Rota | Página | Tipo de Acesso | Permissões |
 |---|---|---|---|
-| `/login` | `LoginPage` | Pública (`RotaPublica`) | Qualquer visitante (usuário logado é redirecionado para `/dashboard`) |
-| `/` | Redirecionamento | Protegida | Redireciona para `/dashboard` |
-| `/dashboard` | `DashboardPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/login` | `LoginPage` | Pública (`RotaPublica`) | Qualquer visitante (usuário logado é redirecionado para `/inicio`) |
+| `/` | Redirecionamento | Protegida | Redireciona para `/inicio` |
+| `/inicio` | `HomePage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (visão geral e central de operações) |
+| `/dashboard` | `DashboardPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (métricas executivas e gráficos) |
+| `/solicitacoes` | `SolicitacoesPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (triagem, análise de disponibilidade e despacho) |
+| `/viagens` | `ViagensPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/agenda` | `AgendaPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/veiculos` | `VeiculosPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/abastecimento` | `AbastecimentoPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/motoristas` | `MotoristasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
-| `/viagens` | `ViagensPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/multas` | `MultasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/usuarios` | `UsuariosPage` | Restrita por Perfil (`RotaPorPerfil`) | Exclusivo para perfil `ADMINISTRADOR` |
-| qualquer outra | `NotFoundPage` | Protegida | Exibida dentro do layout para rotas não mapeadas |
+| `/404`, `/500`, `/403` | Páginas de Erro | Pública / Erro | Telas ilustradas e padronizadas para cada código de erro HTTP |
+| qualquer outra | `NotFoundPage` | Protegida | Exibida para rotas não mapeadas |
 
 ---
 
@@ -484,8 +487,11 @@ Este guia detalha o plano de chaveamento arquitetural para substituir os dados s
 | **Agenda (`/agenda`)** | Buscar visão do dia | `/api/viagens/agenda?data=YYYY-MM-DD` | `GET` | `200 OK` | `RotaAgenda[]` |
 | **Agenda (`/agenda`)** | Buscar visão semanal | `/api/viagens/agenda?semana=YYYY-MM-DD` | `GET` | `200 OK` | `RotaAgenda[]` da semana |
 | **Agenda (`/agenda`)** | Exceções do mês | `/api/viagens/agenda/excecoes?mes=MM&ano=YYYY` | `GET` | `200 OK` | `{ excecoes: Record<dia, ExcecaoAgenda[]>, totais: Record<dia, number> }` |
-| **Dashboard (`/dashboard`)** | Solicitações recentes | `/api/solicitacoes` | `GET` | `200 OK` | `SolicitacaoViagem[]` |
-| **Dashboard (`/dashboard`)** | Aprovar/Rejeitar | `/api/solicitacoes/:id/status` | `PATCH` | `200 OK` | `{ status: 'APROVADA' \| 'REJEITADA' }` |
+| **Solicitações (`/solicitacoes`)** | Listar solicitações | `/api/solicitacoes-viagem` | `GET` | `200 OK` | `SolicitacaoViagem[]` |
+| **Solicitações (`/solicitacoes`)** | Cadastrar solicitação | `/api/solicitacoes-viagem` | `POST` | `201 Created` | `{ origem, destino, finalidade, data_saida_desejada, data_chegada_desejada }` |
+| **Solicitações (`/solicitacoes`)** | Consultar disponibilidade | `/api/solicitacoes-viagem/:id/disponibilidade` | `GET` | `200 OK` | `{ solicitacao_id, periodo, veiculos_disponiveis, motoristas_disponiveis }` (SCRUM-73) |
+| **Solicitações (`/solicitacoes`)** | Aprovar solicitação | `/api/solicitacoes-viagem/:id/aprovar` | `PATCH` | `200 OK` | Solicitação aprovada (SCRUM-74) |
+| **Solicitações (`/solicitacoes`)** | Recusar solicitação | `/api/solicitacoes-viagem/:id/recusar` | `PATCH` | `200 OK` | `{ motivo?: string }` gravando motivo_recusa (SCRUM-74) |
 | **Login (`/login`)** | Autenticar operador | `/api/auth/login` | `POST` | `200 OK` | `{ token: string, usuario: Usuario }` |
 
 ---
@@ -607,3 +613,24 @@ Aproveitando que todas as telas do projeto foram construídas rigorosamente sobr
 #### 6. Agenda (`/agenda`)
 - **Estado Atual**: `MOCK_AGENDA_HOJE`, `MOCK_AGENDA_SEMANA` e `MOCK_EXCECOES_MES`.
 - **Transição no Front**: Como a Agenda utiliza a mesma estrutura relacional de `Viagem`, a rota `GET /api/viagens/agenda?data=...` retornará as viagens agrupadas por veículo para alimentar o Gantt e a timeline de 7 dias sem alterar nenhuma linha de CSS ou componente de renderização.
+
+
+---
+
+## 17. Módulo de Solicitações de Viagem (`/solicitacoes`)
+
+O módulo de solicitações conecta o solicitante institucional ao despacho da frota, operando em total conformidade com a modelagem do banco (tabela `solicitacoes_viagem`, migrations `20261014000001` e `20261104133113`) e os endpoints do backend.
+
+### 17.1 Ciclo de Vida da Solicitação
+1. **Criação (`PENDENTE_APROVACAO`)**: O usuário preenche origem, destino, finalidade e período pretendido (saída e retorno previsto opcional).
+2. **Análise de Disponibilidade (SCRUM-73)**: Antes de decidir, o gestor visualiza automaticamente no modal a quantidade de veículos livres e condutores com CNH válida no período pretendido (`storageService.consultarDisponibilidade()`).
+3. **Decisão do Gestor (SCRUM-74)**:
+   - **Aprovação**: Muda o status para `APROVADA`, habilitando o atalho imediato de despacho.
+   - **Recusa**: Exige o preenchimento opcional do campo `motivo_recusa` (máx. 200 caracteres), gravado de forma auditável e exibido para consulta.
+4. **Agendamento (`AGENDADA`)**: Ao associar veículo e motorista na tela de Viagens, a solicitação vinculada vira `AGENDADA`, o veículo passa a `RESERVADO` (ou `EM_USO`), o motorista a `DESIGNADO` (ou `EM_VIAGEM`) e a rota é gerada automaticamente na Agenda (`@fsph:agenda`).
+5. **Conclusão (`CONCLUIDA`)**: Quando a viagem é finalizada, a solicitação vinculada é concluída e os recursos liberados de volta para `DISPONIVEL`.
+
+### 17.2 Componentes e Estrutura
+- **`SolicitacoesPage.tsx`**: Página com cards de métricas (total, pendentes, aprovadas, agendadas, recusadas), busca textual à esquerda, dropdown de filtro de status e tabela de solicitações com avatares e badges.
+- **`ModalAnaliseSolicitacao.tsx`**: Painel de análise com resumo institucional, checagem de recursos em tempo real e ações de Aprovar / Recusar (com justificativa) / Agendar Viagem.
+- **`ModalNovaSolicitacao.tsx`**: Modal de cadastro validado conforme os schemas do backend.

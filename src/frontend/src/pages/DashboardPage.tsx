@@ -430,7 +430,7 @@ export default function DashboardPage() {
           title="Solicitações Recentes de Viagem"
           subtitle={`${solicitacoes.length} solicitações registradas no sistema`}
           newLabel="Nova Solicitação"
-          onNew={() => navigate('/viagens')}
+          onNew={() => navigate('/solicitacoes')}
         />
 
         <Table>
@@ -497,7 +497,7 @@ export default function DashboardPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => navigate('/viagens')}
+                    onClick={() => navigate('/solicitacoes')}
                     title="Acompanhar solicitação"
                   >
                     <Eye size={14} style={{ marginRight: '4px' }} /> Detalhes

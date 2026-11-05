@@ -701,6 +701,37 @@ export const storageService = {
     return storageService.atualizarStatusSolicitacao(id, 'RECUSADA', motivo);
   },
 
+  /**
+   * Consulta recursos disponíveis para atender a solicitação (espelha GET /solicitacoes-viagem/:id/disponibilidade do backend).
+   */
+  consultarDisponibilidade: (
+    solicitacaoId: number
+  ): {
+    solicitacao_id: number;
+    periodo: { inicio: string; fim: string };
+    veiculos_disponiveis: Veiculo[];
+    motoristas_disponiveis: Motorista[];
+  } => {
+    const solicitacao = storageService.getSolicitacoes().find((s) => s.id === solicitacaoId);
+    if (!solicitacao) throw new Error('Solicitação de viagem não encontrada.');
+
+    const inicio = solicitacao.data_saida_desejada;
+    const fim = solicitacao.data_chegada_desejada || solicitacao.data_saida_desejada;
+
+    const veiculos = storageService.getVeiculos().filter((v) => v.status === 'DISPONIVEL');
+    const hoje = new Date().toISOString().slice(0, 10);
+    const motoristas = storageService.getMotoristas().filter(
+      (m) => m.status === 'DISPONIVEL' && m.validade_cnh >= hoje
+    );
+
+    return {
+      solicitacao_id: solicitacao.id,
+      periodo: { inicio, fim },
+      veiculos_disponiveis: veiculos,
+      motoristas_disponiveis: motoristas,
+    };
+  },
+
   // --- AGENDA OPERACIONAL ---
   getAgenda: (): AgendaCache => {
     const stored = localStorage.getItem(STORAGE_KEY_AGENDA);
