@@ -1,4 +1,4 @@
-import type { SolicitacaoViagem, ViagemResumoDashboard } from '../../types/solicitacao';
+import type { SolicitacaoViagem } from '../../types/solicitacao';
 
 /**
  * DADOS FICTÍCIOS (mock). Não vêm do banco nem da API.
@@ -80,30 +80,7 @@ export const MOCK_SOLICITACOES: SolicitacaoViagem[] = [
     finalidade: 'Reunião intersetorial de planejamento orçamentário',
     data_saida_desejada: '2026-10-14T14:00:00',
     data_chegada_desejada: '2026-10-14T17:00:00',
-    status: 'REJEITADA',
-  },
-];
-
-/**
- * Viagens em andamento ativas (simulação de viagens_frota com status EM_ANDAMENTO).
- */
-export const MOCK_VIAGENS_ATIVAS: ViagemResumoDashboard[] = [
-  {
-    id: 301,
-    hora: '08:30',
-    origem: 'Hemose',
-    destino: 'HUSE',
-    veiculo_modelo: 'Renault Master',
-    veiculo_placa: 'GHI3F45',
-    motorista_nome: 'João Santos',
-  },
-  {
-    id: 302,
-    hora: '09:15',
-    origem: 'FSPH Sede',
-    destino: 'HR Lagarto',
-    veiculo_modelo: 'Chevrolet Onix',
-    veiculo_placa: 'DEF2E34',
-    motorista_nome: 'Marcos Oliveira',
+    status: 'RECUSADA',
+    motivo_recusa: 'Reunião reagendada pela SES; deslocamento desnecessário.',
   },
 ];
