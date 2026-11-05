@@ -10,6 +10,7 @@ import { documentoRoutes } from './documentoRoutes';
 import { multaRoutes } from './multaRoutes';
 import { viagemRoutes } from './viagemRoutes';
 import { motoristaRoutes } from './motoristaRoutes';
+import { dashboardRoutes } from './dashboardRoutes';
 
 export const routes = Router();
 
@@ -33,3 +34,4 @@ routes.use('/documentos', documentoRoutes);
 routes.use('/multas', multaRoutes);
 routes.use('/viagens', viagemRoutes);
 routes.use('/motoristas', motoristaRoutes);
+routes.use('/dashboard', dashboardRoutes);
