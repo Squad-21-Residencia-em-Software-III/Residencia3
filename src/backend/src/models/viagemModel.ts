@@ -76,7 +76,6 @@ const VIAGENS_UNIFICADAS_SQL = `
     o.km_inicial,
     o.km_final,
     o.data_hora_saida AS data_hora_efetiva_saida,
-    NULL AS data_hora_efetiva_saida,
     o.data_hora_conclusao AS data_hora_efetiva_chegada,
     CASE o.status
       WHEN 'ALOCADA' THEN 'AGENDADA'
