@@ -6,9 +6,12 @@ import { autorizar } from '../middlewares/autorizar';
 
 export const unidadeRoutes = Router();
 
-// A associação de gestores às unidades é feita apenas pelo Administrador
-unidadeRoutes.use(autenticar, autorizar(PERFIS.ADMINISTRADOR));
+unidadeRoutes.use(autenticar);
 
+// Qualquer usuário autenticado consulta as unidades para escolher a da solicitação
 unidadeRoutes.get('/', unidadeController.listar);
-unidadeRoutes.post('/:id/gestores', unidadeController.associarGestor);
-unidadeRoutes.delete('/:id/gestores/:gestorId', unidadeController.removerGestor);
+
+// A consulta e a associação de gestores às unidades são feitas apenas pelo Administrador
+unidadeRoutes.get('/gestores', autorizar(PERFIS.ADMINISTRADOR), unidadeController.listarComGestores);
+unidadeRoutes.post('/:id/gestores', autorizar(PERFIS.ADMINISTRADOR), unidadeController.associarGestor);
+unidadeRoutes.delete('/:id/gestores/:gestorId', autorizar(PERFIS.ADMINISTRADOR), unidadeController.removerGestor);

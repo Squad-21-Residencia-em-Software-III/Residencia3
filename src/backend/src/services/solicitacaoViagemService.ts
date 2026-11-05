@@ -10,13 +10,14 @@ import {
   solicitacaoViagemModel,
   type SolicitacaoViagem,
   type SolicitacaoViagemDetalhada,
-  type StatusSolicitacaoViagem,
 } from '../models/solicitacaoViagemModel';
 import { unidadeModel } from '../models/unidadeModel';
 import type { Usuario } from '../models/usuarioModel';
 import type {
   CriarSolicitacaoViagemInput,
+  ListarSolicitacoesViagemInput,
 } from '../validators/solicitacaoViagemSchemas';
+import type { ListaPaginada } from './usuarioService';
 
 type Analista = Pick<Usuario, 'id' | 'perfil'>;
 
@@ -24,18 +25,28 @@ export const solicitacaoViagemService = {
   // Encaminhamento: cada analista vê apenas as solicitações das unidades que gere
   async listar(
     analista: Analista,
-    status?: StatusSolicitacaoViagem
-  ): Promise<SolicitacaoViagemDetalhada[]> {
+    filtros: ListarSolicitacoesViagemInput
+  ): Promise<ListaPaginada<SolicitacaoViagemDetalhada>> {
+    let resultado = { dados: [] as SolicitacaoViagemDetalhada[], total: 0 };
+
     if (PERFIS_ANALISAM_TODAS.includes(analista.perfil)) {
-      return solicitacaoViagemModel.listar({ status });
+      resultado = await solicitacaoViagemModel.listar(filtros);
+    } else {
+      const unidadeIds = await unidadeModel.idsDasUnidadesDoGestor(analista.id);
+      if (unidadeIds.length > 0) {
+        resultado = await solicitacaoViagemModel.listar({ ...filtros, unidadeIds });
+      }
     }
 
-    const unidadeIds = await unidadeModel.idsDasUnidadesDoGestor(analista.id);
-    if (unidadeIds.length === 0) {
-      return [];
-    }
-
-    return solicitacaoViagemModel.listar({ status, unidadeIds });
+    return {
+      dados: resultado.dados,
+      paginacao: {
+        pagina: filtros.pagina,
+        limite: filtros.limite,
+        total: resultado.total,
+        totalPaginas: Math.ceil(resultado.total / filtros.limite),
+      },
+    };
   },
 
   async criar(

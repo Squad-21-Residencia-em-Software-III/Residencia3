@@ -30,12 +30,16 @@ export const recusarSolicitacaoViagemSchema = z.object({
 });
 
 export const listarSolicitacoesViagemSchema = z.object({
+  pagina: z.coerce.number().int().min(1, 'A página deve ser maior ou igual a 1').default(1),
+  limite: z.coerce.number().int().min(1).max(100, 'O limite máximo é 100').default(20),
   status: z
     .enum(LISTA_STATUS_SOLICITACAO_VIAGEM, {
       error: `Status inválido. Valores aceitos: ${LISTA_STATUS_SOLICITACAO_VIAGEM.join(', ')}`,
     })
     .optional(),
 });
+
+export type ListarSolicitacoesViagemInput = z.infer<typeof listarSolicitacoesViagemSchema>;
 
 export type CriarSolicitacaoViagemInput = z.infer<
   typeof criarSolicitacaoViagemSchema

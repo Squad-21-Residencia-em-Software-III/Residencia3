@@ -20,9 +20,13 @@ export interface UnidadeComGestores extends Unidade {
 }
 
 export const unidadeModel = {
+  async listar(conexao: Knex = db): Promise<Unidade[]> {
+    return conexao<Unidade>('unidades').select('id', 'nome', 'tipo').orderBy('id');
+  },
+
   async listarComGestores(conexao: Knex = db): Promise<UnidadeComGestores[]> {
     const [unidades, associacoes] = await Promise.all([
-      conexao<Unidade>('unidades').select('id', 'nome', 'tipo').orderBy('id'),
+      this.listar(conexao),
       conexao('gestores_unidades as gu')
         .join('usuarios as u', 'u.id', 'gu.usuario_id')
         .select('gu.unidade_id', 'u.id', 'u.nome', 'u.email', 'u.ativo')

@@ -2,14 +2,19 @@ import { db } from '../config/database';
 import { podeGerirUnidade } from '../constants/unidades';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
-import { unidadeModel, type UnidadeComGestores } from '../models/unidadeModel';
+import { unidadeModel, type Unidade, type UnidadeComGestores } from '../models/unidadeModel';
 import { usuarioModel } from '../models/usuarioModel';
 
 const CHAVE_DUPLICADA = '23505';
 const JA_ASSOCIADO = 'Este gestor já está associado a esta unidade';
 
 export const unidadeService = {
-  async listar(): Promise<UnidadeComGestores[]> {
+  // Opções para o solicitante escolher a unidade, sem dados dos gestores
+  async listar(): Promise<Unidade[]> {
+    return unidadeModel.listar();
+  },
+
+  async listarComGestores(): Promise<UnidadeComGestores[]> {
     return unidadeModel.listarComGestores();
   },
 

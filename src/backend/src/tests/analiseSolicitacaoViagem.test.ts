@@ -15,7 +15,7 @@ vi.mock('../config/database', () => ({
 
 vi.mock('../models/solicitacaoViagemModel', () => ({
   solicitacaoViagemModel: {
-    listar: vi.fn(async () => []),
+    listar: vi.fn(async () => ({ dados: [], total: 0 })),
     buscarParaAtualizar: vi.fn(),
     atualizarStatus: vi.fn(
       async (id: number, status: string, _trx?: unknown, motivo_recusa?: string | null) => ({
@@ -187,24 +187,37 @@ describe('Análise conforme a unidade da solicitação', () => {
 });
 
 describe('solicitacaoViagemService.listar (encaminhamento)', () => {
-  it('Gestor de Frota recebe as solicitações de todas as unidades', async () => {
-    await solicitacaoViagemService.listar(gestorFrota, 'PENDENTE_APROVACAO');
+  const primeiraPagina = { pagina: 1, limite: 20 };
 
-    expect(solicitacaoViagemModel.listar).toHaveBeenCalledWith({ status: 'PENDENTE_APROVACAO' });
+  it('Gestor de Frota recebe as solicitações de todas as unidades', async () => {
+    await solicitacaoViagemService.listar(gestorFrota, { ...primeiraPagina, status: 'PENDENTE_APROVACAO' });
+
+    expect(solicitacaoViagemModel.listar).toHaveBeenCalledWith({ ...primeiraPagina, status: 'PENDENTE_APROVACAO' });
     expect(unidadeModel.idsDasUnidadesDoGestor).not.toHaveBeenCalled();
   });
 
   it('Gestor SVO recebe apenas as solicitações das unidades associadas', async () => {
     vi.mocked(unidadeModel.idsDasUnidadesDoGestor).mockResolvedValueOnce([UNIDADE_SVO]);
 
-    await solicitacaoViagemService.listar(gestorSvo);
+    await solicitacaoViagemService.listar(gestorSvo, primeiraPagina);
 
-    expect(solicitacaoViagemModel.listar).toHaveBeenCalledWith({ status: undefined, unidadeIds: [UNIDADE_SVO] });
+    expect(solicitacaoViagemModel.listar).toHaveBeenCalledWith({ ...primeiraPagina, unidadeIds: [UNIDADE_SVO] });
   });
 
-  it('Gestor SVO sem associação não recebe solicitações', async () => {
-    await expect(solicitacaoViagemService.listar(gestorSvo)).resolves.toEqual([]);
+  it('Gestor SVO sem associação recebe página vazia', async () => {
+    await expect(solicitacaoViagemService.listar(gestorSvo, primeiraPagina)).resolves.toEqual({
+      dados: [],
+      paginacao: { pagina: 1, limite: 20, total: 0, totalPaginas: 0 },
+    });
     expect(solicitacaoViagemModel.listar).not.toHaveBeenCalled();
+  });
+
+  it('deve calcular o total de páginas', async () => {
+    vi.mocked(solicitacaoViagemModel.listar).mockResolvedValueOnce({ dados: [], total: 45 });
+
+    const resultado = await solicitacaoViagemService.listar(gestorFrota, { pagina: 2, limite: 20 });
+
+    expect(resultado.paginacao).toEqual({ pagina: 2, limite: 20, total: 45, totalPaginas: 3 });
   });
 });
 
@@ -261,19 +274,33 @@ describe('PATCH /api/solicitacoes-viagem/:id/aprovar e /recusar', () => {
 describe('GET /api/solicitacoes-viagem', () => {
   const token = 'Bearer token-teste';
 
-  it('deve listar filtrando pelo status', async () => {
+  it('deve listar filtrando pelo status com a paginação padrão', async () => {
     const resposta = await request(app)
       .get('/api/solicitacoes-viagem?status=PENDENTE_APROVACAO')
       .set('Authorization', token);
 
     expect(resposta.status).toBe(200);
-    expect(solicitacaoViagemModel.listar).toHaveBeenCalledWith({ status: 'PENDENTE_APROVACAO' });
+    expect(resposta.body.paginacao).toEqual({ pagina: 1, limite: 20, total: 0, totalPaginas: 0 });
+    expect(solicitacaoViagemModel.listar).toHaveBeenCalledWith({ pagina: 1, limite: 20, status: 'PENDENTE_APROVACAO' });
+  });
+
+  it('deve repassar página e limite informados', async () => {
+    await request(app).get('/api/solicitacoes-viagem?pagina=3&limite=50').set('Authorization', token);
+
+    expect(solicitacaoViagemModel.listar).toHaveBeenCalledWith({ pagina: 3, limite: 50 });
   });
 
   it('deve retornar 400 para status inválido', async () => {
     const resposta = await request(app).get('/api/solicitacoes-viagem?status=XYZ').set('Authorization', token);
 
     expect(resposta.status).toBe(400);
+  });
+
+  it('deve retornar 400 para limite acima de 100', async () => {
+    const resposta = await request(app).get('/api/solicitacoes-viagem?limite=101').set('Authorization', token);
+
+    expect(resposta.status).toBe(400);
+    expect(solicitacaoViagemModel.listar).not.toHaveBeenCalled();
   });
 
   it('deve retornar 403 para o solicitante', async () => {

@@ -9,6 +9,10 @@ export const unidadeController = {
     res.json(await unidadeService.listar());
   },
 
+  async listarComGestores(_req: Request, res: Response): Promise<void> {
+    res.json(await unidadeService.listarComGestores());
+  },
+
   async associarGestor(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
     const { gestor_id } = associarGestorSchema.parse(req.body ?? {});

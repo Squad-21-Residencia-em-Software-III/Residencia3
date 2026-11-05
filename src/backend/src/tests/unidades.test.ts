@@ -16,6 +16,7 @@ vi.mock('../config/database', () => ({
 
 vi.mock('../models/unidadeModel', () => ({
   unidadeModel: {
+    listar: vi.fn(async () => [{ id: 1, nome: 'SVO', tipo: 'SVO' }]),
     listarComGestores: vi.fn(async () => []),
     buscarPorId: vi.fn(),
     buscarComGestores: vi.fn(async (id: number) => ({ id, nome: 'SVO', tipo: 'SVO', gestores: [] })),
@@ -181,19 +182,48 @@ describe('unidadeService.removerGestor', () => {
 describe('Rotas /api/unidades', () => {
   const token = 'Bearer token-teste';
 
-  it('GET deve listar as unidades com os gestores', async () => {
+  it('GET /api/unidades deve exigir autenticação', async () => {
+    const resposta = await request(app).get('/api/unidades');
+
+    expect(resposta.status).toBe(401);
+  });
+
+  it('GET /api/unidades deve listar as opções para o solicitante, sem os gestores', async () => {
+    autenticarComo(PERFIS.SOLICITANTE);
+
     const resposta = await request(app).get('/api/unidades').set('Authorization', token);
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual([{ id: 1, nome: 'SVO', tipo: 'SVO' }]);
+    expect(unidadeModel.listarComGestores).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/unidades/gestores deve listar as unidades com os gestores', async () => {
+    const resposta = await request(app).get('/api/unidades/gestores').set('Authorization', token);
 
     expect(resposta.status).toBe(200);
     expect(unidadeModel.listarComGestores).toHaveBeenCalled();
   });
 
-  it('deve retornar 403 para quem não é administrador', async () => {
+  it('GET /api/unidades/gestores deve retornar 403 para quem não é administrador', async () => {
     autenticarComo(PERFIS.GESTOR_FROTA);
 
-    const resposta = await request(app).get('/api/unidades').set('Authorization', token);
+    const resposta = await request(app).get('/api/unidades/gestores').set('Authorization', token);
 
     expect(resposta.status).toBe(403);
+    expect(unidadeModel.listarComGestores).not.toHaveBeenCalled();
+  });
+
+  it('POST deve retornar 403 para quem não é administrador', async () => {
+    autenticarComo(PERFIS.SOLICITANTE);
+
+    const resposta = await request(app)
+      .post('/api/unidades/1/gestores')
+      .set('Authorization', token)
+      .send({ gestor_id: 5 });
+
+    expect(resposta.status).toBe(403);
+    expect(unidadeModel.associar).not.toHaveBeenCalled();
   });
 
   it('POST deve associar e retornar 201', async () => {

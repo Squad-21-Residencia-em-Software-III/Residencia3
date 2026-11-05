@@ -30,10 +30,10 @@ export const solicitacaoViagemController = {
   },
 
   async listar(req: Request, res: Response): Promise<void> {
-    const { status } = listarSolicitacoesViagemSchema.parse(req.query);
+    const filtros = listarSolicitacoesViagemSchema.parse(req.query);
     const analista = usuarioAutenticado(req);
 
-    res.json(await solicitacaoViagemService.listar(analista, status));
+    res.json(await solicitacaoViagemService.listar(analista, filtros));
   },
 
   async aprovar(req: Request, res: Response): Promise<void> {

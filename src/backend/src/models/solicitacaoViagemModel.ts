@@ -29,22 +29,35 @@ export interface SolicitacaoViagemDetalhada extends SolicitacaoViagem {
 }
 
 export interface FiltrosSolicitacoesViagem {
+  pagina: number;
+  limite: number;
   status?: StatusSolicitacaoViagem;
   // undefined: todas as unidades, inclusive as solicitações sem unidade
   unidadeIds?: number[];
 }
 
 export const solicitacaoViagemModel = {
-  async listar(filtros: FiltrosSolicitacoesViagem): Promise<SolicitacaoViagemDetalhada[]> {
-    return db('solicitacoes_viagem as sv')
-      .leftJoin('unidades as un', 'un.id', 'sv.unidade_id')
-      .join('usuarios as u', 'u.id', 'sv.solicitante_id')
-      .select('sv.*', 'un.nome as unidade_nome', 'u.nome as solicitante_nome')
-      .modify((q) => {
-        if (filtros.status) q.where('sv.status', filtros.status);
-        if (filtros.unidadeIds) q.whereIn('sv.unidade_id', filtros.unidadeIds);
-      })
-      .orderBy('sv.data_saida_desejada');
+  async listar(
+    filtros: FiltrosSolicitacoesViagem
+  ): Promise<{ dados: SolicitacaoViagemDetalhada[]; total: number }> {
+    const consulta = db('solicitacoes_viagem as sv').modify((q) => {
+      if (filtros.status) q.where('sv.status', filtros.status);
+      if (filtros.unidadeIds) q.whereIn('sv.unidade_id', filtros.unidadeIds);
+    });
+
+    const [dados, contagem] = await Promise.all([
+      consulta
+        .clone()
+        .leftJoin('unidades as un', 'un.id', 'sv.unidade_id')
+        .join('usuarios as u', 'u.id', 'sv.solicitante_id')
+        .select('sv.*', 'un.nome as unidade_nome', 'u.nome as solicitante_nome')
+        .orderBy([{ column: 'sv.data_saida_desejada' }, { column: 'sv.id' }])
+        .limit(filtros.limite)
+        .offset((filtros.pagina - 1) * filtros.limite),
+      consulta.clone().count<{ total: string }[]>({ total: '*' }),
+    ]);
+
+    return { dados, total: Number(contagem[0]?.total ?? 0) };
   },
 
   async cadastrar(

@@ -62,5 +62,11 @@ jobs:
       - name: Verificar tipos TypeScript
         run: npm run typecheck
 
+      # Os testes usam mocks do banco; o segredo só existe para o app carregar as variáveis obrigatórias
+      - name: Executar testes
+        run: npm test
+        env:
+          JWT_SECRET: segredo-apenas-para-testes-ci
+
       - name: Compilar backend
         run: npm run build
