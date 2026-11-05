@@ -1,5 +1,5 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
-import { LayoutDashboard, UserRoundCog } from 'lucide-react'
+import { ClipboardCheck, LayoutDashboard, UserRoundCog } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
 import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
@@ -14,6 +14,7 @@ import MotoristasPage from '../pages/MotoristasPage'
 import MultasPage from '../pages/MultasPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import ServerErrorPage from '../pages/ServerErrorPage'
+import SolicitacoesPage from '../pages/SolicitacoesPage'
 import UsuariosPage from '../pages/UsuariosPage'
 import VeiculosPage from '../pages/VeiculosPage'
 import ViagensPage from '../pages/ViagensPage'
@@ -30,6 +31,7 @@ export const navItems: NavItemComPerfil[] = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Visão Geral' },
 
   // Operação
+  { path: '/solicitacoes', label: 'Solicitações', icon: ClipboardCheck, section: 'Operação' },
   { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação' },
   { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação' },
 
@@ -79,6 +81,7 @@ export function AppRoutes() {
           <Route index element={<Navigate to="/inicio" replace />} />
           <Route path="/inicio" element={<HomePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/solicitacoes" element={<SolicitacoesPage />} />
           <Route path="/agenda" element={<AgendaPage />} />
           <Route path="/veiculos" element={<VeiculosPage />} />
           <Route path="/abastecimento" element={<AbastecimentoPage />} />

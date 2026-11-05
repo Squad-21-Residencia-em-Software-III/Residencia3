@@ -1,4 +1,5 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { ChangeEvent } from 'react';
 import {
   CheckCircle2,
@@ -69,12 +70,19 @@ function limitarTexto(texto: string, maximo = 28): string {
 }
 
 export default function ViagensPage() {
+  const location = useLocation();
   const [viagens, setViagens] = useState<Viagem[]>(storageService.getViagens());
   const [filtro, setFiltro] = useState<FiltroAba>('TODAS');
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.solicitacaoId) {
+      setModalNovaAberto(true);
+    }
+  }, [location.state]);
   const [viagemDetalhes, setViagemDetalhes] = useState<Viagem | null>(null);
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
   const [viagemExpandidaId, setViagemExpandidaId] = useState<number | null>(null);
@@ -552,6 +560,7 @@ export default function ViagensPage() {
           solicitacoesAprovadas={storageService.getSolicitacoesAprovadas()}
           veiculos={storageService.getVeiculos()}
           motoristas={storageService.getMotoristas()}
+          solicitacaoIdInicial={location.state?.solicitacaoId}
           onClose={() => setModalNovaAberto(false)}
           onSalvar={handleSalvarNovaViagem}
         />

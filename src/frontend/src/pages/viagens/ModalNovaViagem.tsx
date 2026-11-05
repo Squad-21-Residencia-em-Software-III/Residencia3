@@ -10,6 +10,7 @@ interface ModalNovaViagemProps {
   solicitacoesAprovadas: SolicitacaoViagem[];
   veiculos: Veiculo[];
   motoristas: Motorista[];
+  solicitacaoIdInicial?: number;
   onClose: () => void;
   onSalvar: (novaViagem: Omit<Viagem, 'id'>) => void;
 }
@@ -18,19 +19,24 @@ export function ModalNovaViagem({
   solicitacoesAprovadas,
   veiculos,
   motoristas,
+  solicitacaoIdInicial,
   onClose,
   onSalvar,
 }: ModalNovaViagemProps) {
   const agoraIso = new Date().toISOString().slice(0, 16);
 
+  const solicitacaoInicial =
+    solicitacoesAprovadas.find((s) => s.id === solicitacaoIdInicial) ||
+    solicitacoesAprovadas[0];
+
   const [solicitacaoId, setSolicitacaoId] = useState<string>(
-    solicitacoesAprovadas[0] ? String(solicitacoesAprovadas[0].id) : '',
+    solicitacaoInicial ? String(solicitacaoInicial.id) : '',
   );
   const [tipoOperacao, setTipoOperacao] = useState<TipoOperacaoViagem>('ADMINISTRATIVA');
-  const [origem, setOrigem] = useState('');
-  const [destino, setDestino] = useState('');
-  const [finalidade, setFinalidade] = useState('');
-  const [solicitanteNome, setSolicitanteNome] = useState('');
+  const [origem, setOrigem] = useState(solicitacaoInicial?.origem ?? '');
+  const [destino, setDestino] = useState(solicitacaoInicial?.destino ?? '');
+  const [finalidade, setFinalidade] = useState(solicitacaoInicial?.finalidade ?? '');
+  const [solicitanteNome, setSolicitanteNome] = useState(solicitacaoInicial?.solicitante_nome ?? '');
 
   // Só recursos livres podem ser escalados; RESERVADO/DESIGNADO etc. são atribuídos pelo backend.
   const veiculosDisponiveis = veiculos.filter((v) => v.status === 'DISPONIVEL');

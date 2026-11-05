@@ -34,7 +34,7 @@ Registo dos veículos pertencentes à frota geral e ao Serviço de Verificação
 | `modelo` | Varchar(100) | NOT NULL | Marca e modelo. |
 | `tipo_frota` | Varchar(20) | NOT NULL | CHECK: `ADMINISTRATIVA`, `SVO`. |
 | `capacidade_maxima` | Integer | NOT NULL | Lotação (CHECK: `>= 0`). |
-| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `EM_USO`, `MANUTENCAO`. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `RESERVADO`, `EM_USO`, `MANUTENCAO`. |
 
 ## 4. Tabela: `equipes_svo`
 Registo das equipas alocadas ao serviço SVO.
@@ -66,7 +66,7 @@ Registo detalhado das habilitações dos utilizadores com perfil de condução.
 | `categoria_cnh` | Varchar(5) | NOT NULL | Categoria da carta (Ex: B, C, D). |
 | `validade_cnh` | Date | NOT NULL | Data de validade do documento. |
 | `tipo_motorista` | Varchar(20) | NOT NULL | CHECK: `FROTA`, `SVO`. |
-| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `EM_VIAGEM`, `INATIVO`, `AFASTADO`. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `DESIGNADO`, `EM_VIAGEM`, `INATIVO`, `AFASTADO`. |
 
 ## 7. Tabela: `manutencoes`
 Histórico de manutenções preventivas e corretivas da frota.
@@ -104,7 +104,8 @@ Pedidos de deslocação da frota administrativa.
 | `finalidade` | Text | NOT NULL | Motivo da deslocação. |
 | `data_saida_desejada` | Timestamp | NOT NULL | Início planeado. |
 | `data_chegada_desejada`| Timestamp | NULLABLE, CHECK: `>= data_saida_desejada` | Fim planeado da viagem. |
-| `status` | Varchar(30) | NOT NULL, DEFAULT 'PENDENTE_APROVACAO' | CHECK: `PENDENTE_APROVACAO`, `APROVADA`, `RECUSADA`, `CANCELADA`. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'PENDENTE_APROVACAO' | CHECK: `PENDENTE_APROVACAO`, `APROVADA`, `AGENDADA`, `CONCLUIDA`, `RECUSADA`, `CANCELADA`. |
+| `motivo_recusa` | Text | NULLABLE | Justificativa gravada na recusa da solicitação (migration 20261104133113). |
 
 ## 10. Tabela: `solicitacoes_svo`
 Triagem de pedidos para o Serviço de Verificação de Óbitos.

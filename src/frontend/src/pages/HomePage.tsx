@@ -57,7 +57,7 @@ export default function HomePage() {
         </div>
         <div className="home-shortcuts-grid">
           <button
-            onClick={() => navigate('/viagens')}
+            onClick={() => navigate('/solicitacoes')}
             className="home-shortcut-card"
           >
             <div className="home-shortcut-card__icon">
@@ -65,7 +65,7 @@ export default function HomePage() {
             </div>
             <div>
               <div className="home-shortcut-card__title">Nova Solicitação</div>
-              <div className="home-shortcut-card__desc">Agendar rota ou viagem</div>
+              <div className="home-shortcut-card__desc">Cadastrar ou analisar pedido</div>
             </div>
           </button>
 
@@ -152,7 +152,7 @@ export default function HomePage() {
                     size="sm"
                     variant="outline"
                     className="home-btn-action"
-                    onClick={() => navigate('/viagens')}
+                    onClick={() => navigate('/solicitacoes')}
                   >
                     Analisar
                   </Button>
