@@ -4,7 +4,11 @@ import { Badge, Button, Card, Select } from '../../components/ui';
 import { ApiError } from '../../services/api/http';
 import { unidadesApi } from '../../services/api/unidadesApi';
 import { LABELS_PERFIS, type Usuario } from '../../types/usuario';
-import { LABELS_TIPO_UNIDADE, type Unidade } from '../../types/unidade';
+import {
+  LABELS_TIPO_UNIDADE,
+  PERFIS_GESTORES_POR_UNIDADE,
+  type UnidadeComGestores,
+} from '../../types/unidade';
 
 interface Props {
   /** Reaproveita o feedback (sucesso/erro) da página de usuários. */
@@ -24,10 +28,10 @@ function mensagemDeErro(erro: unknown, padrao: string): string {
 
 /**
  * Seção administrativa: consulta e configura os gestores associados a cada unidade.
- * Tudo vem da API (sem estado simulado). Contrato provisório em services/api/unidadesApi.ts.
+ * Tudo vem da API (sem estado simulado). Contrato em services/api/unidadesApi.ts.
  */
 export function GestoresUnidadesSecao({ onFeedback }: Props) {
-  const [unidades, setUnidades] = useState<Unidade[]>([]);
+  const [unidades, setUnidades] = useState<UnidadeComGestores[]>([]);
   const [candidatos, setCandidatos] = useState<Usuario[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -39,7 +43,7 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
     setErroCarga(null);
     try {
       const [listaUnidades, listaCandidatos] = await Promise.all([
-        unidadesApi.listar(),
+        unidadesApi.listarComGestores(),
         unidadesApi.listarCandidatos(),
       ]);
       setUnidades(listaUnidades);
@@ -58,13 +62,18 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
   const candidatosPorUnidade = useMemo(() => {
     const mapa = new Map<number, Usuario[]>();
     for (const u of unidades) {
+      // Só perfis que a unidade aceita (ex.: Gestor SVO apenas no SVO) e que ainda não estão associados
+      const perfisAceitos = PERFIS_GESTORES_POR_UNIDADE[u.nome] ?? [];
       const jaAssociados = new Set(u.gestores.map((g) => g.id));
-      mapa.set(u.id, candidatos.filter((c) => !jaAssociados.has(c.id)));
+      mapa.set(
+        u.id,
+        candidatos.filter((c) => perfisAceitos.includes(c.perfil) && !jaAssociados.has(c.id)),
+      );
     }
     return mapa;
   }, [unidades, candidatos]);
 
-  const associar = async (unidade: Unidade) => {
+  const associar = async (unidade: UnidadeComGestores) => {
     const gestorId = Number(selecionado[unidade.id]);
     if (!gestorId) {
       onFeedback('Selecione um gestor para associar à unidade.', true);
@@ -72,9 +81,10 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
     }
     setOcupado(unidade.id);
     try {
-      await unidadesApi.associarGestor(unidade.id, gestorId);
+      // O 201 devolve a unidade atualizada: substitui só ela, sem recarregar tudo
+      const atualizada = await unidadesApi.associarGestor(unidade.id, gestorId);
+      setUnidades((lista) => lista.map((u) => (u.id === atualizada.id ? atualizada : u)));
       setSelecionado((s) => ({ ...s, [unidade.id]: '' }));
-      await carregar(); // reflete o que foi persistido pela API
       onFeedback(`Gestor associado à unidade "${unidade.nome}" com sucesso.`);
     } catch (erro) {
       onFeedback(mensagemDeErro(erro, 'Não foi possível associar o gestor.'), true);
@@ -83,7 +93,7 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
     }
   };
 
-  const remover = async (unidade: Unidade, gestorId: number, nomeGestor: string) => {
+  const remover = async (unidade: UnidadeComGestores, gestorId: number, nomeGestor: string) => {
     if (!window.confirm(`Remover "${nomeGestor}" da unidade "${unidade.nome}"?`)) return;
     setOcupado(unidade.id);
     try {
