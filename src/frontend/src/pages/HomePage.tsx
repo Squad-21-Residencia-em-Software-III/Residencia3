@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { Button, Card, IdBadge, Badge } from '../components/ui';
 import { storageService } from '../services/storageService';
-import { MOCK_SOLICITACOES } from '../services/mocks/solicitacoesMock';
 import './home.css';
 
 function cnhVencida(validade: string): boolean {
@@ -26,7 +25,7 @@ export default function HomePage() {
     const veiculos = storageService.getVeiculos();
     const motoristas = storageService.getMotoristas();
 
-    const pendentes = MOCK_SOLICITACOES.filter((s) => s.status === 'PENDENTE_APROVACAO');
+    const pendentes = storageService.getSolicitacoesPendentes();
     const motoristasIrregulares = motoristas.filter((m) => cnhVencida(m.validade_cnh));
     const veiculosManutencao = veiculos.filter((v) => v.status === 'MANUTENCAO');
     const totalAlertas = motoristasIrregulares.length + veiculosManutencao.length;

@@ -549,7 +549,7 @@ export default function ViagensPage() {
       {/* Modais */}
       {modalNovaAberto && (
         <ModalNovaViagem
-          solicitacoesAprovadas={[]} // Aqui precisaremos de um mock/service de solicitações
+          solicitacoesAprovadas={storageService.getSolicitacoesAprovadas()}
           veiculos={storageService.getVeiculos()}
           motoristas={storageService.getMotoristas()}
           onClose={() => setModalNovaAberto(false)}
