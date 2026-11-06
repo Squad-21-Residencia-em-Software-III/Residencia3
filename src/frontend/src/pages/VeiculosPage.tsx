@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   Badge,
   Card,
@@ -9,8 +9,9 @@ import {
   Pagination,
 } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
-import type { StatusVeiculo, Veiculo } from '../types/veiculo';
-import { storageService } from '../services/storageService';
+import type { NovoVeiculoInput, StatusVeiculo, Veiculo } from '../types/veiculo';
+import { mensagemDeErro } from '../services/api/http';
+import { veiculosApi } from '../services/api/veiculosApi';
 import { ModalVeiculo } from './veiculos/ModalVeiculo';
 import { ModalManutencoesVeiculo } from './veiculos/ModalManutencoesVeiculo';
 
@@ -22,7 +23,9 @@ const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
 };
 
 export default function VeiculosPage() {
-  const [veiculos, setVeiculos] = useState<Veiculo[]>(storageService.getVeiculos());
+  const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
@@ -31,8 +34,23 @@ export default function VeiculosPage() {
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
+  const carregarVeiculos = useCallback(async () => {
+    try {
+      setVeiculos(await veiculosApi.listar());
+      setErroCarga(null);
+    } catch (error) {
+      setErroCarga(mensagemDeErro(error));
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarVeiculos();
+  }, [carregarVeiculos]);
+
   const handleManutencaoSalva = (msg: string) => {
-    setVeiculos(storageService.getVeiculos());
+    carregarVeiculos();
     exibirFeedback(msg);
   };
 
@@ -70,14 +88,10 @@ export default function VeiculosPage() {
     });
   }, [veiculos, filtroTipo, filtroStatus]);
 
-  const handleSalvarVeiculo = (novo: Omit<Veiculo, 'id'>) => {
-    try {
-      storageService.createVeiculo(novo);
-      setVeiculos(storageService.getVeiculos());
-      exibirFeedback(`Veículo com placa ${novo.placa} cadastrado com sucesso!`);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
-    }
+  const handleSalvarVeiculo = async (novo: NovoVeiculoInput) => {
+    await veiculosApi.criar(novo);
+    await carregarVeiculos();
+    exibirFeedback(`Veículo com placa ${novo.placa} cadastrado com sucesso!`);
   };
 
   return (
@@ -370,6 +384,7 @@ export default function VeiculosPage() {
               <th>Modelo</th>
               <th>Tipo de Frota</th>
               <th>Capacidade Máxima</th>
+              <th>Km Atual</th>
               <th>Status</th>
               <th style={{ textAlign: 'right' }}>Ações</th>
             </tr>
@@ -377,8 +392,12 @@ export default function VeiculosPage() {
           <tbody>
             {veiculosFiltrados.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
-                  <div>Nenhum veículo encontrado com os filtros selecionados.</div>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
+                  <div>
+                    {carregando
+                      ? 'Carregando veículos...'
+                      : erroCarga ?? 'Nenhum veículo encontrado com os filtros selecionados.'}
+                  </div>
                   {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
                     <button
                       type="button"
@@ -430,6 +449,7 @@ export default function VeiculosPage() {
                       </span>
                     </td>
                     <td>{v.capacidade_maxima}</td>
+                    <td>{v.km_atual.toLocaleString('pt-BR')} km</td>
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>

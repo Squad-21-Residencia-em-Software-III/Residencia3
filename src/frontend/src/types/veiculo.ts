@@ -12,5 +12,8 @@ export interface Veiculo {
   modelo: string; // varchar(100)
   tipo_frota: TipoFrota;
   capacidade_maxima: number; // inteiro >= 0
+  km_atual: number; // odômetro atual, atualizado ao finalizar viagem
   status: StatusVeiculo; // padrão no banco: DISPONIVEL
 }
+
+export type NovoVeiculoInput = Omit<Veiculo, 'id' | 'status'>;

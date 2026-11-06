@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Button, Input, Modal, Select } from '../../components/ui';
-import type { TipoFrota, Veiculo } from '../../types/veiculo';
+import { mensagemDeErro } from '../../services/api/http';
+import type { NovoVeiculoInput, TipoFrota } from '../../types/veiculo';
 
 interface ModalVeiculoProps {
   onClose: () => void;
-  onSalvar: (veiculo: Omit<Veiculo, 'id'>) => void;
+  onSalvar: (veiculo: NovoVeiculoInput) => Promise<void>;
 }
 
 export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
@@ -13,9 +14,11 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
   const [modelo, setModelo] = useState('');
   const [tipoFrota, setTipoFrota] = useState<TipoFrota>('ADMINISTRATIVA');
   const [capacidade, setCapacidade] = useState('4');
+  const [kmAtual, setKmAtual] = useState('0');
   const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
 
@@ -33,15 +36,26 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
       return;
     }
 
-    onSalvar({
-      placa: placa.trim().toUpperCase(),
-      modelo: modelo.trim(),
-      tipo_frota: tipoFrota,
-      capacidade_maxima: capacidadeNum,
-      status: 'DISPONIVEL', // padrão do banco
-    });
+    const kmAtualNum = Number(kmAtual);
+    if (!kmAtual || !Number.isInteger(kmAtualNum) || kmAtualNum < 0) {
+      setErro('A quilometragem deve ser um número inteiro maior ou igual a 0.');
+      return;
+    }
 
-    onClose();
+    setSalvando(true);
+    try {
+      await onSalvar({
+        placa: placa.trim().toUpperCase(),
+        modelo: modelo.trim(),
+        tipo_frota: tipoFrota,
+        capacidade_maxima: capacidadeNum,
+        km_atual: kmAtualNum,
+      });
+      onClose();
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+      setSalvando(false);
+    }
   };
 
   return (
@@ -95,11 +109,22 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
           />
         </div>
 
+        <Input
+          label="Quilometragem Atual *"
+          type="number"
+          min="0"
+          step="1"
+          value={kmAtual}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setKmAtual(e.target.value)}
+        />
+
         <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit">Cadastrar Veículo</Button>
+          <Button type="submit" disabled={salvando}>
+            {salvando ? 'Cadastrando...' : 'Cadastrar Veículo'}
+          </Button>
         </div>
       </form>
     </Modal>

@@ -1,54 +1,52 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Button, Input, Modal } from '../../components/ui';
+import { mensagemDeErro } from '../../services/api/http';
 import type { Viagem } from '../../types/viagem';
 
 interface ModalFinalizarViagemProps {
   viagem: Viagem;
   onClose: () => void;
-  onSalvar: (dados: { km_final: number; data_hora_efetiva_chegada: string }) => void;
+  onSalvar: (kmFinal: number) => Promise<void>;
 }
 
 export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinalizarViagemProps) {
-  const agoraIso = new Date().toISOString().slice(0, 16);
+  const kmInicial = viagem.km_inicial ?? 0;
 
   const [kmFinal, setKmFinal] = useState<string>('');
-  const [dataChegada, setDataChegada] = useState<string>(agoraIso);
   const [erro, setErro] = useState<string>('');
+  const [salvando, setSalvando] = useState(false);
 
   const kmFinalNum = Number(kmFinal);
   const kmRodados =
-    kmFinal && !isNaN(kmFinalNum) && kmFinalNum >= viagem.km_inicial
-      ? kmFinalNum - viagem.km_inicial
+    kmFinal && !isNaN(kmFinalNum) && kmFinalNum >= kmInicial
+      ? kmFinalNum - kmInicial
       : null;
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
 
-    if (!kmFinal || isNaN(kmFinalNum)) {
-      setErro('Informe o valor do odômetro final.');
+    if (!kmFinal || !Number.isInteger(kmFinalNum)) {
+      setErro('Informe o odômetro final como um número inteiro.');
       return;
     }
 
-    if (kmFinalNum < viagem.km_inicial) {
+    if (kmFinalNum < kmInicial) {
       setErro(
-        `O odômetro final (${kmFinalNum} km) não pode ser menor que o odômetro inicial (${viagem.km_inicial} km).`,
+        `O odômetro final (${kmFinalNum} km) não pode ser menor que o odômetro inicial (${kmInicial} km).`,
       );
       return;
     }
 
-    if (!dataChegada) {
-      setErro('Informe a data e hora de chegada.');
-      return;
+    setSalvando(true);
+    try {
+      await onSalvar(kmFinalNum);
+      onClose();
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+      setSalvando(false);
     }
-
-    onSalvar({
-      km_final: kmFinalNum,
-      data_hora_efetiva_chegada: `${dataChegada}:00`,
-    });
-
-    onClose();
   };
 
   return (
@@ -69,23 +67,23 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
           }}
         >
           <div style={{ fontWeight: 700, color: 'var(--color-text)' }}>
-            {viagem.origem} → {viagem.destino}
+            {viagem.origem ?? '—'} → {viagem.destino ?? '—'}
           </div>
           <div style={{ color: 'var(--color-text-muted)', fontSize: '12px', marginTop: '2px' }}>
             Veículo: <strong>{viagem.veiculo_modelo} ({viagem.veiculo_placa})</strong> • Motorista: <strong>{viagem.motorista_nome}</strong>
           </div>
           <div style={{ color: 'var(--color-primary)', fontSize: '12px', marginTop: '4px', fontWeight: 600 }}>
-            Odômetro de saída (Km inicial): {viagem.km_inicial.toLocaleString('pt-BR')} km
+            Odômetro de saída (Km inicial): {kmInicial.toLocaleString('pt-BR')} km
           </div>
         </div>
 
         <Input
           label="Odômetro Final (Km de Retorno) *"
           type="number"
-          placeholder={`Maior que ${viagem.km_inicial}`}
+          placeholder={`Maior que ${kmInicial}`}
           value={kmFinal}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmFinal(e.target.value)}
-          min={viagem.km_inicial}
+          min={kmInicial}
           required
         />
 
@@ -106,19 +104,13 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
           </div>
         )}
 
-        <Input
-          label="Data e Hora Efetiva de Chegada *"
-          type="datetime-local"
-          value={dataChegada}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setDataChegada(e.target.value)}
-          required
-        />
-
         <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit">Confirmar Chegada e Concluir</Button>
+          <Button type="submit" disabled={salvando}>
+            {salvando ? 'Concluindo...' : 'Confirmar Chegada e Concluir'}
+          </Button>
         </div>
       </form>
     </Modal>

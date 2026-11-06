@@ -52,7 +52,7 @@ function formatarDataHora(isoString?: string | null): string {
 
 export function ModalDetalhesViagem({ viagem, onClose, onFinalizar }: ModalDetalhesViagemProps) {
   const kmRodados =
-    viagem.km_final !== null && viagem.km_final !== undefined
+    viagem.km_final !== null && viagem.km_final !== undefined && viagem.km_inicial !== null
       ? viagem.km_final - viagem.km_inicial
       : null;
 
@@ -166,7 +166,7 @@ export function ModalDetalhesViagem({ viagem, onClose, onFinalizar }: ModalDetal
             <div>
               <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Km Inicial (Saída)</div>
               <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-text)', marginTop: '2px' }}>
-                {viagem.km_inicial.toLocaleString('pt-BR')} km
+                {viagem.km_inicial !== null ? `${viagem.km_inicial.toLocaleString('pt-BR')} km` : 'Aguardando saída'}
               </div>
             </div>
             <div>

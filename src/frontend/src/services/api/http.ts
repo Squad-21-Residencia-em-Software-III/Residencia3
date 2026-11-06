@@ -38,6 +38,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Mensagem de qualquer erro capturado, pronta para exibir ao usuário. */
+export function mensagemDeErro(erro: unknown): string {
+  if (erro instanceof ApiError) return erro.mensagemCompleta
+  return erro instanceof Error ? erro.message : 'Erro inesperado. Tente novamente.'
+}
+
 type Metodo = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
 
 interface Opcoes {

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { ChangeEvent } from 'react';
 import {
@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Flag,
   MapPin,
+  Play,
 } from 'lucide-react';
 import {
   Avatar,
@@ -19,18 +20,37 @@ import {
   TableToolbar,
   type BadgeTone,
 } from '../components/ui';
-import { storageService } from '../services/storageService';
+import { mensagemDeErro } from '../services/api/http';
+import { motoristasApi } from '../services/api/motoristasApi';
+import { solicitacoesApi } from '../services/api/solicitacoesApi';
+import { veiculosApi } from '../services/api/veiculosApi';
+import { viagensApi } from '../services/api/viagensApi';
+import type { Motorista } from '../types/motorista';
+import type { SolicitacaoViagem } from '../types/solicitacao';
+import type { Veiculo } from '../types/veiculo';
 import {
   LABELS_STATUS_VIAGEM,
+  type NovaViagemInput,
   type StatusViagem,
   type Viagem,
 } from '../types/viagem';
 import { ModalDetalhesViagem } from './viagens/ModalDetalhesViagem';
 import { ModalFinalizarViagem } from './viagens/ModalFinalizarViagem';
+import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
 import { TicketViagem } from './viagens/TicketViagem';
 
 type FiltroAba = 'TODAS' | 'EM_ANDAMENTO' | 'AGENDADAS' | 'CONCLUIDAS' | 'FROTA' | 'SVO';
+
+interface DadosNovaViagem {
+  veiculos: Veiculo[];
+  motoristas: Motorista[];
+  solicitacoes: SolicitacaoViagem[];
+  erroSolicitacoes: string | null;
+}
+
+// Viagens administrativas e ordens SVO têm ids independentes e podem repetir o mesmo número
+const chaveViagem = (v: Viagem) => `${v.tipo_operacao}-${v.id}`;
 
 const cardValor = (cor: string) => ({
   fontSize: '24px',
@@ -64,19 +84,22 @@ function formatarDataHora(isoString?: string | null): string {
   return `${dia}/${mes} ${horas}:${minutos}`;
 }
 
-function limitarTexto(texto: string, maximo = 28): string {
-  if (!texto) return '';
+function limitarTexto(texto: string | null, maximo = 28): string {
+  if (!texto) return '—';
   return texto.length > maximo ? `${texto.slice(0, maximo)}...` : texto;
 }
 
 export default function ViagensPage() {
   const location = useLocation();
-  const [viagens, setViagens] = useState<Viagem[]>(storageService.getViagens());
+  const [viagens, setViagens] = useState<Viagem[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<FiltroAba>('TODAS');
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
+  const [dadosNovaViagem, setDadosNovaViagem] = useState<DadosNovaViagem | null>(null);
 
   useEffect(() => {
     if (location.state?.solicitacaoId) {
@@ -84,8 +107,9 @@ export default function ViagensPage() {
     }
   }, [location.state]);
   const [viagemDetalhes, setViagemDetalhes] = useState<Viagem | null>(null);
+  const [viagemIniciar, setViagemIniciar] = useState<Viagem | null>(null);
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
-  const [viagemExpandidaId, setViagemExpandidaId] = useState<number | null>(null);
+  const [viagemExpandidaId, setViagemExpandidaId] = useState<string | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
@@ -102,6 +126,51 @@ export default function ViagensPage() {
       setMensagemErro(null);
     }, 4000);
   };
+
+  const carregarViagens = useCallback(async () => {
+    try {
+      setViagens(await viagensApi.listar());
+      setErroCarga(null);
+    } catch (error) {
+      setErroCarga(mensagemDeErro(error));
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarViagens();
+  }, [carregarViagens]);
+
+  // Veículos e motoristas são buscados a cada abertura para refletir os status atuais do backend
+  useEffect(() => {
+    if (!modalNovaAberto) {
+      setDadosNovaViagem(null);
+      return;
+    }
+
+    let ativo = true;
+    Promise.all([
+      veiculosApi.listar(),
+      motoristasApi.listar(),
+      solicitacoesApi
+        .listarAprovadas()
+        .then((solicitacoes) => ({ solicitacoes, erroSolicitacoes: null }))
+        .catch((error) => ({ solicitacoes: [], erroSolicitacoes: mensagemDeErro(error) })),
+    ])
+      .then(([veiculos, motoristas, resultado]) => {
+        if (ativo) setDadosNovaViagem({ veiculos, motoristas, ...resultado });
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        setModalNovaAberto(false);
+        exibirFeedback(mensagemDeErro(error), true);
+      });
+
+    return () => {
+      ativo = false;
+    };
+  }, [modalNovaAberto]);
 
   const totais = useMemo(
     () => ({
@@ -123,11 +192,11 @@ export default function ViagensPage() {
 
       if (busca.trim()) {
         const termo = busca.trim().toLowerCase();
-        const matchOrigem = v.origem.toLowerCase().includes(termo);
-        const matchDestino = v.destino.toLowerCase().includes(termo);
+        const matchOrigem = (v.origem ?? '').toLowerCase().includes(termo);
+        const matchDestino = (v.destino ?? '').toLowerCase().includes(termo);
         const matchMotorista = v.motorista_nome.toLowerCase().includes(termo);
         const matchPlaca = v.veiculo_placa.toLowerCase().includes(termo);
-        const matchSolicitante = v.solicitante_nome.toLowerCase().includes(termo);
+        const matchSolicitante = (v.solicitante_nome ?? '').toLowerCase().includes(termo);
         if (!matchOrigem && !matchDestino && !matchMotorista && !matchPlaca && !matchSolicitante) {
           return false;
         }
@@ -136,28 +205,34 @@ export default function ViagensPage() {
     });
   }, [viagens, filtro, busca]);
 
-  const handleSalvarNovaViagem = (nova: Omit<Viagem, 'id'>) => {
-    try {
-      storageService.createViagem(nova);
-      setViagens(storageService.getViagens());
-      exibirFeedback(`Viagem agendada com sucesso!`);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
-    }
+  const handleSalvarNovaViagem = async (nova: NovaViagemInput) => {
+    await viagensApi.criar(nova);
+    await carregarViagens();
+    exibirFeedback(`Viagem agendada com sucesso!`);
   };
 
-  const handleFinalizarViagem = (dados: { km_final: number; data_hora_efetiva_chegada: string }) => {
+  const handleIniciarViagem = async (kmInicial: number) => {
+    if (!viagemIniciar) return;
+    await viagensApi.iniciar(viagemIniciar, kmInicial);
+    await carregarViagens();
+    exibirFeedback(`Viagem #${viagemIniciar.id} iniciada com sucesso.`);
+  };
+
+  const handleFinalizarViagem = async (kmFinal: number) => {
     if (!viagemFinalizar) return;
+    await viagensApi.finalizar(viagemFinalizar, kmFinal);
+    await carregarViagens();
+    exibirFeedback(`Viagem #${viagemFinalizar.id} finalizada com sucesso.`);
+  };
+
+  const handleCancelarViagem = async (viagem: Viagem) => {
+    if (!window.confirm(`Cancelar a viagem #${viagem.id}? O veículo e o motorista serão liberados.`)) return;
     try {
-      storageService.updateViagem(viagemFinalizar.id, {
-        ...dados,
-        status: 'CONCLUIDA',
-      });
-      setViagens(storageService.getViagens());
-      exibirFeedback(`Viagem #${viagemFinalizar.id} finalizada com sucesso.`);
-      setViagemFinalizar(null);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
+      await viagensApi.cancelar(viagem);
+      await carregarViagens();
+      exibirFeedback(`Viagem #${viagem.id} cancelada.`);
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
     }
   };
 
@@ -294,7 +369,7 @@ export default function ViagensPage() {
             <col style={{ width: '120px' }} />
             <col style={{ width: '130px' }} />
             <col style={{ width: '120px' }} />
-            <col style={{ width: '80px' }} />
+            <col style={{ width: '200px' }} />
           </colgroup>
           <thead>
             <tr>
@@ -313,21 +388,24 @@ export default function ViagensPage() {
             {filtradas.length === 0 ? (
               <tr>
                 <td colSpan={9} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
-                  Nenhuma viagem encontrada com os filtros selecionados.
+                  {carregando
+                    ? 'Carregando viagens...'
+                    : erroCarga ?? 'Nenhuma viagem encontrada com os filtros selecionados.'}
                 </td>
               </tr>
             ) : (
               filtradas.map((v) => {
                 const kmRodados =
-                  v.km_final !== null && v.km_final !== undefined
+                  v.km_final !== null && v.km_final !== undefined && v.km_inicial !== null
                     ? v.km_final - v.km_inicial
                     : null;
-                const estaExpandida = viagemExpandidaId === v.id;
+                const chave = chaveViagem(v);
+                const estaExpandida = viagemExpandidaId === chave;
 
                 return (
-                  <Fragment key={v.id}>
+                  <Fragment key={chave}>
                     <tr
-                      onClick={() => setViagemExpandidaId(estaExpandida ? null : v.id)}
+                      onClick={() => setViagemExpandidaId(estaExpandida ? null : chave)}
                       style={{
                         cursor: 'pointer',
                         background: estaExpandida ? 'var(--color-primary-soft)' : undefined,
@@ -368,7 +446,7 @@ export default function ViagensPage() {
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                               }}
-                              title={v.origem}
+                              title={v.origem ?? undefined}
                             >
                               {limitarTexto(v.origem, 26)}
                             </span>
@@ -384,7 +462,7 @@ export default function ViagensPage() {
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                               }}
-                              title={v.destino}
+                              title={v.destino ?? undefined}
                             >
                               {limitarTexto(v.destino, 26)}
                             </span>
@@ -397,7 +475,7 @@ export default function ViagensPage() {
                             <>
                               <span style={{ color: 'var(--color-purple)', fontWeight: 600 }}>
                                 <span style={{ color: 'var(--color-text-muted)', fontSize: '11px', fontWeight: 500 }}>Partida: </span>
-                                {formatarDataHora(v.data_hora_efetiva_saida)}
+                                {formatarDataHora(v.inicio_previsto ?? v.data_hora_efetiva_saida)}
                               </span>
                               <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
                                 Aguardando saída
@@ -414,7 +492,7 @@ export default function ViagensPage() {
                                   <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>Chegada: </span>
                                   {formatarDataHora(v.data_hora_efetiva_chegada)}
                                 </span>
-                              ) : (
+                              ) : v.status === 'EM_ANDAMENTO' && (
                                 <span style={{ color: 'var(--color-primary)', fontSize: '11px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-primary)' }} />
                                   Em trânsito
@@ -472,13 +550,13 @@ export default function ViagensPage() {
                                 {kmRodados} km rodados
                               </span>
                               <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>
-                                {v.km_inicial.toLocaleString('pt-BR')} → {v.km_final?.toLocaleString('pt-BR')} km
+                                {v.km_inicial?.toLocaleString('pt-BR')} → {v.km_final?.toLocaleString('pt-BR')} km
                               </span>
                             </>
                           ) : (
                             <>
                               <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text)' }}>
-                                {v.km_inicial.toLocaleString('pt-BR')} km
+                                {v.km_inicial !== null ? `${v.km_inicial.toLocaleString('pt-BR')} km` : '—'}
                               </span>
                               <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
                                 Odômetro inicial
@@ -494,6 +572,32 @@ export default function ViagensPage() {
                       </td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                          {v.status === 'AGENDADA' && (
+                            <>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViagemIniciar(v);
+                                }}
+                                title="Registrar saída da viagem"
+                              >
+                                <Play size={13} style={{ marginRight: '3px' }} /> Iniciar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCancelarViagem(v);
+                                }}
+                                title="Cancelar viagem e liberar veículo e motorista"
+                              >
+                                Cancelar
+                              </Button>
+                            </>
+                          )}
                           {v.status === 'EM_ANDAMENTO' && (
                             <Button
                               variant="primary"
@@ -555,11 +659,12 @@ export default function ViagensPage() {
       </Card>
 
       {/* Modais */}
-      {modalNovaAberto && (
+      {modalNovaAberto && dadosNovaViagem && (
         <ModalNovaViagem
-          solicitacoesAprovadas={storageService.getSolicitacoesAprovadas()}
-          veiculos={storageService.getVeiculos()}
-          motoristas={storageService.getMotoristas()}
+          solicitacoesAprovadas={dadosNovaViagem.solicitacoes}
+          erroSolicitacoes={dadosNovaViagem.erroSolicitacoes}
+          veiculos={dadosNovaViagem.veiculos}
+          motoristas={dadosNovaViagem.motoristas}
           solicitacaoIdInicial={location.state?.solicitacaoId}
           onClose={() => setModalNovaAberto(false)}
           onSalvar={handleSalvarNovaViagem}
@@ -574,6 +679,14 @@ export default function ViagensPage() {
             setViagemDetalhes(null);
             setViagemFinalizar(v);
           }}
+        />
+      )}
+
+      {viagemIniciar && (
+        <ModalIniciarViagem
+          viagem={viagemIniciar}
+          onClose={() => setViagemIniciar(null)}
+          onSalvar={handleIniciarViagem}
         />
       )}
 
