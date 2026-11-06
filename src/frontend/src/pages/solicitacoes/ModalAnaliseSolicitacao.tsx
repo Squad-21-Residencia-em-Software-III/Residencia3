@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -13,15 +13,22 @@ import {
 } from 'lucide-react';
 import { Avatar, Badge, Button, IdBadge, Modal } from '../../components/ui';
 import type { BadgeTone } from '../../components/ui';
-import type { SolicitacaoViagem, StatusSolicitacao } from '../../types/solicitacao';
+import { useAuth } from '../../contexts/AuthContext';
+import { mensagemDeErro } from '../../services/api/http';
+import { solicitacoesApi } from '../../services/api/solicitacoesApi';
+import type {
+  DisponibilidadeSolicitacao,
+  SolicitacaoViagem,
+  StatusSolicitacao,
+} from '../../types/solicitacao';
 import { LABELS_STATUS_SOLICITACAO } from '../../types/solicitacao';
-import { storageService } from '../../services/storageService';
+import { PERFIS } from '../../types/usuario';
 
 interface ModalAnaliseSolicitacaoProps {
   solicitacao: SolicitacaoViagem | null;
   onClose: () => void;
-  onAprovar: (id: number) => void;
-  onRecusar: (id: number, motivo?: string) => void;
+  onAprovar: (id: number) => Promise<void>;
+  onRecusar: (id: number, motivo?: string) => Promise<void>;
   onAgendar?: (solicitacao: SolicitacaoViagem) => void;
 }
 
@@ -68,39 +75,59 @@ export function ModalAnaliseSolicitacao({
   const [modoRecusa, setModoRecusa] = useState(false);
   const [motivoRecusa, setMotivoRecusa] = useState('');
   const [erro, setErro] = useState<string | null>(null);
+  const [processando, setProcessando] = useState(false);
+  const [disponibilidade, setDisponibilidade] = useState<DisponibilidadeSolicitacao | null>(null);
 
-  // Consulta de disponibilidade no período pretendido (SCRUM-73)
-  const disponibilidade = useMemo(() => {
-    if (!solicitacao) return null;
-    try {
-      return storageService.consultarDisponibilidade(solicitacao.id);
-    } catch {
-      return null;
-    }
-  }, [solicitacao]);
+  // Consulta de disponibilidade no período pretendido (SCRUM-73).
+  // A API libera essa rota somente para o Gestor de Frota.
+  const { temPerfil } = useAuth();
+  const podeConsultarDisponibilidade = temPerfil(PERFIS.GESTOR_FROTA);
+  const solicitacaoId = solicitacao?.id;
+
+  useEffect(() => {
+    if (!solicitacaoId || !podeConsultarDisponibilidade) return;
+    let ativo = true;
+    solicitacoesApi
+      .consultarDisponibilidade(solicitacaoId)
+      .then((resultado) => {
+        if (ativo) setDisponibilidade(resultado);
+      })
+      .catch(() => {
+        if (ativo) setDisponibilidade(null);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [solicitacaoId, podeConsultarDisponibilidade]);
 
   if (!solicitacao) return null;
 
-  const handleConfirmarAprovacao = () => {
+  const handleConfirmarAprovacao = async () => {
+    setErro(null);
+    setProcessando(true);
     try {
-      onAprovar(solicitacao.id);
+      await onAprovar(solicitacao.id);
       onClose();
-    } catch (e: any) {
-      setErro(e.message || 'Erro ao aprovar solicitação.');
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+      setProcessando(false);
     }
   };
 
-  const handleConfirmarRecusa = () => {
+  const handleConfirmarRecusa = async () => {
     const motivoLimpo = motivoRecusa.trim();
     if (motivoLimpo.length > 200) {
       setErro('O motivo da recusa deve conter no máximo 200 caracteres.');
       return;
     }
+    setErro(null);
+    setProcessando(true);
     try {
-      onRecusar(solicitacao.id, motivoLimpo || undefined);
+      await onRecusar(solicitacao.id, motivoLimpo || undefined);
       onClose();
-    } catch (e: any) {
-      setErro(e.message || 'Erro ao recusar solicitação.');
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+      setProcessando(false);
     }
   };
 
@@ -153,7 +180,7 @@ export function ModalAnaliseSolicitacao({
                 <IdBadge id={`#${solicitacao.id}`} />
               </div>
               <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-                Solicitante institucional cadastrado
+                Unidade: {solicitacao.unidade_nome ?? 'Não informada'}
               </div>
             </div>
           </div>
@@ -415,6 +442,7 @@ export function ModalAnaliseSolicitacao({
                   variant="outline"
                   style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
                   onClick={handleConfirmarRecusa}
+                  disabled={processando}
                 >
                   Confirmar Recusa
                 </Button>
@@ -451,6 +479,7 @@ export function ModalAnaliseSolicitacao({
               <Button
                 variant="primary"
                 onClick={handleConfirmarAprovacao}
+                disabled={processando}
               >
                 <CheckCircle2 size={15} style={{ marginRight: '6px' }} />
                 Aprovar Solicitação
