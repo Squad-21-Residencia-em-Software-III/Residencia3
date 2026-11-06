@@ -1,134 +1,119 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Input, Modal, Select } from '../../components/ui';
-import type { Motorista } from '../../types/motorista';
-import type { Veiculo } from '../../types/veiculo';
+import { Button, Modal, Select } from '../../components/ui';
+import { mensagemDeErro } from '../../services/api/http';
+import type { Motorista, StatusMotorista } from '../../types/motorista';
+import type { StatusVeiculo, Veiculo } from '../../types/veiculo';
 import type { SolicitacaoViagem } from '../../types/solicitacao';
-import type { TipoOperacaoViagem, Viagem } from '../../types/viagem';
+import type { NovaViagemInput, TipoOperacaoViagem } from '../../types/viagem';
 
 interface ModalNovaViagemProps {
   solicitacoesAprovadas: SolicitacaoViagem[];
+  erroSolicitacoes?: string | null;
   veiculos: Veiculo[];
   motoristas: Motorista[];
   solicitacaoIdInicial?: number;
   onClose: () => void;
-  onSalvar: (novaViagem: Omit<Viagem, 'id'>) => void;
+  onSalvar: (novaViagem: NovaViagemInput) => Promise<void>;
 }
+
+// Mesmos bloqueios do backend. RESERVADO/EM_USO e DESIGNADO/EM_VIAGEM continuam na lista
+// porque podem atender outro período; o conflito de datas é validado pelo backend.
+const VEICULO_BLOQUEADO: StatusVeiculo[] = ['MANUTENCAO'];
+const MOTORISTA_BLOQUEADO: StatusMotorista[] = ['AFASTADO', 'INATIVO'];
+
+const LABEL_OCUPADO: Partial<Record<StatusVeiculo | StatusMotorista, string>> = {
+  RESERVADO: 'reservado',
+  EM_USO: 'em uso',
+  DESIGNADO: 'designado',
+  EM_VIAGEM: 'em viagem',
+};
+
+const sufixoStatus = (status: StatusVeiculo | StatusMotorista) =>
+  LABEL_OCUPADO[status] ? ` — ${LABEL_OCUPADO[status]}` : '';
 
 export function ModalNovaViagem({
   solicitacoesAprovadas,
+  erroSolicitacoes,
   veiculos,
   motoristas,
   solicitacaoIdInicial,
   onClose,
   onSalvar,
 }: ModalNovaViagemProps) {
-  const agoraIso = new Date().toISOString().slice(0, 16);
+  const veiculosDoTipo = (tipo: TipoOperacaoViagem) =>
+    veiculos.filter((v) => v.tipo_frota === tipo && !VEICULO_BLOQUEADO.includes(v.status));
+  const motoristasDoTipo = (tipo: TipoOperacaoViagem) =>
+    motoristas.filter(
+      (m) =>
+        m.tipo_motorista === (tipo === 'SVO' ? 'SVO' : 'FROTA') && !MOTORISTA_BLOQUEADO.includes(m.status),
+    );
 
   const solicitacaoInicial =
-    solicitacoesAprovadas.find((s) => s.id === solicitacaoIdInicial) ||
-    solicitacoesAprovadas[0];
+    solicitacoesAprovadas.find((s) => s.id === solicitacaoIdInicial) ?? solicitacoesAprovadas[0];
 
+  const [tipoOperacao, setTipoOperacao] = useState<TipoOperacaoViagem>('ADMINISTRATIVA');
   const [solicitacaoId, setSolicitacaoId] = useState<string>(
     solicitacaoInicial ? String(solicitacaoInicial.id) : '',
   );
-  const [tipoOperacao, setTipoOperacao] = useState<TipoOperacaoViagem>('ADMINISTRATIVA');
-  const [origem, setOrigem] = useState(solicitacaoInicial?.origem ?? '');
-  const [destino, setDestino] = useState(solicitacaoInicial?.destino ?? '');
-  const [finalidade, setFinalidade] = useState(solicitacaoInicial?.finalidade ?? '');
-  const [solicitanteNome, setSolicitanteNome] = useState(solicitacaoInicial?.solicitante_nome ?? '');
-
-  // Só recursos livres podem ser escalados; RESERVADO/DESIGNADO etc. são atribuídos pelo backend.
-  const veiculosDisponiveis = veiculos.filter((v) => v.status === 'DISPONIVEL');
-  const motoristasDisponiveis = motoristas.filter((m) => m.status === 'DISPONIVEL');
-
   const [veiculoId, setVeiculoId] = useState<string>(() => {
-    const primeiro = veiculosDisponiveis.find((v) => v.tipo_frota === 'ADMINISTRATIVA');
+    const primeiro = veiculosDoTipo('ADMINISTRATIVA')[0];
     return primeiro ? String(primeiro.id) : '';
   });
-  const [motoristaId, setMotoristaId] = useState<string>(
-    motoristasDisponiveis[0] ? String(motoristasDisponiveis[0].id) : '',
-  );
-  const [kmInicial, setKmInicial] = useState<string>('35000');
-  const [dataHoraSaida, setDataHoraSaida] = useState<string>(agoraIso);
+  const [motoristaId, setMotoristaId] = useState<string>(() => {
+    const primeiro = motoristasDoTipo('ADMINISTRATIVA')[0];
+    return primeiro ? String(primeiro.id) : '';
+  });
   const [erro, setErro] = useState<string>('');
+  const [salvando, setSalvando] = useState(false);
 
-  // Sincroniza dados da solicitação selecionada
-  const solicitacaoSelecionada = solicitacoesAprovadas.find(
-    (s) => String(s.id) === solicitacaoId,
-  );
+  const veiculosFiltrados = veiculosDoTipo(tipoOperacao);
+  const motoristasFiltrados = motoristasDoTipo(tipoOperacao);
+  const isSvo = tipoOperacao === 'SVO';
+  const podeSalvar = !isSvo && Boolean(solicitacaoId && veiculoId && motoristaId);
 
-  const handleMudarSolicitacao = (idStr: string) => {
-    setSolicitacaoId(idStr);
-    const sel = solicitacoesAprovadas.find((s) => String(s.id) === idStr);
-    if (sel) {
-      setOrigem(sel.origem);
-      setDestino(sel.destino);
-      setFinalidade(sel.finalidade);
-      setSolicitanteNome(sel.solicitante_nome);
-    }
+  const avisoSolicitacao = isSvo
+    ? 'A listagem de solicitações SVO ainda não está disponível na API.'
+    : erroSolicitacoes
+      ? `Não foi possível carregar as solicitações: ${erroSolicitacoes}`
+      : solicitacoesAprovadas.length === 0
+        ? 'Não há solicitações aprovadas aguardando agendamento.'
+        : null;
+
+  const handleMudarTipo = (novoTipo: TipoOperacaoViagem) => {
+    setTipoOperacao(novoTipo);
+    const veiculo = veiculosDoTipo(novoTipo)[0];
+    const motorista = motoristasDoTipo(novoTipo)[0];
+    setVeiculoId(veiculo ? String(veiculo.id) : '');
+    setMotoristaId(motorista ? String(motorista.id) : '');
   };
 
-  const veiculosFiltrados = veiculosDisponiveis.filter(
-    (v) => (tipoOperacao === 'ADMINISTRATIVA' ? v.tipo_frota === 'ADMINISTRATIVA' : v.tipo_frota === 'SVO'),
-  );
-
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
 
-    const orig = solicitacaoSelecionada ? solicitacaoSelecionada.origem : origem.trim();
-    const dest = solicitacaoSelecionada ? solicitacaoSelecionada.destino : destino.trim();
-    const fin = solicitacaoSelecionada ? solicitacaoSelecionada.finalidade : finalidade.trim();
-    const solNome = solicitacaoSelecionada ? solicitacaoSelecionada.solicitante_nome : solicitanteNome.trim();
-
-    if (!orig || !dest) {
-      setErro('Informe origem e destino da viagem.');
+    if (!podeSalvar) {
+      setErro('Selecione a solicitação, o veículo e o motorista.');
       return;
     }
 
-    const veic = veiculosDisponiveis.find((v) => String(v.id) === veiculoId);
-    if (!veic) {
-      setErro('Selecione um veículo disponível.');
-      return;
+    setSalvando(true);
+    try {
+      await onSalvar({
+        tipo_operacao: tipoOperacao,
+        solicitacao_id: Number(solicitacaoId),
+        veiculo_id: Number(veiculoId),
+        motorista_id: Number(motoristaId),
+      });
+      onClose();
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+      setSalvando(false);
     }
-
-    const mot = motoristasDisponiveis.find((m) => String(m.id) === motoristaId);
-    if (!mot) {
-      setErro('Selecione um motorista disponível.');
-      return;
-    }
-
-    const kmIniNum = Number(kmInicial);
-    if (isNaN(kmIniNum) || kmIniNum < 0) {
-      setErro('Informe um odômetro inicial válido.');
-      return;
-    }
-
-    onSalvar({
-      solicitacao_id: solicitacaoSelecionada ? solicitacaoSelecionada.id : Math.floor(1000 + Math.random() * 9000),
-      tipo_operacao: tipoOperacao,
-      origem: orig,
-      destino: dest,
-      finalidade: fin || 'Transporte institucional regular',
-      solicitante_nome: solNome || 'Coordenação de Transportes',
-      veiculo_id: veic.id,
-      veiculo_modelo: veic.modelo,
-      veiculo_placa: veic.placa,
-      motorista_id: mot.id,
-      motorista_nome: mot.nome,
-      km_inicial: kmIniNum,
-      km_final: null,
-      data_hora_efetiva_saida: `${dataHoraSaida}:00`,
-      data_hora_efetiva_chegada: null,
-      status: 'AGENDADA',
-    });
-
-    onClose();
   };
 
   return (
-    <Modal title="Agendar / Despachar Viagem" onClose={onClose}>
+    <Modal title="Agendar Viagem" onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {erro && (
           <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
@@ -139,14 +124,7 @@ export function ModalNovaViagem({
           <Select
             label="Tipo de Operação *"
             value={tipoOperacao}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => {
-              const novoTipo = e.target.value as TipoOperacaoViagem;
-              setTipoOperacao(novoTipo);
-              const primeiroCompativel = veiculosDisponiveis.find((v) =>
-                novoTipo === 'ADMINISTRATIVA' ? v.tipo_frota === 'ADMINISTRATIVA' : v.tipo_frota === 'SVO',
-              );
-              setVeiculoId(primeiroCompativel ? String(primeiroCompativel.id) : '');
-            }}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => handleMudarTipo(e.target.value as TipoOperacaoViagem)}
           >
             <option value="ADMINISTRATIVA">Frota Administrativa (Institucional)</option>
             <option value="SVO">Serviço de Verificação de Óbito (SVO)</option>
@@ -154,58 +132,22 @@ export function ModalNovaViagem({
         </div>
 
         {/* Solicitação de Origem */}
-        {solicitacoesAprovadas.length > 0 ? (
+        {avisoSolicitacao ? (
+          <p style={{ color: 'var(--color-warning)', fontSize: '13px', margin: '0 0 14px' }}>{avisoSolicitacao}</p>
+        ) : (
           <div style={{ marginBottom: '14px' }}>
             <Select
               label="Solicitação Vinculada *"
               value={solicitacaoId}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => handleMudarSolicitacao(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => setSolicitacaoId(e.target.value)}
             >
               {solicitacoesAprovadas.map((s) => (
                 <option key={s.id} value={s.id}>
                   #{s.id} — {s.solicitante_nome} ({s.origem} → {s.destino})
                 </option>
               ))}
-              <option value="">+ Outra viagem / Demanda direta</option>
             </Select>
           </div>
-        ) : null}
-
-        {(!solicitacaoId || solicitacoesAprovadas.length === 0) && (
-          <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <Input
-                label="Origem *"
-                placeholder="Ex: Sede FSPH"
-                value={origem}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setOrigem(e.target.value)}
-                required
-              />
-              <Input
-                label="Destino *"
-                placeholder="Ex: HUSE - Aracaju"
-                value={destino}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setDestino(e.target.value)}
-                required
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <Input
-                label="Solicitante *"
-                placeholder="Ex: Mariana Souza"
-                value={solicitanteNome}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setSolicitanteNome(e.target.value)}
-                required
-              />
-              <Input
-                label="Finalidade da Viagem"
-                placeholder="Ex: Entrega de documentos"
-                value={finalidade}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setFinalidade(e.target.value)}
-              />
-            </div>
-          </>
         )}
 
         {/* Veículo e Motorista */}
@@ -219,7 +161,7 @@ export function ModalNovaViagem({
             {veiculosFiltrados.length === 0 && <option value="">Nenhum veículo disponível</option>}
             {veiculosFiltrados.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.modelo} ({v.placa})
+                {v.modelo} ({v.placa}){sufixoStatus(v.status)}
               </option>
             ))}
           </Select>
@@ -230,40 +172,22 @@ export function ModalNovaViagem({
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setMotoristaId(e.target.value)}
             required
           >
-            {motoristasDisponiveis.length === 0 && <option value="">Nenhum motorista disponível</option>}
-            {motoristasDisponiveis.map((m) => (
+            {motoristasFiltrados.length === 0 && <option value="">Nenhum motorista disponível</option>}
+            {motoristasFiltrados.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.nome} (CNH {m.categoria_cnh})
+                {m.nome} (CNH {m.categoria_cnh}){sufixoStatus(m.status)}
               </option>
             ))}
           </Select>
-        </div>
-
-        {/* Odômetro e Saída */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <Input
-            label="Odômetro de Saída (Km Inicial) *"
-            type="number"
-            placeholder="Ex: 35000"
-            value={kmInicial}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setKmInicial(e.target.value)}
-            required
-          />
-
-          <Input
-            label="Data/Hora Prevista de Saída *"
-            type="datetime-local"
-            value={dataHoraSaida}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setDataHoraSaida(e.target.value)}
-            required
-          />
         </div>
 
         <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit">Agendar Viagem</Button>
+          <Button type="submit" disabled={!podeSalvar || salvando}>
+            {salvando ? 'Agendando...' : 'Agendar Viagem'}
+          </Button>
         </div>
       </form>
     </Modal>

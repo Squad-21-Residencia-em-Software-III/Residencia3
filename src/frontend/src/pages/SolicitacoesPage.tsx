@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -18,9 +18,12 @@ import {
   TableToolbar,
 } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
-import type { NovaSolicitacaoInput, SolicitacaoViagem, StatusSolicitacao } from '../types/solicitacao';
+import { useAuth } from '../contexts/AuthContext';
+import { mensagemDeErro } from '../services/api/http';
+import { solicitacoesApi } from '../services/api/solicitacoesApi';
+import type { NovaSolicitacaoApiInput, SolicitacaoViagem, StatusSolicitacao } from '../types/solicitacao';
 import { LABELS_STATUS_SOLICITACAO } from '../types/solicitacao';
-import { storageService } from '../services/storageService';
+import { PERFIS } from '../types/usuario';
 import { ModalAnaliseSolicitacao } from './solicitacoes/ModalAnaliseSolicitacao';
 import { ModalNovaSolicitacao } from './solicitacoes/ModalNovaSolicitacao';
 
@@ -75,9 +78,13 @@ const cardRotulo = { fontSize: '12px', color: 'var(--color-text-muted)', marginT
 
 export default function SolicitacoesPage() {
   const navigate = useNavigate();
-  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoViagem[]>(() =>
-    storageService.getSolicitacoes()
-  );
+  const { temPerfil } = useAuth();
+  // A API só libera a listagem para quem analisa solicitações
+  const podeListar = temPerfil(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO);
+
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoViagem[]>([]);
+  const [carregando, setCarregando] = useState(podeListar);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtroAba, setFiltroAba] = useState<FiltroStatusAba>('TODAS');
   const [busca, setBusca] = useState('');
 
@@ -102,9 +109,21 @@ export default function SolicitacoesPage() {
     }, 4000);
   };
 
-  const recarregar = () => {
-    setSolicitacoes(storageService.getSolicitacoes());
-  };
+  const recarregar = useCallback(async () => {
+    if (!podeListar) return;
+    try {
+      setSolicitacoes(await solicitacoesApi.listar());
+      setErroCarga(null);
+    } catch (error) {
+      setErroCarga(mensagemDeErro(error));
+    } finally {
+      setCarregando(false);
+    }
+  }, [podeListar]);
+
+  useEffect(() => {
+    void recarregar();
+  }, [recarregar]);
 
   const totais = useMemo(
     () => ({
@@ -141,36 +160,30 @@ export default function SolicitacoesPage() {
     });
   }, [solicitacoes, filtroAba, busca]);
 
-  // Ações de Decisão
-  const handleAprovar = (id: number) => {
-    try {
-      storageService.aprovarSolicitacao(id);
-      recarregar();
-      exibirFeedback(`Solicitação #${id} aprovada com sucesso! Liberada para agendamento.`);
-    } catch (err: any) {
-      exibirFeedback(err.message, true);
-    }
+  // Ações de Decisão: os erros da API são exibidos dentro do modal que disparou a ação
+  const handleAprovar = async (id: number) => {
+    await solicitacoesApi.aprovar(id);
+    await recarregar();
+    exibirFeedback(`Solicitação #${id} aprovada com sucesso! Liberada para agendamento.`);
   };
 
-  const handleRecusar = (id: number, motivo?: string) => {
-    try {
-      storageService.recusarSolicitacao(id, motivo);
-      recarregar();
-      exibirFeedback(`Solicitação #${id} foi recusada.`);
-    } catch (err: any) {
-      exibirFeedback(err.message, true);
-    }
+  const handleRecusar = async (id: number, motivo?: string) => {
+    await solicitacoesApi.recusar(id, motivo);
+    await recarregar();
+    exibirFeedback(`Solicitação #${id} foi recusada.`);
   };
 
-  const handleSalvarNova = (nova: NovaSolicitacaoInput) => {
-    try {
-      const criada = storageService.createSolicitacao(nova);
-      recarregar();
-      exibirFeedback(`Solicitação #${criada.id} cadastrada com sucesso! Aguardando análise.`);
-    } catch (err: any) {
-      exibirFeedback(err.message, true);
-    }
+  const handleSalvarNova = async (nova: NovaSolicitacaoApiInput) => {
+    const criada = await solicitacoesApi.criar(nova);
+    await recarregar();
+    exibirFeedback(`Solicitação #${criada.id} cadastrada com sucesso! Aguardando análise.`);
   };
+
+  const mensagemTabela = !podeListar
+    ? 'A consulta das suas solicitações ainda não está disponível. Use "Nova Solicitação" para registrar um pedido.'
+    : carregando
+      ? 'Carregando solicitações...'
+      : (erroCarga ?? 'Nenhuma solicitação encontrada para os filtros selecionados.');
 
   const handleAgendar = (solicitacao: SolicitacaoViagem) => {
     navigate('/viagens', { state: { solicitacaoId: solicitacao.id } });
@@ -220,6 +233,7 @@ export default function SolicitacoesPage() {
       )}
 
       {/* Cards de Métricas Superiores */}
+      {podeListar && (
       <div
         style={{
           display: 'grid',
@@ -260,6 +274,7 @@ export default function SolicitacoesPage() {
           <div style={cardRotulo}>Solicitações Recusadas</div>
         </Card>
       </div>
+      )}
 
       {/* Tabela e Filtros Principais */}
       <Card>
@@ -356,7 +371,7 @@ export default function SolicitacoesPage() {
             {filtradas.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
-                  Nenhuma solicitação encontrada para os filtros selecionados.
+                  {mensagemTabela}
                 </td>
               </tr>
             ) : (
@@ -368,9 +383,14 @@ export default function SolicitacoesPage() {
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <Avatar name={s.solicitante_nome} size={28} />
-                      <span style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: '13px' }}>
-                        {s.solicitante_nome}
-                      </span>
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: '13px' }}>
+                          {s.solicitante_nome}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                          {s.unidade_nome ?? 'Sem unidade'}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td>
