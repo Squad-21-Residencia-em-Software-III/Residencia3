@@ -63,7 +63,7 @@ function calcularDuracaoViagem(saida?: string | null, chegada?: string | null): 
 
 export function TicketViagem({ viagem, onFinalizar, onRecolher }: TicketViagemProps) {
   const kmRodados =
-    viagem.km_final !== null && viagem.km_final !== undefined
+    viagem.km_final !== null && viagem.km_final !== undefined && viagem.km_inicial !== null
       ? viagem.km_final - viagem.km_inicial
       : null;
   const duracao = calcularDuracaoViagem(viagem.data_hora_efetiva_saida, viagem.data_hora_efetiva_chegada);
@@ -196,7 +196,7 @@ export function TicketViagem({ viagem, onFinalizar, onRecolher }: TicketViagemPr
               </div>
               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-text)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <MapPin size={15} color="var(--color-primary)" style={{ flexShrink: 0 }} />
-                <span>{viagem.origem}</span>
+                <span>{viagem.origem ?? '—'}</span>
               </div>
               <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px', paddingLeft: '21px' }}>
                 Saída: <strong style={{ color: 'var(--color-text)' }}>{formatarHoraCurta(viagem.data_hora_efetiva_saida)}</strong>
@@ -367,7 +367,7 @@ export function TicketViagem({ viagem, onFinalizar, onRecolher }: TicketViagemPr
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                 <span style={{ color: 'var(--color-text-muted)' }}>Km Inicial:</span>
                 <strong style={{ color: 'var(--color-text)', fontFamily: 'monospace' }}>
-                  {viagem.km_inicial.toLocaleString('pt-BR')} km
+                  {viagem.km_inicial !== null ? `${viagem.km_inicial.toLocaleString('pt-BR')} km` : 'Aguardando saída'}
                 </strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>

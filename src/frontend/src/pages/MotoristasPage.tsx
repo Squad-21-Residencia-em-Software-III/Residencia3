@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Badge, Card, IdBadge, Pagination, Table, TableFilterCollapse, TableToolbar } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
 import type { Motorista, StatusMotorista, TipoMotorista } from '../types/motorista';
-import { storageService } from '../services/storageService';
-import { ModalMotorista } from './motoristas/ModalMotorista';
+import { mensagemDeErro } from '../services/api/http';
+import { motoristasApi } from '../services/api/motoristasApi';
 
 type FiltroTipo = 'TODOS' | TipoMotorista;
 type FiltroStatus = 'TODOS' | StatusMotorista;
@@ -35,27 +35,19 @@ const cardValor = (cor: string) => ({
 const cardRotulo = { fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' };
 
 export default function MotoristasPage() {
-  const [motoristas, setMotoristas] = useState<Motorista[]>(storageService.getMotoristas());
+  const [motoristas, setMotoristas] = useState<Motorista[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('TODOS');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
-  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
-
-  const exibirFeedback = (msg: string, isError = false) => {
-    if (isError) {
-      setMensagemErro(msg);
-      setMensagemSucesso(null);
-    } else {
-      setMensagemSucesso(msg);
-      setMensagemErro(null);
-    }
-    setTimeout(() => {
-      setMensagemSucesso(null);
-      setMensagemErro(null);
-    }, 4000);
-  };
+  useEffect(() => {
+    motoristasApi
+      .listar()
+      .then(setMotoristas)
+      .catch((error) => setErroCarga(mensagemDeErro(error)))
+      .finally(() => setCarregando(false));
+  }, []);
 
   const totais = useMemo(
     () => ({
@@ -77,16 +69,6 @@ export default function MotoristasPage() {
       }),
     [motoristas, filtroTipo, filtroStatus],
   );
-
-  const handleSalvar = (novo: Omit<Motorista, 'id' | 'usuario_id'>) => {
-    try {
-      storageService.createMotorista(novo);
-      setMotoristas(storageService.getMotoristas());
-      exibirFeedback(`Motorista ${novo.nome} cadastrado com sucesso!`);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
-    }
-  };
 
   const botaoFiltro = (ativo: boolean, cor = 'var(--color-primary)') => ({
     padding: '6px 14px',
@@ -114,29 +96,6 @@ export default function MotoristasPage() {
 
   return (
     <div style={{ display: 'grid', gap: '24px' }}>
-      {/* Feedback de sucesso e erro */}
-      {(mensagemSucesso || mensagemErro) && (
-        <div
-          style={{
-            padding: '12px 20px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface)',
-            border: `1px solid ${mensagemErro ? 'var(--color-danger)' : 'var(--color-success)'}`,
-            color: mensagemErro ? 'var(--color-danger)' : 'var(--color-success)',
-            fontSize: '14px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {mensagemErro ? '❌' : '✅'} {mensagemErro || mensagemSucesso}
-          </span>
-        </div>
-      )}
-
       {/* ── Cards de Resumo (Clicáveis como Filtros Rápidos) ── */}
       <div className="kpi-grid">
         <Card style={{ padding: '16px 20px' }}>
@@ -165,8 +124,6 @@ export default function MotoristasPage() {
         <TableToolbar
           title="Motoristas"
           subtitle={`${filtrados.length} motoristas listados`}
-          newLabel="Novo Motorista"
-          onNew={() => setModalAberto(true)}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
           isFilterActive={filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || filtrosAbertosMobile}
         />
@@ -215,7 +172,7 @@ export default function MotoristasPage() {
             {filtrados.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-muted)' }}>
-                  Nenhum motorista encontrado para este filtro.
+                  {carregando ? 'Carregando motoristas...' : erroCarga ?? 'Nenhum motorista encontrado para este filtro.'}
                 </td>
               </tr>
             ) : (
@@ -254,14 +211,6 @@ export default function MotoristasPage() {
 
         <Pagination showing={`1–${filtrados.length}`} total={filtrados.length} />
       </Card>
-
-      {modalAberto && (
-        <ModalMotorista
-          cnhsExistentes={motoristas.map((m) => m.numero_cnh)}
-          onClose={() => setModalAberto(false)}
-          onSalvar={handleSalvar}
-        />
-      )}
     </div>
   );
 }

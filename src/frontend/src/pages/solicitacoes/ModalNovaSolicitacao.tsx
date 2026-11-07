@@ -1,33 +1,49 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Button, Input, Modal, Select } from '../../components/ui';
-import type { NovaSolicitacaoInput } from '../../types/solicitacao';
+import type { NovaSolicitacaoApiInput } from '../../types/solicitacao';
+import type { Unidade } from '../../types/unidade';
 import { useAuth } from '../../contexts/AuthContext';
-import { storageService } from '../../services/storageService';
+import { mensagemDeErro } from '../../services/api/http';
+import { unidadesApi } from '../../services/api/unidadesApi';
 
 interface ModalNovaSolicitacaoProps {
   onClose: () => void;
-  onSalvar: (nova: NovaSolicitacaoInput) => void;
+  onSalvar: (nova: NovaSolicitacaoApiInput) => Promise<void>;
 }
 
 export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacaoProps) {
   const { usuario } = useAuth();
-  const todosUsuarios = storageService.getUsuarios();
 
   const padraoSaida = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().slice(0, 16);
   const padraoChegada = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString().slice(0, 16);
 
-  const [solicitanteId, setSolicitanteId] = useState<string>(
-    usuario ? String(usuario.id) : String(todosUsuarios[0]?.id || 1)
-  );
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
+  const [unidadeId, setUnidadeId] = useState('');
   const [origem, setOrigem] = useState('');
   const [destino, setDestino] = useState('');
   const [finalidade, setFinalidade] = useState('');
   const [dataSaida, setDataSaida] = useState(padraoSaida);
   const [dataChegada, setDataChegada] = useState(padraoChegada);
   const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  useEffect(() => {
+    let ativo = true;
+    unidadesApi
+      .listarOpcoes()
+      .then((lista) => {
+        if (ativo) setUnidades(lista);
+      })
+      .catch((error) => {
+        if (ativo) setErro(`Não foi possível carregar as unidades: ${mensagemDeErro(error)}`);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro(null);
 
@@ -35,6 +51,10 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
     const dest = destino.trim();
     const fin = finalidade.trim();
 
+    if (!unidadeId) {
+      setErro('Selecione a unidade da solicitação.');
+      return;
+    }
     if (!orig) {
       setErro('Informe o local de origem.');
       return;
@@ -51,18 +71,13 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
       setErro('Informe a data e horário de saída pretendida.');
       return;
     }
-    if (dataChegada && dataChegada < dataSaida) {
-      setErro('O horário de retorno previsto não pode ser anterior à saída.');
+    if (dataChegada && dataChegada <= dataSaida) {
+      setErro('O horário de retorno previsto deve ser posterior à saída.');
       return;
     }
 
-    const solIdNum = Number(solicitanteId);
-    const usuarioSel = todosUsuarios.find((u) => u.id === solIdNum) || usuario;
-    const nome = usuarioSel ? usuarioSel.nome : 'Solicitante Institucional';
-
-    const nova: NovaSolicitacaoInput = {
-      solicitante_id: solIdNum || 1,
-      solicitante_nome: nome,
+    const nova: NovaSolicitacaoApiInput = {
+      unidade_id: Number(unidadeId),
       origem: orig,
       destino: dest,
       finalidade: fin,
@@ -70,11 +85,13 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
       data_chegada_desejada: dataChegada ? new Date(dataChegada).toISOString() : undefined,
     };
 
+    setSalvando(true);
     try {
-      onSalvar(nova);
+      await onSalvar(nova);
       onClose();
-    } catch (err: any) {
-      setErro(err.message || 'Erro ao registrar solicitação.');
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+      setSalvando(false);
     }
   };
 
@@ -96,19 +113,23 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
           </div>
         )}
 
-        {/* Seleção do Solicitante */}
-        <Select
-          label="Solicitante Responsável"
-          value={solicitanteId}
-          onChange={(e) => setSolicitanteId(e.target.value)}
-          required
-        >
-          {todosUsuarios.map((u) => (
-            <option key={u.id} value={String(u.id)}>
-              {u.nome} ({u.email})
-            </option>
-          ))}
-        </Select>
+        {/* Solicitante (usuário autenticado) e Unidade que analisará o pedido */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+          <Input label="Solicitante" value={usuario?.nome ?? ''} disabled />
+          <Select
+            label="Unidade *"
+            value={unidadeId}
+            onChange={(e) => setUnidadeId(e.target.value)}
+            required
+          >
+            <option value="">Selecione</option>
+            {unidades.map((u) => (
+              <option key={u.id} value={String(u.id)}>
+                {u.nome}
+              </option>
+            ))}
+          </Select>
+        </div>
 
         {/* Trajeto */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
@@ -197,8 +218,8 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
           <Button variant="outline" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit">
-            Cadastrar Solicitação
+          <Button variant="primary" type="submit" disabled={salvando}>
+            {salvando ? 'Cadastrando...' : 'Cadastrar Solicitação'}
           </Button>
         </div>
       </form>
