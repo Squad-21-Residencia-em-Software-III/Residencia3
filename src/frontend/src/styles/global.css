@@ -1,50 +1,179 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-primary: #1554b8;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #eff6ff;
+  --color-navy-900: #0d1730;
+  --color-navy-950: #0a1226;
+  --color-input-dark: #060c1c;
+
+  --color-text: #0e172e;
+  --color-text-secondary: #2a3d54;
+  --color-text-strong: #334155;
+  --color-text-muted: #8da2b5;
+  --color-text-subtle: #94a3b8;
+
+  --color-success: #15803d;
+  --color-success-bg: #dcfce7;
+  --color-warning: #b45309;
+  --color-warning-bg: #fef3c7;
+  --color-info: #1d4ed8;
+  --color-info-bg: #dbeafe;
+  --color-danger: #dc2626;
+  --color-danger-strong: #b91c1c;
+  --color-danger-bg: #fee2e2;
+  --color-danger-soft: #fef2f2;
+  --color-neutral: #475569;
+  --color-neutral-bg: #f1f5f9;
+  --color-purple: #7c3aed;
+  --color-purple-bg: #faf5ff;
+
+  --color-page-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-surface-alt: #fafbfc;
+  --color-surface-hover: #eaf2fd;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-divider: #f0f2f6;
+  --color-row-divider: #f5f7f9;
+  --color-card-border: #eff2f6;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-modal: 18px;
+
+  --shadow-card: 0 1px 3px rgba(13, 27, 53, 0.07), 0 4px 16px rgba(13, 27, 53, 0.04);
+  --shadow-menu: 0 8px 24px rgba(13, 27, 53, 0.14), 0 1px 4px rgba(13, 27, 53, 0.06);
+  --shadow-modal: 0 24px 60px rgba(13, 27, 53, 0.18);
+
+  --background-image-sidebar:
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(21, 84, 184, 0.25), transparent 75%),
+    linear-gradient(180deg, #0e172e 0%, #080e1d 100%);
+  --background-image-login:
+    radial-gradient(ellipse 45% 55% at 30% 50%, rgba(21, 84, 184, 0.28), transparent 70%),
+    linear-gradient(160deg, #0d1730 0%, #0a1226 100%);
+  --background-image-login-card: radial-gradient(
+    150% 150% at 50% -20%,
+    rgba(14, 23, 46, 0.4) 0%,
+    rgba(5, 5, 9, 0.15) 50%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+
+  --shadow-login-card:
+    0 30px 80px rgba(0, 0, 0, 0.6), inset 0 2px 3px rgba(255, 255, 255, 0.12),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.03);
+
+  --animate-login-left: login-fade-right 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  --animate-login-right: login-fade-left 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both;
+  --animate-login-cascade: login-cascade 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-tab-fade: tab-fade-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  @keyframes tab-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes login-fade-right {
+    from {
+      opacity: 0;
+      transform: translateX(-50px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes login-fade-left {
+    from {
+      opacity: 0;
+      transform: translateX(50px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes login-cascade {
+    from {
+      opacity: 0;
+      transform: translateY(15px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-}
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-body {
-  font-family: var(--font-sans);
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  background: var(--color-page-bg);
-  -webkit-font-smoothing: antialiased;
-}
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
 
-h1,
-h2,
-h3,
-h4 {
-  font-family: var(--font-display);
-  color: var(--color-text);
-  margin: 0;
-}
+  body {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    background: var(--color-page-bg);
+    -webkit-font-smoothing: antialiased;
+  }
 
-button {
-  font-family: var(--font-display);
-  cursor: pointer;
-  border: none;
-}
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    color: var(--color-text);
+    margin: 0;
+  }
 
-:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
+  button {
+    font-family: var(--font-display);
+    cursor: pointer;
+  }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 3px;
+  input[type='password']::-ms-reveal,
+  input[type='password']::-ms-clear {
+    display: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 3px;
+  }
 }
