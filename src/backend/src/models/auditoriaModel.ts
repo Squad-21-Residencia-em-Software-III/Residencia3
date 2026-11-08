@@ -20,8 +20,20 @@ export interface RegistroAuditoria {
   modulo: ModuloAuditoria;
 }
 
+export interface Auditoria extends RegistroAuditoria {
+  id: number;
+  data_hora: Date;
+}
+
 export const auditoriaModel = {
   async registrar(registro: RegistroAuditoria, conn: Knex = db): Promise<void> {
     await conn('auditorias').insert(registro);
+  },
+
+  async listar(): Promise<Auditoria[]> {
+    return db('auditorias')
+      .select('id', 'usuario_id', 'acao', 'modulo', 'data_hora')
+      .orderBy('data_hora', 'desc')
+      .orderBy('id', 'desc');
   },
 };
