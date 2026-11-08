@@ -14,6 +14,7 @@ import MotoristasPage from '../pages/MotoristasPage'
 import MultasPage from '../pages/MultasPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import ServerErrorPage from '../pages/ServerErrorPage'
+import SobreNosPage from '../pages/SobreNosPage'
 import SolicitacoesPage from '../pages/SolicitacoesPage'
 import UsuariosPage from '../pages/UsuariosPage'
 import VeiculosPage from '../pages/VeiculosPage'
@@ -50,7 +51,9 @@ function LayoutRoute() {
   const { usuario, logout, temPerfil } = useAuth()
 
   const itensVisiveis = navItems.filter((item) => !item.perfis || temPerfil(...item.perfis))
-  const title = itensVisiveis.find((item) => pathname.startsWith(item.path))?.label ?? 'FSPH'
+  const title = pathname.startsWith('/sobre')
+    ? 'Sobre Nós'
+    : itensVisiveis.find((item) => pathname.startsWith(item.path))?.label ?? 'FSPH'
 
   return (
     <AppLayout
@@ -88,6 +91,7 @@ export function AppRoutes() {
           <Route path="/motoristas" element={<MotoristasPage />} />
           <Route path="/multas" element={<MultasPage />} />
           <Route path="/viagens" element={<ViagensPage />} />
+          <Route path="/sobre" element={<SobreNosPage />} />
 
           {/* Só administrador (o backend também bloqueia com 403) */}
           <Route element={<RotaPorPerfil perfis={[PERFIS.ADMINISTRADOR]} />}>

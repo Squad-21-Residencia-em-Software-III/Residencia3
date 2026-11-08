@@ -48,6 +48,23 @@ src/frontend/
 - **Tipos**: cada tipo em `types/` espelha uma tabela do banco (ver `docs/dicionario-de-dados.md`). Não adicionar campos que não existam na tabela.
 - **Dados**: a tela consome uma lista de `services/`. Quando houver API, troca-se só essa origem.
 
+### 4.1 Padronização de Botões e Controles (Design System)
+Para assegurar consistência visual e eliminar desalinhamentos verticais entre componentes interativos:
+- **Altura unificada de controles de Toolbar (`38px`)**:
+  - `Button` com `size="md"`, `Input` de busca e `Select` compartilham exatamente a mesma altura nas barras de filtros e cabeçalhos.
+- **Tamanhos e Usos de Botões (`Button.tsx`)**:
+  - `size="md"` (padrão, `38px` de altura, `padding: 10px 20px`, `font-size: 13px`): Botões de ação primária em cabeçalhos (+ Novo Veículo, + Nova Solicitação), ações principais e submits de modais.
+  - `size="sm"` (`32px` de altura, `padding: 6px 12px`, `font-size: 12px`): Exclusivo para ações inline dentro das tabelas (Aprovar, Recusar, Detalhes, Senha, Remover) e filtros rápidos em chips.
+- **Hierarquia Visual de Variantes**:
+  - `btn--primary`: Ações de criação ou confirmação de alto impacto (cor institucional `var(--color-primary)`).
+  - `btn--outline`: Ações secundárias, filtros e cancelamentos neutros (`border: 1px solid var(--color-border-strong)`).
+  - `btn--ghost`: Ações terciárias, botões de ícone e atalhos contextuais sem borda.
+
+### 4.2 Padrão de Barras de Ferramentas (`TableToolbar`)
+Todas as listagens corporativas seguem o mesmo arranjo espacial:
+- **Lado Esquerdo**: Campo de busca textual (`Input`) por nome, placa, ID ou e-mail.
+- **Lado Direito**: Dropdown de filtro de status (`Select`) + Botão de ação primária (`Button` variant `primary`).
+
 ## 5. Rotas e Permissões
 
 | Rota | Página | Tipo de Acesso | Permissões |
@@ -64,6 +81,7 @@ src/frontend/
 | `/motoristas` | `MotoristasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/multas` | `MultasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
 | `/usuarios` | `UsuariosPage` | Restrita por Perfil (`RotaPorPerfil`) | Exclusivo para perfil `ADMINISTRADOR` |
+| `/sobre` | `SobreNosPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (apresentação institucional da FSPH, frota e créditos) |
 | `/404`, `/500`, `/403` | Páginas de Erro | Pública / Erro | Telas ilustradas e padronizadas para cada código de erro HTTP |
 | qualquer outra | `NotFoundPage` | Protegida | Exibida para rotas não mapeadas |
 
@@ -423,40 +441,79 @@ Visão geral consolidada de todas as adequações realizadas entre o protótipo 
 | **Agenda (`/agenda`)** | - Lista fictícia de passageiros avulsos e vagas ("3/5 vagas")<br>- IDs com string (`VIA-0881`, `W01`)<br>- Emojis de alerta (`🔴`, `⚠️`, `🟢`)<br>- Status em texto livre ("Concluída", "Em Andamento") | - Vínculo relacional institucional (`solicitacoes_viagem` e `viagens_frota`)<br>- Capacidade máxima oficial do veículo (`veiculos.capacidade_maxima`)<br>- Solicitante e justificativa institucional da viagem<br>- Status enum padrão do banco (`AGENDADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA`)<br>- Ícones vetoriais padronizados `lucide-react` |
 | **Identidade / Ícones** | - Emojis textuais e SVGs soltos | - Biblioteca profissional padronizada `lucide-react` em todas as telas |
 
-## 14. Pontos em aberto com o back-end
-- O banco **não tem CHECK na coluna `status`** de `veiculos` nem de `motoristas`. Os valores válidos estão só no dicionário de dados.
-- O dicionário cita `EM_USO` para veículos, mas nenhum código do back-end usa esse valor ainda.
-- **O dicionário de dados está desatualizado para `motoristas`**: ele lista `cnh` e `validade_cnh`, mas o banco tem `numero_cnh`, `categoria_cnh`, `validade_cnh`, `tipo_motorista` e `status`. O front segue o banco.
-- Para `motoristas.status`, só se conhece `DISPONIVEL` (padrão). Falta definir os demais valores (ex.: em viagem, afastado).
-- Os endpoints de `usuarios` estão totalmente prontos e documentados no backend (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`).
-- **Ainda não há endpoints para Viagens no back-end**: a tela de viagens consome os dados mockados em `services/mocks/viagensMock.ts`. Quando os endpoints forem desenvolvidos pela equipe de back-end, basta conectar a camada de serviços sem alterar a interface.
-- **Falta a migration da BL15** (responsabilidade do time de banco): tabelas `unidades` (com SVO, HEMOSE e LACEN) e `gestores_unidades`, e a coluna `solicitacoes_viagem.unidade_id`. A especificação está na descrição do PR #76. Sem ela, `/api/unidades*` e `POST /api/solicitacoes-viagem` respondem 500.
+## 14. Tela "Sobre Nós" (`/sobre`)
 
-## 15. Roadmap de Funcionalidades & Entregas (Ordenado por Complexidade)
+Página institucional acessível a todos os usuários autenticados através da barra de navegação ou rodapé do sistema. Apresenta o contexto e a governança da plataforma de frotas da Fundação de Saúde Parreiras Horta.
 
-Para que o sistema passe de um conjunto de protótipos visuais isolados para uma aplicação web plenamente funcional e integrada, foi estabelecido um fluxo gradual de entregas. 
-
-A estratégia técnica adota uma **camada de persistência em Cache local (`localStorage` / Store centralizado)** inicial. Isso garante que qualquer operação (cadastros, edições, alterações de status) seja persistida no navegador e sincronizada entre diferentes módulos em tempo real, servindo como base estável antes do chaveamento definitivo para os endpoints da API REST do back-end.
-
----
-
-### 🗺️ Matriz de Priorização das Entregas
-
-| Nível | Módulo / Funcionalidade | Complexidade | Impacto Prático & Dependências |
-|---|---|---|---|
-| **Nível 1** | **Veículos em Cache (`/veiculos`)** | 🟢 Muito Fácil | Cadastro de novo veículo com persistência em `localStorage`. Atualiza a tabela imediatamente, recalcula os 4 cards do topo e persiste após F5. |
-| **Nível 1** | **Motoristas em Cache (`/motoristas`)** | 🟢 Muito Fácil | Cadastro de novo motorista com persistência em `localStorage`. Atualiza listagem, recalcula cards (inclusive alerta de CNH vencida) e persiste após F5. |
-| **Nível 2** | **Usuários em Cache (`/usuarios`)** | 🟡 Fácil / Médio | CRUD completo (cadastro, edição, redefinição de senha e toggle de ativação/inativação) persistido em cache, com bloqueio de auto-desativação do admin. |
-| **Nível 2** | **Sincronização Cruzada (Veículos/Motoristas ➔ Viagens/Dashboard)** | 🟡 Fácil / Médio | O modal de "Nova Viagem" (`/viagens`) passa a consumir os veículos e motoristas recém-cadastrados no cache, e o `/dashboard` reflete os quantitativos reais da frota. |
-| **Nível 3** | **Ciclo de Viagens em Cache (`/viagens`)** | 🟠 Médio | Agendamento de viagem vinculando solicitação aprovada, despacho (`EM_ANDAMENTO`), finalização com registro de `km_final >= km_inicial`, apuração da distância e liberação automática do veículo e condutor para `DISPONIVEL`. |
-| **Nível 3** | **Aprovação de Solicitações no Dashboard (`/dashboard`)** | 🟠 Médio | Gestor aprova ou rejeita solicitações pendentes direto no dashboard; solicitações aprovadas ficam imediatamente disponíveis para agendamento em `/viagens`. |
-| **Nível 4** | **Tela de Agenda (`/agenda`)** | 🔴 Médio / Avançado | Visualização em grade horária interativa (*Timeline Gantt*, 05h–20h) mapeando veículos vs. viagens programadas nos modos Hoje, Semana e Mês, com detecção visual de conflitos de horário. |
-| **Nível 5** | **Login Institucional & Controle de Sessão (`/login` + RBAC)** | 🔴 Avançado | Tela de login corporativa FSPH, persistência de token/sessão, rotas protegidas (guards) e restrições de permissão por perfil (RN07 e RN21). |
-| **Nível 6** | **Integração Real com API REST do Back-end** | 🔴 Avançado | Substituição da camada de `localStorage` por clientes HTTP (`fetch` / `axios`), com gestão assíncrona de loading, tratamento global de erros (400, 401, 403, 500) e feedback de rede. |
+- **Composição da Tela**:
+  1. **Cabeçalho Institucional**: Logo oficial da FSPH, missão da fundação na gestão da saúde pública estadual e objetivo do sistema de gestão integrada de frotas.
+  2. **Unidades Operacionais Atendidas**:
+     - **SVO (Serviço de Verificação de Óbito)**: Operação especializada com regime de escalas e plantões 24h.
+     - **HEMOSE (Centro de Hemoterapia de Sergipe)**: Logística de transporte de hemoderivados e doadores.
+     - **LACEN (Laboratório Central de Saúde Pública)**: Coleta e distribuição de amostras biológicas e exames diagnósticos.
+  3. **Especificações Técnicas e Arquitetura**:
+     - Stack: React 19, TypeScript, CSS Variables, Express, Knex, PostgreSQL.
+     - Versão atual da plataforma e ambiente de execução.
+  4. **Créditos do Projeto**:
+     - Projeto desenvolvido no âmbito da **Residência em Software III (Squad 21)**.
 
 ---
 
-### Detalhamento dos Níveis:
+## 15. Status de Integração com o Back-end
+- **Autenticação & Sessão**: Conectada e validada em produção (`/api/auth/login`, `/api/auth/me`).
+- **Unidades e Gestores (BL15)**: Concluída no backend e banco de dados via PR #76 e PR #82. Endpoints `/api/unidades` e `/api/unidades/gestores` ativos.
+- **Indicadores do Dashboard (BL34)**: Endpoint consolidado entregue no backend via PR #81 (`GET /api/dashboard`).
+- **Usuários**: Endpoints CRUD completos no backend (`/api/usuarios`).
+- **Solicitações de Viagem**: Endpoints completos com suporte a `unidade_id`, paginação e análise de disponibilidade (`/api/solicitacoes-viagem`).
+- **Viagens e Agenda**: Endpoints de listagem e controle de odômetro em desenvolvimento/revisão.
+
+---
+
+## 16. Roadmap Consolidado de Execução (UI & Conexão Back-end)
+
+A estratégia de evolução do sistema combina a padronização estética/ergonômica com a transição segura dos dados em cache para a API REST:
+
+```mermaid
+flowchart TD
+    subgraph EIXO_A ["Eixo A: Interface & Padronização de Design System"]
+        A1["1. Padronização de Botões e Alturas (38px nas toolbars / 32px nas tabelas)"]
+        A2["2. Layout Consistente de Barras de Ferramentas (Busca à esq. / Dropdown à dir.)"]
+        A3["3. Implementação da Tela 'Sobre Nós' (/sobre)"]
+    end
+
+    subgraph EIXO_B ["Eixo B: Conexão Gradual do Front com o Back (Transição do Cache)"]
+        B1["Fase 1: Dashboard (/dashboard ➔ GET /api/dashboard com fallback)"]
+        B2["Fase 2: Usuários (/usuarios ➔ CRUD /api/usuarios)"]
+        B3["Fase 3: Solicitações (/solicitacoes ➔ GET paginado + campo Unidade no modal)"]
+        B4["Fase 4: Veículos & Motoristas (/veiculos e /motoristas ➔ API REST)"]
+        B5["Fase 5: Viagens & Agenda (/viagens e /agenda ➔ ciclo completo)"]
+    end
+
+    EIXO_A --> EIXO_B
+```
+
+### Detalhamento das Entregas
+
+#### Eixo A: Padronização Visual & UX
+1. **Unificação de Controles nas Telas Operacionais**:
+   - Ajustar `VeiculosPage`, `MotoristasPage`, `SolicitacoesPage`, `ViagensPage`, `UsuariosPage`, `AbastecimentoPage` e `MultasPage` para que o campo de busca (`Input`), o seletor de status (`Select`) e os botões de ação (`Button`) compartilhem rigorosamente a altura de `38px`.
+   - Garantir que ações inline nas tabelas utilizem exclusivamente `size="sm"` (`32px`).
+   - Posicionar a busca textual sempre à esquerda e os dropdowns com CTA de cadastro à direita.
+2. **Tela "Sobre Nós" (`/sobre`)**:
+   - Criação da página institucional corporativa FSPH com layout em cards neutros e identidade visual formal.
+
+#### Eixo B: Conexão do Front com o Back
+1. **Fase 1 — Dashboard (`/dashboard`)**:
+   - Consumir `GET /api/dashboard?inicio=&fim=`.
+   - Implementar fallback transparente para o `storageService` caso a rede esteja indisponível.
+   - Corrigir link de "Revisar" no card de solicitações pendentes para apontar para `/solicitacoes`.
+2. **Fase 2 — Usuários (`/usuarios`)**:
+   - Conectar tabela e modais de usuário às rotas `/api/usuarios`, mantendo feedback por toast/alertas.
+3. **Fase 3 — Solicitações de Viagem (`/solicitacoes`)**:
+   - Adicionar o dropdown de seleção de Unidade no `ModalNovaSolicitacao.tsx` alimentado por `unidadesApi.listarOpcoes()`.
+   - Conectar a listagem paginada (`GET /api/solicitacoes-viagem`) e as ações de aprovar/recusar.
+4. **Fases 4 e 5 — Veículos, Motoristas, Viagens e Agenda**:
+   - Conectar as rotas correspondentes conforme o backend for homologado.
 
 #### 🟢 Nível 1: Cadastros em Cache de Veículos e Motoristas (Ponto de Partida)
 - **Objetivo**: Fornecer a base cadastral da frota persistida no navegador sem dependência de backend imediato.
