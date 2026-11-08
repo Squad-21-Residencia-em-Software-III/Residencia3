@@ -26,10 +26,10 @@ export function RotaPorPerfil({ perfis }: { perfis: Perfil[] }) {
   return temPerfil(...perfis) ? <Outlet /> : <Navigate to="/403" replace />
 }
 
-/** Rotas públicas (login): quem já está logado vai direto ao dashboard. */
+/** Rotas públicas (login): quem já está logado vai direto à home. */
 export function RotaPublica() {
   const { usuario, carregando } = useAuth()
   if (carregando) return <TelaCarregando />
-  if (usuario) return <Navigate to="/dashboard" replace />
+  if (usuario) return <Navigate to="/inicio" replace />
   return <Outlet />
 }

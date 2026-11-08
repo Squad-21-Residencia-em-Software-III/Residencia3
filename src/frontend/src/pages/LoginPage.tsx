@@ -10,7 +10,7 @@ export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const destino = (location.state as { de?: string } | null)?.de ?? '/dashboard'
+  const destino = (location.state as { de?: string } | null)?.de ?? '/inicio'
 
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')

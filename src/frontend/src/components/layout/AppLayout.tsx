@@ -187,6 +187,14 @@ export function AppLayout({
                 <PlusIcon /> <span className="btn__label-text">{actionLabel}</span>
               </button>
             )}
+            <NavLink
+              to="/sobre"
+              className={({ isActive }) =>
+                `topbar__btn-sobre ${isActive ? 'topbar__btn-sobre--active' : ''}`
+              }
+            >
+              Sobre Nós
+            </NavLink>
             <button className="topbar__bell" aria-label="Notificações">
               <BellIcon />
             </button>
