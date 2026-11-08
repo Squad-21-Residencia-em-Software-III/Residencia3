@@ -21,7 +21,15 @@ npm run build    # confere tipos e gera o build
 > 1. Foi adicionada a dependência `lucide-react`. Ao atualizar ou clonar a branch, é obrigatório rodar `npm install` dentro de `src/frontend`.
 > 2. Crie o arquivo `src/frontend/.env` com `VITE_API_URL=http://localhost:3000/api` para comunicação correta com o back-end em desenvolvimento.
 
-O front-end **está oficialmente conectado ao back-end para Autenticação e Sessão** (`POST /api/auth/login`, `GET /api/auth/me`). Os módulos operacionais (Veículos, Motoristas, Viagens, Abastecimento, Multas) utilizam persistência no navegador via `storageService` enquanto aguardam a conexão de seus endpoints REST definitivos.
+O front-end **está conectado ao back-end para os módulos centrais da operação**:
+- **Autenticação e Sessão**: `POST /api/auth/login`, `GET /api/auth/me`.
+- **Veículos**: `GET /api/veiculos`, `POST /api/veiculos`.
+- **Motoristas**: `GET /api/motoristas`.
+- **Viagens Operacionais**: `GET /api/viagens`, agendar, iniciar, finalizar e cancelar viagens via API.
+- **Solicitações de Viagem**: `GET /api/solicitacoes-viagem`, criação, consulta de disponibilidade (`SCRUM-73`), aprovação e recusa com justificativa auditável (`SCRUM-74`).
+- **Unidades & Gestores**: `GET /api/unidades`, integração com isolamento por unidade (BL15 / SCRUM-142).
+
+Os módulos de **Dashboard**, **Usuários**, **Multas**, **Abastecimento** e **Agenda** encontram-se em fase de transição (endpoints do back-end já desenvolvidos, aguardando conexão dos serviços na interface conforme o roadmap).
 
 ## 3. Estrutura de pastas
 ```
@@ -167,20 +175,28 @@ Todos os usuários de teste usam a senha padrão: **`Senha@123`**
 
 ---
 
-## 7. Origem dos dados
-> [!WARNING]
-> Os dados exibidos são **fictícios (mock)**. Não vêm do banco nem da API. Itens cadastrados pela tela existem só na memória do navegador e somem ao recarregar.
+## 7. Origem dos Dados e Status de Integração
 
-| Tela | Origem | Observação |
+A aplicação adota arquitetura híbrida em transição acelerada para API REST direta:
+
+| Módulo / Tela | Origem Atual | Situação e Contrato |
 |---|---|---|
-| Veículos | `services/mocks/veiculosMock.ts` | dados baseados nos 5 veículos do seed (`src/backend/database/seeds/01_dados_iniciais.js`) |
-| Motoristas | `services/mocks/motoristasMock.ts` | lista de motoristas simulados (respeitando o schema de `motoristas` e perfis de `usuarios`) |
-| Usuários | `services/mocks/usuariosMock.ts` | dados baseados nos 7 usuários do seed (`src/backend/database/seeds/01_dados_iniciais.js`) e regras dos 6 perfis oficiais |
-| Dashboard / Solicitações | `services/mocks/solicitacoesMock.ts` | resumo de solicitações de viagens e viagens ativas consolidando dados com veículos e motoristas |
-| Viagens | `services/mocks/viagensMock.ts` | dados estruturados conforme as tabelas `viagens_frota` e `ordens_svo` do banco de dados |
-| Agenda | `services/mocks/agendaMock.ts` | rotas padronizadas nos 5 veículos oficiais do seed e sincronizadas com as viagens |
+| **Autenticação** (`/login`) | **API REST Real** (`authApi.ts`) | `POST /api/auth/login`, `GET /api/auth/me` com emissão e validação de JWT. |
+| **Veículos** (`/veiculos`) | **API REST Real** (`veiculosApi.ts`) | `GET /api/veiculos`, `POST /api/veiculos` conectado ao PostgreSQL. |
+| **Motoristas** (`/motoristas`) | **API REST Real** (`motoristasApi.ts`) | `GET /api/motoristas` com dados relacionais; cadastro aguarda `POST /api/motoristas`. |
+| **Viagens** (`/viagens`) | **API REST Real** (`viagensApi.ts`) | Agendamento, início, conclusão com cálculo de odômetro e cancelamento via API. |
+| **Solicitações** (`/solicitacoes`) | **API REST Real** (`solicitacoesApi.ts`) | Listagem paginada, criação, análise de recursos (`SCRUM-73`), aprovação e recusa com motivo (`SCRUM-74`). |
+| **Unidades** (Seleção/Filtro) | **API REST Real** (`unidadesApi.ts`) | `GET /api/unidades` para isolamento operacional (BL15 / SCRUM-142). |
+| **Dashboard** (`/dashboard`) | Mocks / Storage (`solicitacoesMock.ts`) | Em transição: endpoint `GET /api/dashboard` (BL34) pronto no backend. |
+| **Usuários** (`/usuarios`) | Storage (`storageService.ts`) | Em transição: 4 endpoints (`GET`, `POST`, `PATCH /api/usuarios`) prontos no backend. |
+| **Multas** (`/multas`) | Storage (`storageService.ts`) | Em transição: `GET /api/multas` e `POST /api/multas` prontos no backend. |
+| **Abastecimento** (`/abastecimento`) | Storage (`storageService.ts`) | Em transição: `POST /api/abastecimentos` e `GET /api/abastecimentos/veiculo/:id` prontos no backend. |
+| **Agenda** (`/agenda`) | Mocks (`agendaMock.ts`) | Em transição: estrutura preparada para consumo de viagens agendadas da API. |
+| **Sobre Nós** (`/sobre`) | Componente Institucional Estático | Apresentação institucional da equipe (Squad 21) e atribuições na topbar. |
 
-## 7. Tela de Veículos
+---
+
+## 8. Tela de Veículos
 Tabela `veiculos`, conforme `docs/dicionario-de-dados.md` e as migrations.
 
 | Coluna no banco | Regra | Campo no front |
@@ -717,3 +733,153 @@ O módulo de solicitações conecta o solicitante institucional ao despacho da f
 - **`SolicitacoesPage.tsx`**: Página com cards de métricas (total, pendentes, aprovadas, agendadas, recusadas), busca textual à esquerda, dropdown de filtro de status e tabela de solicitações com avatares e badges.
 - **`ModalAnaliseSolicitacao.tsx`**: Painel de análise com resumo institucional, checagem de recursos em tempo real e ações de Aprovar / Recusar (com justificativa) / Agendar Viagem.
 - **`ModalNovaSolicitacao.tsx`**: Modal de cadastro validado conforme os schemas do backend.
+
+---
+
+## 18. Roadmap Estratégico do Projeto (Frontend & Sistema Integrado)
+
+Este roadmap consolida todos os marcos de evolução técnica e de negócio da plataforma de Gestão de Frotas e Transportes da FSPH (FMS/TMS), alinhando o planejamento do Squad 21 às diretrizes da Residência em Software III.
+
+```mermaid
+flowchart TD
+    subgraph Eixo1["1. Conexão REST dos Módulos Restantes"]
+        A1["Dashboard Executivo (GET /api/dashboard)"]
+        A2["Usuários e Senhas (GET/POST/PATCH /api/usuarios)"]
+        A3["Multas e Pontuação CNH (GET/POST /api/multas)"]
+        A4["Abastecimento e Km/L (POST/GET /api/abastecimentos)"]
+        A5["Manutenções e Bloqueio de Frota (POST/PATCH /api/manutencoes)"]
+        A6["Cadastro de Motoristas (POST /api/motoristas)"]
+    end
+
+    subgraph Eixo2["2. Design System & Transição do CSS"]
+        B1["Remoção de Estilos Inline Remanescentes"]
+        B2["Arquitetura de Saída do CSS (CSS Modules / Utility)"]
+        B3["Componentização: StatCard, FilterCollapse, PageHeader"]
+        B4["Componentização: ConfirmDialog, EmptyState, DatePicker"]
+    end
+
+    subgraph Eixo3["3. Módulo de Agenda Interativa"]
+        C1["Conexão Direta com a API de Viagens"]
+        C2["Gantt Diário (Timeline 24h por Veículo)"]
+        C3["Algoritmo Visual de Detecção de Conflitos (RN04/RF14)"]
+        C4["Filtro por Unidade e Frota Administrativa vs SVO"]
+    end
+
+    subgraph Eixo4["4. Especialização do Módulo SVO"]
+        D1["Gestão de Ordens de Coleta de Óbito (ordens_svo)"]
+        D2["Bloqueio Rígido de Lotação (Máx. 4 Corpos - RN11/RN12)"]
+        D3["Controle de Escalas e Plantões das Equipes SVO (RF26)"]
+    end
+
+    subgraph Eixo5["5. Alertas, Auditoria, Anexos & Relatórios"]
+        E1["Alertas de Vencimento de CNH e CRLV (30 dias - RN15)"]
+        E2["Upload de Documentos e Notas Fiscais (documentoRoutes)"]
+        E3["Trilha de Auditoria de Ações Críticas (RN18/RF27)"]
+        E4["Exportação de Relatórios Gerenciais em PDF e Excel (RF18)"]
+    end
+
+    subgraph Eixo6["6. Conectividade Resiliente & Testes"]
+        F1["Estratégia PWA e Operação Offline (IndexedDB no Interior)"]
+        F2["Suíte de Testes no Frontend (Vitest + Testing Library)"]
+    end
+
+    Eixo1 --> Eixo2 --> Eixo3 --> Eixo4 --> Eixo5 --> Eixo6
+```
+
+---
+
+### Eixo 1: Conexão dos Módulos Restantes à API REST
+Concluir a substituição de armazenamentos temporários (`storageService` / mocks estáticos) pelos contratos oficiais já existentes no back-end Express + PostgreSQL:
+1. **Dashboard Executivo (`/dashboard`)**:
+   - Integrar o endpoint `GET /api/dashboard` (BL34, protegido para Gestor de Frota e Administrador).
+   - Alimentar os 4 cards de KPI com números reais do banco (viagens ativas, solicitações pendentes, viaturas em manutenção e custo de combustível).
+   - Renderizar os gráficos de consumo médio mensal e taxa de ocupação da frota com agregação real.
+2. **Administração de Usuários (`/usuarios`)**:
+   - Integrar os 4 endpoints já prontos no back-end (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`).
+   - Aplicar validação rigorosa de unicidade de e-mail e políticas de senha forte (mínimo 8 caracteres, maiúsculas, números e símbolos) diretamente pelo PostgreSQL.
+3. **Multas & Infrações de Trânsito (`/multas`)**:
+   - Integrar `GET /api/multas` e `POST /api/multas` (`multaRoutes.ts`).
+   - Vincular infrações registradas ao condutor responsável (`motorista_id`), recalculando a pontuação acumulada na CNH conforme regras do CTB (`RN17`, `RF10`).
+4. **Abastecimento & Controle de Eficiência (`/abastecimento`)**:
+   - Integrar `POST /api/abastecimentos` e `GET /api/abastecimentos/veiculo/:veiculoId` (`abastecimentoRoutes.ts`).
+   - Calcular automaticamente o consumo médio ponderado (km/L) a partir da diferença de hodômetro entre abastecimentos consecutivos (`RF09`).
+5. **Manutenções Preventivas e Corretivas**:
+   - Integrar `POST /api/manutencoes`, `GET /api/manutencoes/veiculo/:veiculoId` e `PATCH /api/manutencoes/:id/status` (`manutencaoRoutes.ts`).
+   - Ao registrar manutenção aberta, alternar atomicamente o status do veículo para `MANUTENCAO`, bloqueando-o para novos agendamentos até a liberação.
+6. **Cadastro Completo de Motoristas (`POST /api/motoristas`)**:
+   - Construir no back-end a mutation `POST /api/motoristas` com validação de formato de CNH e categoria (B, C, D, E), reabilitando o botão de cadastro no modal do front-end.
+
+---
+
+### Eixo 2: Design System, Componentização e Transição do CSS
+Aprimorar a qualidade de código, consistência visual e manutenibilidade do front-end:
+1. **Transição de Saída do CSS Inline e Consolidação de Estilos**:
+   - Eliminar blocos de estilização inline (`style={{ ... }}`) remanescentes (presentes na página `SobreNosPage.tsx`, modais e tabelas), substituindo-os por classes CSS semânticas estruturadas.
+   - Definir e aplicar a arquitetura de saída do CSS (adoção gradual de **CSS Modules** ou framework utilitário padronizado como **Tailwind CSS**), assegurando escopo isolado por componente, ausência de colisões globais e fidelidade aos tokens institucionais de cor e espaçamento (`tokens.css`).
+   - Revisar regras de responsividade mobile para eliminar dependência de regras manuais complexas (`calc`), utilizando flexbox e grid responsivos.
+2. **Componentização de Elementos Reutilizáveis (`components/ui`)**:
+   - **`MetricCard` / `StatCard`**: Componente unificado para os cartões de estatísticas no topo das telas (Home, Dashboard, Solicitações, Viagens, Abastecimento), com suporte a ícone, valor, rótulo, indicador percentual e tons semânticos (azul, verde, amarelo, vermelho).
+   - **`FilterCollapse` / `FilterPanel`**: Gaveta retrátil padronizada para filtragens avançadas com animação suave de abertura, botão de reset e contador de filtros ativos.
+   - **`PageHeader`**: Cabeçalho de página corporativo unificado contendo título display, subtítulo institucional, trilha de navegação (breadcrumb) e slot para ações primárias.
+   - **`EmptyState`**: Componente visual para listagens vazias, buscas sem resultado e telas zeradas, com ilustração em SVG neutro e botão de ação de recuperação.
+   - **`ConfirmDialog`**: Modal genérico de confirmação para ações destrutivas ou de impacto (excluir usuário, cancelar viagem, recusar solicitação), eliminando o uso de `window.confirm` nativo.
+   - **`DatePicker` / `DateRangePicker`**: Controle unificado para seleção de datas e intervalos temporais no padrão brasileiro (`DD/MM/YYYY`).
+
+---
+
+### Eixo 3: Funcionamento Completo da Tela de Agenda (`/agenda`)
+Evoluir a tela de Agenda de visualização estática para uma central de planejamento visual dinâmico (`RF13`, `RF14`, `RF16`):
+1. **Conexão Real com a API de Viagens**:
+   - Consumir as viagens agendadas e em andamento direto de `viagensApi.ts` ou rota especializada `/api/viagens/agenda`.
+2. **Visualização Gantt Diária (Linha do Tempo 24h)**:
+   - Apresentar cada veículo da frota em uma linha horizontal, com blocos coloridos representando as viagens no decorrer das horas do dia selecionado.
+3. **Visão Semanal e Mensal**:
+   - Alternância rápida entre visão diária (detalhe de horário), semanal (distribuição por dia da semana) e mensal (mapa de calor de ocupação).
+4. **Algoritmo de Detecção Visual de Conflitos**:
+   - Destacar em vermelho brilhante qualquer sobreposição de horário para o mesmo veículo (`RN04`) ou mesmo motorista (`RN05`).
+   - Impedir o arraste ou agendamento em horários já ocupados.
+5. **Filtros e Segmentação Operacional**:
+   - Filtro rápido por Unidade hospitalar (LACEN, Hemose, SVO, Sede) e separação clara entre **Frota Administrativa** e **Frota SVO** (`RN21`).
+6. **Ações Contextuais no Evento**:
+   - Clique em um bloco da agenda abre o resumo da viagem (origem, destino, solicitante, motorista, odômetro de saída) com atalho para iniciar despacho diretamente da timeline.
+
+---
+
+### Eixo 4: Especialização do Módulo SVO (Serviço de Verificação de Óbito)
+Atendimento aos fluxos operacionais específicos da fundação para remoção e transporte de corpos (`RF19` a `RF26`, `RN08` a `RN14`):
+1. **Ordens de Coleta SVO (`ordens_svo`)**:
+   - Gestão do ciclo de vida: *Solicitação Recebida → Triagem → Ordem Gerada → Alocada → Em Deslocamento → Coleta Realizada → Transporte → Finalizada*.
+2. **Controle Rígido de Lotação Simultânea (`RN11`, `RN12`, `RN13`)**:
+   - Cada viatura do SVO possui capacidade máxima estrita de **até 4 óbitos simultâneos**.
+   - O sistema deve bloquear alocações que excedam esse limite e apresentar a barra de ocupação visual no card da viatura (`Ex: 2/4 vagas ocupadas`).
+3. **Gestão de Escalas e Plantões das Equipes SVO (`RN08`, `RF26`)**:
+   - Cadastro e consulta da escala de motoristas e auxiliares de necrópsia por turno/plantão, garantindo que ordens de coleta só sejam designadas a equipes ativas no plantão.
+
+---
+
+### Eixo 5: Alertas Preventivos, Trilha de Auditoria, Documentos & Exportação
+Reforço de compliance, segurança jurídica e gestão documental:
+1. **Monitoramento e Alertas de Vencimento (`RN15`, `RF06`)**:
+   - Alerta visual no topo da aplicação quando a CNH de qualquer motorista estiver a **menos de 30 dias do vencimento**.
+   - Alerta preventivo de licenciamento/CRLV e revisão preventiva de veículos por quilometragem atingida.
+2. **Upload e Armazenamento de Documentos (`documentoRoutes.ts`)**:
+   - Upload de imagens e PDFs para CNH dos condutores, CRLV dos veículos e cupons fiscais digitalizados nos lançamentos de combustível.
+3. **Trilha de Auditoria de Ações Críticas (`RN18`, `RF27`)**:
+   - Registro automático e imutável de autor, data, hora, IP e ação realizada para: aprovação/recusa de viagens, cancelamentos de viagens em andamento, criação de usuários e redefinição de senhas.
+4. **Exportação de Relatórios Gerenciais (`RN20`, `RF18`)**:
+   - Emissão de relatórios em formato **PDF formatado** (com cabeçalho oficial FSPH) e planilha **Excel / CSV** para:
+     - Relatório de Quilometragem e Produtividade da Frota;
+     - Relatório de Custos com Combustível e Consumo Médio;
+     - Relatório de Tempo de Atendimento do SVO.
+
+---
+
+### Eixo 6: Conectividade Resiliente (PWA/Offline) & Suíte de Testes
+Garantia de operação em campo e estabilidade contínua da aplicação:
+1. **Estratégia PWA & Modo Offline no Interior de Sergipe**:
+   - Configuração de Service Worker e cache local via **IndexedDB** para permitir que motoristas em viagens ao interior sem cobertura móvel registrem o encerramento da viagem (KM final e horário), sincronizando automaticamente quando restabelecida a conexão.
+2. **Suíte de Testes Automatizados no Frontend**:
+   - Implementação de testes de componentes e de integração com **Vitest + React Testing Library**:
+     - Testes de renderização de rotas protegidas e guardas de perfil (RBAC);
+     - Teste do fluxo de análise de solicitações (aprovação, recusa com justificativa e verificação de disponibilidade);
+     - Teste de despacho e cálculo de odômetro em viagens.

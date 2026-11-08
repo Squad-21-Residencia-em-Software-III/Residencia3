@@ -3,7 +3,7 @@
 Passo a passo para rodar o banco de dados, a API (back-end) e o front-end na sua máquina.
 
 > [!NOTE]
-> Hoje o front-end e o back-end ainda **não estão conectados**. Cada parte roda e é testada separadamente.
+> O front-end e o back-end comunicam-se via API REST HTTP (`http://localhost:3000/api`). Módulos essenciais (Autenticação, Veículos, Motoristas, Viagens e Solicitações) já consomem o PostgreSQL em tempo real. Configure o `.env` do front conforme a seção 5.
 
 ## Pré-requisitos
 - [Git](https://git-scm.com/)
@@ -168,6 +168,14 @@ Em outro terminal:
 ```bash
 cd src/frontend
 npm install
+
+# Configurar a URL da API (porta 3000):
+# Windows (PowerShell):
+echo "VITE_API_URL=http://localhost:3000/api" > .env
+
+# Linux / macOS:
+echo "VITE_API_URL=http://localhost:3000/api" > .env
+
 npm run dev
 ```
 
@@ -177,7 +185,9 @@ npm run dev
 O front sobe em http://localhost:5173/.
 
 ### Teste
-- `/` redireciona para `/dashboard`.
+- `/` redireciona para `/inicio` (Central de Operações / Home).
+- Faça login com um dos usuários cadastrados no seed (ex.: `admin@exemplo.com` ou `gestor.frota@exemplo.com`, senha `Senha@123`).
+- Ao logar, a sessão é autenticada via JWT e o usuário é redirecionado para `/inicio`. O botão institucional `[ Sobre Nós ]` na barra superior apresenta a equipe do Squad 21.
 - Clique nos itens da barra lateral e confira a troca de página e do título.
 - Recolha e expanda a barra lateral.
 - Abra uma rota inexistente (ex.: `/xyz`) e confira a página "Página não encontrada".
