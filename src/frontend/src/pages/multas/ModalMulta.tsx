@@ -1,15 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Input, Modal, Select } from '../../components/ui';
-import { storageService } from '../../services/storageService';
 import { LABELS_STATUS_MULTA, STATUS_MULTA } from '../../types/multa';
 import type { Multa, NovaMultaInput, StatusPagamentoMulta } from '../../types/multa';
+import type { Veiculo } from '../../types/veiculo';
+import type { Motorista } from '../../types/motorista';
+import { veiculosApi } from '../../services/api/veiculosApi';
+import { motoristasApi } from '../../services/api/motoristasApi';
 
 interface ModalMultaProps {
   /** Quando informado, o modal edita a multa (ex.: para vincular o motorista depois). */
   multa?: Multa;
   onClose: () => void;
-  onSalvar: (multa: NovaMultaInput) => void;
+  onSalvar: (multa: NovaMultaInput) => Promise<void> | void;
   veiculoIdInicial?: string;
 }
 
@@ -21,8 +24,8 @@ function agoraLocal(): string {
 }
 
 export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: ModalMultaProps) {
-  const veiculos = useMemo(() => storageService.getVeiculos(), []);
-  const motoristas = useMemo(() => storageService.getMotoristas(), []);
+  const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
+  const [motoristas, setMotoristas] = useState<Motorista[]>([]);
   const agora = useMemo(agoraLocal, []);
 
   const [veiculoId, setVeiculoId] = useState(
@@ -40,7 +43,24 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
 
-  const handleSubmit = (e?: FormEvent) => {
+  useEffect(() => {
+    let ativo = true;
+    Promise.all([veiculosApi.listar(), motoristasApi.listar()])
+      .then(([vList, mList]) => {
+        if (!ativo) return;
+        setVeiculos(vList);
+        setMotoristas(mList);
+        if (!veiculoId && vList.length > 0) {
+          setVeiculoId(String(vList[0].id));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      ativo = false;
+    };
+  }, [veiculoId]);
+
+  const handleSubmit = async (e?: FormEvent) => {
     e?.preventDefault();
     if (enviando) return;
 
@@ -59,19 +79,25 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
 
     setErro('');
     setEnviando(true);
-    onSalvar({
-      veiculo_id: vId,
-      motorista_id: motoristaId ? Number(motoristaId) : null,
-      id_infracao: idInfracao.trim() || undefined,
-      orgao_autuador: orgao.trim() || undefined,
-      data_infracao: dataInfracao,
-      data_vencimento: dataVencimento || null,
-      status_pagamento: status,
-      valor: Number(v.toFixed(2)),
-      descricao: descricao.trim() || undefined,
-      pontos: p,
-    });
-    onClose();
+    try {
+      await onSalvar({
+        veiculo_id: vId,
+        motorista_id: motoristaId ? Number(motoristaId) : null,
+        id_infracao: idInfracao.trim() || undefined,
+        orgao_autuador: orgao.trim() || undefined,
+        data_infracao: dataInfracao,
+        data_vencimento: dataVencimento || null,
+        status_pagamento: status,
+        valor: Number(v.toFixed(2)),
+        descricao: descricao.trim() || undefined,
+        pontos: p,
+      });
+      onClose();
+    } catch (err: any) {
+      setErro(err.message || 'Erro ao salvar multa.');
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
@@ -103,11 +129,11 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
           </Select>
 
           <Select
-            label="Motorista responsável (quando aplicável)"
+            label="Motorista responsável"
             value={motoristaId}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setMotoristaId(e.target.value)}
           >
-            <option value="">Sem motorista vinculado</option>
+            <option value="">Sem condutor identificado (ainda)</option>
             {motoristas.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.nome}
@@ -120,57 +146,40 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
           <Input
             label="Data e hora da infração *"
             type="datetime-local"
-            max={agora}
             value={dataInfracao}
+            max={agora}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setDataInfracao(e.target.value)}
           />
+
           <Input
-            label="Vencimento"
+            label="Data de vencimento"
             type="date"
             value={dataVencimento}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setDataVencimento(e.target.value)}
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Input
-            label="Código da infração (Detran)"
-            placeholder="Ex: A123456789"
-            maxLength={255}
+            label="Código da infração"
+            placeholder="Ex.: 7455-0 (Detran)"
             value={idInfracao}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setIdInfracao(e.target.value)}
           />
+
           <Input
             label="Órgão autuador"
-            placeholder="Ex: PRF, SMTT, Detran"
-            maxLength={255}
+            placeholder="Ex.: PRF, SMTT"
             value={orgao}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setOrgao(e.target.value)}
           />
-        </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Input
-            label="Valor (R$) *"
-            type="number"
-            step="0.01"
-            min="0.01"
-            placeholder="Ex: 130.16"
-            value={valor}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setValor(e.target.value)}
-          />
-          <Input
-            label="Pontos na CNH *"
-            type="number"
-            step="1"
-            min="0"
-            value={pontos}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setPontos(e.target.value)}
-          />
           <Select
-            label="Status do pagamento *"
+            label="Status de pagamento *"
             value={status}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value as StatusPagamentoMulta)}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+              setStatus(e.target.value as StatusPagamentoMulta)
+            }
           >
             {STATUS_MULTA.map((s) => (
               <option key={s} value={s}>
@@ -180,9 +189,27 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
           </Select>
         </div>
 
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            label="Valor (R$) *"
+            placeholder="Ex.: 195,23"
+            value={valor}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setValor(e.target.value)}
+          />
+
+          <Input
+            label="Pontos na CNH *"
+            type="number"
+            min="0"
+            max="20"
+            value={pontos}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setPontos(e.target.value)}
+          />
+        </div>
+
         <Input
-          label="Descrição"
-          placeholder="Ex: Excesso de velocidade"
+          label="Descrição do fato"
+          placeholder="Ex.: Excesso de velocidade em até 20% na BR-101 km 92."
           value={descricao}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setDescricao(e.target.value)}
         />
