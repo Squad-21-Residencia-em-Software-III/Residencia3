@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Input, Modal } from '../../components/ui';
+import { Alert, Button, Input, Modal } from '../../components/ui';
 import { mensagemDeErro } from '../../services/api/http';
 import type { Viagem } from '../../types/viagem';
 
@@ -39,24 +39,21 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
     <Modal title={`Iniciar Viagem #${viagem.id}`} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {erro && (
-          <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
+          <Alert tone="danger" className="mb-4">
+            {erro}
+          </Alert>
         )}
 
-        <div
-          style={{
-            padding: '12px 16px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface-alt)',
-            border: '1px solid var(--color-border)',
-            marginBottom: '16px',
-            fontSize: '13px',
-          }}
-        >
-          <div style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+        <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-[13px]">
+          <div className="font-bold text-slate-900">
             {viagem.origem ?? '—'} → {viagem.destino ?? '—'}
           </div>
-          <div style={{ color: 'var(--color-text-muted)', fontSize: '12px', marginTop: '2px' }}>
-            Veículo: <strong>{viagem.veiculo_modelo} ({viagem.veiculo_placa})</strong> • Motorista: <strong>{viagem.motorista_nome}</strong>
+          <div className="mt-0.5 text-xs text-slate-500">
+            Veículo:{' '}
+            <strong>
+              {viagem.veiculo_modelo} ({viagem.veiculo_placa})
+            </strong>{' '}
+            • Motorista: <strong>{viagem.motorista_nome}</strong>
           </div>
         </div>
 
@@ -70,7 +67,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
           required
         />
 
-        <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
+        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Voltar
           </Button>

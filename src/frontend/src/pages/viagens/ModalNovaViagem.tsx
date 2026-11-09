@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Modal, Select } from '../../components/ui';
+import { Alert, Button, Modal, Select } from '../../components/ui';
 import { mensagemDeErro } from '../../services/api/http';
 import type { Motorista, StatusMotorista } from '../../types/motorista';
 import type { StatusVeiculo, Veiculo } from '../../types/veiculo';
@@ -46,7 +46,8 @@ export function ModalNovaViagem({
   const motoristasDoTipo = (tipo: TipoOperacaoViagem) =>
     motoristas.filter(
       (m) =>
-        m.tipo_motorista === (tipo === 'SVO' ? 'SVO' : 'FROTA') && !MOTORISTA_BLOQUEADO.includes(m.status),
+        m.tipo_motorista === (tipo === 'SVO' ? 'SVO' : 'FROTA') &&
+        !MOTORISTA_BLOQUEADO.includes(m.status),
     );
 
   const solicitacaoInicial =
@@ -116,15 +117,19 @@ export function ModalNovaViagem({
     <Modal title="Agendar Viagem" onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {erro && (
-          <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
+          <Alert tone="danger" className="mb-4">
+            {erro}
+          </Alert>
         )}
 
         {/* Tipo de Operação (Frota Adm vs SVO) */}
-        <div style={{ marginBottom: '14px' }}>
+        <div className="mb-3.5">
           <Select
             label="Tipo de Operação *"
             value={tipoOperacao}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => handleMudarTipo(e.target.value as TipoOperacaoViagem)}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+              handleMudarTipo(e.target.value as TipoOperacaoViagem)
+            }
           >
             <option value="ADMINISTRATIVA">Frota Administrativa (Institucional)</option>
             <option value="SVO">Serviço de Verificação de Óbito (SVO)</option>
@@ -133,9 +138,11 @@ export function ModalNovaViagem({
 
         {/* Solicitação de Origem */}
         {avisoSolicitacao ? (
-          <p style={{ color: 'var(--color-warning)', fontSize: '13px', margin: '0 0 14px' }}>{avisoSolicitacao}</p>
+          <Alert tone="warning" className="mb-3.5">
+            {avisoSolicitacao}
+          </Alert>
         ) : (
-          <div style={{ marginBottom: '14px' }}>
+          <div className="mb-3.5">
             <Select
               label="Solicitação Vinculada *"
               value={solicitacaoId}
@@ -151,7 +158,7 @@ export function ModalNovaViagem({
         )}
 
         {/* Veículo e Motorista */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
             label="Veículo Designado *"
             value={veiculoId}
@@ -172,7 +179,9 @@ export function ModalNovaViagem({
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setMotoristaId(e.target.value)}
             required
           >
-            {motoristasFiltrados.length === 0 && <option value="">Nenhum motorista disponível</option>}
+            {motoristasFiltrados.length === 0 && (
+              <option value="">Nenhum motorista disponível</option>
+            )}
             {motoristasFiltrados.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.nome} (CNH {m.categoria_cnh}){sufixoStatus(m.status)}
@@ -181,7 +190,7 @@ export function ModalNovaViagem({
           </Select>
         </div>
 
-        <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
+        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
