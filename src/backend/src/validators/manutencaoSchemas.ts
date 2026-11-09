@@ -36,14 +36,17 @@ export const criarManutencaoSchema = z
       .optional(),
 
     status: z
-      .enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'])
+      .enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA'])
       .optional(),
   });
 
 export const atualizarStatusManutencaoSchema = z.object({
-  status: z.enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'], {
+  status: z.enum(['AGENDADA', 'EM_ANDAMENTO', 'CONCLUIDA'], {
     error: 'Status de manutenção inválido',
   }),
 });
 
+export const atualizarManutencaoSchema = criarManutencaoSchema.partial();
+
 export type CriarManutencaoInput = z.infer<typeof criarManutencaoSchema>;
+export type AtualizarManutencaoInput = z.infer<typeof atualizarManutencaoSchema>;

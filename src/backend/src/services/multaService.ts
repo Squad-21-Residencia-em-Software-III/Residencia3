@@ -3,7 +3,7 @@ import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { motoristaModel } from '../models/motoristaModel';
 import { multaModel, type Multa } from '../models/multaModel';
-import type { CriarMultaInput } from '../validators/multaSchemas';
+import type { CriarMultaInput, AtualizarMultaInput } from '../validators/multaSchemas';
 
 async function garantirVeiculoExiste(veiculoId: number): Promise<void> {
   const veiculo = await db('veiculos').where({ id: veiculoId }).first();
@@ -42,6 +42,59 @@ export const multaService = {
       );
 
       return multa;
+    });
+  },
+
+  async atualizar(id: number, dados: AtualizarMultaInput, autorId: number): Promise<Multa> {
+    const multaExistente = await multaModel.buscarPorId(id);
+    if (!multaExistente) {
+      throw new AppError('Multa não encontrada', 404);
+    }
+
+    if (dados.veiculo_id) {
+      await garantirVeiculoExiste(dados.veiculo_id);
+    }
+
+    if (dados.motorista_id !== undefined && dados.motorista_id !== null) {
+      await garantirMotoristaExiste(dados.motorista_id);
+    }
+
+    return db.transaction(async (trx) => {
+      const atualizada = await multaModel.atualizar(id, dados, trx);
+      if (!atualizada) {
+        throw new AppError('Erro ao atualizar multa', 500);
+      }
+
+      await auditoriaModel.registrar(
+        {
+          usuario_id: autorId,
+          acao: `Multa ${id} atualizada`,
+          modulo: MODULOS_AUDITORIA.MULTAS,
+        },
+        trx
+      );
+
+      return atualizada;
+    });
+  },
+
+  async excluir(id: number, autorId: number): Promise<void> {
+    const multaExistente = await multaModel.buscarPorId(id);
+    if (!multaExistente) {
+      throw new AppError('Multa não encontrada', 404);
+    }
+
+    await db.transaction(async (trx) => {
+      await multaModel.excluir(id, trx);
+
+      await auditoriaModel.registrar(
+        {
+          usuario_id: autorId,
+          acao: `Multa ${id} excluída`,
+          modulo: MODULOS_AUDITORIA.MULTAS,
+        },
+        trx
+      );
     });
   },
 

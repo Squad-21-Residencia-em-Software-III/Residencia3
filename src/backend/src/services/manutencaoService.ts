@@ -7,7 +7,10 @@ import {
   type ManutencaoDetalhada,
   type StatusManutencao,
 } from '../models/manutencaoModel';
-import type { CriarManutencaoInput } from '../validators/manutencaoSchemas';
+import type {
+  CriarManutencaoInput,
+  AtualizarManutencaoInput,
+} from '../validators/manutencaoSchemas';
 
 async function garantirVeiculoExiste(veiculoId: number) {
   const veiculo = await db('veiculos').where({ id: veiculoId }).first();
@@ -75,6 +78,64 @@ export const manutencaoService = {
     });
   },
 
+  async atualizar(
+    id: number,
+    dados: AtualizarManutencaoInput,
+    autorId: number
+  ): Promise<Manutencao> {
+    const manutencao = await manutencaoModel.buscarPorId(id);
+    if (!manutencao) {
+      throw new AppError('Manutenção não encontrada', 404);
+    }
+
+    if (dados.veiculo_id) {
+      await garantirVeiculoExiste(dados.veiculo_id);
+    }
+
+    if (dados.fornecedor_id !== undefined && dados.fornecedor_id !== null) {
+      const fornecedor = await db('fornecedores')
+        .where({ id: dados.fornecedor_id })
+        .first();
+      if (!fornecedor) {
+        throw new AppError('Fornecedor/Oficina não encontrado', 404);
+      }
+    }
+
+    return db.transaction(async (trx) => {
+      const atualizada = await manutencaoModel.atualizar(id, dados, trx);
+      if (!atualizada) {
+        throw new AppError('Erro ao atualizar manutenção', 500);
+      }
+
+      const veiculoId = dados.veiculo_id ?? manutencao.veiculo_id;
+      const statusFinal = dados.status ?? manutencao.status;
+
+      if (statusFinal === 'EM_ANDAMENTO') {
+        await trx('veiculos')
+          .where({ id: veiculoId })
+          .update({ status: 'MANUTENCAO' });
+      } else if (manutencao.status === 'EM_ANDAMENTO') {
+        const temOutra = await manutencaoModel.temManutencaoEmAndamento(veiculoId, id, trx);
+        if (!temOutra) {
+          await trx('veiculos')
+            .where({ id: veiculoId })
+            .update({ status: 'DISPONIVEL' });
+        }
+      }
+
+      await auditoriaModel.registrar(
+        {
+          usuario_id: autorId,
+          acao: `ATUALIZOU_MANUTENCAO id=${id} veiculo=${veiculoId}`,
+          modulo: MODULOS_AUDITORIA.MANUTENCOES,
+        },
+        trx
+      );
+
+      return atualizada;
+    });
+  },
+
   async atualizarStatus(
     id: number,
     novoStatus: StatusManutencao,
@@ -125,6 +186,39 @@ export const manutencaoService = {
       );
 
       return atualizada;
+    });
+  },
+
+  async excluir(id: number, autorId: number): Promise<void> {
+    const manutencao = await manutencaoModel.buscarPorId(id);
+    if (!manutencao) {
+      throw new AppError('Manutenção não encontrada', 404);
+    }
+
+    await db.transaction(async (trx) => {
+      await manutencaoModel.excluir(id, trx);
+
+      if (manutencao.status === 'EM_ANDAMENTO') {
+        const temOutra = await manutencaoModel.temManutencaoEmAndamento(
+          manutencao.veiculo_id,
+          id,
+          trx
+        );
+        if (!temOutra) {
+          await trx('veiculos')
+            .where({ id: manutencao.veiculo_id })
+            .update({ status: 'DISPONIVEL' });
+        }
+      }
+
+      await auditoriaModel.registrar(
+        {
+          usuario_id: autorId,
+          acao: `EXCLUIU_MANUTENCAO id=${id} veiculo=${manutencao.veiculo_id}`,
+          modulo: MODULOS_AUDITORIA.MANUTENCOES,
+        },
+        trx
+      );
     });
   },
 
