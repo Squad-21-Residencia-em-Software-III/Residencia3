@@ -114,7 +114,7 @@ export const manutencaoService = {
         await trx('veiculos')
           .where({ id: veiculoId })
           .update({ status: 'MANUTENCAO' });
-      } else if (manutencao.status === 'EM_ANDAMENTO' && statusFinal !== 'EM_ANDAMENTO') {
+      } else if (manutencao.status === 'EM_ANDAMENTO') {
         const temOutra = await manutencaoModel.temManutencaoEmAndamento(veiculoId, id, trx);
         if (!temOutra) {
           await trx('veiculos')

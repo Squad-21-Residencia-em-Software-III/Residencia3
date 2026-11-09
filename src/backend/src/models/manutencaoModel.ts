@@ -2,7 +2,7 @@ import type { Knex } from 'knex';
 import { db } from '../config/database';
 
 export type TipoManutencao = 'PREVENTIVA' | 'CORRETIVA';
-export type StatusManutencao = 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+export type StatusManutencao = 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA';
 
 export interface NovaManutencao {
   veiculo_id: number;

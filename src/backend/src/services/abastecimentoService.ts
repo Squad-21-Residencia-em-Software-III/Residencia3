@@ -4,7 +4,7 @@ import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import {
   abastecimentoModel,
-  type Abastecimento,
+  type AbastecimentoComPreco,
 } from '../models/abastecimentoModel';
 import type { CriarAbastecimentoInput } from '../validators/abastecimentoSchemas';
 
@@ -12,7 +12,7 @@ export const abastecimentoService = {
   async criar(
     dados: CriarAbastecimentoInput,
     autorId: number
-  ): Promise<Abastecimento> {
+  ): Promise<AbastecimentoComPreco> {
     const veiculo = await db('veiculos')
       .where({ id: dados.veiculo_id })
       .first();
@@ -75,7 +75,7 @@ export const abastecimentoService = {
 
   async listarPorVeiculo(
     veiculoId: number
-  ): Promise<Abastecimento[]> {
+  ): Promise<AbastecimentoComPreco[]> {
     const veiculo = await db('veiculos')
       .where({ id: veiculoId })
       .first();
