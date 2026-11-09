@@ -1,19 +1,32 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
+import { ChevronRight, Wrench } from 'lucide-react';
 import {
+  Alert,
   Badge,
+  Button,
   Card,
-  IdBadge,
-  Table,
-  TableToolbar,
-  TableFilterCollapse,
+  FilterSelect,
+  MetricCard,
   Pagination,
+  PlacaMercosul,
+  SearchInput,
+  Table,
+  TableFilterCollapse,
+  TableToolbar,
 } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
-import type { NovoVeiculoInput, StatusVeiculo, Veiculo } from '../types/veiculo';
+import type { NovoVeiculoInput, StatusVeiculo, TipoFrota, Veiculo } from '../types/veiculo';
+import type { NovoAbastecimentoInput } from '../types/abastecimento';
+import type { NovaMultaInput } from '../types/multa';
 import { mensagemDeErro } from '../services/api/http';
 import { veiculosApi } from '../services/api/veiculosApi';
+import { storageService } from '../services/storageService';
+import { cn } from '../utils/cn';
 import { ModalVeiculo } from './veiculos/ModalVeiculo';
 import { ModalManutencoesVeiculo } from './veiculos/ModalManutencoesVeiculo';
+import { DrawerDetalhesVeiculo } from './veiculos/DrawerDetalhesVeiculo';
+import { ModalAbastecimento } from './abastecimento/ModalAbastecimento';
+import { ModalMulta } from './multas/ModalMulta';
 
 const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
   DISPONIVEL: { label: 'Disponível', tone: 'success' },
@@ -28,9 +41,14 @@ export default function VeiculosPage() {
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [veiculoManutencao, setVeiculoManutencao] = useState<Veiculo | null>(null);
+  const [veiculoDetalhes, setVeiculoDetalhes] = useState<Veiculo | null>(null);
+  const [veiculoPreSelecionado, setVeiculoPreSelecionado] = useState<Veiculo | null>(null);
+  const [modalAbastecimentoAberto, setModalAbastecimentoAberto] = useState(false);
+  const [modalMultaAberto, setModalMultaAberto] = useState(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
@@ -52,6 +70,22 @@ export default function VeiculosPage() {
   const handleManutencaoSalva = (msg: string) => {
     carregarVeiculos();
     exibirFeedback(msg);
+  };
+
+  const handleSalvarAbastecimento = (novo: NovoAbastecimentoInput) => {
+    storageService.createAbastecimento(novo);
+    setModalAbastecimentoAberto(false);
+    setVeiculoPreSelecionado(null);
+    carregarVeiculos();
+    exibirFeedback('Abastecimento registrado com sucesso!');
+  };
+
+  const handleSalvarMulta = (nova: NovaMultaInput) => {
+    storageService.createMulta(nova);
+    setModalMultaAberto(false);
+    setVeiculoPreSelecionado(null);
+    carregarVeiculos();
+    exibirFeedback('Multa registrada com sucesso!');
   };
 
   const exibirFeedback = (msg: string, isError = false) => {
@@ -79,14 +113,21 @@ export default function VeiculosPage() {
     };
   }, [veiculos]);
 
-  // Filtragem combinada por Tipo de Frota e Status
+  // Filtragem combinada por Busca, Tipo de Frota e Status
   const veiculosFiltrados = useMemo(() => {
     return veiculos.filter((v) => {
       const bateTipo = filtroTipo === 'TODOS' || v.tipo_frota === filtroTipo;
       const bateStatus = filtroStatus === 'TODOS' || v.status === filtroStatus;
-      return bateTipo && bateStatus;
+      if (!bateTipo || !bateStatus) return false;
+      if (busca.trim()) {
+        const termo = busca.trim().toLowerCase();
+        const matchPlaca = v.placa.toLowerCase().includes(termo);
+        const matchModelo = v.modelo.toLowerCase().includes(termo);
+        if (!matchPlaca && !matchModelo) return false;
+      }
+      return true;
     });
-  }, [veiculos, filtroTipo, filtroStatus]);
+  }, [veiculos, filtroTipo, filtroStatus, busca]);
 
   const handleSalvarVeiculo = async (novo: NovoVeiculoInput) => {
     await veiculosApi.criar(novo);
@@ -95,171 +136,58 @@ export default function VeiculosPage() {
   };
 
   return (
-    <div style={{ display: 'grid', gap: '24px' }}>
+    <div className="grid gap-6">
       {/* Feedback de sucesso e erro */}
       {(mensagemSucesso || mensagemErro) && (
-        <div
-          style={{
-            padding: '12px 20px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface)',
-            border: `1px solid ${mensagemErro ? 'var(--color-danger)' : 'var(--color-success)'}`,
-            color: mensagemErro ? 'var(--color-danger)' : 'var(--color-success)',
-            fontSize: '14px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {mensagemErro ? '❌' : '✅'} {mensagemErro || mensagemSucesso}
-          </span>
-        </div>
+        <Alert tone={mensagemErro ? 'danger' : 'success'}>{mensagemErro || mensagemSucesso}</Alert>
       )}
 
       {/* ── Cards de Resumo (Clicáveis como Filtros Rápidos, 2x2 no mobile) ── */}
-      <div className="kpi-grid">
-        <Card
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 lg:gap-4">
+        <MetricCard
+          label="Total na Frota"
+          value={totais.total}
+          tone="neutral"
+          isActive={filtroStatus === 'TODOS'}
           onClick={() => setFiltroStatus('TODOS')}
-          style={{
-            padding: '16px 20px',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            border:
-              filtroStatus === 'TODOS'
-                ? '2px solid var(--color-primary)'
-                : '1px solid var(--color-border)',
-            boxShadow: filtroStatus === 'TODOS' ? 'var(--shadow-sm)' : undefined,
-          }}
-        >
-          <div
-            style={{
-              fontSize: '24px',
-              fontWeight: 800,
-              color: 'var(--color-text)',
-              fontFamily: 'var(--font-display)',
-            }}
-          >
-            {totais.total}
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Total na Frota {filtroStatus === 'TODOS' ? '• Ativo' : ''}
-          </div>
-        </Card>
+          className="px-5 py-4"
+        />
 
-        <Card
+        <MetricCard
+          label="Disponíveis"
+          value={totais.disponiveis}
+          tone="success"
+          isActive={filtroStatus === 'DISPONIVEL'}
           onClick={() => setFiltroStatus(filtroStatus === 'DISPONIVEL' ? 'TODOS' : 'DISPONIVEL')}
-          style={{
-            padding: '16px 20px',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            border:
-              filtroStatus === 'DISPONIVEL'
-                ? '2px solid var(--color-success)'
-                : '1px solid var(--color-border)',
-            boxShadow: filtroStatus === 'DISPONIVEL' ? 'var(--shadow-sm)' : undefined,
-          }}
-        >
-          <div
-            style={{
-              fontSize: '24px',
-              fontWeight: 800,
-              color: 'var(--color-success)',
-              fontFamily: 'var(--font-display)',
-            }}
-          >
-            {totais.disponiveis}
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Disponíveis {filtroStatus === 'DISPONIVEL' ? '• Ativo' : ''}
-          </div>
-        </Card>
+          className="px-5 py-4"
+        />
 
-        <Card
+        <MetricCard
+          label="Reservados"
+          value={totais.reservados}
+          tone="warning"
+          isActive={filtroStatus === 'RESERVADO'}
           onClick={() => setFiltroStatus(filtroStatus === 'RESERVADO' ? 'TODOS' : 'RESERVADO')}
-          style={{
-            padding: '16px 20px',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            border:
-              filtroStatus === 'RESERVADO'
-                ? '2px solid var(--color-warning)'
-                : '1px solid var(--color-border)',
-            boxShadow: filtroStatus === 'RESERVADO' ? 'var(--shadow-sm)' : undefined,
-          }}
-        >
-          <div
-            style={{
-              fontSize: '24px',
-              fontWeight: 800,
-              color: 'var(--color-warning)',
-              fontFamily: 'var(--font-display)',
-            }}
-          >
-            {totais.reservados}
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Reservados {filtroStatus === 'RESERVADO' ? '• Ativo' : ''}
-          </div>
-        </Card>
+          className="px-5 py-4"
+        />
 
-        <Card
+        <MetricCard
+          label="Em Uso"
+          value={totais.emUso}
+          tone="primary"
+          isActive={filtroStatus === 'EM_USO'}
           onClick={() => setFiltroStatus(filtroStatus === 'EM_USO' ? 'TODOS' : 'EM_USO')}
-          style={{
-            padding: '16px 20px',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            border:
-              filtroStatus === 'EM_USO'
-                ? '2px solid var(--color-primary)'
-                : '1px solid var(--color-border)',
-            boxShadow: filtroStatus === 'EM_USO' ? 'var(--shadow-sm)' : undefined,
-          }}
-        >
-          <div
-            style={{
-              fontSize: '24px',
-              fontWeight: 800,
-              color: 'var(--color-primary)',
-              fontFamily: 'var(--font-display)',
-            }}
-          >
-            {totais.emUso}
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Em Uso {filtroStatus === 'EM_USO' ? '• Ativo' : ''}
-          </div>
-        </Card>
+          className="px-5 py-4"
+        />
 
-        <Card
+        <MetricCard
+          label="Em Manutenção"
+          value={totais.manutencao}
+          tone="danger"
+          isActive={filtroStatus === 'MANUTENCAO'}
           onClick={() => setFiltroStatus(filtroStatus === 'MANUTENCAO' ? 'TODOS' : 'MANUTENCAO')}
-          style={{
-            padding: '16px 20px',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            border:
-              filtroStatus === 'MANUTENCAO'
-                ? '2px solid var(--color-danger)'
-                : '1px solid var(--color-border)',
-            boxShadow: filtroStatus === 'MANUTENCAO' ? 'var(--shadow-sm)' : undefined,
-          }}
-        >
-          <div
-            style={{
-              fontSize: '24px',
-              fontWeight: 800,
-              color: 'var(--color-danger)',
-              fontFamily: 'var(--font-display)',
-            }}
-          >
-            {totais.manutencao}
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-            Em Manutenção {filtroStatus === 'MANUTENCAO' ? '• Ativo' : ''}
-          </div>
-        </Card>
+          className="col-span-2 px-5 py-4 lg:col-span-1"
+        />
       </div>
 
       {/* ── Tabela de Veículos ── */}
@@ -270,111 +198,60 @@ export default function VeiculosPage() {
           newLabel="Novo Veículo"
           onNew={() => setModalAberto(true)}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
-          isFilterActive={filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || filtrosAbertosMobile}
+          isFilterActive={
+            filtroTipo !== 'TODOS' ||
+            filtroStatus !== 'TODOS' ||
+            Boolean(busca) ||
+            filtrosAbertosMobile
+          }
         />
 
-        {/* Barra de Filtros: Tipo de Frota + Status do Veículo */}
+        {/* Barra de Filtros: Busca + Tipo de Frota + Status do Veículo */}
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          {/* Grupo 1: Tipo de Frota */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text-secondary)' }}>
-              Frota:
-            </span>
-            {(['TODOS', 'ADMINISTRATIVA', 'SVO'] as const).map((tipo) => (
-              <button
-                key={tipo}
-                type="button"
-                onClick={() => setFiltroTipo(tipo)}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  background: filtroTipo === tipo ? 'var(--color-primary)' : 'var(--color-surface)',
-                  color: filtroTipo === tipo ? '#fff' : 'var(--color-text-secondary)',
-                  border: '1px solid',
-                  borderColor: filtroTipo === tipo ? 'var(--color-primary)' : 'var(--color-border)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {tipo === 'TODOS' ? 'Todas' : tipo === 'SVO' ? 'SVO' : 'Administrativa'}
-              </button>
-            ))}
-          </div>
+          {/* Busca textual na esquerda */}
+          <SearchInput
+            value={busca}
+            onChange={setBusca}
+            placeholder="Buscar por placa, modelo ou marca..."
+          />
 
-          {/* Grupo 2: Status do Veículo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text-secondary)' }}>
-              Status:
-            </span>
-            {[
-              { id: 'TODOS', label: 'Todos' },
-              { id: 'DISPONIVEL', label: 'Disponível', cor: 'var(--color-success)' },
-              { id: 'RESERVADO', label: 'Reservado', cor: 'var(--color-warning)' },
-              { id: 'EM_USO', label: 'Em Uso', cor: 'var(--color-primary)' },
-              { id: 'MANUTENCAO', label: 'Manutenção', cor: 'var(--color-danger)' },
-            ].map((st) => {
-              const ativo = filtroStatus === st.id;
-              return (
-                <button
-                  key={st.id}
-                  type="button"
-                  onClick={() => setFiltroStatus(st.id)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '5px 12px',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    background: ativo ? 'var(--color-primary)' : 'var(--color-surface)',
-                    color: ativo ? '#fff' : 'var(--color-text-secondary)',
-                    border: '1px solid',
-                    borderColor: ativo ? 'var(--color-primary)' : 'var(--color-border)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {st.cor && (
-                    <span
-                      style={{
-                        width: '7px',
-                        height: '7px',
-                        borderRadius: '50%',
-                        background: ativo ? '#fff' : st.cor,
-                      }}
-                    />
-                  )}
-                  {st.label}
-                </button>
-              );
-            })}
+          <FilterSelect
+            aria-label="Filtrar por frota"
+            value={filtroTipo}
+            onChange={(val) => setFiltroTipo(val as TipoFrota | 'TODOS')}
+            options={[
+              { value: 'TODOS', label: 'Todas as frotas' },
+              { value: 'ADMINISTRATIVA', label: 'Frota Administrativa' },
+              { value: 'SVO', label: 'Frota SVO' },
+            ]}
+          />
 
-            {/* Botão Limpar Filtros quando algum filtro estiver ativo */}
-            {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFiltroTipo('TODOS');
-                  setFiltroStatus('TODOS');
-                }}
-                style={{
-                  padding: '4px 8px',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: 'var(--color-text-muted)',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                }}
-              >
-                Limpar
-              </button>
-            )}
-          </div>
+          <FilterSelect
+            aria-label="Filtrar por status do veículo"
+            value={filtroStatus}
+            onChange={(val) => setFiltroStatus(val)}
+            options={[
+              { value: 'TODOS', label: 'Todos os status' },
+              { value: 'DISPONIVEL', label: 'Disponível' },
+              { value: 'RESERVADO', label: 'Reservado' },
+              { value: 'EM_USO', label: 'Em Uso' },
+              { value: 'MANUTENCAO', label: 'Em Manutenção' },
+            ]}
+          />
+
+          {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || busca) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setBusca('');
+                setFiltroTipo('TODOS');
+                setFiltroStatus('TODOS');
+              }}
+            >
+              Limpar
+            </Button>
+          )}
         </TableFilterCollapse>
 
         <Table>
@@ -386,17 +263,17 @@ export default function VeiculosPage() {
               <th>Capacidade Máxima</th>
               <th>Km Atual</th>
               <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Ações</th>
+              <th className="text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
             {veiculosFiltrados.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
+                <td colSpan={7} className="p-9 text-center text-slate-500">
                   <div>
                     {carregando
                       ? 'Carregando veículos...'
-                      : erroCarga ?? 'Nenhum veículo encontrado com os filtros selecionados.'}
+                      : (erroCarga ?? 'Nenhum veículo encontrado com os filtros selecionados.')}
                   </div>
                   {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
                     <button
@@ -405,16 +282,7 @@ export default function VeiculosPage() {
                         setFiltroTipo('TODOS');
                         setFiltroStatus('TODOS');
                       }}
-                      style={{
-                        marginTop: '8px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: 'var(--color-primary)',
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                      }}
+                      className="mt-2 cursor-pointer border-none bg-transparent text-xs font-semibold text-primary underline hover:text-primary-hover"
                     >
                       Remover filtros
                     </button>
@@ -423,27 +291,31 @@ export default function VeiculosPage() {
               </tr>
             ) : (
               veiculosFiltrados.map((v) => {
-                const statusInfo = STATUS_MAP[v.status] || { label: v.status, tone: 'neutral' };
+                const statusInfo = STATUS_MAP[v.status] || {
+                  label: v.status,
+                  tone: 'neutral',
+                };
                 return (
-                  <tr key={v.id}>
+                  <tr
+                    key={v.id}
+                    onClick={() => setVeiculoDetalhes(v)}
+                    className="group cursor-pointer transition-colors duration-150 hover:!bg-surface-hover"
+                    title="Clique para ver os detalhes do veículo"
+                  >
                     <td>
-                      <IdBadge id={v.placa} />
+                      <PlacaMercosul placa={v.placa} size="sm" />
                     </td>
                     <td>
-                      <strong style={{ color: 'var(--color-text-strong)', fontWeight: 600 }}>
-                        {v.modelo}
-                      </strong>
+                      <strong className="font-semibold text-slate-900">{v.modelo}</strong>
                     </td>
                     <td>
                       <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: '4px',
-                          background: v.tipo_frota === 'SVO' ? 'var(--color-purple-bg)' : 'var(--color-neutral-bg)',
-                          color: v.tipo_frota === 'SVO' ? 'var(--color-purple)' : 'var(--color-text-strong)',
-                        }}
+                        className={cn(
+                          'rounded px-2 py-0.5 text-[11px] font-bold',
+                          v.tipo_frota === 'SVO'
+                            ? 'bg-purple-bg text-purple'
+                            : 'bg-neutral-bg text-slate-900',
+                        )}
                       >
                         {v.tipo_frota}
                       </span>
@@ -453,36 +325,27 @@ export default function VeiculosPage() {
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        onClick={() => setVeiculoManutencao(v)}
-                        title={`Histórico e registro de manutenções de ${v.modelo}`}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 12px',
-                          borderRadius: 'var(--radius-sm)',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: 'var(--color-primary)',
-                          background: 'var(--color-surface-alt)',
-                          border: '1px solid var(--color-border)',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'var(--color-surface-hover)';
-                          e.currentTarget.style.borderColor = 'var(--color-primary)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'var(--color-surface-alt)';
-                          e.currentTarget.style.borderColor = 'var(--color-border)';
-                        }}
-                      >
-                        <span>🔧</span> Manutenções
-                      </button>
+                    <td className="text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVeiculoManutencao(v);
+                          }}
+                          title={`Histórico e registro de manutenções de ${v.modelo}`}
+                        >
+                          <Wrench size={13} /> Manutenções
+                        </Button>
+                        <span
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:bg-primary/10 group-hover:text-primary"
+                          title="Ver detalhes do veículo"
+                          aria-hidden="true"
+                        >
+                          <ChevronRight size={15} />
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -496,10 +359,7 @@ export default function VeiculosPage() {
 
       {/* ── Modal de Cadastro de Veículo ── */}
       {modalAberto && (
-        <ModalVeiculo
-          onClose={() => setModalAberto(false)}
-          onSalvar={handleSalvarVeiculo}
-        />
+        <ModalVeiculo onClose={() => setModalAberto(false)} onSalvar={handleSalvarVeiculo} />
       )}
 
       {/* ── Modal de Histórico e Registro de Manutenções ── */}
@@ -508,6 +368,49 @@ export default function VeiculosPage() {
           veiculo={veiculoManutencao}
           onClose={() => setVeiculoManutencao(null)}
           onManutencaoSalva={handleManutencaoSalva}
+        />
+      )}
+
+      {/* ── Drawer de Detalhes do Veículo ── */}
+      <DrawerDetalhesVeiculo
+        veiculo={veiculoDetalhes}
+        onClose={() => setVeiculoDetalhes(null)}
+        onAbrirManutencoes={(v) => setVeiculoManutencao(v)}
+        onNovoAbastecimento={(v) => {
+          setVeiculoPreSelecionado(v);
+          setModalAbastecimentoAberto(true);
+        }}
+        onNovaMulta={(v) => {
+          setVeiculoPreSelecionado(v);
+          setModalMultaAberto(true);
+        }}
+      />
+
+      {/* ── Modal de Abastecimento (Ação Rápida do Drawer) ── */}
+      {modalAbastecimentoAberto && (
+        <ModalAbastecimento
+          onClose={() => {
+            setModalAbastecimentoAberto(false);
+            setVeiculoPreSelecionado(null);
+          }}
+          onSalvar={handleSalvarAbastecimento}
+          veiculoIdInicial={
+            veiculoPreSelecionado ? String(veiculoPreSelecionado.id) : undefined
+          }
+        />
+      )}
+
+      {/* ── Modal de Multa (Ação Rápida do Drawer) ── */}
+      {modalMultaAberto && (
+        <ModalMulta
+          onClose={() => {
+            setModalMultaAberto(false);
+            setVeiculoPreSelecionado(null);
+          }}
+          onSalvar={handleSalvarMulta}
+          veiculoIdInicial={
+            veiculoPreSelecionado ? String(veiculoPreSelecionado.id) : undefined
+          }
         />
       )}
     </div>

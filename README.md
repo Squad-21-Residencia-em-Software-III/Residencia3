@@ -56,7 +56,7 @@ O projeto adota uma arquitetura desacoplada **TypeScript End-to-End**:
 
 | Camada | Tecnologia | Descrição |
 |---|---|---|
-| **Front-end** | React 19 + TypeScript + Vite | SPA moderna, modular, tipagem estrita, CSS puro com tokens de design e `lucide-react`. |
+| **Front-end** | React 19 + TypeScript + Vite + Tailwind CSS v4 | SPA moderna com Design System tipado (`cva` + `tailwind-merge`), tokens `@theme` e `lucide-react`. |
 | **Roteamento & RBAC** | `react-router-dom` | Rotas públicas, rotas protegidas e controle de acesso baseado em perfis (Administrador, Gestores, Solicitante, Motorista). |
 | **Back-end** | Node.js + TypeScript + Express | API REST estruturada em MVC (Routes, Controllers, Services, Validators Zod). |
 | **Segurança & Sessão** | JWT (JSON Web Tokens) + Bcrypt | Autenticação stateless com interceptors HTTP no cliente e expiração segura. |
@@ -86,14 +86,16 @@ Residencia3/
 │   │   │   ├── services/       # Regras de negócio e persistência
 │   │   │   └── validators/     # Schemas de validação Zod
 │   │   └── package.json
-│   └── frontend/               # Single Page Application React/TypeScript
+│   └── frontend/               # Single Page Application React 19 + Tailwind CSS v4
 │       ├── src/
-│       │   ├── components/     # UI Design System (Button, Modal, Table, Badge, Card...)
+│       │   ├── components/     # UI Design System tipado com CVA (Button, MetricCard, Modal, Table, Badge...)
 │       │   ├── contexts/       # AuthContext (sessão e perfil ativo)
-│       │   ├── pages/          # Telas do sistema (Home, Viagens, Solicitações, Sobre...)
+│       │   ├── pages/          # Telas do sistema (Home, Viagens, Solicitações, Agenda, Sobre...)
 │       │   ├── routes/         # Configuração de rotas e guards de permissão
 │       │   ├── services/api/   # Cliente HTTP (fetch com interceptors) e APIs de domínio
-│       │   └── types/          # Tipos TypeScript espelhando o banco e domínio
+│       │   ├── styles/         # global.css (configuração Tailwind CSS v4 e tokens @theme)
+│       │   ├── types/          # Tipos TypeScript espelhando o banco e domínio
+│       │   └── utils/          # Utilitário cn (clsx + tailwind-merge)
 │       └── package.json
 ├── docker-compose.yml          # Definição do serviço PostgreSQL
 └── README.md                   # Este documento
@@ -177,9 +179,9 @@ O planejamento detalhado das próximas entregas encontra-se documentado na **Se�
    - Lançamento de Abastecimento e Consumo Médio (`/abastecimento`);
    - Manutenções de Viaturas e Bloqueio Preventivo/Corretivo;
    - Cadastro de Motoristas com Validação de CNH (`POST /api/motoristas`).
-2. **Design System & Transição do CSS**:
-   - Eliminação de estilos inline remanescentes e consolidação da saída de CSS (CSS Modules / Tailwind CSS);
-   - Componentização de elementos corporativos (`MetricCard`, `FilterCollapse`, `PageHeader`, `ConfirmDialog`, `EmptyState`, `DatePicker`).
+2. **Design System & Migração para Tailwind CSS v4 (✅ Concluído)**:
+   - Migração integral para **Tailwind CSS v4 (`@tailwindcss/vite`)** com tokens centralizados em `@theme` (`src/styles/global.css`), eliminando folhas de estilo isoladas e estilos inline;
+   - Componentização tipada com `class-variance-authority` (`cva`) e `tailwind-merge` (`MetricCard`, `TableFilterCollapse`, `PageHeader`, `ConfirmDialog`, `EmptyState`, `Alert`).
 3. **Módulo de Agenda Interativa (`/agenda`)**:
    - Conexão da Agenda à API de viagens, Gantt diário por viatura, visão semanal e algoritmo de prevenção visual de sobreposição (`RN04`, `RF14`).
 4. **Módulo Especializado SVO**:

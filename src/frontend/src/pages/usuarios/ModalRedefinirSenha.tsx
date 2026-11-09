@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Input, Modal } from '../../components/ui';
+import { Alert, Button, Input, Modal } from '../../components/ui';
 import type { Usuario } from '../../types/usuario';
 
 interface ModalRedefinirSenhaProps {
@@ -48,22 +48,14 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
     <Modal title="Redefinir Senha do Usuário" onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {erro && (
-          <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
+          <Alert tone="danger" className="mb-4">
+            {erro}
+          </Alert>
         )}
 
-        <div
-          style={{
-            padding: '12px 16px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface-alt)',
-            border: '1px solid var(--color-border)',
-            marginBottom: '16px',
-          }}
-        >
-          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text)' }}>
-            {usuario.nome}
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+        <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="text-[13px] font-semibold text-slate-900">{usuario.nome}</div>
+          <div className="mt-0.5 text-xs text-slate-500">
             {usuario.email} • Perfil: {usuario.perfil}
           </div>
         </div>
@@ -76,15 +68,9 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
           onChange={(e: ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)}
           required
         />
-        <div
-          style={{
-            fontSize: '11px',
-            color: 'var(--color-text-muted)',
-            marginTop: '-8px',
-            marginBottom: '14px',
-          }}
-        >
-          Requisitos: mínimo de 8 caracteres contendo maiúsculas, minúsculas, números e símbolos especiais.
+        <div className="-mt-2 mb-3.5 text-[11px] text-slate-500">
+          Requisitos: mínimo de 8 caracteres contendo maiúsculas, minúsculas, números e símbolos
+          especiais.
         </div>
 
         <Input
@@ -96,7 +82,7 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
           required
         />
 
-        <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
+        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>

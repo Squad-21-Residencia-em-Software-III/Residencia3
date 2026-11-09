@@ -1,22 +1,31 @@
 import { useState, useMemo } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Input, Modal, Select } from '../../components/ui';
+import { Alert, Button, Input, Modal, Select } from '../../components/ui';
 import { storageService } from '../../services/storageService';
 import type { NovoAbastecimentoInput } from '../../types/abastecimento';
 
 interface ModalAbastecimentoProps {
   onClose: () => void;
   onSalvar: (abastecimento: NovoAbastecimentoInput) => void;
+  veiculoIdInicial?: string;
 }
 
-export function ModalAbastecimento({ onClose, onSalvar }: ModalAbastecimentoProps) {
+export function ModalAbastecimento({
+  onClose,
+  onSalvar,
+  veiculoIdInicial,
+}: ModalAbastecimentoProps) {
   const veiculos = useMemo(() => storageService.getVeiculos(), []);
   const motoristas = useMemo(() => storageService.getMotoristas(), []);
 
-  const [veiculoId, setVeiculoId] = useState<string>(veiculos[0]?.id ? String(veiculos[0].id) : '');
-  const [motoristaId, setMotoristaId] = useState<string>(motoristas[0]?.id ? String(motoristas[0].id) : '');
+  const [veiculoId, setVeiculoId] = useState<string>(
+    veiculoIdInicial || (veiculos[0]?.id ? String(veiculos[0].id) : ''),
+  );
+  const [motoristaId, setMotoristaId] = useState<string>(
+    motoristas[0]?.id ? String(motoristas[0].id) : '',
+  );
   const [dataAbastecimento, setDataAbastecimento] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    new Date().toISOString().split('T')[0],
   );
   const [quilometragem, setQuilometragem] = useState<string>('');
   const [postoCombustivel, setPostoCombustivel] = useState<string>('');
@@ -88,12 +97,12 @@ export function ModalAbastecimento({ onClose, onSalvar }: ModalAbastecimentoProp
     <Modal title="Registrar Abastecimento" onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {erro && (
-          <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>
+          <Alert tone="danger" className="mb-4">
             {erro}
-          </p>
+          </Alert>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
             label="Veículo *"
             value={veiculoId}
@@ -123,7 +132,7 @@ export function ModalAbastecimento({ onClose, onSalvar }: ModalAbastecimentoProp
           </Select>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Data *"
             type="date"
@@ -151,7 +160,7 @@ export function ModalAbastecimento({ onClose, onSalvar }: ModalAbastecimentoProp
           maxLength={150}
         />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Litros *"
             type="number"
@@ -176,25 +185,15 @@ export function ModalAbastecimento({ onClose, onSalvar }: ModalAbastecimentoProp
         </div>
 
         {valorTotalCalculado && (
-          <div
-            style={{
-              background: 'var(--color-bg-secondary, #F8FAFC)',
-              padding: '12px 14px',
-              borderRadius: 'var(--radius-md, 10px)',
-              border: '1px solid var(--color-border, #E2E8F0)',
-              marginBottom: '8px',
-            }}
-          >
-            <div style={{ fontSize: '11px', color: 'var(--color-text-muted, #64748B)', fontWeight: 600 }}>
+          <div className="mb-2 rounded-[10px] border border-slate-200 bg-slate-50 px-3.5 py-3">
+            <div className="text-[11px] font-semibold text-slate-500">
               VALOR TOTAL DO ABASTECIMENTO (GRAVADO NO BANCO)
             </div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-primary, #1554B8)' }}>
-              {valorTotalCalculado}
-            </div>
+            <div className="text-lg font-bold text-primary">{valorTotalCalculado}</div>
           </div>
         )}
 
-        <div className="modal__footer" style={{ borderTop: 'none', padding: '16px 0 0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 pt-4 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>

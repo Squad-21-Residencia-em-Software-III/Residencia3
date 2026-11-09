@@ -1,10 +1,10 @@
-﻿import { Card } from '../components/ui'
+import { Card } from '../components/ui';
 
 export function PagePlaceholder({ title }: { title: string }) {
   return (
-    <Card style={{ padding: 24 }}>
+    <Card className="p-6">
       <h2>{title}</h2>
       <p>Esta página será implementada em uma próxima etapa.</p>
     </Card>
-  )
+  );
 }
