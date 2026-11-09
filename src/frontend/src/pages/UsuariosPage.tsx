@@ -1,36 +1,26 @@
 import { useMemo, useState } from 'react';
-import type { ChangeEvent } from 'react';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
 import {
+  Alert,
   Avatar,
   Badge,
   Button,
   Card,
+  FilterSelect,
+  MetricCard,
   Pagination,
+  SearchInput,
   Table,
   TableFilterCollapse,
   TableToolbar,
   type BadgeTone,
 } from '../components/ui';
-import {
-  LABELS_PERFIS,
-  type Perfil,
-  type Usuario,
-} from '../types/usuario';
+import { LABELS_PERFIS, type Perfil, type Usuario } from '../types/usuario';
 import { storageService } from '../services/storageService';
 import { ModalUsuario } from './usuarios/ModalUsuario';
 import { ModalRedefinirSenha } from './usuarios/ModalRedefinirSenha';
 import { GestoresUnidadesSecao } from './usuarios/GestoresUnidadesSecao';
 
 type FiltroCategoria = 'TODOS' | 'ADMIN' | 'GESTAO' | 'SOLICITANTE' | 'MOTORISTA' | 'INATIVOS';
-
-const cardValor = (cor: string) => ({
-  fontSize: '24px',
-  fontWeight: 800,
-  color: cor,
-  fontFamily: 'var(--font-display)',
-});
-const cardRotulo = { fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' };
 
 function obterBadgeTonePerfil(perfil: Perfil): BadgeTone {
   switch (perfil) {
@@ -90,7 +80,8 @@ export default function UsuariosPage() {
     return usuarios.filter((u) => {
       // 1. Filtro de categoria / abas
       if (filtro === 'ADMIN' && u.perfil !== 'ADMINISTRADOR') return false;
-      if (filtro === 'GESTAO' && u.perfil !== 'GESTOR_FROTA' && u.perfil !== 'GESTOR_SVO') return false;
+      if (filtro === 'GESTAO' && u.perfil !== 'GESTOR_FROTA' && u.perfil !== 'GESTOR_SVO')
+        return false;
       if (filtro === 'SOLICITANTE' && u.perfil !== 'SOLICITANTE') return false;
       if (filtro === 'MOTORISTA' && u.tipo_usuario !== 'MOTORISTA') return false;
       if (filtro === 'INATIVOS' && u.ativo) return false;
@@ -146,7 +137,7 @@ export default function UsuariosPage() {
 
   const handleAlternarStatus = (usuario: Usuario) => {
     if (usuario.id === usuarioLogadoId) {
-      alert('Você não pode desativar a sua própria conta de administrador.');
+      exibirFeedback('Você não pode desativar a sua própria conta de administrador.', true);
       return;
     }
     try {
@@ -169,47 +160,28 @@ export default function UsuariosPage() {
   };
 
   return (
-    <div style={{ display: 'grid', gap: '24px' }}>
+    <div className="grid gap-6">
       {/* Feedback de sucesso e erro */}
       {(mensagemSucesso || mensagemErro) && (
-        <div
-          style={{
-            padding: '12px 20px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface)',
-            border: `1px solid ${mensagemErro ? 'var(--color-danger)' : 'var(--color-success)'}`,
-            color: mensagemErro ? 'var(--color-danger)' : 'var(--color-success)',
-            fontSize: '14px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          {mensagemErro ? <AlertCircle size={18} style={{ flexShrink: 0 }} /> : <CheckCircle2 size={18} style={{ flexShrink: 0 }} />}
-          <span>{mensagemErro || mensagemSucesso}</span>
-        </div>
+        <Alert tone={mensagemErro ? 'danger' : 'success'}>{mensagemErro || mensagemSucesso}</Alert>
       )}
 
       {/* 4 Cards de Resumo (2x2 no mobile) */}
-      <div className="kpi-grid">
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-text)')}>{totais.total}</div>
-          <div style={cardRotulo}>Total de Usuários</div>
-        </Card>
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-success)')}>{totais.ativos}</div>
-          <div style={cardRotulo}>Ativos</div>
-        </Card>
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-danger)')}>{totais.inativos}</div>
-          <div style={cardRotulo}>Inativos</div>
-        </Card>
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-warning)')}>{totais.motoristas}</div>
-          <div style={cardRotulo}>Motoristas Operacionais</div>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+        <MetricCard
+          label="Total de Usuários"
+          value={totais.total}
+          tone="neutral"
+          className="px-5 py-4"
+        />
+        <MetricCard label="Ativos" value={totais.ativos} tone="success" className="px-5 py-4" />
+        <MetricCard label="Inativos" value={totais.inativos} tone="danger" className="px-5 py-4" />
+        <MetricCard
+          label="Motoristas Operacionais"
+          value={totais.motoristas}
+          tone="warning"
+          className="px-5 py-4"
+        />
       </div>
 
       <Card>
@@ -227,57 +199,40 @@ export default function UsuariosPage() {
 
         {/* Barra de Filtros e Busca */}
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          {/* Abas rápidas */}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {(
-              [
-                { id: 'TODOS', label: 'Todos' },
-                { id: 'ADMIN', label: 'Administradores' },
-                { id: 'GESTAO', label: 'Gestores' },
-                { id: 'SOLICITANTE', label: 'Solicitantes' },
-                { id: 'MOTORISTA', label: 'Motoristas' },
-                { id: 'INATIVOS', label: 'Inativos' },
-              ] as const
-            ).map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFiltro(f.id)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: 'none',
-                  background: filtro === f.id ? 'var(--color-primary)' : 'transparent',
-                  color: filtro === f.id ? '#ffffff' : 'var(--color-text-muted)',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+          {/* Busca textual na esquerda */}
+          <SearchInput
+            value={busca}
+            onChange={setBusca}
+            placeholder="Buscar por nome ou e-mail..."
+          />
 
-          {/* Campo de Busca por Nome ou E-mail */}
-          <div style={{ minWidth: '240px', flex: '1', maxWidth: '360px' }}>
-            <input
-              type="text"
-              placeholder="Buscar por nome ou e-mail..."
-              value={busca}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setBusca(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '7px 12px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                background: 'var(--color-surface)',
-                fontSize: '13px',
-                color: 'var(--color-text)',
-                outline: 'none',
+          {/* Filtros em dropdown na sequência */}
+          <FilterSelect
+            aria-label="Filtrar por perfil"
+            value={filtro}
+            onChange={(val) => setFiltro(val as FiltroCategoria)}
+            options={[
+              { value: 'TODOS', label: 'Todos os perfis' },
+              { value: 'ADMIN', label: 'Administradores' },
+              { value: 'GESTAO', label: 'Gestores' },
+              { value: 'SOLICITANTE', label: 'Solicitantes' },
+              { value: 'MOTORISTA', label: 'Motoristas' },
+              { value: 'INATIVOS', label: 'Usuários Inativos' },
+            ]}
+          />
+
+          {(filtro !== 'TODOS' || busca) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setBusca('');
+                setFiltro('TODOS');
               }}
-            />
-          </div>
+            >
+              Limpar
+            </Button>
+          )}
         </TableFilterCollapse>
 
         {/* Tabela de Usuários */}
@@ -289,13 +244,13 @@ export default function UsuariosPage() {
               <th>Perfil</th>
               <th>Categoria</th>
               <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Ações</th>
+              <th className="text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
             {filtrados.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
+                <td colSpan={6} className="p-9 text-center text-slate-500">
                   Nenhum usuário encontrado com os filtros selecionados.
                 </td>
               </tr>
@@ -305,52 +260,29 @@ export default function UsuariosPage() {
                 return (
                   <tr key={u.id}>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div className="flex items-center gap-2.5">
                         <Avatar name={u.nome} size={32} />
                         <div>
-                          <div style={{ fontWeight: 600, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div className="flex items-center gap-1.5 font-semibold text-slate-900">
                             {u.nome}
                             {isProprio && (
-                              <span
-                                style={{
-                                  fontSize: '10px',
-                                  padding: '1px 6px',
-                                  borderRadius: '10px',
-                                  background: 'var(--color-surface-alt)',
-                                  border: '1px solid var(--color-border)',
-                                  color: 'var(--color-text-muted)',
-                                }}
-                              >
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">
                                 Você
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                            ID #{u.id}
-                          </div>
+                          <div className="text-[11px] text-slate-500">ID #{u.id}</div>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <span style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>{u.email}</span>
+                      <span className="text-[13px] text-slate-500">{u.email}</span>
                     </td>
                     <td>
-                      <Badge tone={obterBadgeTonePerfil(u.perfil)}>
-                        {LABELS_PERFIS[u.perfil]}
-                      </Badge>
+                      <Badge tone={obterBadgeTonePerfil(u.perfil)}>{LABELS_PERFIS[u.perfil]}</Badge>
                     </td>
                     <td>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          background: 'var(--color-surface-alt)',
-                          color: 'var(--color-text-muted)',
-                          border: '1px solid var(--color-border)',
-                        }}
-                      >
+                      <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
                         {u.tipo_usuario}
                       </span>
                     </td>
@@ -359,10 +291,10 @@ export default function UsuariosPage() {
                         {u.ativo ? 'Ativo' : 'Inativo'}
                       </Badge>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '6px' }}>
+                    <td className="text-right">
+                      <div className="inline-flex gap-1.5">
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           title="Editar dados cadastrais"
                           onClick={() => {
@@ -373,7 +305,7 @@ export default function UsuariosPage() {
                           Editar
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           title="Redefinir senha de acesso"
                           onClick={() => setUsuarioRedefinirSenha(u)}
@@ -381,14 +313,22 @@ export default function UsuariosPage() {
                           Senha
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant={u.ativo && !isProprio ? 'danger-outline' : 'outline'}
                           size="sm"
                           disabled={isProprio}
-                          title={isProprio ? 'Você não pode desativar sua própria conta' : (u.ativo ? 'Desativar usuário' : 'Ativar usuário')}
+                          title={
+                            isProprio
+                              ? 'Você não pode desativar sua própria conta'
+                              : u.ativo
+                                ? 'Desativar usuário'
+                                : 'Ativar usuário'
+                          }
                           onClick={() => handleAlternarStatus(u)}
-                          style={{
-                            color: isProprio ? 'var(--color-text-muted)' : (u.ativo ? 'var(--color-danger)' : 'var(--color-success)'),
-                          }}
+                          className={
+                            !isProprio && !u.ativo
+                              ? 'border-success text-success hover:bg-success-bg'
+                              : undefined
+                          }
                         >
                           {u.ativo ? 'Desativar' : 'Ativar'}
                         </Button>

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Input, Modal, Select } from '../../components/ui';
+import { Alert, Button, Input, Modal, Select } from '../../components/ui';
 import type { TipoMotorista, Motorista } from '../../types/motorista';
+import { cn } from '../../utils/cn';
 
 interface ModalMotoristaProps {
   cnhsExistentes: string[];
@@ -9,11 +10,7 @@ interface ModalMotoristaProps {
   onSalvar: (motorista: Omit<Motorista, 'id' | 'usuario_id'>) => void;
 }
 
-export function ModalMotorista({
-  cnhsExistentes,
-  onClose,
-  onSalvar,
-}: ModalMotoristaProps) {
+export function ModalMotorista({ cnhsExistentes, onClose, onSalvar }: ModalMotoristaProps) {
   const [nome, setNome] = useState('');
   const [cnh, setCnh] = useState('');
   const [categoriasSelecionadas, setCategoriasSelecionadas] = useState<string[]>([]);
@@ -24,10 +21,8 @@ export function ModalMotorista({
   const categoriasDisponiveis = ['A', 'B', 'C', 'D', 'E'];
 
   const handleCategoriaChange = (cat: string) => {
-    setCategoriasSelecionadas(prev =>
-      prev.includes(cat)
-        ? prev.filter(c => c !== cat)
-        : [...prev, cat].sort()
+    setCategoriasSelecionadas((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat].sort(),
     );
   };
 
@@ -82,7 +77,9 @@ export function ModalMotorista({
     <Modal title="Cadastrar Motorista" onClose={onClose}>
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
-          <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
+          <Alert tone="danger" className="mb-4">
+            {erro}
+          </Alert>
         )}
 
         <Input
@@ -102,51 +99,37 @@ export function ModalMotorista({
           required
         />
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{
-            display: 'block',
-            fontSize: '13px',
-            fontWeight: 600,
-            color: 'var(--color-text)',
-            marginBottom: '8px'
-          }}>
+        <div className="mb-4">
+          <label className="mb-2 block text-[13px] font-semibold text-slate-900">
             Categoria da CNH *
           </label>
-          <div style={{
-            display: 'flex',
-            gap: '10px',
-            flexWrap: 'wrap',
-            padding: '8px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-surface)'
-          }}>
-            {categoriasDisponiveis.map(cat => (
-              <label key={cat} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                background: categoriasSelecionadas.includes(cat) ? 'var(--color-primary-soft)' : 'transparent',
-                border: categoriasSelecionadas.includes(cat) ? '1px solid var(--color-primary)' : '1px solid transparent',
-                transition: 'all 0.2s ease'
-              }}>
-                <input
-                  type="checkbox"
-                  checked={categoriasSelecionadas.includes(cat)}
-                  onChange={() => handleCategoriaChange(cat)}
-                  style={{ cursor: 'pointer' }}
-                />
-                {cat}
-              </label>
-            ))}
+          <div className="flex flex-wrap gap-2.5 rounded-md border border-slate-200 bg-white p-2">
+            {categoriasDisponiveis.map((cat) => {
+              const selecionada = categoriasSelecionadas.includes(cat);
+              return (
+                <label
+                  key={cat}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-1 rounded border px-2 py-1 text-[13px] transition-all duration-200',
+                    selecionada
+                      ? 'border-primary bg-primary-soft font-semibold text-primary'
+                      : 'border-transparent bg-transparent text-slate-700 hover:bg-slate-50',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selecionada}
+                    onChange={() => handleCategoriaChange(cat)}
+                    className="cursor-pointer"
+                  />
+                  {cat}
+                </label>
+              );
+            })}
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px', marginBottom: '16px' }}>
+        <div className="mb-4 grid grid-cols-1 gap-3">
           <Input
             label="Validade da CNH *"
             type="date"
@@ -165,7 +148,7 @@ export function ModalMotorista({
           <option value="SVO">SVO</option>
         </Select>
 
-        <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
+        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>

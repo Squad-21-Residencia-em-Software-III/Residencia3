@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
-import { Badge, Button, Card, Select } from '../../components/ui';
+import { Badge, Button, Card, ConfirmDialog, Select } from '../../components/ui';
 import { ApiError } from '../../services/api/http';
 import { unidadesApi } from '../../services/api/unidadesApi';
 import { LABELS_PERFIS, type Usuario } from '../../types/usuario';
@@ -37,6 +37,11 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [selecionado, setSelecionado] = useState<Record<number, string>>({});
   const [ocupado, setOcupado] = useState<number | null>(null); // unidade em operação
+  const [remocaoPendente, setRemocaoPendente] = useState<{
+    unidade: UnidadeComGestores;
+    gestorId: number;
+    nomeGestor: string;
+  } | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -93,8 +98,9 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
     }
   };
 
-  const remover = async (unidade: UnidadeComGestores, gestorId: number, nomeGestor: string) => {
-    if (!window.confirm(`Remover "${nomeGestor}" da unidade "${unidade.nome}"?`)) return;
+  const confirmarRemover = async () => {
+    if (!remocaoPendente) return;
+    const { unidade, gestorId } = remocaoPendente;
     setOcupado(unidade.id);
     try {
       await unidadesApi.removerGestor(unidade.id, gestorId);
@@ -104,25 +110,26 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
       onFeedback(mensagemDeErro(erro, 'Não foi possível remover a associação.'), true);
     } finally {
       setOcupado(null);
+      setRemocaoPendente(null);
     }
   };
 
   return (
     <Card>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-border)' }}>
-        <div style={{ fontWeight: 700, fontSize: '16px', color: 'var(--color-text)' }}>Gestores por unidade</div>
-        <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+      <div className="border-b border-slate-200 px-5 py-4">
+        <div className="text-base font-bold text-slate-900">Gestores por unidade</div>
+        <div className="mt-1 text-xs text-slate-500">
           Gestores responsáveis pela aprovação das solicitações de cada unidade.
         </div>
       </div>
 
-      <div style={{ padding: '16px 20px', display: 'grid', gap: '16px' }}>
-        {carregando && <div style={{ color: 'var(--color-text-muted)' }}>Carregando unidades...</div>}
+      <div className="grid gap-4 px-5 py-4">
+        {carregando && <div className="text-slate-500">Carregando unidades...</div>}
 
         {!carregando && erroCarga && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-danger)', flexWrap: 'wrap' }}>
-            <AlertCircle size={18} style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: '14px', fontWeight: 600 }}>{erroCarga}</span>
+          <div className="flex flex-wrap items-center gap-2 text-rose-700">
+            <AlertCircle size={18} className="shrink-0" />
+            <span className="text-sm font-semibold">{erroCarga}</span>
             <Button variant="ghost" size="sm" onClick={carregar}>
               Tentar novamente
             </Button>
@@ -130,7 +137,7 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
         )}
 
         {!carregando && !erroCarga && unidades.length === 0 && (
-          <div style={{ color: 'var(--color-text-muted)' }}>Nenhuma unidade cadastrada.</div>
+          <div className="text-slate-500">Nenhuma unidade cadastrada.</div>
         )}
 
         {!carregando &&
@@ -141,36 +148,36 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
             return (
               <div
                 key={unidade.id}
-                style={{
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '14px 16px',
-                  display: 'grid',
-                  gap: '12px',
-                }}
+                className="grid gap-3 rounded-md border border-slate-200 px-4 py-3.5"
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--color-text)' }}>{unidade.nome}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-900">{unidade.nome}</span>
                   <Badge tone="neutral">{LABELS_TIPO_UNIDADE[unidade.tipo] ?? unidade.tipo}</Badge>
                 </div>
 
                 {unidade.gestores.length === 0 ? (
-                  <div style={{ fontSize: '13px', color: 'var(--color-warning)', fontWeight: 600 }}>
+                  <div className="text-[13px] font-semibold text-amber-700">
                     Nenhum gestor associado a esta unidade.
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gap: '6px' }}>
+                  <div className="grid gap-1.5">
                     {unidade.gestores.map((g) => (
-                      <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '14px', color: 'var(--color-text)', fontWeight: 600 }}>{g.nome}</span>
-                        <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{g.email}</span>
+                      <div key={g.id} className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-900">{g.nome}</span>
+                        <span className="text-xs text-slate-500">{g.email}</span>
                         {!g.ativo && <Badge tone="neutral">Inativo</Badge>}
                         <Button
-                          variant="ghost"
+                          variant="danger-outline"
                           size="sm"
                           disabled={emOperacao}
-                          style={{ color: 'var(--color-danger)', marginLeft: 'auto' }}
-                          onClick={() => remover(unidade, g.id, g.nome)}
+                          className="ml-auto"
+                          onClick={() =>
+                            setRemocaoPendente({
+                              unidade,
+                              gestorId: g.id,
+                              nomeGestor: g.nome,
+                            })
+                          }
                         >
                           Remover
                         </Button>
@@ -179,16 +186,20 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <div style={{ minWidth: '240px', flex: 1, maxWidth: '380px' }}>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="max-w-[380px] min-w-[240px] flex-1">
                     <Select
                       aria-label={`Gestor a associar à unidade ${unidade.nome}`}
                       value={selecionado[unidade.id] ?? ''}
                       disabled={emOperacao || disponiveis.length === 0}
-                      onChange={(e) => setSelecionado((s) => ({ ...s, [unidade.id]: e.target.value }))}
+                      onChange={(e) =>
+                        setSelecionado((s) => ({ ...s, [unidade.id]: e.target.value }))
+                      }
                     >
                       <option value="">
-                        {disponiveis.length === 0 ? 'Nenhum gestor disponível' : 'Selecione um gestor...'}
+                        {disponiveis.length === 0
+                          ? 'Nenhum gestor disponível'
+                          : 'Selecione um gestor...'}
                       </option>
                       {disponiveis.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -197,7 +208,11 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
                       ))}
                     </Select>
                   </div>
-                  <Button size="sm" disabled={emOperacao || !selecionado[unidade.id]} onClick={() => associar(unidade)}>
+                  <Button
+                    size="sm"
+                    disabled={emOperacao || !selecionado[unidade.id]}
+                    onClick={() => associar(unidade)}
+                  >
                     Associar
                   </Button>
                 </div>
@@ -205,6 +220,22 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
             );
           })}
       </div>
+
+      <ConfirmDialog
+        isOpen={Boolean(remocaoPendente)}
+        title="Remover Gestor da Unidade"
+        description={
+          remocaoPendente
+            ? `Tem certeza que deseja remover "${remocaoPendente.nomeGestor}" da unidade "${remocaoPendente.unidade.nome}"?`
+            : ''
+        }
+        confirmLabel="Sim, Remover"
+        cancelLabel="Cancelar"
+        variant="danger"
+        isLoading={Boolean(remocaoPendente && ocupado === remocaoPendente.unidade.id)}
+        onConfirm={confirmarRemover}
+        onClose={() => setRemocaoPendente(null)}
+      />
     </Card>
   );
 }
