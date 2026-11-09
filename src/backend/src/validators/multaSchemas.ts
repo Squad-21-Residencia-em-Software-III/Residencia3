@@ -42,7 +42,4 @@ export const criarMultaSchema = z.object({
   orgao_autuador: z.string().trim().optional().nullable(),
 });
 
-export const atualizarMultaSchema = criarMultaSchema.partial();
-
 export type CriarMultaInput = z.infer<typeof criarMultaSchema>;
-export type AtualizarMultaInput = z.infer<typeof atualizarMultaSchema>;

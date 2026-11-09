@@ -11,5 +11,3 @@ multaRoutes.use(autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA));
 
 multaRoutes.get('/', multaController.listar);
 multaRoutes.post('/', multaController.criar);
-multaRoutes.put('/:id', multaController.atualizar);
-multaRoutes.delete('/:id', multaController.excluir);

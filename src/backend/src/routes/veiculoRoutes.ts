@@ -25,9 +25,3 @@ veiculoRoutes.post(
   autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
   veiculoController.criar
 );
-
-veiculoRoutes.put(
-  '/:id',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
-  veiculoController.atualizar
-);

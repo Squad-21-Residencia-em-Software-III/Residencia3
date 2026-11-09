@@ -48,26 +48,6 @@ export const multaModel = {
     return multa ? normalizar(multa) : undefined;
   },
 
-  async atualizar(
-    id: number,
-    dados: Partial<NovaMulta>,
-    trx?: Knex.Transaction
-  ): Promise<Multa | undefined> {
-    const conexao = trx || db;
-    const [atualizada] = await conexao('multas')
-      .where({ id })
-      .update(dados)
-      .returning('*');
-
-    return atualizada ? normalizar(atualizada) : undefined;
-  },
-
-  async excluir(id: number, trx?: Knex.Transaction): Promise<boolean> {
-    const conexao = trx || db;
-    const rows = await conexao('multas').where({ id }).delete();
-    return rows > 0;
-  },
-
   async listar(): Promise<Multa[]> {
     const multas: Multa[] = await db('multas')
       .select('*')
