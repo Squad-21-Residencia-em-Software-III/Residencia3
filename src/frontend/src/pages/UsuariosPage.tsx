@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Avatar,
@@ -15,7 +15,9 @@ import {
   type BadgeTone,
 } from '../components/ui';
 import { LABELS_PERFIS, type Perfil, type Usuario } from '../types/usuario';
-import { storageService } from '../services/storageService';
+import { mensagemDeErro } from '../services/api/http';
+import { usuariosApi } from '../services/api/usuariosApi';
+import { useAuth } from '../contexts/AuthContext';
 import { ModalUsuario } from './usuarios/ModalUsuario';
 import { ModalRedefinirSenha } from './usuarios/ModalRedefinirSenha';
 import { GestoresUnidadesSecao } from './usuarios/GestoresUnidadesSecao';
@@ -39,18 +41,24 @@ function obterBadgeTonePerfil(perfil: Perfil): BadgeTone {
 }
 
 export default function UsuariosPage() {
-  const [usuarios, setUsuarios] = useState<Usuario[]>(storageService.getUsuarios());
+  const { usuario: usuarioLogado } = useAuth();
+  const usuarioLogadoId = usuarioLogado?.id ?? 1;
+
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
+
   const [filtro, setFiltro] = useState<FiltroCategoria>('TODOS');
   const [busca, setBusca] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const [totalRegistros, setTotalRegistros] = useState(0);
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
+
   const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
   const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
   const [usuarioRedefinirSenha, setUsuarioRedefinirSenha] = useState<Usuario | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
-
-  // Usuário 1 (Carlos Silva - Admin) simula o usuário logado
-  const usuarioLogadoId = 1;
 
   const exibirFeedback = (msg: string, isError = false) => {
     if (isError) {
@@ -66,41 +74,54 @@ export default function UsuariosPage() {
     }, 4000);
   };
 
+  const carregarUsuarios = useCallback(async () => {
+    try {
+      setCarregando(true);
+      const resposta = await usuariosApi.listar({
+        pagina,
+        limite: 50,
+        busca: busca.trim() || undefined,
+        ativo: filtro === 'INATIVOS' ? false : undefined,
+      });
+      setUsuarios(resposta.dados);
+      setTotalRegistros(resposta.paginacao.total);
+      setErroCarga(null);
+    } catch (error) {
+      setErroCarga(mensagemDeErro(error));
+    } finally {
+      setCarregando(false);
+    }
+  }, [pagina, busca, filtro]);
+
+  useEffect(() => {
+    carregarUsuarios();
+  }, [carregarUsuarios]);
+
   const totais = useMemo(
     () => ({
-      total: usuarios.length,
+      total: totalRegistros || usuarios.length,
       ativos: usuarios.filter((u) => u.ativo).length,
       inativos: usuarios.filter((u) => !u.ativo).length,
       motoristas: usuarios.filter((u) => u.tipo_usuario === 'MOTORISTA').length,
     }),
-    [usuarios],
+    [usuarios, totalRegistros],
   );
 
   const filtrados = useMemo(() => {
     return usuarios.filter((u) => {
-      // 1. Filtro de categoria / abas
       if (filtro === 'ADMIN' && u.perfil !== 'ADMINISTRADOR') return false;
       if (filtro === 'GESTAO' && u.perfil !== 'GESTOR_FROTA' && u.perfil !== 'GESTOR_SVO')
         return false;
       if (filtro === 'SOLICITANTE' && u.perfil !== 'SOLICITANTE') return false;
       if (filtro === 'MOTORISTA' && u.tipo_usuario !== 'MOTORISTA') return false;
       if (filtro === 'INATIVOS' && u.ativo) return false;
-
-      // 2. Busca por texto (nome ou e-mail com ILIKE simulado)
-      if (busca.trim()) {
-        const termo = busca.trim().toLowerCase();
-        const matchNome = u.nome.toLowerCase().includes(termo);
-        const matchEmail = u.email.toLowerCase().includes(termo);
-        if (!matchNome && !matchEmail) return false;
-      }
-
       return true;
     });
-  }, [usuarios, filtro, busca]);
+  }, [usuarios, filtro]);
 
   const emailsExistentes = useMemo(() => usuarios.map((u) => u.email), [usuarios]);
 
-  const handleSalvarUsuario = (dados: {
+  const handleSalvarUsuario = async (dados: {
     nome: string;
     email: string;
     senha?: string;
@@ -109,61 +130,63 @@ export default function UsuariosPage() {
   }) => {
     try {
       if (usuarioEditando) {
-        // Edição
-        storageService.updateUsuario(usuarioEditando.id, {
+        await usuariosApi.atualizar(usuarioEditando.id, {
           nome: dados.nome,
           email: dados.email,
           perfil: dados.perfil,
           ativo: dados.ativo,
         });
-        setUsuarios(storageService.getUsuarios());
         exibirFeedback(`Usuário "${dados.nome}" atualizado com sucesso.`);
       } else {
-        // Novo cadastro
-        storageService.createUsuario({
+        await usuariosApi.criar({
           nome: dados.nome,
           email: dados.email,
           senha: dados.senha || '',
           perfil: dados.perfil,
         });
-        setUsuarios(storageService.getUsuarios());
         exibirFeedback(`Usuário "${dados.nome}" cadastrado com sucesso.`);
       }
       setUsuarioEditando(null);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
+      carregarUsuarios();
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
     }
   };
 
-  const handleAlternarStatus = (usuario: Usuario) => {
+  const handleAlternarStatus = async (usuario: Usuario) => {
     if (usuario.id === usuarioLogadoId) {
       exibirFeedback('Você não pode desativar a sua própria conta de administrador.', true);
       return;
     }
     try {
-      storageService.toggleStatusUsuario(usuario.id, !usuario.ativo);
-      setUsuarios(storageService.getUsuarios());
+      await usuariosApi.atualizar(usuario.id, { ativo: !usuario.ativo });
       exibirFeedback(
         `Usuário "${usuario.nome}" foi ${!usuario.ativo ? 'ativado' : 'desativado'} com sucesso.`,
       );
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
+      carregarUsuarios();
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
     }
   };
 
-  const handleSalvarNovaSenha = (novaSenha: string) => {
+  const handleSalvarNovaSenha = async (novaSenha: string) => {
     if (!usuarioRedefinirSenha) return;
-    // No backend é feito via PATCH /api/usuarios/:id/senha com hash bcrypt
-    console.log(`Senha redefinida para o usuário id=${usuarioRedefinirSenha.id}: ${novaSenha}`);
-    exibirFeedback(`Senha do usuário "${usuarioRedefinirSenha.nome}" redefinida com sucesso.`);
-    setUsuarioRedefinirSenha(null);
+    try {
+      await usuariosApi.redefinirSenha(usuarioRedefinirSenha.id, novaSenha);
+      exibirFeedback(`Senha do usuário "${usuarioRedefinirSenha.nome}" redefinida com sucesso.`);
+      setUsuarioRedefinirSenha(null);
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
+    }
   };
 
   return (
     <div className="grid gap-6">
       {/* Feedback de sucesso e erro */}
-      {(mensagemSucesso || mensagemErro) && (
-        <Alert tone={mensagemErro ? 'danger' : 'success'}>{mensagemErro || mensagemSucesso}</Alert>
+      {(mensagemSucesso || mensagemErro || erroCarga) && (
+        <Alert tone={mensagemErro || erroCarga ? 'danger' : 'success'}>
+          {mensagemErro || erroCarga || mensagemSucesso}
+        </Alert>
       )}
 
       {/* 4 Cards de Resumo (2x2 no mobile) */}
@@ -187,7 +210,11 @@ export default function UsuariosPage() {
       <Card>
         <TableToolbar
           title="Gestão de Usuários"
-          subtitle={`${filtrados.length} usuários listados`}
+          subtitle={
+            carregando
+              ? 'Carregando usuários...'
+              : `${filtrados.length} usuário${filtrados.length === 1 ? '' : 's'} listado${filtrados.length === 1 ? '' : 's'}`
+          }
           newLabel="Novo Usuário"
           onNew={() => {
             setUsuarioEditando(null);
@@ -199,18 +226,22 @@ export default function UsuariosPage() {
 
         {/* Barra de Filtros e Busca */}
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          {/* Busca textual na esquerda */}
           <SearchInput
             value={busca}
-            onChange={setBusca}
+            onChange={(val) => {
+              setBusca(val);
+              setPagina(1);
+            }}
             placeholder="Buscar por nome ou e-mail..."
           />
 
-          {/* Filtros em dropdown na sequência */}
           <FilterSelect
             aria-label="Filtrar por perfil"
             value={filtro}
-            onChange={(val) => setFiltro(val as FiltroCategoria)}
+            onChange={(val) => {
+              setFiltro(val as FiltroCategoria);
+              setPagina(1);
+            }}
             options={[
               { value: 'TODOS', label: 'Todos os perfis' },
               { value: 'ADMIN', label: 'Administradores' },
@@ -228,6 +259,7 @@ export default function UsuariosPage() {
               onClick={() => {
                 setBusca('');
                 setFiltro('TODOS');
+                setPagina(1);
               }}
             >
               Limpar
@@ -248,7 +280,13 @@ export default function UsuariosPage() {
             </tr>
           </thead>
           <tbody>
-            {filtrados.length === 0 ? (
+            {carregando ? (
+              <tr>
+                <td colSpan={6} className="p-9 text-center text-slate-500">
+                  Carregando lista de usuários da API...
+                </td>
+              </tr>
+            ) : filtrados.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-9 text-center text-slate-500">
                   Nenhum usuário encontrado com os filtros selecionados.
@@ -341,7 +379,7 @@ export default function UsuariosPage() {
           </tbody>
         </Table>
 
-        <Pagination showing={`1–${filtrados.length}`} total={filtrados.length} />
+        <Pagination showing={`1–${filtrados.length}`} total={totalRegistros || filtrados.length} />
       </Card>
 
       {/* Associação de gestores às unidades (BL15) — dados vêm da API */}
