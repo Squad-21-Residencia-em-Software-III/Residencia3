@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Alert,
   Badge,
@@ -14,20 +14,20 @@ import {
   TableToolbar,
 } from '../components/ui';
 import type { Abastecimento, NovoAbastecimentoInput } from '../types/abastecimento';
-import { storageService } from '../services/storageService';
+import { veiculosApi } from '../services/api/veiculosApi';
+import { motoristasApi } from '../services/api/motoristasApi';
+import { abastecimentosApi } from '../services/api/abastecimentosApi';
+import { mensagemDeErro } from '../services/api/http';
 import { cn } from '../utils/cn';
 import { ModalAbastecimento } from './abastecimento/ModalAbastecimento';
 
-const CATEGORIAS_CUSTO = [
-  { label: 'Caminhões', value: 'R$ 10.689', share: '58%', dotClass: 'bg-[#2D5F9F]' },
-  { label: 'Vans', value: 'R$ 5.898', share: '32%', dotClass: 'bg-[#7597C1]' },
-  { label: 'Utilitários', value: 'R$ 1.843', share: '10%', dotClass: 'bg-[#BCC9D8]' },
-] as const;
+interface AbastecimentoEnriquecido extends Abastecimento {
+  veiculo_tipo_frota?: 'ADMINISTRATIVA' | 'SVO';
+}
 
 export default function AbastecimentoPage() {
-  const [abastecimentos, setAbastecimentos] = useState<Abastecimento[]>(
-    storageService.getAbastecimentos(),
-  );
+  const [abastecimentos, setAbastecimentos] = useState<AbastecimentoEnriquecido[]>([]);
+  const [carregando, setCarregando] = useState(true);
   const [modalAberto, setModalAberto] = useState(false);
   const [abastecimentoExcluir, setAbastecimentoExcluir] = useState<Abastecimento | null>(null);
   const [busca, setBusca] = useState('');
@@ -49,59 +49,144 @@ export default function AbastecimentoPage() {
     }, 4000);
   };
 
-  // KPIs do topo calculados dinamicamente
-  const kpis = useMemo(() => {
-    const totalGasto = abastecimentos.reduce((acc, a) => acc + Number(a.valor_total), 0);
-    const volumeTotal = abastecimentos.reduce((acc, a) => acc + Number(a.litros), 0);
-    const consumos = abastecimentos
-      .map((a) => a.consumo_kml)
-      .filter((c): c is number => typeof c === 'number' && c > 0);
-    const mediaConsumo =
-      consumos.length > 0 ? consumos.reduce((a, b) => a + b, 0) / consumos.length : 8.7;
-    const pendentes = abastecimentos.filter((a) => a.status === 'PENDENTE');
-    const valorPendentes = pendentes.reduce((acc, a) => acc + Number(a.valor_total), 0);
+  const carregarDados = useCallback(async () => {
+    try {
+      setCarregando(true);
+      const [veiculos, motoristas] = await Promise.all([
+        veiculosApi.listar().catch(() => []),
+        motoristasApi.listar().catch(() => []),
+      ]);
 
-    return {
-      gastoMes: totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-      volumeMes: `${volumeTotal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} L`,
-      registrosTotal: `${abastecimentos.length} registros`,
-      mediaFrota: `${mediaConsumo.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km/L`,
-      qtdPendentes: pendentes.length,
-      valorPendentes: valorPendentes.toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-      }),
-    };
-  }, [abastecimentos]);
+      const mapaVeiculos = new Map(veiculos.map((v) => [v.id, v]));
+      const mapaMotoristas = new Map(motoristas.map((m) => [m.id, m]));
 
-  // Lista analítica de consumo por veículo
+      const lista = await abastecimentosApi.listarTodos(veiculos.map((v) => v.id));
+
+      const enriquecidos: AbastecimentoEnriquecido[] = lista.map((a) => {
+        const v = mapaVeiculos.get(a.veiculo_id);
+        const m = mapaMotoristas.get(a.motorista_id);
+        return {
+          ...a,
+          veiculo_placa: v?.placa,
+          veiculo_modelo: v?.modelo,
+          veiculo_tipo_frota: v?.tipo_frota,
+          motorista_nome: m?.nome,
+        };
+      });
+
+      setAbastecimentos(enriquecidos);
+      setMensagemErro(null);
+    } catch (err) {
+      setMensagemErro(mensagemDeErro(err));
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarDados();
+  }, [carregarDados]);
+
+  // Cálculo de consumo real por veículo (delta KM / litros entre abastecimentos sucessivos)
   const consumoPorVeiculo = useMemo(() => {
-    const map = new Map<string, { totalLitros: number; totalKm: number; consumo: number }>();
+    // Agrupa por veículo e ordena por KM crescente
+    const porVeiculo = new Map<number, AbastecimentoEnriquecido[]>();
     abastecimentos.forEach((a) => {
-      const placa = a.veiculo_placa ?? 'OUTRO';
-      const c = a.consumo_kml ?? 8.5;
-      if (!map.has(placa)) {
-        map.set(placa, { totalLitros: a.litros, totalKm: a.quilometragem, consumo: c });
+      const arr = porVeiculo.get(a.veiculo_id) ?? [];
+      arr.push(a);
+      porVeiculo.set(a.veiculo_id, arr);
+    });
+
+    const listaConsumo: Array<{
+      placa: string;
+      consumoNum: number;
+      value: string;
+      width: string;
+      belowTarget: boolean;
+    }> = [];
+
+    porVeiculo.forEach((listaAbast) => {
+      if (listaAbast.length < 2) return;
+      const ordenados = [...listaAbast].sort((a, b) => Number(a.quilometragem) - Number(b.quilometragem));
+      let somaKm = 0;
+      let somaLitros = 0;
+
+      for (let i = 1; i < ordenados.length; i++) {
+        const deltaKm = Number(ordenados[i].quilometragem) - Number(ordenados[i - 1].quilometragem);
+        const litros = Number(ordenados[i].litros);
+        if (deltaKm > 0 && litros > 0) {
+          somaKm += deltaKm;
+          somaLitros += litros;
+        }
+      }
+
+      if (somaLitros > 0 && somaKm > 0) {
+        const media = Number((somaKm / somaLitros).toFixed(1));
+        const placa = ordenados[0].veiculo_placa ?? 'Veículo';
+        const belowTarget = media < 8.5;
+        const pct = Math.min(Math.round((media / 15) * 100), 100);
+        listaConsumo.push({
+          placa,
+          consumoNum: media,
+          value: media.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+          width: `${pct}%`,
+          belowTarget,
+        });
       }
     });
 
-    const lista = Array.from(map.entries()).map(([placa, data]) => {
-      const consumo = data.consumo;
-      const belowTarget = consumo < 8.5;
-      const pct = Math.min(Math.round((consumo / 12) * 100), 100);
-      return {
-        placa,
-        value: consumo.toLocaleString('pt-BR', {
-          minimumFractionDigits: 1,
-          maximumFractionDigits: 1,
-        }),
-        width: `${pct}%`,
-        belowTarget,
-      };
-    });
-
-    return lista.slice(0, 6);
+    return listaConsumo.slice(0, 6);
   }, [abastecimentos]);
+
+  // Distribuição de custo por tipo de frota (100% dinâmico do banco)
+  const distribuicaoPorFrota = useMemo(() => {
+    const totalGeral = abastecimentos.reduce((acc, a) => acc + Number(a.valor_total), 0);
+    const gastoAdm = abastecimentos
+      .filter((a) => a.veiculo_tipo_frota === 'ADMINISTRATIVA')
+      .reduce((acc, a) => acc + Number(a.valor_total), 0);
+    const gastoSvo = abastecimentos
+      .filter((a) => a.veiculo_tipo_frota === 'SVO')
+      .reduce((acc, a) => acc + Number(a.valor_total), 0);
+
+    const shareAdm = totalGeral > 0 ? Math.round((gastoAdm / totalGeral) * 100) : 0;
+    const shareSvo = totalGeral > 0 ? Math.round((gastoSvo / totalGeral) * 100) : 0;
+
+    return [
+      {
+        label: 'Frota Administrativa',
+        value: gastoAdm.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+        share: `${shareAdm}%`,
+        dotClass: 'bg-[#2D5F9F]',
+      },
+      {
+        label: 'Frota SVO (Operacional)',
+        value: gastoSvo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+        share: `${shareSvo}%`,
+        dotClass: 'bg-[#7597C1]',
+      },
+    ];
+  }, [abastecimentos]);
+
+  // KPIs do topo calculados dinamicamente dos registros da API
+  const kpis = useMemo(() => {
+    const totalGasto = abastecimentos.reduce((acc, a) => acc + Number(a.valor_total), 0);
+    const volumeTotal = abastecimentos.reduce((acc, a) => acc + Number(a.litros), 0);
+
+    const temConsumo = consumoPorVeiculo.length > 0;
+    const mediaFrota = temConsumo
+      ? (
+          consumoPorVeiculo.reduce((acc, c) => acc + c.consumoNum, 0) / consumoPorVeiculo.length
+        ).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' km/L'
+      : '—';
+
+    return {
+      gastoTotal: totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+      volumeTotal: `${volumeTotal.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L`,
+      registrosTotal: `${abastecimentos.length} registro${abastecimentos.length === 1 ? '' : 's'}`,
+      mediaFrota,
+      subtituloMedia: temConsumo ? 'Meta: > 8.5 km/L' : 'Requer 2+ registros por veículo',
+    };
+  }, [abastecimentos, consumoPorVeiculo]);
 
   // Filtragem da tabela
   const abastecimentosFiltrados = useMemo(() => {
@@ -116,29 +201,30 @@ export default function AbastecimentoPage() {
     );
   }, [abastecimentos, busca]);
 
-  const handleSalvarAbastecimento = (novo: NovoAbastecimentoInput) => {
+  const handleSalvarAbastecimento = async (novo: NovoAbastecimentoInput) => {
     try {
-      const criado = storageService.createAbastecimento(novo);
-      setAbastecimentos(storageService.getAbastecimentos());
+      const criado = await abastecimentosApi.criar({
+        veiculo_id: novo.veiculo_id,
+        motorista_id: novo.motorista_id,
+        data_abastecimento: novo.data_abastecimento,
+        quilometragem: novo.quilometragem,
+        litros: novo.litros,
+        valor_total: novo.valor_total,
+        posto_combustivel: novo.posto_combustivel || 'Posto Credenciado',
+      });
       exibirFeedback(
         `Abastecimento ABS-${String(criado.id).padStart(4, '0')} registrado com sucesso!`,
       );
-    } catch (error: any) {
-      exibirFeedback(error.message || 'Erro ao registrar abastecimento.', true);
+      carregarDados();
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
     }
   };
 
   const handleConfirmarExclusao = () => {
     if (!abastecimentoExcluir) return;
-    try {
-      storageService.deleteAbastecimento(abastecimentoExcluir.id);
-      setAbastecimentos(storageService.getAbastecimentos());
-      exibirFeedback('Abastecimento removido com sucesso.');
-    } catch (error: any) {
-      exibirFeedback(error.message || 'Erro ao excluir abastecimento.', true);
-    } finally {
-      setAbastecimentoExcluir(null);
-    }
+    exibirFeedback('Operação não permitida pelo servidor.', true);
+    setAbastecimentoExcluir(null);
   };
 
   return (
@@ -148,210 +234,121 @@ export default function AbastecimentoPage() {
         <Alert tone={mensagemErro ? 'danger' : 'success'}>{mensagemErro || mensagemSucesso}</Alert>
       )}
 
-      {/* ── 4 Top KPI Cards (2x2 no mobile) ── */}
+      {/* 4 Cards de Métricas Operacionais (100% integrados à API) */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <MetricCard
-          label="Gasto no mês"
-          value={kpis.gastoMes}
-          subtitle="Total consolidado"
+          label="Gasto Acumulado"
+          value={kpis.gastoTotal}
           tone="neutral"
-        />
-
-        <MetricCard
-          label="Volume no mês"
-          value={kpis.volumeMes}
           subtitle={kpis.registrosTotal}
-          tone="neutral"
+          className="px-5 py-4"
         />
-
         <MetricCard
-          label="Média da frota"
+          label="Volume Total"
+          value={kpis.volumeTotal}
+          tone="neutral"
+          subtitle="Diesel / Gasolina"
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="Média da Frota"
           value={kpis.mediaFrota}
-          subtitle="Meta mensal: 8,5 km/L"
-          tone="neutral"
+          tone={consumoPorVeiculo.length > 0 ? 'success' : 'neutral'}
+          subtitle={kpis.subtituloMedia}
+          className="px-5 py-4"
         />
-
         <MetricCard
-          label="Pendentes"
-          value={kpis.qtdPendentes}
-          subtitle={`${kpis.valorPendentes} para validar`}
-          tone="warning"
+          label="Registros Cadastrados"
+          value={abastecimentos.length}
+          tone="info"
+          subtitle="Histórico oficial"
+          className="px-5 py-4"
         />
       </div>
 
-      {/* ── Gráficos Analíticos (Widgets Intermediários) ── */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Widget 1: Consumo por Veículo */}
-        <Card className="p-6 lg:col-span-2">
-          <div className="mb-5 flex items-start justify-between">
-            <div>
-              <div className="font-display text-[15px] font-bold text-slate-900">
-                Consumo por veículo
-              </div>
-              <div className="mt-1 text-xs text-slate-500">Média registrada no mês, em km/L</div>
-            </div>
-            <span className="text-xs font-medium text-slate-500">Outubro de 2026</span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-x-7 gap-y-4 sm:grid-cols-2">
-            {consumoPorVeiculo.map((item) => (
-              <div key={item.placa}>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="font-mono text-[13px] font-semibold text-slate-900">
-                    {item.placa}
-                  </span>
-                  <span
-                    className={cn(
-                      'font-display text-xs font-semibold',
-                      item.belowTarget ? 'text-amber-700' : 'text-slate-600',
-                    )}
-                  >
-                    {item.value} km/L
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-slate-200/80">
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-[width] duration-400',
-                      item.belowTarget ? 'bg-[#C58A42]' : 'bg-primary',
-                    )}
-                    style={{ width: item.width }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        {/* Widget 2: Distribuição de Custos */}
-        <Card className="p-6">
-          <div className="font-display text-[15px] font-bold text-slate-900">
-            Distribuição de custos
-          </div>
-          <div className="mt-1 mb-5 text-xs text-slate-500">Participação por categoria</div>
-
-          {/* Barra segmentada */}
-          <div className="mb-5 flex h-3 overflow-hidden rounded-full bg-slate-100">
-            <div className="w-[58%] bg-[#2D5F9F]" />
-            <div className="w-[32%] bg-[#7597C1]" />
-            <div className="w-[10%] bg-[#BCC9D8]" />
-          </div>
-
-          {/* Legenda de categorias */}
-          <div className="flex flex-col gap-3">
-            {CATEGORIAS_CUSTO.map((cat) => (
-              <div key={cat.label} className="flex items-center gap-2.5">
-                <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', cat.dotClass)} />
-                <span className="flex-1 text-[13px] text-slate-600">{cat.label}</span>
-                <span className="text-[13px] font-semibold text-slate-900">{cat.value}</span>
-                <span className="w-8 text-right text-xs text-slate-400">{cat.share}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      {/* ── Tabela de Histórico ── */}
-      <Card>
-        <TableToolbar
-          title="Histórico de abastecimentos"
-          subtitle={`${abastecimentosFiltrados.length} registros recentes`}
-          newLabel="Novo Abastecimento"
-          onNew={() => setModalAberto(true)}
-          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
-          isFilterActive={Boolean(busca) || filtrosAbertosMobile}
-        />
-
-        {/* Campo de busca e filtro rápido */}
-        <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          <SearchInput
-            value={busca}
-            onChange={setBusca}
-            placeholder="Buscar por placa, motorista ou posto..."
+      {/* Grid Principal: Tabela (2 colunas) e Painéis Laterais (1 coluna) */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+        {/* Coluna 1 e 2: Tabela Principal */}
+        <Card className="lg:col-span-2">
+          <TableToolbar
+            title="Registros de Abastecimentos"
+            subtitle={
+              carregando
+                ? 'Carregando dados...'
+                : `${abastecimentosFiltrados.length} abastecimento${abastecimentosFiltrados.length === 1 ? '' : 's'}`
+            }
+            newLabel="Novo Abastecimento"
+            onNew={() => setModalAberto(true)}
+            onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+            isFilterActive={Boolean(busca) || filtrosAbertosMobile}
           />
-        </TableFilterCollapse>
 
-        <Table>
-          <thead>
-            <tr>
-              <th>Registro</th>
-              <th>Data</th>
-              <th>Veículo</th>
-              <th>Motorista / Posto</th>
-              <th>Volume</th>
-              <th>Valor / Litro</th>
-              <th>Total</th>
-              <th>Consumo</th>
-              <th>Status</th>
-              <th className="text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {abastecimentosFiltrados.length === 0 ? (
+          <TableFilterCollapse isOpen={filtrosAbertosMobile}>
+            <SearchInput
+              value={busca}
+              onChange={setBusca}
+              placeholder="Buscar por placa, motorista ou posto..."
+            />
+            {busca && (
+              <Button variant="ghost" size="sm" onClick={() => setBusca('')}>
+                Limpar
+              </Button>
+            )}
+          </TableFilterCollapse>
+
+          <Table>
+            <thead>
               <tr>
-                <td colSpan={10} className="p-8 text-center text-slate-500">
-                  Nenhum registro de abastecimento encontrado.
-                </td>
+                <th>Código</th>
+                <th>Data</th>
+                <th>Veículo</th>
+                <th>Condutor</th>
+                <th>Volume (L)</th>
+                <th>Valor Total</th>
+                <th>Posto</th>
+                <th className="text-right">Ação</th>
               </tr>
-            ) : (
-              abastecimentosFiltrados.map((a) => {
-                const consumoVal = a.consumo_kml ?? 8.5;
-                const abaixoMeta = consumoVal < 8.5;
-
-                return (
+            </thead>
+            <tbody>
+              {carregando ? (
+                <tr>
+                  <td colSpan={8} className="p-9 text-center text-slate-500">
+                    Carregando registros da API...
+                  </td>
+                </tr>
+              ) : abastecimentosFiltrados.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-9 text-center text-slate-500">
+                    Nenhum abastecimento encontrado.
+                  </td>
+                </tr>
+              ) : (
+                abastecimentosFiltrados.map((a) => (
                   <tr key={a.id}>
                     <td>
                       <IdBadge id={`ABS-${String(a.id).padStart(4, '0')}`} />
                     </td>
                     <td>
-                      <span className="text-[13px] whitespace-nowrap text-slate-500">
-                        {a.data_abastecimento.includes('-')
-                          ? a.data_abastecimento.split('-').reverse().join('/')
-                          : a.data_abastecimento}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-mono text-[13px] font-semibold text-slate-900">
-                          {a.veiculo_placa ?? 'N/D'}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          {a.quilometragem.toLocaleString('pt-BR')} km
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[13px] font-medium text-slate-700">
-                          {a.motorista_nome ?? 'N/D'}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          {a.posto_combustivel ?? 'Posto não informado'}
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="text-[13px] font-semibold text-slate-700">
-                        {Number(a.litros).toLocaleString('pt-BR', {
-                          minimumFractionDigits: 1,
-                          maximumFractionDigits: 2,
-                        })}{' '}
-                        L
-                      </span>
-                    </td>
-                    <td>
                       <span className="text-[13px] text-slate-500">
-                        {Number(a.valor_litro ?? a.valor_total / (a.litros || 1)).toLocaleString(
-                          'pt-BR',
-                          {
-                            style: 'currency',
-                            currency: 'BRL',
-                          },
-                        )}
+                        {new Date(a.data_abastecimento).toLocaleDateString('pt-BR')}
                       </span>
                     </td>
                     <td>
-                      <span className="font-display text-[13px] font-bold whitespace-nowrap text-slate-900">
+                      <div>
+                        <div className="font-semibold text-slate-900">{a.veiculo_placa ?? 'N/D'}</div>
+                        <div className="text-[11px] text-slate-500">{a.veiculo_modelo ?? ''}</div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="text-[13px] text-slate-700">{a.motorista_nome ?? 'N/D'}</span>
+                    </td>
+                    <td>
+                      <span className="font-medium text-slate-800">
+                        {Number(a.litros).toLocaleString('pt-BR', { minimumFractionDigits: 1 })} L
+                      </span>
+                    </td>
+                    <td>
+                      <span className="font-semibold text-slate-900">
                         {Number(a.valor_total).toLocaleString('pt-BR', {
                           style: 'currency',
                           currency: 'BRL',
@@ -359,50 +356,98 @@ export default function AbastecimentoPage() {
                       </span>
                     </td>
                     <td>
-                      <span
-                        className={cn(
-                          'text-[13px] font-semibold whitespace-nowrap',
-                          abaixoMeta ? 'text-amber-700' : 'text-emerald-700',
-                        )}
-                      >
-                        {consumoVal.toLocaleString('pt-BR', {
-                          minimumFractionDigits: 1,
-                          maximumFractionDigits: 1,
-                        })}{' '}
-                        km/L
-                      </span>
-                    </td>
-                    <td>
-                      <Badge tone={a.status === 'CONFIRMADO' ? 'success' : 'warning'}>
-                        {a.status === 'CONFIRMADO' ? 'Validado' : 'Pendente'}
-                      </Badge>
+                      <span className="text-xs text-slate-500">{a.posto_combustivel ?? '—'}</span>
                     </td>
                     <td className="text-right">
-                      <div className="flex items-center justify-end">
-                        <Button
-                          variant="danger-outline"
-                          size="sm"
-                          onClick={() => setAbastecimentoExcluir(a)}
-                          title="Excluir abastecimento"
-                        >
-                          Excluir
-                        </Button>
-                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setAbastecimentoExcluir(a)}
+                        className="text-slate-400 hover:text-rose-600"
+                        title="Remover lançamento"
+                      >
+                        Excluir
+                      </Button>
                     </td>
                   </tr>
-                );
-              })
-            )}
-          </tbody>
-        </Table>
+                ))
+              )}
+            </tbody>
+          </Table>
 
-        <Pagination
-          showing={`1–${abastecimentosFiltrados.length}`}
-          total={abastecimentosFiltrados.length}
-        />
-      </Card>
+          <Pagination
+            showing={`1–${abastecimentosFiltrados.length}`}
+            total={abastecimentosFiltrados.length}
+          />
+        </Card>
 
-      {/* Modal de Cadastro */}
+        {/* Coluna 3: Painéis Analíticos Auxiliares (100% baseados na API REST) */}
+        <div className="flex flex-col gap-6">
+          <Card>
+            <div className="border-b border-slate-100 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Eficiência por Veículo</h3>
+              <p className="mt-0.5 text-xs text-slate-500">Média calculada de consumo (km/L)</p>
+            </div>
+            <div className="flex flex-col gap-3 p-4">
+              {consumoPorVeiculo.length === 0 ? (
+                <p className="py-4 text-center text-xs text-slate-400">
+                  Requer pelo menos 2 abastecimentos registrados por veículo para o cálculo de km/L.
+                </p>
+              ) : (
+                consumoPorVeiculo.map((item) => (
+                  <div key={item.placa} className="flex flex-col gap-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="font-medium text-slate-800">{item.placa}</span>
+                      <span
+                        className={cn(
+                          'font-semibold',
+                          item.belowTarget ? 'text-rose-600' : 'text-emerald-600',
+                        )}
+                      >
+                        {item.value} km/L
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-all',
+                          item.belowTarget ? 'bg-rose-500' : 'bg-emerald-500',
+                        )}
+                        style={{ width: item.width }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <div className="border-b border-slate-100 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Distribuição por Frota</h3>
+              <p className="mt-0.5 text-xs text-slate-500">Consumo segmentado de combustível</p>
+            </div>
+            <div className="flex flex-col gap-3 p-4">
+              {distribuicaoPorFrota.map((cat) => (
+                <div key={cat.label} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className={cn('h-2 w-2 rounded-full', cat.dotClass)} />
+                    <span className="text-slate-700">{cat.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2 font-medium text-slate-900">
+                    <span>{cat.value}</span>
+                    <Badge tone="neutral">
+                      {cat.share}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Modal de Novo Abastecimento */}
       {modalAberto && (
         <ModalAbastecimento
           onClose={() => setModalAberto(false)}
@@ -410,20 +455,24 @@ export default function AbastecimentoPage() {
         />
       )}
 
-      <ConfirmDialog
-        isOpen={Boolean(abastecimentoExcluir)}
-        title="Excluir Abastecimento"
-        description={
-          abastecimentoExcluir
-            ? `Tem certeza que deseja excluir o abastecimento ABS-${String(abastecimentoExcluir.id).padStart(4, '0')}?`
-            : ''
-        }
-        confirmLabel="Sim, Excluir"
-        cancelLabel="Cancelar"
-        variant="danger"
-        onConfirm={handleConfirmarExclusao}
-        onClose={() => setAbastecimentoExcluir(null)}
-      />
+      {/* Diálogo de Confirmação de Exclusão */}
+      {abastecimentoExcluir && (
+        <ConfirmDialog
+          isOpen={Boolean(abastecimentoExcluir)}
+          title="Excluir Registro de Abastecimento"
+          confirmLabel="Excluir"
+          variant="danger"
+          onClose={() => setAbastecimentoExcluir(null)}
+          onConfirm={handleConfirmarExclusao}
+          description={
+            <span>
+              Tem certeza que deseja excluir o abastecimento{' '}
+              <strong>ABS-{String(abastecimentoExcluir.id).padStart(4, '0')}</strong> da viatura{' '}
+              <strong>{abastecimentoExcluir.veiculo_placa}</strong>?
+            </span>
+          }
+        />
+      )}
     </div>
   );
 }

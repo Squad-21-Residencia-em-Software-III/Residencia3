@@ -1,12 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal, Select } from '../../components/ui';
-import { storageService } from '../../services/storageService';
 import type { NovoAbastecimentoInput } from '../../types/abastecimento';
+import type { Veiculo } from '../../types/veiculo';
+import type { Motorista } from '../../types/motorista';
+import { veiculosApi } from '../../services/api/veiculosApi';
+import { motoristasApi } from '../../services/api/motoristasApi';
+import { mensagemDeErro } from '../../services/api/http';
 
 interface ModalAbastecimentoProps {
   onClose: () => void;
-  onSalvar: (abastecimento: NovoAbastecimentoInput) => void;
+  onSalvar: (abastecimento: NovoAbastecimentoInput) => Promise<void> | void;
   veiculoIdInicial?: string;
 }
 
@@ -15,15 +19,12 @@ export function ModalAbastecimento({
   onSalvar,
   veiculoIdInicial,
 }: ModalAbastecimentoProps) {
-  const veiculos = useMemo(() => storageService.getVeiculos(), []);
-  const motoristas = useMemo(() => storageService.getMotoristas(), []);
+  const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
+  const [motoristas, setMotoristas] = useState<Motorista[]>([]);
+  const [salvando, setSalvando] = useState(false);
 
-  const [veiculoId, setVeiculoId] = useState<string>(
-    veiculoIdInicial || (veiculos[0]?.id ? String(veiculos[0].id) : ''),
-  );
-  const [motoristaId, setMotoristaId] = useState<string>(
-    motoristas[0]?.id ? String(motoristas[0].id) : '',
-  );
+  const [veiculoId, setVeiculoId] = useState<string>(veiculoIdInicial || '');
+  const [motoristaId, setMotoristaId] = useState<string>('');
   const [dataAbastecimento, setDataAbastecimento] = useState<string>(
     new Date().toISOString().split('T')[0],
   );
@@ -32,6 +33,26 @@ export function ModalAbastecimento({
   const [litros, setLitros] = useState<string>('');
   const [valorLitro, setValorLitro] = useState<string>('');
   const [erro, setErro] = useState<string>('');
+
+  useEffect(() => {
+    let ativo = true;
+    Promise.all([veiculosApi.listar(), motoristasApi.listar()])
+      .then(([listaV, listaM]) => {
+        if (!ativo) return;
+        setVeiculos(listaV);
+        setMotoristas(listaM);
+        if (!veiculoId && listaV.length > 0) {
+          setVeiculoId(String(listaV[0].id));
+        }
+        if (!motoristaId && listaM.length > 0) {
+          setMotoristaId(String(listaM[0].id));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      ativo = false;
+    };
+  }, [veiculoId, motoristaId]);
 
   // Total calculado dinamicamente
   const valorTotalCalculado = useMemo(() => {
@@ -43,8 +64,9 @@ export function ModalAbastecimento({
     return null;
   }, [litros, valorLitro]);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setErro('');
 
     const vId = Number(veiculoId);
     const mId = Number(motoristaId);
@@ -64,33 +86,43 @@ export function ModalAbastecimento({
       setErro('Informe a data do abastecimento.');
       return;
     }
-    if (!km || km <= 0) {
-      setErro('Informe uma quilometragem válida maior que zero.');
+    if (isNaN(km) || km < 0) {
+      setErro('Informe uma quilometragem válida.');
       return;
     }
-    if (!l || l <= 0) {
+    if (isNaN(l) || l <= 0) {
       setErro('Informe a quantidade de litros abastecida.');
       return;
     }
-    if (!vl || vl <= 0) {
+    if (isNaN(vl) || vl <= 0) {
       setErro('Informe o valor por litro.');
+      return;
+    }
+    if (!postoCombustivel.trim()) {
+      setErro('Informe o posto onde o veículo foi abastecido.');
       return;
     }
 
     const valorTotal = Number((l * vl).toFixed(2));
 
-    onSalvar({
-      veiculo_id: vId,
-      motorista_id: mId,
-      fornecedor_id: null,
-      data_abastecimento: dataAbastecimento,
-      quilometragem: km,
-      litros: l,
-      valor_total: valorTotal,
-      posto_combustivel: postoCombustivel.trim() || undefined,
-    });
-
-    onClose();
+    try {
+      setSalvando(true);
+      await onSalvar({
+        veiculo_id: vId,
+        motorista_id: mId,
+        fornecedor_id: null,
+        data_abastecimento: dataAbastecimento,
+        quilometragem: km,
+        litros: l,
+        valor_total: valorTotal,
+        posto_combustivel: postoCombustivel.trim(),
+      });
+      onClose();
+    } catch (err) {
+      setErro(mensagemDeErro(err));
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -142,62 +174,57 @@ export function ModalAbastecimento({
           />
 
           <Input
-            label="Quilometragem (km) *"
+            label="Hodômetro (KM) *"
             type="number"
-            min="1"
-            placeholder="Ex: 48620"
+            min="0"
             value={quilometragem}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setQuilometragem(e.target.value)}
+            placeholder="Ex: 45200"
             required
           />
         </div>
 
-        <Input
-          label="Posto de Combustível"
-          placeholder="Ex: Posto Avenida"
-          value={postoCombustivel}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setPostoCombustivel(e.target.value)}
-          maxLength={150}
-        />
-
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Litros *"
-            type="number"
-            step="0.01"
-            min="0.1"
-            placeholder="Ex: 52.4"
+            type="text"
             value={litros}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setLitros(e.target.value)}
+            placeholder="Ex: 45,5"
             required
           />
 
           <Input
             label="Valor por Litro (R$) *"
-            type="number"
-            step="0.01"
-            min="0.01"
-            placeholder="Ex: 5.89"
+            type="text"
             value={valorLitro}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setValorLitro(e.target.value)}
+            placeholder="Ex: 6,19"
             required
           />
         </div>
 
+        <Input
+          label="Posto de Combustível *"
+          value={postoCombustivel}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setPostoCombustivel(e.target.value)}
+          placeholder="Ex: Posto BR Petrobras - Av. Beira Mar"
+          required
+        />
+
         {valorTotalCalculado && (
-          <div className="mb-2 rounded-[10px] border border-slate-200 bg-slate-50 px-3.5 py-3">
-            <div className="text-[11px] font-semibold text-slate-500">
-              VALOR TOTAL DO ABASTECIMENTO (GRAVADO NO BANCO)
-            </div>
-            <div className="text-lg font-bold text-primary">{valorTotalCalculado}</div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-right text-xs text-slate-600">
+            Total Estimado: <strong className="text-sm font-semibold text-slate-800">{valorTotalCalculado}</strong>
           </div>
         )}
 
-        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 pt-4 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
-          <Button variant="ghost" type="button" onClick={onClose}>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" type="button" onClick={onClose} disabled={salvando}>
             Cancelar
           </Button>
-          <Button type="submit">Registrar Abastecimento</Button>
+          <Button variant="primary" type="submit" disabled={salvando}>
+            {salvando ? 'Salvando...' : 'Salvar Abastecimento'}
+          </Button>
         </div>
       </form>
     </Modal>
