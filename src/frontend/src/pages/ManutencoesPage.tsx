@@ -1,14 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import {
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  Play,
-  Plus,
-  ShieldCheck,
-  Wrench,
-} from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -25,6 +16,7 @@ import {
   ModalFooter,
   ModalForm,
   Pagination,
+  PlacaMercosul,
   SearchInput,
   Select,
   Table,
@@ -33,7 +25,10 @@ import {
   Textarea,
   type BadgeTone,
 } from '../components/ui';
-import { storageService } from '../services/storageService';
+import { manutencoesApi } from '../services/api/manutencoesApi';
+import { veiculosApi } from '../services/api/veiculosApi';
+import { mensagemDeErro } from '../services/api/http';
+import type { Veiculo } from '../types/veiculo';
 import type {
   Manutencao,
   NovaManutencaoInput,
@@ -53,10 +48,9 @@ const TIPO_MAP: Record<TipoManutencao, { label: string; tone: BadgeTone }> = {
 };
 
 export default function ManutencoesPage() {
-  const [manutencoes, setManutencoes] = useState<Manutencao[]>(() =>
-    storageService.getManutencoes(),
-  );
-  const veiculos = useMemo(() => storageService.getVeiculos(), []);
+  const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
+  const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
+  const [carregando, setCarregando] = useState(true);
 
   // Filtros
   const [busca, setBusca] = useState('');
@@ -71,17 +65,47 @@ export default function ManutencoesPage() {
 
   // Modal de Cadastro
   const [modalAberto, setModalAberto] = useState(false);
-  const [manutencaoExcluir, setManutencaoExcluir] = useState<Manutencao | null>(null);
-  const [veiculoIdForm, setVeiculoIdForm] = useState<string>(
-    veiculos[0]?.id ? String(veiculos[0].id) : '',
-  );
+  const [veiculoIdForm, setVeiculoIdForm] = useState<string>('');
   const [tipoForm, setTipoForm] = useState<TipoManutencao>('PREVENTIVA');
   const [dataForm, setDataForm] = useState<string>(new Date().toISOString().split('T')[0]);
   const [custoForm, setCustoForm] = useState<string>('');
   const [statusForm, setStatusForm] = useState<StatusManutencao>('CONCLUIDA');
   const [descricaoForm, setDescricaoForm] = useState<string>('');
   const [erroForm, setErroForm] = useState<string>('');
+
+  // Modal de Edição
+  const [manutencaoEditar, setManutencaoEditar] = useState<Manutencao | null>(null);
+  const [tipoEditar, setTipoEditar] = useState<TipoManutencao>('PREVENTIVA');
+  const [dataEditar, setDataEditar] = useState<string>('');
+  const [custoEditar, setCustoEditar] = useState<string>('');
+  const [statusEditar, setStatusEditar] = useState<StatusManutencao>('CONCLUIDA');
+  const [descricaoEditar, setDescricaoEditar] = useState<string>('');
+  const [erroEditar, setErroEditar] = useState<string>('');
+
+  // Diálogo de Exclusão
+  const [manutencaoExcluir, setManutencaoExcluir] = useState<Manutencao | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  const carregarDados = useCallback(async () => {
+    try {
+      setCarregando(true);
+      const listaVeiculos = await veiculosApi.listar().catch(() => []);
+      setVeiculos(listaVeiculos);
+      if (listaVeiculos.length > 0 && !veiculoIdForm) {
+        setVeiculoIdForm(String(listaVeiculos[0].id));
+      }
+      const listaManutencoes = await manutencoesApi.listarTodas(listaVeiculos.map((v) => v.id));
+      setManutencoes(listaManutencoes);
+    } catch (err) {
+      setFeedback(mensagemDeErro(err));
+    } finally {
+      setCarregando(false);
+    }
+  }, [veiculoIdForm]);
+
+  useEffect(() => {
+    carregarDados();
+  }, [carregarDados]);
 
   // Métricas
   const metricas = useMemo(() => {
@@ -91,48 +115,58 @@ export default function ManutencoesPage() {
     const corretivas = manutencoes.filter((m) => m.tipo_manutencao === 'CORRETIVA').length;
 
     return {
-      totalInvestido: totalInvestido.toLocaleString('pt-BR', {
+      totalGasto: totalInvestido.toLocaleString('pt-BR', {
         style: 'currency',
         currency: 'BRL',
       }),
       emAndamento,
       preventivas,
       corretivas,
+      totalQtd: manutencoes.length,
     };
   }, [manutencoes]);
 
-  // Lista filtrada
+  // Filtragem
   const filtradas = useMemo(() => {
     return manutencoes.filter((m) => {
-      if (filtroVeiculo !== 'TODOS' && String(m.veiculo_id) !== filtroVeiculo) return false;
-      if (filtroTipo !== 'TODOS' && m.tipo_manutencao !== filtroTipo) return false;
-      if (filtroStatus !== 'TODOS' && m.status !== filtroStatus) return false;
-
+      if (filtroVeiculo !== 'TODOS' && String(m.veiculo_id) !== filtroVeiculo) {
+        return false;
+      }
+      if (filtroTipo !== 'TODOS' && m.tipo_manutencao !== filtroTipo) {
+        return false;
+      }
+      if (filtroStatus !== 'TODOS' && m.status !== filtroStatus) {
+        return false;
+      }
       if (busca.trim()) {
-        const t = busca.trim().toLowerCase();
-        const vPlaca = (m.veiculo_placa ?? '').toLowerCase();
-        const vModelo = (m.veiculo_modelo ?? '').toLowerCase();
-        const desc = (m.descricao ?? '').toLowerCase();
-        if (!vPlaca.includes(t) && !vModelo.includes(t) && !desc.includes(t)) {
+        const termo = busca.trim().toLowerCase();
+        const placa = m.veiculo_placa?.toLowerCase() || '';
+        const modelo = m.veiculo_modelo?.toLowerCase() || '';
+        const desc = m.descricao?.toLowerCase() || '';
+        const forn = m.fornecedor_nome?.toLowerCase() || '';
+        if (
+          !placa.includes(termo) &&
+          !modelo.includes(termo) &&
+          !desc.includes(termo) &&
+          !forn.includes(termo)
+        ) {
           return false;
         }
       }
-
       return true;
     });
   }, [manutencoes, filtroVeiculo, filtroTipo, filtroStatus, busca]);
 
-  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / ITENS_POR_PAGINA));
-  const paginaSegura = Math.min(paginaAtual, totalPaginas);
-
+  // Paginação
   const paginadas = useMemo(() => {
-    const inicio = (paginaSegura - 1) * ITENS_POR_PAGINA;
+    const inicio = (paginaAtual - 1) * ITENS_POR_PAGINA;
     return filtradas.slice(inicio, inicio + ITENS_POR_PAGINA);
-  }, [filtradas, paginaSegura]);
+  }, [filtradas, paginaAtual]);
 
-  const opcoesVeiculos = useMemo(() => {
+  // Opções de Veículos para Filtro
+  const opcoesFiltroVeiculo = useMemo(() => {
     return [
-      { value: 'TODOS', label: 'Todos os veículos' },
+      { value: 'TODOS', label: 'Todos os Veículos' },
       ...veiculos.map((v) => ({
         value: String(v.id),
         label: `${v.placa} — ${v.modelo}`,
@@ -140,47 +174,85 @@ export default function ManutencoesPage() {
     ];
   }, [veiculos]);
 
-  const recarregar = () => {
-    setManutencoes(storageService.getManutencoes());
-  };
-
-  const handleConcluir = (id: number) => {
+  const handleConcluir = async (id: number) => {
     try {
-      storageService.atualizarStatusManutencao(id, 'CONCLUIDA');
-      recarregar();
+      await manutencoesApi.atualizarStatus(id, 'CONCLUIDA');
+      await carregarDados();
       setFeedback('Ordem de serviço concluída e veículo liberado!');
       setTimeout(() => setFeedback(null), 4000);
-    } catch (err: any) {
-      alert(err.message || 'Erro ao concluir manutenção.');
+    } catch (err) {
+      setFeedback(mensagemDeErro(err));
     }
   };
 
-  const handleIniciar = (id: number) => {
+  const handleIniciar = async (id: number) => {
     try {
-      storageService.atualizarStatusManutencao(id, 'EM_ANDAMENTO');
-      recarregar();
+      await manutencoesApi.atualizarStatus(id, 'EM_ANDAMENTO');
+      await carregarDados();
       setFeedback('Manutenção iniciada e veículo colocado em manutenção!');
       setTimeout(() => setFeedback(null), 4000);
-    } catch (err: any) {
-      alert(err.message || 'Erro ao iniciar manutenção.');
+    } catch (err) {
+      setFeedback(mensagemDeErro(err));
     }
   };
 
-  const handleConfirmarExclusao = () => {
+  const handleAbrirEdicao = (m: Manutencao) => {
+    setManutencaoEditar(m);
+    setTipoEditar(m.tipo_manutencao);
+    setDataEditar(m.data_manutencao ? m.data_manutencao.slice(0, 10) : '');
+    setCustoEditar(m.custo !== null && m.custo !== undefined ? String(m.custo) : '');
+    setStatusEditar(m.status);
+    setDescricaoEditar(m.descricao || '');
+    setErroEditar('');
+  };
+
+  const handleSubmitEditar = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!manutencaoEditar) return;
+    setErroEditar('');
+
+    const custoNum = parseFloat(custoEditar.replace(',', '.'));
+    if (isNaN(custoNum) || custoNum < 0) {
+      setErroEditar('Informe um custo numérico válido.');
+      return;
+    }
+    if (!descricaoEditar.trim()) {
+      setErroEditar('A descrição detalhada do serviço é obrigatória.');
+      return;
+    }
+
+    try {
+      await manutencoesApi.atualizar(manutencaoEditar.id, {
+        tipo_manutencao: tipoEditar,
+        data_manutencao: dataEditar,
+        custo: custoNum,
+        status: statusEditar,
+        descricao: descricaoEditar.trim(),
+      });
+      await carregarDados();
+      setManutencaoEditar(null);
+      setFeedback(`Manutenção #${manutencaoEditar.id} atualizada com sucesso!`);
+      setTimeout(() => setFeedback(null), 4000);
+    } catch (err) {
+      setErroEditar(mensagemDeErro(err));
+    }
+  };
+
+  const handleConfirmarExclusao = async () => {
     if (!manutencaoExcluir) return;
     try {
-      storageService.deleteManutencao(manutencaoExcluir.id);
-      recarregar();
-      setFeedback('Registro de manutenção excluído com sucesso.');
+      await manutencoesApi.excluir(manutencaoExcluir.id);
+      await carregarDados();
+      setFeedback(`Manutenção #${manutencaoExcluir.id} excluída com sucesso!`);
       setTimeout(() => setFeedback(null), 4000);
-    } catch (err: any) {
-      alert(err.message || 'Erro ao excluir manutenção.');
+    } catch (err) {
+      setFeedback(mensagemDeErro(err));
     } finally {
       setManutencaoExcluir(null);
     }
   };
 
-  const handleSubmitNova = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmitNova = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErroForm('');
 
@@ -210,278 +282,309 @@ export default function ManutencoesPage() {
         atualizar_status_veiculo: statusForm === 'EM_ANDAMENTO',
       };
 
-      storageService.createManutencao(payload);
-      recarregar();
+      await manutencoesApi.criar(payload);
+      await carregarDados();
       setModalAberto(false);
       setDescricaoForm('');
       setCustoForm('');
       setFeedback('Manutenção registrada com sucesso!');
       setTimeout(() => setFeedback(null), 4000);
-    } catch (err: any) {
-      setErroForm(err.message || 'Erro ao registrar manutenção.');
+    } catch (err) {
+      setErroForm(mensagemDeErro(err));
     }
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="grid gap-6">
       {feedback && (
-        <Alert tone="success" onClose={() => setFeedback(null)}>
+        <Alert tone="info" className="mb-2">
           {feedback}
         </Alert>
       )}
 
-      {/* 2. Cards de Métricas Consolidadas */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 4 Cards de Métricas Operacionais */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <MetricCard
-          label="Em oficina agora"
+          label="Total Investido"
+          value={metricas.totalGasto}
+          tone="neutral"
+          subtitle={`${metricas.totalQtd} ordens registradas`}
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="Em Oficina"
           value={metricas.emAndamento}
-          tone={metricas.emAndamento > 0 ? 'danger' : 'success'}
-          icon={<Wrench size={20} className={metricas.emAndamento > 0 ? 'text-rose-600' : 'text-emerald-600'} />}
-          subtitle={metricas.emAndamento > 0 ? 'Veículos indisponíveis' : 'Nenhum veículo retido'}
-          isActive={filtroStatus === 'EM_ANDAMENTO'}
-          onClick={() => setFiltroStatus(filtroStatus === 'EM_ANDAMENTO' ? 'TODOS' : 'EM_ANDAMENTO')}
+          tone={metricas.emAndamento > 0 ? 'warning' : 'success'}
+          subtitle="Veículos retidos no momento"
+          className="px-5 py-4"
         />
-
-        <MetricCard
-          label="Total investido"
-          value={metricas.totalInvestido}
-          tone="primary"
-          icon={<DollarSign size={20} className="text-primary" />}
-          subtitle={`${manutencoes.length} ordens registradas`}
-        />
-
         <MetricCard
           label="Preventivas"
           value={metricas.preventivas}
           tone="info"
-          icon={<ShieldCheck size={20} className="text-blue-600" />}
           subtitle="Revisões periódicas"
-          isActive={filtroTipo === 'PREVENTIVA'}
-          onClick={() => setFiltroTipo(filtroTipo === 'PREVENTIVA' ? 'TODOS' : 'PREVENTIVA')}
+          className="px-5 py-4"
         />
-
         <MetricCard
           label="Corretivas"
           value={metricas.corretivas}
-          tone="warning"
-          icon={<Clock size={20} className="text-amber-600" />}
-          subtitle="Reparos emergenciais"
-          isActive={filtroTipo === 'CORRETIVA'}
-          onClick={() => setFiltroTipo(filtroTipo === 'CORRETIVA' ? 'TODOS' : 'CORRETIVA')}
+          tone={metricas.corretivas > 0 ? 'danger' : 'neutral'}
+          subtitle="Reparos mecânicos"
+          className="px-5 py-4"
         />
       </div>
 
-      {/* 3. Tabela de Histórico de Manutenções */}
-      <Card className="flex flex-col overflow-hidden">
+      {/* Tabela de Manutenções */}
+      <Card>
         <TableToolbar
           title="Histórico de manutenções"
-          subtitle={`${filtradas.length} registros recentes`}
+          subtitle={
+            carregando
+              ? 'Carregando registros...'
+              : `${filtradas.length} manutenç${filtradas.length === 1 ? 'ão registrada' : 'ões registradas'}`
+          }
           newLabel="Nova Manutenção"
           onNew={() => setModalAberto(true)}
-          onFilter={() => setFiltrosAbertos((v) => !v)}
-          isFilterActive={filtrosAbertos || filtroVeiculo !== 'TODOS' || filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || Boolean(busca)}
+          onFilter={() => setFiltrosAbertos((f) => !f)}
+          isFilterActive={
+            filtroVeiculo !== 'TODOS' ||
+            filtroTipo !== 'TODOS' ||
+            filtroStatus !== 'TODOS' ||
+            Boolean(busca) ||
+            filtrosAbertos
+          }
         />
 
         <TableFilterCollapse isOpen={filtrosAbertos}>
-          <div className="flex flex-col gap-2.5 bg-surface-alt px-3.5 py-3 sm:flex-row sm:flex-wrap sm:items-center md:px-6">
-            <SearchInput
-              value={busca}
-              onChange={setBusca}
-              placeholder="Buscar por descrição ou veículo..."
-            />
+          <SearchInput
+            value={busca}
+            onChange={(val) => {
+              setBusca(val);
+              setPaginaAtual(1);
+            }}
+            placeholder="Buscar por placa, modelo ou oficina..."
+          />
 
-            <FilterSelect
-              value={filtroVeiculo}
-              onChange={setFiltroVeiculo}
-              options={opcoesVeiculos}
-              aria-label="Filtrar por veículo"
-            />
+          <FilterSelect
+            aria-label="Filtrar por Veículo"
+            value={filtroVeiculo}
+            onChange={(val) => {
+              setFiltroVeiculo(val);
+              setPaginaAtual(1);
+            }}
+            options={opcoesFiltroVeiculo}
+          />
 
-            <FilterSelect
-              value={filtroTipo}
-              onChange={setFiltroTipo}
-              options={[
-                { value: 'TODOS', label: 'Todos os tipos' },
-                { value: 'PREVENTIVA', label: 'Preventiva' },
-                { value: 'CORRETIVA', label: 'Corretiva' },
-              ]}
-              aria-label="Filtrar por tipo"
-            />
+          <FilterSelect
+            aria-label="Filtrar por Tipo"
+            value={filtroTipo}
+            onChange={(val) => {
+              setFiltroTipo(val);
+              setPaginaAtual(1);
+            }}
+            options={[
+              { value: 'TODOS', label: 'Todos os Tipos' },
+              { value: 'PREVENTIVA', label: 'Preventiva' },
+              { value: 'CORRETIVA', label: 'Corretiva' },
+            ]}
+          />
 
-            <FilterSelect
-              value={filtroStatus}
-              onChange={setFiltroStatus}
-              options={[
-                { value: 'TODOS', label: 'Todos os status' },
-                { value: 'EM_ANDAMENTO', label: 'Em Oficina' },
-                { value: 'AGENDADA', label: 'Agendada' },
-                { value: 'CONCLUIDA', label: 'Concluída' },
-              ]}
-              aria-label="Filtrar por status"
-            />
-          </div>
+          <FilterSelect
+            aria-label="Filtrar por Status"
+            value={filtroStatus}
+            onChange={(val) => {
+              setFiltroStatus(val);
+              setPaginaAtual(1);
+            }}
+            options={[
+              { value: 'TODOS', label: 'Todos os Status' },
+              { value: 'EM_ANDAMENTO', label: 'Em Oficina' },
+              { value: 'AGENDADA', label: 'Agendada' },
+              { value: 'CONCLUIDA', label: 'Concluída' },
+            ]}
+          />
+
+          {(filtroVeiculo !== 'TODOS' ||
+            filtroTipo !== 'TODOS' ||
+            filtroStatus !== 'TODOS' ||
+            busca) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setBusca('');
+                setFiltroVeiculo('TODOS');
+                setFiltroTipo('TODOS');
+                setFiltroStatus('TODOS');
+                setPaginaAtual(1);
+              }}
+            >
+              Limpar
+            </Button>
+          )}
         </TableFilterCollapse>
 
         <Table>
           <thead>
             <tr>
-              <th>Registro</th>
-              <th>Data</th>
+              <th>ID</th>
               <th>Veículo</th>
               <th>Tipo</th>
-              <th>Descrição do Serviço</th>
+              <th>Data</th>
+              <th>Descrição & Oficina</th>
               <th>Custo</th>
               <th>Status</th>
-              <th className="text-right">Ações</th>
+              <th>Ações</th>
             </tr>
           </thead>
           <tbody>
-            {paginadas.length === 0 ? (
+            {carregando ? (
               <tr>
                 <td colSpan={8} className="p-9 text-center text-slate-500">
+                  Carregando manutenções da API...
+                </td>
+              </tr>
+            ) : paginadas.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="p-8">
                   <EmptyState
-                    icon={<Wrench size={32} />}
-                    title="Nenhuma manutenção encontrada"
-                    description="Ajuste os filtros ou registre uma nova ordem de serviço."
-                    action={
-                      <Button variant="primary" size="sm" onClick={() => setModalAberto(true)}>
-                        <Plus size={14} className="mr-1" /> Registrar Manutenção
-                      </Button>
-                    }
+                    title="Nenhuma ordem de serviço encontrada"
+                    description="Não há registros que correspondam aos filtros selecionados."
                   />
                 </td>
               </tr>
             ) : (
-              paginadas.map((m) => {
-                const tipoInfo = TIPO_MAP[m.tipo_manutencao] || {
-                  label: m.tipo_manutencao,
-                  tone: 'neutral',
-                };
-                const statusInfo = STATUS_MAP[m.status] || {
-                  label: m.status,
-                  tone: 'neutral',
-                };
-
-                return (
-                  <tr key={m.id} className="transition-colors hover:!bg-surface-hover">
-                    <td>
-                      <IdBadge id={`MAN-${String(m.id).padStart(4, '0')}`} />
-                    </td>
-                    <td className="font-medium whitespace-nowrap text-xs text-slate-600">
-                      {new Date(m.data_manutencao).toLocaleDateString('pt-BR', {
-                        timeZone: 'UTC',
-                      })}
-                    </td>
-                    <td>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-mono text-[13px] font-semibold text-slate-900">
-                          {m.veiculo_placa ?? 'N/D'}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          {m.veiculo_modelo ?? '—'}
-                        </span>
+              paginadas.map((m) => (
+                <tr key={m.id}>
+                  <td>
+                    <IdBadge id={`#${m.id}`} />
+                  </td>
+                  <td>
+                    <div className="flex flex-col gap-1">
+                      <PlacaMercosul placa={m.veiculo_placa || 'IAI-0000'} size="sm" />
+                      <span className="text-[11px] text-slate-500">{m.veiculo_modelo}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <Badge tone={TIPO_MAP[m.tipo_manutencao].tone}>
+                      {TIPO_MAP[m.tipo_manutencao].label}
+                    </Badge>
+                  </td>
+                  <td>
+                    <span className="text-xs text-slate-600">
+                      {new Date(m.data_manutencao).toLocaleDateString('pt-BR')}
+                    </span>
+                  </td>
+                  <td className="max-w-xs">
+                    <div className="truncate font-medium text-slate-800" title={m.descricao}>
+                      {m.descricao}
+                    </div>
+                    {m.fornecedor_nome && (
+                      <div className="text-[11px] text-slate-500 truncate">
+                        Oficina: {m.fornecedor_nome}
                       </div>
-                    </td>
-                    <td>
-                      <Badge tone={tipoInfo.tone}>{tipoInfo.label}</Badge>
-                    </td>
-                    <td className="max-w-[280px]" title={m.descricao}>
-                      <div className="truncate text-xs text-slate-700">{m.descricao}</div>
-                    </td>
-                    <td className="font-semibold whitespace-nowrap text-xs text-slate-900">
-                      {Number(m.custo).toLocaleString('pt-BR', {
+                    )}
+                  </td>
+                  <td>
+                    <span className="font-semibold text-slate-900">
+                      {Number(m.custo || 0).toLocaleString('pt-BR', {
                         style: 'currency',
                         currency: 'BRL',
                       })}
-                    </td>
-                    <td>
-                      <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
-                    </td>
-                    <td className="text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {m.status === 'EM_ANDAMENTO' && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleConcluir(m.id)}
-                            title="Finalizar serviço e liberar o veículo"
-                            className="border-emerald-600 text-emerald-700 hover:bg-emerald-600 hover:text-white"
-                          >
-                            <CheckCircle2 size={13} className="mr-1" /> Concluir
-                          </Button>
-                        )}
-                        {m.status === 'AGENDADA' && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="primary"
-                            onClick={() => handleIniciar(m.id)}
-                            title="Iniciar serviço e colocar veículo em oficina"
-                          >
-                            <Play size={13} className="mr-1" /> Iniciar
-                          </Button>
-                        )}
+                    </span>
+                  </td>
+                  <td>
+                    <Badge tone={STATUS_MAP[m.status].tone}>
+                      {STATUS_MAP[m.status].label}
+                    </Badge>
+                  </td>
+                  <td>
+                    <div className="flex items-center justify-start gap-1.5">
+                      {m.status === 'AGENDADA' && (
                         <Button
-                          variant="danger-outline"
+                          variant="primary"
                           size="sm"
-                          onClick={() => setManutencaoExcluir(m)}
-                          title="Excluir manutenção"
+                          onClick={() => handleIniciar(m.id)}
+                          title="Iniciar manutenção na oficina"
                         >
-                          Excluir
+                          Iniciar
                         </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
+                      )}
+                      {m.status === 'EM_ANDAMENTO' && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleConcluir(m.id)}
+                          title="Concluir serviço e liberar veículo"
+                        >
+                          Concluir
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAbrirEdicao(m)}
+                        title="Editar registro de manutenção"
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="danger-outline"
+                        size="sm"
+                        onClick={() => setManutencaoExcluir(m)}
+                        title="Excluir manutenção"
+                      >
+                        Excluir
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </Table>
 
         <Pagination
-          currentPage={paginaSegura}
-          totalItems={filtradas.length}
-          pageSize={ITENS_POR_PAGINA}
-          onPageChange={setPaginaAtual}
+          showing={`1–${paginadas.length}`}
+          total={filtradas.length}
         />
       </Card>
 
-      {/* 4. Modal de Nova Manutenção */}
+      {/* Modal de Nova Manutenção */}
       {modalAberto && (
-        <Modal
-          title="Registrar Nova Manutenção"
-          onClose={() => setModalAberto(false)}
-          maxWidth="640px"
-        >
+        <Modal title="Nova Manutenção" onClose={() => setModalAberto(false)}>
           <ModalForm onSubmit={handleSubmitNova}>
             {erroForm && <Alert tone="danger">{erroForm}</Alert>}
 
-            <Select
-              label="Veículo da Frota *"
-              value={veiculoIdForm}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => setVeiculoIdForm(e.target.value)}
-              required
-            >
-              {veiculos.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.placa} — {v.modelo} (Frota {v.tipo_frota})
-                </option>
-              ))}
-            </Select>
-
             <FormRow>
+              <Select
+                label="Veículo *"
+                value={veiculoIdForm}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => setVeiculoIdForm(e.target.value)}
+                required
+              >
+                <option value="">Selecione a viatura</option>
+                {veiculos.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.placa} — {v.modelo}
+                  </option>
+                ))}
+              </Select>
+
               <Select
                 label="Tipo de Manutenção *"
                 value={tipoForm}
                 onChange={(e: ChangeEvent<HTMLSelectElement>) =>
                   setTipoForm(e.target.value as TipoManutencao)
                 }
+                required
               >
                 <option value="PREVENTIVA">Preventiva (Revisão periódica)</option>
-                <option value="CORRETIVA">Corretiva (Conserto de avarias)</option>
+                <option value="CORRETIVA">Corretiva (Reparo / Avaria)</option>
               </Select>
+            </FormRow>
 
+            <FormRow>
               <Input
                 label="Data da Manutenção *"
                 type="date"
@@ -489,69 +592,146 @@ export default function ManutencoesPage() {
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setDataForm(e.target.value)}
                 required
               />
+
+              <Input
+                label="Custo Estimado / Real (R$) *"
+                type="text"
+                value={custoForm}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setCustoForm(e.target.value)}
+                placeholder="Ex: 450,00"
+                required
+              />
+            </FormRow>
+
+            <Select
+              label="Status Inicial *"
+              value={statusForm}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                setStatusForm(e.target.value as StatusManutencao)
+              }
+              required
+            >
+              <option value="CONCLUIDA">Concluída (Serviço finalizado)</option>
+              <option value="EM_ANDAMENTO">Em Oficina (Bloqueia o veículo)</option>
+              <option value="AGENDADA">Agendada (Planejada)</option>
+            </Select>
+
+            <Textarea
+              label="Descrição Detalhada do Serviço *"
+              value={descricaoForm}
+              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDescricaoForm(e.target.value)}
+              placeholder="Ex: Troca de pastilhas de freio dianteiras, óleo do motor e alinhamento/balanceamento."
+              rows={3}
+              required
+            />
+
+            <ModalFooter>
+              <Button variant="ghost" type="button" onClick={() => setModalAberto(false)}>
+                Cancelar
+              </Button>
+              <Button variant="primary" type="submit">
+                Registrar Manutenção
+              </Button>
+            </ModalFooter>
+          </ModalForm>
+        </Modal>
+      )}
+
+      {/* Modal de Editar Manutenção */}
+      {manutencaoEditar && (
+        <Modal
+          title={`Editar Manutenção #${manutencaoEditar.id}`}
+          onClose={() => setManutencaoEditar(null)}
+        >
+          <ModalForm onSubmit={handleSubmitEditar}>
+            {erroEditar && <Alert tone="danger">{erroEditar}</Alert>}
+
+            <FormRow>
+              <Select
+                label="Tipo de Manutenção *"
+                value={tipoEditar}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                  setTipoEditar(e.target.value as TipoManutencao)
+                }
+                required
+              >
+                <option value="PREVENTIVA">Preventiva (Revisão periódica)</option>
+                <option value="CORRETIVA">Corretiva (Reparo / Avaria)</option>
+              </Select>
+
+              <Input
+                label="Data da Manutenção *"
+                type="date"
+                value={dataEditar}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setDataEditar(e.target.value)}
+                required
+              />
             </FormRow>
 
             <FormRow>
               <Input
-                label="Custo Total (R$) *"
+                label="Custo (R$) *"
+                type="text"
+                value={custoEditar}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setCustoEditar(e.target.value)}
                 placeholder="Ex: 450,00"
-                type="number"
-                min="0"
-                step="0.01"
-                value={custoForm}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setCustoForm(e.target.value)}
                 required
               />
 
               <Select
-                label="Status da Manutenção *"
-                value={statusForm}
+                label="Status *"
+                value={statusEditar}
                 onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                  setStatusForm(e.target.value as StatusManutencao)
+                  setStatusEditar(e.target.value as StatusManutencao)
                 }
+                required
               >
-                <option value="CONCLUIDA">Concluída (Finalizada)</option>
-                <option value="EM_ANDAMENTO">Em Andamento (Oficina / Parado)</option>
                 <option value="AGENDADA">Agendada (Planejada)</option>
+                <option value="EM_ANDAMENTO">Em Oficina (Bloqueia o veículo)</option>
+                <option value="CONCLUIDA">Concluída (Serviço finalizado)</option>
               </Select>
             </FormRow>
 
             <Textarea
               label="Descrição Detalhada do Serviço *"
-              value={descricaoForm}
-              onChange={(e) => setDescricaoForm(e.target.value)}
-              placeholder="Ex: Substituição das pastilhas de freio dianteiras e alinhamento..."
+              value={descricaoEditar}
+              onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+                setDescricaoEditar(e.target.value)
+              }
               rows={3}
               required
             />
 
-            {statusForm === 'EM_ANDAMENTO' && (
-              <Alert tone="info">
-                Como o status é <strong>Em Andamento</strong>, o veículo selecionado será colocado
-                automaticamente em <strong>MANUTENÇÃO</strong>.
-              </Alert>
-            )}
-
-            <ModalFooter onCancel={() => setModalAberto(false)} confirmLabel="Registrar Manutenção" />
+            <ModalFooter>
+              <Button variant="ghost" type="button" onClick={() => setManutencaoEditar(null)}>
+                Cancelar
+              </Button>
+              <Button variant="primary" type="submit">
+                Salvar Alterações
+              </Button>
+            </ModalFooter>
           </ModalForm>
         </Modal>
       )}
 
-      {/* 5. Diálogo de Confirmação de Exclusão */}
-      <ConfirmDialog
-        isOpen={Boolean(manutencaoExcluir)}
-        title="Excluir Manutenção"
-        description={
-          manutencaoExcluir
-            ? `Tem certeza que deseja excluir o registro MAN-${String(manutencaoExcluir.id).padStart(4, '0')} (${manutencaoExcluir.descricao})? Esta ação não pode ser desfeita.`
-            : ''
-        }
-        confirmLabel="Sim, Excluir"
-        cancelLabel="Cancelar"
-        variant="danger"
-        onConfirm={handleConfirmarExclusao}
-        onClose={() => setManutencaoExcluir(null)}
-      />
+      {/* Confirmação de Exclusão */}
+      {manutencaoExcluir && (
+        <ConfirmDialog
+          isOpen={Boolean(manutencaoExcluir)}
+          title="Excluir Registro de Manutenção"
+          confirmLabel="Excluir"
+          variant="danger"
+          onClose={() => setManutencaoExcluir(null)}
+          onConfirm={handleConfirmarExclusao}
+          description={
+            <span>
+              Tem certeza que deseja excluir o registro de manutenção{' '}
+              <strong>#{manutencaoExcluir.id}</strong> da viatura{' '}
+              <strong>{manutencaoExcluir.veiculo_placa}</strong>?
+            </span>
+          }
+        />
+      )}
     </div>
   );
 }

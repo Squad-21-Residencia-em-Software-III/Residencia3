@@ -88,6 +88,21 @@ export const manutencaoModel = {
     return normalizar(registro);
   },
 
+  async atualizar(
+    id: number,
+    dados: Partial<NovaManutencao>,
+    trx?: Knex.Transaction
+  ): Promise<Manutencao | undefined> {
+    const conexao = trx || db;
+    const [atualizado] = await conexao('manutencoes')
+      .where({ id })
+      .update(dados)
+      .returning('*');
+
+    if (!atualizado) return undefined;
+    return normalizar(atualizado);
+  },
+
   async atualizarStatus(
     id: number,
     status: StatusManutencao,
@@ -102,6 +117,12 @@ export const manutencaoModel = {
     if (!atualizado) return undefined;
 
     return normalizar(atualizado);
+  },
+
+  async excluir(id: number, trx?: Knex.Transaction): Promise<boolean> {
+    const conexao = trx || db;
+    const rows = await conexao('manutencoes').where({ id }).delete();
+    return rows > 0;
   },
 
   async temManutencaoEmAndamento(

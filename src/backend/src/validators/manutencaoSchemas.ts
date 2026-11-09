@@ -46,4 +46,7 @@ export const atualizarStatusManutencaoSchema = z.object({
   }),
 });
 
+export const atualizarManutencaoSchema = criarManutencaoSchema.partial();
+
 export type CriarManutencaoInput = z.infer<typeof criarManutencaoSchema>;
+export type AtualizarManutencaoInput = z.infer<typeof atualizarManutencaoSchema>;
