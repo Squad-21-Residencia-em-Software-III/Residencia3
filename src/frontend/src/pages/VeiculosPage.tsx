@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
-import { ChevronRight, Wrench } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -20,10 +19,10 @@ import type { NovoAbastecimentoInput } from '../types/abastecimento';
 import type { NovaMultaInput } from '../types/multa';
 import { mensagemDeErro } from '../services/api/http';
 import { veiculosApi } from '../services/api/veiculosApi';
-import { storageService } from '../services/storageService';
+import { abastecimentosApi } from '../services/api/abastecimentosApi';
+import { multasApi } from '../services/api/multasApi';
 import { cn } from '../utils/cn';
 import { ModalVeiculo } from './veiculos/ModalVeiculo';
-import { ModalManutencoesVeiculo } from './veiculos/ModalManutencoesVeiculo';
 import { DrawerDetalhesVeiculo } from './veiculos/DrawerDetalhesVeiculo';
 import { ModalAbastecimento } from './abastecimento/ModalAbastecimento';
 import { ModalMulta } from './multas/ModalMulta';
@@ -44,7 +43,7 @@ export default function VeiculosPage() {
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
-  const [veiculoManutencao, setVeiculoManutencao] = useState<Veiculo | null>(null);
+  const [veiculoEditando, setVeiculoEditando] = useState<Veiculo | null>(null);
   const [veiculoDetalhes, setVeiculoDetalhes] = useState<Veiculo | null>(null);
   const [veiculoPreSelecionado, setVeiculoPreSelecionado] = useState<Veiculo | null>(null);
   const [modalAbastecimentoAberto, setModalAbastecimentoAberto] = useState(false);
@@ -67,25 +66,36 @@ export default function VeiculosPage() {
     carregarVeiculos();
   }, [carregarVeiculos]);
 
-  const handleManutencaoSalva = (msg: string) => {
-    carregarVeiculos();
-    exibirFeedback(msg);
+  const handleSalvarAbastecimento = async (novo: NovoAbastecimentoInput) => {
+    try {
+      await abastecimentosApi.criar({
+        veiculo_id: novo.veiculo_id,
+        motorista_id: novo.motorista_id,
+        data_abastecimento: novo.data_abastecimento,
+        quilometragem: novo.quilometragem,
+        litros: novo.litros,
+        valor_total: novo.valor_total,
+        posto_combustivel: novo.posto_combustivel || 'Posto Credenciado',
+      });
+      setModalAbastecimentoAberto(false);
+      setVeiculoPreSelecionado(null);
+      carregarVeiculos();
+      exibirFeedback('Abastecimento registrado com sucesso!');
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
+    }
   };
 
-  const handleSalvarAbastecimento = (novo: NovoAbastecimentoInput) => {
-    storageService.createAbastecimento(novo);
-    setModalAbastecimentoAberto(false);
-    setVeiculoPreSelecionado(null);
-    carregarVeiculos();
-    exibirFeedback('Abastecimento registrado com sucesso!');
-  };
-
-  const handleSalvarMulta = (nova: NovaMultaInput) => {
-    storageService.createMulta(nova);
-    setModalMultaAberto(false);
-    setVeiculoPreSelecionado(null);
-    carregarVeiculos();
-    exibirFeedback('Multa registrada com sucesso!');
+  const handleSalvarMulta = async (nova: NovaMultaInput) => {
+    try {
+      await multasApi.criar(nova);
+      setModalMultaAberto(false);
+      setVeiculoPreSelecionado(null);
+      carregarVeiculos();
+      exibirFeedback('Multa registrada com sucesso!');
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
+    }
   };
 
   const exibirFeedback = (msg: string, isError = false) => {
@@ -130,9 +140,18 @@ export default function VeiculosPage() {
   }, [veiculos, filtroTipo, filtroStatus, busca]);
 
   const handleSalvarVeiculo = async (novo: NovoVeiculoInput) => {
-    await veiculosApi.criar(novo);
-    await carregarVeiculos();
-    exibirFeedback(`Veículo com placa ${novo.placa} cadastrado com sucesso!`);
+    try {
+      if (veiculoEditando) {
+        await veiculosApi.atualizar(veiculoEditando.id, novo);
+        exibirFeedback(`Veículo com placa ${novo.placa} atualizado com sucesso!`);
+      } else {
+        await veiculosApi.criar(novo);
+        exibirFeedback(`Veículo com placa ${novo.placa} cadastrado com sucesso!`);
+      }
+      await carregarVeiculos();
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
+    }
   };
 
   return (
@@ -263,7 +282,7 @@ export default function VeiculosPage() {
               <th>Capacidade Máxima</th>
               <th>Km Atual</th>
               <th>Status</th>
-              <th className="text-right">Ações</th>
+              <th>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -325,26 +344,19 @@ export default function VeiculosPage() {
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>
-                    <td className="text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td>
+                      <div className="flex items-center justify-start gap-1.5">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setVeiculoManutencao(v);
+                            setVeiculoEditando(v);
                           }}
-                          title={`Histórico e registro de manutenções de ${v.modelo}`}
+                          title={`Editar dados de ${v.modelo}`}
                         >
-                          <Wrench size={13} /> Manutenções
+                          Editar
                         </Button>
-                        <span
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:bg-primary/10 group-hover:text-primary"
-                          title="Ver detalhes do veículo"
-                          aria-hidden="true"
-                        >
-                          <ChevronRight size={15} />
-                        </span>
                       </div>
                     </td>
                   </tr>
@@ -357,17 +369,15 @@ export default function VeiculosPage() {
         <Pagination showing={`1–${veiculosFiltrados.length}`} total={veiculosFiltrados.length} />
       </Card>
 
-      {/* ── Modal de Cadastro de Veículo ── */}
-      {modalAberto && (
-        <ModalVeiculo onClose={() => setModalAberto(false)} onSalvar={handleSalvarVeiculo} />
-      )}
-
-      {/* ── Modal de Histórico e Registro de Manutenções ── */}
-      {veiculoManutencao && (
-        <ModalManutencoesVeiculo
-          veiculo={veiculoManutencao}
-          onClose={() => setVeiculoManutencao(null)}
-          onManutencaoSalva={handleManutencaoSalva}
+      {/* ── Modal de Cadastro e Edição de Veículo ── */}
+      {(modalAberto || veiculoEditando) && (
+        <ModalVeiculo
+          veiculoParaEditar={veiculoEditando}
+          onClose={() => {
+            setModalAberto(false);
+            setVeiculoEditando(null);
+          }}
+          onSalvar={handleSalvarVeiculo}
         />
       )}
 
@@ -375,7 +385,7 @@ export default function VeiculosPage() {
       <DrawerDetalhesVeiculo
         veiculo={veiculoDetalhes}
         onClose={() => setVeiculoDetalhes(null)}
-        onAbrirManutencoes={(v) => setVeiculoManutencao(v)}
+        onEditar={(v) => setVeiculoEditando(v)}
         onNovoAbastecimento={(v) => {
           setVeiculoPreSelecionado(v);
           setModalAbastecimentoAberto(true);

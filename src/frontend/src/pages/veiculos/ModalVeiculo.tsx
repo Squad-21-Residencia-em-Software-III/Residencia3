@@ -1,22 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal, Select } from '../../components/ui';
 import { mensagemDeErro } from '../../services/api/http';
-import type { NovoVeiculoInput, TipoFrota } from '../../types/veiculo';
+import type { NovoVeiculoInput, TipoFrota, Veiculo } from '../../types/veiculo';
 
 interface ModalVeiculoProps {
   onClose: () => void;
   onSalvar: (veiculo: NovoVeiculoInput) => Promise<void>;
+  veiculoParaEditar?: Veiculo | null;
 }
 
-export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
-  const [placa, setPlaca] = useState('');
-  const [modelo, setModelo] = useState('');
-  const [tipoFrota, setTipoFrota] = useState<TipoFrota>('ADMINISTRATIVA');
-  const [capacidade, setCapacidade] = useState('4');
-  const [kmAtual, setKmAtual] = useState('0');
+export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeiculoProps) {
+  const [placa, setPlaca] = useState(veiculoParaEditar?.placa ?? '');
+  const [modelo, setModelo] = useState(veiculoParaEditar?.modelo ?? '');
+  const [tipoFrota, setTipoFrota] = useState<TipoFrota>(veiculoParaEditar?.tipo_frota ?? 'ADMINISTRATIVA');
+  const [capacidade, setCapacidade] = useState(String(veiculoParaEditar?.capacidade_maxima ?? '4'));
+  const [kmAtual, setKmAtual] = useState(String(veiculoParaEditar?.km_atual ?? '0'));
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (veiculoParaEditar) {
+      setPlaca(veiculoParaEditar.placa);
+      setModelo(veiculoParaEditar.modelo);
+      setTipoFrota(veiculoParaEditar.tipo_frota);
+      setCapacidade(String(veiculoParaEditar.capacidade_maxima));
+      setKmAtual(String(veiculoParaEditar.km_atual));
+    }
+  }, [veiculoParaEditar]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -58,8 +69,10 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
     }
   };
 
+  const isEdicao = Boolean(veiculoParaEditar);
+
   return (
-    <Modal title="Cadastrar Veículo" onClose={onClose}>
+    <Modal title={isEdicao ? `Editar Veículo — ${veiculoParaEditar?.placa}` : 'Cadastrar Veículo'} onClose={onClose}>
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
           <Alert tone="danger" className="mb-4">
@@ -127,7 +140,7 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
             Cancelar
           </Button>
           <Button type="submit" disabled={salvando}>
-            {salvando ? 'Cadastrando...' : 'Cadastrar Veículo'}
+            {salvando ? 'Salvando...' : isEdicao ? 'Salvar Alterações' : 'Cadastrar Veículo'}
           </Button>
         </div>
       </form>
