@@ -4,7 +4,6 @@ import {
   Badge,
   Button,
   Card,
-  ConfirmDialog,
   IdBadge,
   MetricCard,
   Pagination,
@@ -28,8 +27,8 @@ interface AbastecimentoEnriquecido extends Abastecimento {
 export default function AbastecimentoPage() {
   const [abastecimentos, setAbastecimentos] = useState<AbastecimentoEnriquecido[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
-  const [abastecimentoExcluir, setAbastecimentoExcluir] = useState<Abastecimento | null>(null);
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
@@ -52,10 +51,9 @@ export default function AbastecimentoPage() {
   const carregarDados = useCallback(async () => {
     try {
       setCarregando(true);
-      const [veiculos, motoristas] = await Promise.all([
-        veiculosApi.listar().catch(() => []),
-        motoristasApi.listar().catch(() => []),
-      ]);
+      setErroCarga(null);
+      const veiculos = await veiculosApi.listar();
+      const motoristas = await motoristasApi.listar().catch(() => []);
 
       const mapaVeiculos = new Map(veiculos.map((v) => [v.id, v]));
       const mapaMotoristas = new Map(motoristas.map((m) => [m.id, m]));
@@ -77,7 +75,9 @@ export default function AbastecimentoPage() {
       setAbastecimentos(enriquecidos);
       setMensagemErro(null);
     } catch (err) {
-      setMensagemErro(mensagemDeErro(err));
+      const msg = mensagemDeErro(err);
+      setErroCarga(msg);
+      setMensagemErro(msg);
     } finally {
       setCarregando(false);
     }
@@ -135,7 +135,7 @@ export default function AbastecimentoPage() {
       }
     });
 
-    return listaConsumo.slice(0, 6);
+    return listaConsumo;
   }, [abastecimentos]);
 
   // Distribuição de custo por tipo de frota (100% dinâmico do banco)
@@ -218,13 +218,8 @@ export default function AbastecimentoPage() {
       carregarDados();
     } catch (error) {
       exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
-  };
-
-  const handleConfirmarExclusao = () => {
-    if (!abastecimentoExcluir) return;
-    exibirFeedback('Operação não permitida pelo servidor.', true);
-    setAbastecimentoExcluir(null);
   };
 
   return (
@@ -306,19 +301,29 @@ export default function AbastecimentoPage() {
                 <th>Volume (L)</th>
                 <th>Valor Total</th>
                 <th>Posto</th>
-                <th className="text-right">Ação</th>
               </tr>
             </thead>
             <tbody>
               {carregando ? (
                 <tr>
-                  <td colSpan={8} className="p-9 text-center text-slate-500">
+                  <td colSpan={7} className="p-9 text-center text-slate-500">
                     Carregando registros da API...
+                  </td>
+                </tr>
+              ) : erroCarga ? (
+                <tr>
+                  <td colSpan={7} className="p-9 text-center text-rose-600">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <p className="font-medium">Falha na comunicação com o servidor: {erroCarga}</p>
+                      <Button variant="outline" size="sm" onClick={carregarDados}>
+                        Tentar novamente
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : abastecimentosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-9 text-center text-slate-500">
+                  <td colSpan={7} className="p-9 text-center text-slate-500">
                     Nenhum abastecimento encontrado.
                   </td>
                 </tr>
@@ -358,17 +363,6 @@ export default function AbastecimentoPage() {
                     <td>
                       <span className="text-xs text-slate-500">{a.posto_combustivel ?? '—'}</span>
                     </td>
-                    <td className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setAbastecimentoExcluir(a)}
-                        className="text-slate-400 hover:text-rose-600"
-                        title="Remover lançamento"
-                      >
-                        Excluir
-                      </Button>
-                    </td>
                   </tr>
                 ))
               )}
@@ -394,7 +388,7 @@ export default function AbastecimentoPage() {
                   Requer pelo menos 2 abastecimentos registrados por veículo para o cálculo de km/L.
                 </p>
               ) : (
-                consumoPorVeiculo.map((item) => (
+                consumoPorVeiculo.slice(0, 6).map((item) => (
                   <div key={item.placa} className="flex flex-col gap-1">
                     <div className="flex justify-between text-xs">
                       <span className="font-medium text-slate-800">{item.placa}</span>
@@ -452,25 +446,6 @@ export default function AbastecimentoPage() {
         <ModalAbastecimento
           onClose={() => setModalAberto(false)}
           onSalvar={handleSalvarAbastecimento}
-        />
-      )}
-
-      {/* Diálogo de Confirmação de Exclusão */}
-      {abastecimentoExcluir && (
-        <ConfirmDialog
-          isOpen={Boolean(abastecimentoExcluir)}
-          title="Excluir Registro de Abastecimento"
-          confirmLabel="Excluir"
-          variant="danger"
-          onClose={() => setAbastecimentoExcluir(null)}
-          onConfirm={handleConfirmarExclusao}
-          description={
-            <span>
-              Tem certeza que deseja excluir o abastecimento{' '}
-              <strong>ABS-{String(abastecimentoExcluir.id).padStart(4, '0')}</strong> da viatura{' '}
-              <strong>{abastecimentoExcluir.veiculo_placa}</strong>?
-            </span>
-          }
         />
       )}
     </div>

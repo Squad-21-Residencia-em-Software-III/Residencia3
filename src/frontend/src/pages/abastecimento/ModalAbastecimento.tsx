@@ -7,6 +7,7 @@ import type { Motorista } from '../../types/motorista';
 import { veiculosApi } from '../../services/api/veiculosApi';
 import { motoristasApi } from '../../services/api/motoristasApi';
 import { mensagemDeErro } from '../../services/api/http';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface ModalAbastecimentoProps {
   onClose: () => void;
@@ -19,6 +20,12 @@ export function ModalAbastecimento({
   onSalvar,
   veiculoIdInicial,
 }: ModalAbastecimentoProps) {
+  const { usuario } = useAuth();
+  const isMotorista =
+    usuario?.tipo_usuario === 'MOTORISTA' ||
+    usuario?.perfil === 'MOTORISTA_FROTA' ||
+    usuario?.perfil === 'MOTORISTA_SVO';
+
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [motoristas, setMotoristas] = useState<Motorista[]>([]);
   const [salvando, setSalvando] = useState(false);
@@ -36,23 +43,62 @@ export function ModalAbastecimento({
 
   useEffect(() => {
     let ativo = true;
-    Promise.all([veiculosApi.listar(), motoristasApi.listar()])
-      .then(([listaV, listaM]) => {
-        if (!ativo) return;
-        setVeiculos(listaV);
-        setMotoristas(listaM);
-        if (!veiculoId && listaV.length > 0) {
-          setVeiculoId(String(listaV[0].id));
-        }
-        if (!motoristaId && listaM.length > 0) {
-          setMotoristaId(String(listaM[0].id));
-        }
-      })
-      .catch(() => {});
+
+    if (isMotorista) {
+      Promise.all([
+        veiculosApi.listar(),
+        motoristasApi.buscarMeuPerfil().catch(() => null),
+      ])
+        .then(([listaV, meuMot]) => {
+          if (!ativo) return;
+          setVeiculos(listaV);
+          if (meuMot) {
+            setMotoristas([meuMot]);
+            setMotoristaId(String(meuMot.id));
+          } else if (usuario?.id) {
+            setMotoristas([
+              {
+                id: usuario.id,
+                usuario_id: usuario.id,
+                nome: usuario.nome,
+                numero_cnh: '',
+                categoria_cnh: '',
+                validade_cnh: '',
+                tipo_motorista: 'FROTA',
+                status: 'DISPONIVEL',
+              },
+            ]);
+            setMotoristaId(String(usuario.id));
+          }
+          if (!veiculoId && listaV.length > 0) {
+            setVeiculoId(String(listaV[0].id));
+          }
+        })
+        .catch((err) => {
+          if (ativo) setErro(`Falha ao carregar veículos: ${mensagemDeErro(err)}`);
+        });
+    } else {
+      Promise.all([veiculosApi.listar(), motoristasApi.listar()])
+        .then(([listaV, listaM]) => {
+          if (!ativo) return;
+          setVeiculos(listaV);
+          setMotoristas(listaM);
+          if (!veiculoId && listaV.length > 0) {
+            setVeiculoId(String(listaV[0].id));
+          }
+          if (!motoristaId && listaM.length > 0) {
+            setMotoristaId(String(listaM[0].id));
+          }
+        })
+        .catch((err) => {
+          if (ativo) setErro(`Falha ao carregar dados do formulário: ${mensagemDeErro(err)}`);
+        });
+    }
+
     return () => {
       ativo = false;
     };
-  }, [veiculoId, motoristaId]);
+  }, [veiculoId, motoristaId, isMotorista, usuario]);
 
   // Total calculado dinamicamente
   const valorTotalCalculado = useMemo(() => {
@@ -149,19 +195,28 @@ export function ModalAbastecimento({
             ))}
           </Select>
 
-          <Select
-            label="Motorista *"
-            value={motoristaId}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setMotoristaId(e.target.value)}
-            required
-          >
-            <option value="">Selecione o motorista</option>
-            {motoristas.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nome}
-              </option>
-            ))}
-          </Select>
+          {isMotorista ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">Motorista</label>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                {usuario?.nome ?? 'Motorista Atual'}
+              </div>
+            </div>
+          ) : (
+            <Select
+              label="Motorista *"
+              value={motoristaId}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => setMotoristaId(e.target.value)}
+              required
+            >
+              <option value="">Selecione o motorista</option>
+              {motoristas.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome}
+                </option>
+              ))}
+            </Select>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
