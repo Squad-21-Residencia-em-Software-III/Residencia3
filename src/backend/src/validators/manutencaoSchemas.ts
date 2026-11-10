@@ -46,7 +46,13 @@ export const atualizarStatusManutencaoSchema = z.object({
   }),
 });
 
-export const atualizarManutencaoSchema = criarManutencaoSchema.partial();
+export const atualizarManutencaoSchema = criarManutencaoSchema
+  .omit({ veiculo_id: true })
+  .partial()
+  .strict()
+  .refine((dados) => Object.keys(dados).length > 0, {
+    message: 'Ao menos um campo deve ser informado para atualização',
+  });
 
 export type CriarManutencaoInput = z.infer<typeof criarManutencaoSchema>;
 export type AtualizarManutencaoInput = z.infer<typeof atualizarManutencaoSchema>;

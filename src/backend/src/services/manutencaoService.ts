@@ -88,10 +88,6 @@ export const manutencaoService = {
       throw new AppError('Manutenção não encontrada', 404);
     }
 
-    if (dados.veiculo_id) {
-      await garantirVeiculoExiste(dados.veiculo_id);
-    }
-
     if (dados.fornecedor_id !== undefined && dados.fornecedor_id !== null) {
       const fornecedor = await db('fornecedores')
         .where({ id: dados.fornecedor_id })
@@ -107,7 +103,7 @@ export const manutencaoService = {
         throw new AppError('Erro ao atualizar manutenção', 500);
       }
 
-      const veiculoId = dados.veiculo_id ?? manutencao.veiculo_id;
+      const veiculoId = manutencao.veiculo_id;
       const statusFinal = dados.status ?? manutencao.status;
 
       if (statusFinal === 'EM_ANDAMENTO') {

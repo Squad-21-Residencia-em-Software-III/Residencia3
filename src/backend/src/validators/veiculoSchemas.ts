@@ -42,43 +42,57 @@ export const criarVeiculoSchema = z
     }
   );
 
-export const atualizarVeiculoSchema = z.object({
-  placa: z
-    .string()
-    .trim()
-    .transform((v) => v.toUpperCase().replace(/[^A-Z0-9]/g, ''))
-    .pipe(
-      z
-        .string()
-        .min(7, 'A placa deve ter no mínimo 7 caracteres')
-        .max(10, 'A placa deve ter no máximo 10 caracteres')
-    )
-    .optional(),
-  modelo: z
-    .string()
-    .trim()
-    .min(2, 'O modelo deve ter no mínimo 2 caracteres')
-    .max(100, 'O modelo deve ter no máximo 100 caracteres')
-    .optional(),
-  tipo_frota: z
-    .enum(['ADMINISTRATIVA', 'SVO'], {
-      error: 'Tipo de frota inválido. Valores aceitos: ADMINISTRATIVA, SVO',
-    })
-    .optional(),
-  capacidade_maxima: z
-    .number()
-    .int('A capacidade máxima deve ser um número inteiro')
-    .min(1, 'A capacidade máxima deve ser de no mínimo 1 passageiro/óbito')
-    .optional(),
-  km_atual: z
-    .number()
-    .int('A quilometragem deve ser um número inteiro')
-    .nonnegative('A quilometragem não pode ser negativa')
-    .optional(),
-  status: z
-    .enum(['DISPONIVEL', 'EM_USO', 'MANUTENCAO', 'RESERVADO'])
-    .optional(),
-});
+export const atualizarVeiculoSchema = z
+  .object({
+    placa: z
+      .string()
+      .trim()
+      .transform((v) => v.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+      .pipe(
+        z
+          .string()
+          .min(7, 'A placa deve ter no mínimo 7 caracteres')
+          .max(10, 'A placa deve ter no máximo 10 caracteres')
+      )
+      .optional(),
+    modelo: z
+      .string()
+      .trim()
+      .min(2, 'O modelo deve ter no mínimo 2 caracteres')
+      .max(100, 'O modelo deve ter no máximo 100 caracteres')
+      .optional(),
+    tipo_frota: z
+      .enum(['ADMINISTRATIVA', 'SVO'], {
+        error: 'Tipo de frota inválido. Valores aceitos: ADMINISTRATIVA, SVO',
+      })
+      .optional(),
+    capacidade_maxima: z
+      .number()
+      .int('A capacidade máxima deve ser um número inteiro')
+      .min(1, 'A capacidade máxima deve ser de no mínimo 1 passageiro/óbito')
+      .optional(),
+    km_atual: z
+      .number()
+      .int('A quilometragem deve ser um número inteiro')
+      .nonnegative('A quilometragem não pode ser negativa')
+      .optional(),
+  })
+  .strict()
+  .refine((dados) => Object.keys(dados).length > 0, {
+    message: 'Ao menos um campo deve ser informado para atualização',
+  })
+  .refine(
+    (dados) => {
+      if (dados.tipo_frota === 'SVO' && dados.capacidade_maxima !== undefined && dados.capacidade_maxima > 4) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'Veículos da frota SVO podem ter capacidade máxima de até 4',
+      path: ['capacidade_maxima'],
+    }
+  );
 
 export type CriarVeiculoInput = z.infer<typeof criarVeiculoSchema>;
 export type AtualizarVeiculoInput = z.infer<typeof atualizarVeiculoSchema>;

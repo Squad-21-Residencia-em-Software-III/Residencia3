@@ -41,6 +41,13 @@ export const veiculoService = {
       throw new AppError('Veículo não encontrado', 404);
     }
 
+    const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
+    const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
+
+    if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
+      throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);
+    }
+
     if (dados.placa && dados.placa !== veiculo.placa) {
       const comPlaca = await veiculoModel.buscarPorPlaca(dados.placa);
       if (comPlaca) {
