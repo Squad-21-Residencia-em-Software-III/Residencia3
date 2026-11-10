@@ -49,6 +49,17 @@ export interface NovaSolicitacaoApiInput {
 
 /** Resposta de GET /solicitacoes-viagem/:id/disponibilidade. */
 export interface DisponibilidadeSolicitacao {
-  veiculos_disponiveis: { id: number }[];
+  solicitacao_id?: number;
+  periodo?: { inicio: string; fim: string };
+  veiculos_disponiveis: VeiculoDisponivel[];
   motoristas_disponiveis: { id: number }[];
+}
+
+/** Veículo livre no período, como devolvido pela API de disponibilidade. */
+export interface VeiculoDisponivel {
+  id: number;
+  placa: string;
+  modelo: string;
+  capacidade_maxima: number;
+  status: string;
 }
