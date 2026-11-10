@@ -151,6 +151,7 @@ export default function VeiculosPage() {
       await carregarVeiculos();
     } catch (error) {
       exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
   };
 
@@ -289,22 +290,31 @@ export default function VeiculosPage() {
             {veiculosFiltrados.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-9 text-center text-slate-500">
-                  <div>
-                    {carregando
-                      ? 'Carregando veículos...'
-                      : (erroCarga ?? 'Nenhum veículo encontrado com os filtros selecionados.')}
-                  </div>
-                  {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFiltroTipo('TODOS');
-                        setFiltroStatus('TODOS');
-                      }}
-                      className="mt-2 cursor-pointer border-none bg-transparent text-xs font-semibold text-primary underline hover:text-primary-hover"
-                    >
-                      Remover filtros
-                    </button>
+                  {carregando ? (
+                    <div>Carregando veículos...</div>
+                  ) : erroCarga ? (
+                    <div className="flex flex-col items-center justify-center gap-2 text-rose-600">
+                      <p className="font-medium">Falha na comunicação com o servidor: {erroCarga}</p>
+                      <Button variant="outline" size="sm" onClick={carregarVeiculos}>
+                        Tentar novamente
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <div>Nenhum veículo encontrado com os filtros selecionados.</div>
+                      {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFiltroTipo('TODOS');
+                            setFiltroStatus('TODOS');
+                          }}
+                          className="mt-2 cursor-pointer border-none bg-transparent text-xs font-semibold text-primary underline hover:text-primary-hover"
+                        >
+                          Remover filtros
+                        </button>
+                      )}
+                    </div>
                   )}
                 </td>
               </tr>

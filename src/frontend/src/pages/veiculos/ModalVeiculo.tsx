@@ -38,8 +38,12 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
       setErro('Preencha a placa e o modelo.');
       return;
     }
-    if (!Number.isInteger(capacidadeNum) || capacidadeNum < 0) {
-      setErro('A capacidade deve ser um número inteiro maior ou igual a 0.');
+    if (!Number.isInteger(capacidadeNum) || capacidadeNum < 1) {
+      setErro('A capacidade deve ser um número inteiro de no mínimo 1 pessoa/óbito.');
+      return;
+    }
+    if (tipoFrota === 'SVO' && capacidadeNum > 4) {
+      setErro('Veículos da frota SVO podem ter capacidade máxima de até 4.');
       return;
     }
     if (capacidadeNum > 20) {
@@ -111,10 +115,10 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
           </Select>
 
           <Input
-            label="Capacidade Máxima"
+            label="Capacidade Máxima *"
             type="number"
-            min="0"
-            max="20"
+            min="1"
+            max={tipoFrota === 'SVO' ? '4' : '20'}
             step="1"
             value={capacidade}
             onChange={(e: ChangeEvent<HTMLInputElement>) => {
