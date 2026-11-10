@@ -134,6 +134,18 @@ describe('Rotas de Multas (/api/multas)', () => {
         1
       );
     });
+
+    it('deve rejeitar corpo de requisição vazio', async () => {
+      const resposta = await request(app)
+        .put('/api/multas/10')
+        .set('Authorization', token)
+        .send({});
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.erro).toBe('Dados inválidos');
+      expect(resposta.body.detalhes[0].mensagem).toContain('Ao menos um campo deve ser informado');
+      expect(multaService.atualizar).not.toHaveBeenCalled();
+    });
   });
 
   describe('DELETE /api/multas/:id', () => {

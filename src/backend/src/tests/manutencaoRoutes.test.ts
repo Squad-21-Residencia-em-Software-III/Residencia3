@@ -100,6 +100,28 @@ describe('Rotas de Manutenções (/api/manutencoes)', () => {
         1
       );
     });
+
+    it('deve rejeitar corpo de requisição vazio', async () => {
+      const resposta = await request(app)
+        .put('/api/manutencoes/5')
+        .set('Authorization', token)
+        .send({});
+
+      expect(resposta.status).toBe(400);
+      expect(resposta.body.erro).toBe('Dados inválidos');
+      expect(resposta.body.detalhes[0].mensagem).toContain('Ao menos um campo deve ser informado');
+      expect(manutencaoService.atualizar).not.toHaveBeenCalled();
+    });
+
+    it('deve rejeitar tentativa de alterar veiculo_id nesta rota', async () => {
+      const resposta = await request(app)
+        .put('/api/manutencoes/5')
+        .set('Authorization', token)
+        .send({ veiculo_id: 2, custo: 500 });
+
+      expect(resposta.status).toBe(400);
+      expect(manutencaoService.atualizar).not.toHaveBeenCalled();
+    });
   });
 
   describe('PATCH /api/manutencoes/:id/status', () => {
