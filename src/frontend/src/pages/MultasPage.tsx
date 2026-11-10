@@ -44,6 +44,7 @@ export default function MultasPage() {
   const [multas, setMultas] = useState<Multa[]>([]);
   const [documentosAlerta, setDocumentosAlerta] = useState<DocumentoComAlerta[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [multaEditando, setMultaEditando] = useState<Multa | undefined>();
@@ -63,9 +64,10 @@ export default function MultasPage() {
   const carregarDados = useCallback(async () => {
     try {
       setCarregando(true);
+      setErroCarga(null);
       const [listaMultas, listaVeiculos, listaMotoristas, listaDocs] = await Promise.all([
-        multasApi.listar().catch(() => []),
-        veiculosApi.listar().catch(() => []),
+        multasApi.listar(),
+        veiculosApi.listar(),
         motoristasApi.listar().catch(() => []),
         documentosApi.listarVencimentos().catch(() => []),
       ]);
@@ -87,7 +89,9 @@ export default function MultasPage() {
       setMultas(enriquecidas);
       setDocumentosAlerta(listaDocs.filter((d) => d.status_vencimento !== 'VALIDO'));
     } catch (err) {
-      exibirFeedback(mensagemDeErro(err), true);
+      const msg = mensagemDeErro(err);
+      setErroCarga(msg);
+      exibirFeedback(msg, true);
     } finally {
       setCarregando(false);
     }
@@ -158,6 +162,7 @@ export default function MultasPage() {
       carregarDados();
     } catch (error) {
       exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
   };
 
@@ -283,6 +288,17 @@ export default function MultasPage() {
               <tr>
                 <td colSpan={9} className="p-9 text-center text-slate-500">
                   Carregando autuações da API...
+                </td>
+              </tr>
+            ) : erroCarga ? (
+              <tr>
+                <td colSpan={9} className="p-9 text-center text-rose-600">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <p className="font-medium">Falha na comunicação com o servidor: {erroCarga}</p>
+                    <Button variant="outline" size="sm" onClick={carregarDados}>
+                      Tentar novamente
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ) : filtradas.length === 0 ? (

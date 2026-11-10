@@ -85,11 +85,13 @@ export default function ManutencoesPage() {
   // Diálogo de Exclusão
   const [manutencaoExcluir, setManutencaoExcluir] = useState<Manutencao | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
 
   const carregarDados = useCallback(async () => {
     try {
       setCarregando(true);
-      const listaVeiculos = await veiculosApi.listar().catch(() => []);
+      setErroCarga(null);
+      const listaVeiculos = await veiculosApi.listar();
       setVeiculos(listaVeiculos);
       if (listaVeiculos.length > 0 && !veiculoIdForm) {
         setVeiculoIdForm(String(listaVeiculos[0].id));
@@ -97,7 +99,9 @@ export default function ManutencoesPage() {
       const listaManutencoes = await manutencoesApi.listarTodas(listaVeiculos.map((v) => v.id));
       setManutencoes(listaManutencoes);
     } catch (err) {
-      setFeedback(mensagemDeErro(err));
+      const msg = mensagemDeErro(err);
+      setErroCarga(msg);
+      setFeedback(msg);
     } finally {
       setCarregando(false);
     }
@@ -442,6 +446,17 @@ export default function ManutencoesPage() {
               <tr>
                 <td colSpan={8} className="p-9 text-center text-slate-500">
                   Carregando manutenções da API...
+                </td>
+              </tr>
+            ) : erroCarga ? (
+              <tr>
+                <td colSpan={8} className="p-9 text-center text-rose-600">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <p className="font-medium">Falha na comunicação com o servidor: {erroCarga}</p>
+                    <Button variant="outline" size="sm" onClick={carregarDados}>
+                      Tentar novamente
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ) : paginadas.length === 0 ? (
