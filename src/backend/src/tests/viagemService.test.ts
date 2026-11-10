@@ -10,6 +10,7 @@ interface Estado {
   viagem?: object;
   viagemAtivaDaSolicitacao?: object;
   ordemAtivaDaSolicitacao?: object;
+  ordemPendente?: object;
   veiculo?: Record<string, unknown>;
   motorista?: Record<string, unknown>;
   cnhValida: boolean;
@@ -103,6 +104,9 @@ function responder(tabela: string, chamadas: Chamada[], terminal: 'first' | 'awa
       return temChamada(chamadas, 'forUpdate') ? estado.viagem : estado.viagemAtivaDaSolicitacao;
     case 'ordens_svo':
       if (terminal === 'await') return estado.ordensDoVeiculo;
+      if (chamadas.some(([m, args]) => m === 'where' && (args[0] as { status?: string })?.status === 'AGUARDANDO_ALOCACAO')) {
+        return estado.ordemPendente;
+      }
       if (temChamada(chamadas, 'forUpdate')) return estado.viagem;
       if (temChamada(chamadas, 'whereNot')) return estado.ordemEmOutroVeiculo;
       return estado.ordemAtivaDaSolicitacao;
@@ -313,15 +317,30 @@ describe('viagemService.criar (SVO)', () => {
   beforeEach(() => {
     ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota: 'SVO' };
     ref.estado.motorista = { ...ref.estado.motorista, tipo_motorista: 'SVO' };
+    ref.estado.solicitacaoSvo = { id: 7, status: 'CONFIRMADA' };
+    ref.estado.ordemPendente = { id: 99 };
   });
 
-  it('deve impedir o gestor de frota de criar ordem SVO', async () => {
+  it('deve impedir o gestor de frota de alocar ordem SVO', async () => {
     await expect(viagemService.criar(dados, gestorFrota)).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it('deve rejeitar solicitação SVO concluída', async () => {
     ref.estado.solicitacaoSvo = { id: 7, status: 'CONCLUIDA' };
-    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it.each(['EM_TRIAGEM', 'EM_ANDAMENTO', 'CANCELADA'])('deve rejeitar alocação de solicitação %s', async (status) => {
+    ref.estado.solicitacaoSvo = { id: 7, status };
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 409 });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(ref.estado.updates).toEqual([]);
+  });
+
+  it('deve rejeitar solicitação confirmada sem ordem pendente', async () => {
+    ref.estado.ordemPendente = undefined;
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 409 });
+    expect(ref.estado.inserts).toEqual([]);
   });
 
   it('deve rejeitar quando a capacidade do veículo é excedida', async () => {
@@ -352,11 +371,12 @@ describe('viagemService.criar (SVO)', () => {
     await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('deve criar a ordem alocada com a capacidade informada', async () => {
+  it('deve alocar a ordem existente com a capacidade informada sem criar outra', async () => {
     ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA' }];
 
     await expect(viagemService.criar(dados, gestorSvo)).resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
-    expect(ref.estado.inserts).toContainEqual({
+    expect(ref.estado.inserts).toEqual([]);
+    expect(ref.estado.updates).toContainEqual({
       tabela: 'ordens_svo',
       valores: expect.objectContaining({ status: 'ALOCADA', capacidade_utilizada: 2, equipe_id: 2 }),
     });

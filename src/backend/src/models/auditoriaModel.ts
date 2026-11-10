@@ -2,6 +2,7 @@ import type { Knex } from 'knex';
 import { db } from '../config/database';
 
 export const MODULOS_AUDITORIA = {
+  SVO: 'SVO',
   AUTENTICACAO: 'AUTENTICACAO',
   USUARIOS: 'USUARIOS',
   VEICULOS: 'VEICULOS',

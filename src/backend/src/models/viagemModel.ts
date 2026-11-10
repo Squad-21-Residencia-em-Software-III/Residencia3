@@ -88,6 +88,7 @@ const VIAGENS_UNIFICADAS_SQL = `
   LEFT JOIN veiculos v ON v.id = o.veiculo_id
   LEFT JOIN motoristas m ON m.id = o.motorista_id
   LEFT JOIN usuarios um ON um.id = m.usuario_id
+  WHERE o.status <> 'AGUARDANDO_ALOCACAO'
 `;
 
 export const viagemModel = {

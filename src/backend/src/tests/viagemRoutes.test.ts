@@ -67,14 +67,15 @@ describe('Rotas de viagens', () => {
     expect(viagemService.criar).toHaveBeenCalledWith(corpo, expect.objectContaining({ id: 3 }));
   });
 
-  it('POST /api/viagens deve aplicar a capacidade padrão na ordem SVO', async () => {
+  it('POST /api/viagens deve alocar ordem SVO com capacidade padrão e retornar 200', async () => {
     autenticarComo(PERFIS.GESTOR_SVO);
 
-    await request(app)
+    const resposta = await request(app)
       .post('/api/viagens')
       .set('Authorization', token)
       .send({ tipo_operacao: 'SVO', solicitacao_id: 1, veiculo_id: 2, motorista_id: 3 });
 
+    expect(resposta.status).toBe(200);
     expect(viagemService.criar).toHaveBeenCalledWith(
       expect.objectContaining({ tipo_operacao: 'SVO', capacidade_utilizada: 1 }),
       expect.anything()
