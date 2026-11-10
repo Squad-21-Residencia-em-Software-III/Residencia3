@@ -32,15 +32,23 @@ describe('GET /api/auditorias', () => {
     } as Awaited<ReturnType<typeof authService.usuarioDoToken>>);
 
     // Simula registros de auditoria existentes
-    vi.mocked(auditoriaService.listar).mockResolvedValue([
-      {
-        id: 1,
-        usuario_id: 1,
-        acao: 'LOGIN',
-        modulo: 'AUTENTICACAO',
-        data_hora: new Date('2026-11-08T12:00:00.000Z'),
+    vi.mocked(auditoriaService.listar).mockResolvedValue({
+      dados: [
+        {
+          id: 1,
+          usuario_id: 1,
+          acao: 'LOGIN',
+          modulo: 'AUTENTICACAO',
+          data_hora: new Date('2026-11-08T12:00:00.000Z'),
+        },
+      ],
+      paginacao: {
+        pagina: 1,
+        limite: 20,
+        total: 1,
+        totalPaginas: 1,
       },
-    ]);
+    });
   });
 
   it('deve retornar 200 para o administrador', async () => {
@@ -49,11 +57,61 @@ describe('GET /api/auditorias', () => {
       .set('Authorization', 'Bearer token-teste');
 
     expect(resposta.status).toBe(200);
-    expect(resposta.body).toHaveLength(1);
-    expect(resposta.body[0].acao).toBe('LOGIN');
-    expect(resposta.body[0].modulo).toBe('AUTENTICACAO');
+    expect(resposta.body.dados).toHaveLength(1);
+    expect(resposta.body.dados[0].acao).toBe('LOGIN');
+    expect(resposta.body.dados[0].modulo).toBe('AUTENTICACAO');
 
-    expect(auditoriaService.listar).toHaveBeenCalledOnce();
+    expect(resposta.body.paginacao).toEqual({
+      pagina: 1,
+      limite: 20,
+      total: 1,
+      totalPaginas: 1,
+    });
+
+    expect(auditoriaService.listar).toHaveBeenCalledWith(1, 20);
+  });
+
+  it('deve permitir navegar entre páginas', async () => {
+    vi.mocked(auditoriaService.listar).mockResolvedValue({
+      dados: [
+        {
+          id: 21,
+          usuario_id: 1,
+          acao: 'ATUALIZOU_USUARIO',
+          modulo: 'USUARIOS',
+          data_hora: new Date('2026-11-08T13:00:00.000Z'),
+        },
+      ],
+      paginacao: {
+        pagina: 2,
+        limite: 20,
+        total: 21,
+        totalPaginas: 2,
+      },
+    });
+
+    const resposta = await request(app)
+      .get(`${endpoint}?pagina=2&limite=20`)
+      .set('Authorization', 'Bearer token-teste');
+
+    expect(resposta.status).toBe(200);
+    expect(auditoriaService.listar).toHaveBeenCalledWith(2, 20);
+    expect(resposta.body.dados).toHaveLength(1);
+    expect(resposta.body.paginacao).toEqual({
+      pagina: 2,
+      limite: 20,
+      total: 21,
+      totalPaginas: 2,
+    });
+  });
+
+  it('deve rejeitar limite superior a 100 registros', async () => {
+    const resposta = await request(app)
+      .get(`${endpoint}?pagina=1&limite=101`)
+      .set('Authorization', 'Bearer token-teste');
+
+    expect(resposta.status).toBe(400);
+    expect(auditoriaService.listar).not.toHaveBeenCalled();
   });
 
   it('deve retornar 401 sem autenticação', async () => {
@@ -78,13 +136,23 @@ describe('GET /api/auditorias', () => {
   });
 
   it('deve retornar uma lista vazia quando não houver registros', async () => {
-    vi.mocked(auditoriaService.listar).mockResolvedValue([]);
+    vi.mocked(auditoriaService.listar).mockResolvedValue({
+      dados: [],
+      paginacao: {
+        pagina: 1,
+        limite: 20,
+        total: 0,
+        totalPaginas: 0,
+      },
+    });
 
     const resposta = await request(app)
       .get(endpoint)
       .set('Authorization', 'Bearer token-teste');
 
     expect(resposta.status).toBe(200);
-    expect(resposta.body).toEqual([]);
+    expect(resposta.body.dados).toEqual([]);
+    expect(resposta.body.paginacao.total).toBe(0);
+    expect(resposta.body.paginacao.totalPaginas).toBe(0);
   });
 });

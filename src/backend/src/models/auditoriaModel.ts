@@ -30,10 +30,27 @@ export const auditoriaModel = {
     await conn('auditorias').insert(registro);
   },
 
-  async listar(): Promise<Auditoria[]> {
-    return db('auditorias')
+async listar(
+  pagina: number,
+  limite: number
+): Promise<{ dados: Auditoria[]; total: number }> {
+  const consulta = db<Auditoria>('auditorias');
+
+  const [dados, contagem] = await Promise.all([
+    consulta
+      .clone()
       .select('id', 'usuario_id', 'acao', 'modulo', 'data_hora')
       .orderBy('data_hora', 'desc')
-      .orderBy('id', 'desc');
+      .orderBy('id', 'desc')
+      .limit(limite)
+      .offset((pagina - 1) * limite),
+
+    consulta.clone().count<{ total: string }[]>({ total: '*' }),
+  ]);
+
+  return {
+    dados,
+    total: Number(contagem[0]?.total ?? 0),
+  };
   },
 };
