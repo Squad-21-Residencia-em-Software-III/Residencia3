@@ -22,7 +22,10 @@ const gestoresEMotoristas = autorizar(
   PERFIS.MOTORISTA_SVO
 );
 
-viagemRoutes.get('/', gestores, viagemController.listar);
+// Gestores consultam todas as viagens.
+// Motoristas consultam somente as próprias viagens,
+// conforme o filtro aplicado no service.
+viagemRoutes.get('/', gestoresEMotoristas, viagemController.listar);
 
 viagemRoutes.post('/', gestores, viagemController.criar);
 

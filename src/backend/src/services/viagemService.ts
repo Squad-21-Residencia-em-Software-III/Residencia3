@@ -361,10 +361,19 @@ async function detalhar(trx: Knex.Transaction, tipo: TipoOperacao, id: number): 
 }
 
 export const viagemService = {
-  async listar(perfil: Perfil): Promise<ViagemDetalhada[]> {
-    return viagemModel.listar(TIPOS_POR_PERFIL[perfil] ?? []);
-  },
+  async listar(autor: Autor): Promise<ViagemDetalhada[]> {
+  if (autor.perfil === PERFIS.MOTORISTA_FROTA) {
+    return viagemModel.listar(['ADMINISTRATIVA'], autor.id);
+  }
 
+  if (autor.perfil === PERFIS.MOTORISTA_SVO) {
+    return viagemModel.listar(['SVO'], autor.id);
+  }
+
+  const tiposPermitidos = TIPOS_POR_PERFIL[autor.perfil] ?? [];
+
+  return viagemModel.listar(tiposPermitidos);
+  },
   async criar(dados: CriarViagemInput, autor: Autor): Promise<ViagemDetalhada> {
     garantirAcesso(autor.perfil, dados.tipo_operacao);
 
