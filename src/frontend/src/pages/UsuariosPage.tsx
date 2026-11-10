@@ -22,7 +22,15 @@ import { ModalUsuario } from './usuarios/ModalUsuario';
 import { ModalRedefinirSenha } from './usuarios/ModalRedefinirSenha';
 import { GestoresUnidadesSecao } from './usuarios/GestoresUnidadesSecao';
 
-type FiltroCategoria = 'TODOS' | 'ADMIN' | 'GESTAO' | 'SOLICITANTE' | 'MOTORISTA' | 'INATIVOS';
+type FiltroCategoria =
+  | 'TODOS'
+  | 'ADMINISTRADOR'
+  | 'GESTOR_FROTA'
+  | 'GESTOR_SVO'
+  | 'MOTORISTA_FROTA'
+  | 'MOTORISTA_SVO'
+  | 'SOLICITANTE'
+  | 'INATIVOS';
 
 function obterBadgeTonePerfil(perfil: Perfil): BadgeTone {
   switch (perfil) {
@@ -74,14 +82,53 @@ export default function UsuariosPage() {
     }, 4000);
   };
 
+  const [totaisGlobais, setTotaisGlobais] = useState({
+    total: 0,
+    ativos: 0,
+    inativos: 0,
+    motoristas: 0,
+  });
+
+  const carregarMetricasGlobais = useCallback(async () => {
+    try {
+      const [resAtivos, resInativos, resMotFrota, resMotSvo] = await Promise.all([
+        usuariosApi.listar({ ativo: true, limite: 1 }),
+        usuariosApi.listar({ ativo: false, limite: 1 }),
+        usuariosApi.listar({ perfil: 'MOTORISTA_FROTA', limite: 1 }),
+        usuariosApi.listar({ perfil: 'MOTORISTA_SVO', limite: 1 }),
+      ]);
+      const totalAtivos = resAtivos.paginacao.total;
+      const totalInativos = resInativos.paginacao.total;
+      const totalMotoristas = resMotFrota.paginacao.total + resMotSvo.paginacao.total;
+      setTotaisGlobais({
+        total: totalAtivos + totalInativos,
+        ativos: totalAtivos,
+        inativos: totalInativos,
+        motoristas: totalMotoristas,
+      });
+    } catch {
+      // Ignora erro ao obter métricas secundárias
+    }
+  }, []);
+
   const carregarUsuarios = useCallback(async () => {
     try {
       setCarregando(true);
+      let perfilQuery: Perfil | undefined;
+      let ativoQuery: boolean | undefined;
+
+      if (filtro === 'INATIVOS') {
+        ativoQuery = false;
+      } else if (filtro !== 'TODOS') {
+        perfilQuery = filtro as Perfil;
+      }
+
       const resposta = await usuariosApi.listar({
         pagina,
         limite: 50,
         busca: busca.trim() || undefined,
-        ativo: filtro === 'INATIVOS' ? false : undefined,
+        perfil: perfilQuery,
+        ativo: ativoQuery,
       });
       setUsuarios(resposta.dados);
       setTotalRegistros(resposta.paginacao.total);
@@ -97,27 +144,9 @@ export default function UsuariosPage() {
     carregarUsuarios();
   }, [carregarUsuarios]);
 
-  const totais = useMemo(
-    () => ({
-      total: totalRegistros || usuarios.length,
-      ativos: usuarios.filter((u) => u.ativo).length,
-      inativos: usuarios.filter((u) => !u.ativo).length,
-      motoristas: usuarios.filter((u) => u.tipo_usuario === 'MOTORISTA').length,
-    }),
-    [usuarios, totalRegistros],
-  );
-
-  const filtrados = useMemo(() => {
-    return usuarios.filter((u) => {
-      if (filtro === 'ADMIN' && u.perfil !== 'ADMINISTRADOR') return false;
-      if (filtro === 'GESTAO' && u.perfil !== 'GESTOR_FROTA' && u.perfil !== 'GESTOR_SVO')
-        return false;
-      if (filtro === 'SOLICITANTE' && u.perfil !== 'SOLICITANTE') return false;
-      if (filtro === 'MOTORISTA' && u.tipo_usuario !== 'MOTORISTA') return false;
-      if (filtro === 'INATIVOS' && u.ativo) return false;
-      return true;
-    });
-  }, [usuarios, filtro]);
+  useEffect(() => {
+    carregarMetricasGlobais();
+  }, [carregarMetricasGlobais]);
 
   const emailsExistentes = useMemo(() => usuarios.map((u) => u.email), [usuarios]);
 
@@ -148,8 +177,10 @@ export default function UsuariosPage() {
       }
       setUsuarioEditando(null);
       carregarUsuarios();
+      carregarMetricasGlobais();
     } catch (error) {
       exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
   };
 
@@ -164,6 +195,7 @@ export default function UsuariosPage() {
         `Usuário "${usuario.nome}" foi ${!usuario.ativo ? 'ativado' : 'desativado'} com sucesso.`,
       );
       carregarUsuarios();
+      carregarMetricasGlobais();
     } catch (error) {
       exibirFeedback(mensagemDeErro(error), true);
     }
@@ -177,6 +209,7 @@ export default function UsuariosPage() {
       setUsuarioRedefinirSenha(null);
     } catch (error) {
       exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
   };
 
@@ -193,15 +226,15 @@ export default function UsuariosPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <MetricCard
           label="Total de Usuários"
-          value={totais.total}
+          value={totaisGlobais.total || totalRegistros}
           tone="neutral"
           className="px-5 py-4"
         />
-        <MetricCard label="Ativos" value={totais.ativos} tone="success" className="px-5 py-4" />
-        <MetricCard label="Inativos" value={totais.inativos} tone="danger" className="px-5 py-4" />
+        <MetricCard label="Ativos" value={totaisGlobais.ativos} tone="success" className="px-5 py-4" />
+        <MetricCard label="Inativos" value={totaisGlobais.inativos} tone="danger" className="px-5 py-4" />
         <MetricCard
           label="Motoristas Operacionais"
-          value={totais.motoristas}
+          value={totaisGlobais.motoristas}
           tone="warning"
           className="px-5 py-4"
         />
@@ -213,7 +246,7 @@ export default function UsuariosPage() {
           subtitle={
             carregando
               ? 'Carregando usuários...'
-              : `${filtrados.length} usuário${filtrados.length === 1 ? '' : 's'} listado${filtrados.length === 1 ? '' : 's'}`
+              : `${totalRegistros} usuário${totalRegistros === 1 ? '' : 's'} encontrado${totalRegistros === 1 ? '' : 's'}`
           }
           newLabel="Novo Usuário"
           onNew={() => {
@@ -244,10 +277,12 @@ export default function UsuariosPage() {
             }}
             options={[
               { value: 'TODOS', label: 'Todos os perfis' },
-              { value: 'ADMIN', label: 'Administradores' },
-              { value: 'GESTAO', label: 'Gestores' },
+              { value: 'ADMINISTRADOR', label: 'Administradores' },
+              { value: 'GESTOR_FROTA', label: 'Gestores de Frota' },
+              { value: 'GESTOR_SVO', label: 'Gestores SVO' },
+              { value: 'MOTORISTA_FROTA', label: 'Motoristas de Frota' },
+              { value: 'MOTORISTA_SVO', label: 'Motoristas SVO' },
               { value: 'SOLICITANTE', label: 'Solicitantes' },
-              { value: 'MOTORISTA', label: 'Motoristas' },
               { value: 'INATIVOS', label: 'Usuários Inativos' },
             ]}
           />
@@ -286,14 +321,25 @@ export default function UsuariosPage() {
                   Carregando lista de usuários da API...
                 </td>
               </tr>
-            ) : filtrados.length === 0 ? (
+            ) : erroCarga ? (
+              <tr>
+                <td colSpan={6} className="p-9 text-center text-rose-600">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <p className="font-medium">Falha na comunicação com o servidor: {erroCarga}</p>
+                    <Button variant="outline" size="sm" onClick={carregarUsuarios}>
+                      Tentar novamente
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ) : usuarios.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-9 text-center text-slate-500">
                   Nenhum usuário encontrado com os filtros selecionados.
                 </td>
               </tr>
             ) : (
-              filtrados.map((u) => {
+              usuarios.map((u) => {
                 const isProprio = u.id === usuarioLogadoId;
                 return (
                   <tr key={u.id}>
@@ -379,7 +425,12 @@ export default function UsuariosPage() {
           </tbody>
         </Table>
 
-        <Pagination showing={`1–${filtrados.length}`} total={totalRegistros || filtrados.length} />
+        <Pagination
+          currentPage={pagina}
+          pageSize={50}
+          totalItems={totalRegistros}
+          onPageChange={(novaPagina) => setPagina(novaPagina)}
+        />
       </Card>
 
       {/* Associação de gestores às unidades (BL15) — dados vêm da API */}
