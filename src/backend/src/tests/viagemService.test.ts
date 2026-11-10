@@ -92,11 +92,35 @@ function responder(tabela: string, chamadas: Chamada[], terminal: 'first' | 'awa
       return estado.equipe;
     case 'veiculos':
       return estado.veiculo;
-    case 'motoristas':
-      if (temChamada(chamadas, 'where', 'validade_cnh')) {
-        return estado.cnhValida ? { id: estado.motorista?.id } : undefined;
-      }
-      return estado.motorista;
+    case 'motoristas': {
+  if (temChamada(chamadas, 'where', 'validade_cnh')) {
+    return estado.cnhValida ? { id: estado.motorista?.id } : undefined;
+  }
+
+  const filtro = chamadas.find(
+    ([metodo, argumentos]) =>
+      metodo === 'where' &&
+      typeof argumentos[0] === 'object' &&
+      argumentos[0] !== null &&
+      'usuario_id' in argumentos[0]
+  );
+
+  if (filtro) {
+    const criterios = filtro[1][0] as {
+      id: number;
+      usuario_id: number;
+    };
+
+    if (
+      estado.motorista?.id !== criterios.id ||
+      estado.motorista?.usuario_id !== criterios.usuario_id
+    ) {
+      return undefined;
+    }
+  }
+
+  return estado.motorista;
+}
     case 'viagens_frota as vf':
       return temChamada(chamadas, 'where', 'vf.veiculo_id') ? estado.conflito.veiculo : estado.conflito.motorista;
     case 'viagens_frota':
@@ -167,7 +191,7 @@ beforeEach(() => {
     },
     solicitacaoSvo: { id: 7, status: 'EM_TRIAGEM' },
     veiculo: { id: 10, tipo_frota: 'ADMINISTRATIVA', status: 'DISPONIVEL', km_atual: 1000, capacidade_maxima: 4 },
-    motorista: { id: 20, tipo_motorista: 'FROTA', status: 'DISPONIVEL' },
+    motorista: { id: 20, usuario_id: 30, tipo_motorista: 'FROTA', status: 'DISPONIVEL',},
     cnhValida: true,
     conflito: {},
     ordensDoVeiculo: [],
@@ -420,6 +444,25 @@ describe('viagemService.iniciarViagem', () => {
       }),
     });
   });
+  it('deve impedir motorista de iniciar viagem de outro motorista', async () => {
+  const outroMotorista = {
+    id: 99,
+    perfil: PERFIS.MOTORISTA_FROTA,
+  };
+
+  await expect(
+    viagemService.iniciarViagem(
+      'ADMINISTRATIVA',
+      5,
+      1000,
+      outroMotorista
+    )
+  ).rejects.toMatchObject({
+    statusCode: 403,
+  });
+
+  expect(ref.estado.updates).toHaveLength(0);
+});
 });
 
 describe('viagemService.finalizarViagem', () => {
@@ -428,7 +471,25 @@ describe('viagemService.finalizarViagem', () => {
       id: 5, solicitacao_id: 1, status: 'EM_ANDAMENTO', km_inicial: 1000, veiculo_id: 10, motorista_id: 20,
     };
   });
+  it('deve impedir motorista de finalizar viagem de outro motorista', async () => {
+    const outroMotorista = {
+    id: 99,
+    perfil: PERFIS.MOTORISTA_FROTA,
+    };
 
+    await expect(
+    viagemService.finalizarViagem(
+      'ADMINISTRATIVA',
+      5,
+      1050,
+      outroMotorista
+    )
+  ).rejects.toMatchObject({
+    statusCode: 403,
+  });
+
+  expect(ref.estado.updates).toHaveLength(0);
+});
   it('deve rejeitar km final menor que o km inicial', async () => {
     await expect(viagemService.finalizarViagem('ADMINISTRATIVA', 5, 999, gestorFrota)).rejects.toMatchObject({
       statusCode: 400,

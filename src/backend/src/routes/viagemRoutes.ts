@@ -6,15 +6,28 @@ import { autorizar } from '../middlewares/autorizar';
 
 export const viagemRoutes = Router();
 
-// O tipo de viagem permitido para cada gestor é validado no viagemService
-viagemRoutes.use(autenticar, autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO));
+viagemRoutes.use(autenticar);
 
-viagemRoutes.get('/', viagemController.listar);
+const gestores = autorizar(
+  PERFIS.ADMINISTRADOR,
+  PERFIS.GESTOR_FROTA,
+  PERFIS.GESTOR_SVO
+);
 
-viagemRoutes.post('/', viagemController.criar);
+const gestoresEMotoristas = autorizar(
+  PERFIS.ADMINISTRADOR,
+  PERFIS.GESTOR_FROTA,
+  PERFIS.GESTOR_SVO,
+  PERFIS.MOTORISTA_FROTA,
+  PERFIS.MOTORISTA_SVO
+);
 
-viagemRoutes.patch('/:id/iniciar', viagemController.iniciar);
+viagemRoutes.get('/', gestores, viagemController.listar);
 
-viagemRoutes.patch('/:id/finalizar', viagemController.finalizar);
+viagemRoutes.post('/', gestores, viagemController.criar);
 
-viagemRoutes.patch('/:id/cancelar', viagemController.cancelar);
+viagemRoutes.patch('/:id/iniciar', gestoresEMotoristas, viagemController.iniciar);
+
+viagemRoutes.patch('/:id/finalizar', gestoresEMotoristas, viagemController.finalizar);
+
+viagemRoutes.patch('/:id/cancelar', gestores, viagemController.cancelar);

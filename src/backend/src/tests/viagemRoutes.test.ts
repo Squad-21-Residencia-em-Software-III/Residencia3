@@ -139,4 +139,50 @@ describe('Rotas de viagens', () => {
     expect(resposta.status).toBe(400);
     expect(viagemService.cancelarViagem).not.toHaveBeenCalled();
   });
+  it('deve permitir que motorista da frota solicite o início da viagem', async () => {
+  autenticarComo(PERFIS.MOTORISTA_FROTA);
+
+  const resposta = await request(app)
+    .patch('/api/viagens/5/iniciar')
+    .set('Authorization', token)
+    .send({
+      tipo_operacao: 'ADMINISTRATIVA',
+      km_inicial: 1000,
+    });
+
+  expect(resposta.status).toBe(200);
+
+  expect(viagemService.iniciarViagem).toHaveBeenCalledWith(
+    'ADMINISTRATIVA',
+    5,
+    1000,
+    expect.objectContaining({
+      id: 3,
+      perfil: PERFIS.MOTORISTA_FROTA,
+    })
+  );
+});
+it('deve impedir motorista de criar e cancelar viagens', async () => {
+  autenticarComo(PERFIS.MOTORISTA_FROTA);
+
+  const criacao = await request(app)
+    .post('/api/viagens')
+    .set('Authorization', token)
+    .send({
+      tipo_operacao: 'ADMINISTRATIVA',
+      solicitacao_id: 1,
+      veiculo_id: 2,
+      motorista_id: 3,
+    });
+
+  const cancelamento = await request(app)
+    .patch('/api/viagens/5/cancelar')
+    .set('Authorization', token);
+
+  expect(criacao.status).toBe(403);
+  expect(cancelamento.status).toBe(403);
+
+  expect(viagemService.criar).not.toHaveBeenCalled();
+  expect(viagemService.cancelarViagem).not.toHaveBeenCalled();
+});
 });

@@ -75,8 +75,51 @@ const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacao[]>> = {
 
 function garantirAcesso(perfil: Perfil, tipo: TipoOperacao): void {
   if (!(TIPOS_POR_PERFIL[perfil] ?? []).includes(tipo)) {
-    throw new AppError('Você não tem permissão para gerenciar este tipo de viagem', 403);
+    throw new AppError(
+      'Você não tem permissão para gerenciar este tipo de viagem',
+      403
+    );
   }
+}
+
+async function garantirAcessoAoRegistro(
+  trx: Knex.Transaction,
+  autor: Autor,
+  tipo: TipoOperacao,
+  viagem: { motorista_id: number }
+): Promise<void> {
+  if (
+    autor.perfil === PERFIS.MOTORISTA_FROTA ||
+    autor.perfil === PERFIS.MOTORISTA_SVO
+  ) {
+    const tipoPermitido =
+      autor.perfil === PERFIS.MOTORISTA_FROTA
+        ? 'ADMINISTRATIVA'
+        : 'SVO';
+
+    if (tipo !== tipoPermitido) {
+      throw new AppError(
+        'Você não tem permissão para esta viagem',
+        403
+      );
+    }
+
+    const motorista = await trx('motoristas')
+      .where({
+        id: viagem.motorista_id,
+        usuario_id: autor.id,
+      })
+      .first('id');
+
+    if (!motorista) {
+      throw new AppError(
+        'Esta viagem não está vinculada ao motorista autenticado',
+        403
+      );
+    }
+    return;
+  }
+  garantirAcesso(autor.perfil, tipo);
 }
 
 // Situação de um recurso considerando viagens administrativas e ordens SVO
@@ -349,11 +392,11 @@ export const viagemService = {
   },
 
   async iniciarViagem(tipo: TipoOperacao, viagemId: number, kmInicial: number, autor: Autor) {
-    garantirAcesso(autor.perfil, tipo);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
+      await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
       if (viagem.status !== operacao.agendada) {
         throw new AppError('Apenas viagens agendadas podem ser iniciadas', 400);
       }
@@ -398,14 +441,16 @@ export const viagemService = {
   },
 
   async finalizarViagem(tipo: TipoOperacao, viagemId: number, kmFinal: number, autor: Autor) {
-    garantirAcesso(autor.perfil, tipo);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
-      const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
+    const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
+
+      await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
+
       if (viagem.status !== operacao.emAndamento) {
-        throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
-      }
+      throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
+    }
       if (kmFinal < viagem.km_inicial) {
         throw new AppError('O km final não pode ser menor que o km inicial', 400);
       }
