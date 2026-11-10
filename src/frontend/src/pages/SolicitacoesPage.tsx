@@ -1,39 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowRight, Eye } from 'lucide-react';
 import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  Eye,
-  Search,
-} from 'lucide-react';
-import {
+  Alert,
   Avatar,
   Badge,
   Button,
   Card,
+  FilterSelect,
   IdBadge,
+  MetricCard,
   Pagination,
+  SearchInput,
   Table,
+  TableFilterCollapse,
   TableToolbar,
 } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { mensagemDeErro } from '../services/api/http';
 import { solicitacoesApi } from '../services/api/solicitacoesApi';
-import type { NovaSolicitacaoApiInput, SolicitacaoViagem, StatusSolicitacao } from '../types/solicitacao';
+import type {
+  NovaSolicitacaoApiInput,
+  SolicitacaoViagem,
+  StatusSolicitacao,
+} from '../types/solicitacao';
 import { LABELS_STATUS_SOLICITACAO } from '../types/solicitacao';
 import { PERFIS } from '../types/usuario';
 import { ModalAnaliseSolicitacao } from './solicitacoes/ModalAnaliseSolicitacao';
 import { ModalNovaSolicitacao } from './solicitacoes/ModalNovaSolicitacao';
 
 type FiltroStatusAba =
-  | 'TODAS'
-  | 'PENDENTES'
-  | 'APROVADAS'
-  | 'AGENDADAS'
-  | 'CONCLUIDAS'
-  | 'RECUSADAS';
+  'TODAS' | 'PENDENTES' | 'APROVADAS' | 'AGENDADAS' | 'CONCLUIDAS' | 'RECUSADAS';
 
 function obterToneStatus(status: StatusSolicitacao): BadgeTone {
   switch (status) {
@@ -68,14 +66,6 @@ function formatarDataHora(iso?: string | null): string {
   }
 }
 
-const cardValor = (cor: string) => ({
-  fontSize: '24px',
-  fontWeight: 800,
-  color: cor,
-  fontFamily: 'var(--font-display)',
-});
-const cardRotulo = { fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' };
-
 export default function SolicitacoesPage() {
   const navigate = useNavigate();
   const { temPerfil } = useAuth();
@@ -87,7 +77,7 @@ export default function SolicitacoesPage() {
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtroAba, setFiltroAba] = useState<FiltroStatusAba>('TODAS');
   const [busca, setBusca] = useState('');
-
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
   const [solicitacaoEmAnalise, setSolicitacaoEmAnalise] = useState<SolicitacaoViagem | null>(null);
@@ -134,7 +124,7 @@ export default function SolicitacoesPage() {
       recusadas: solicitacoes.filter((s) => s.status === 'RECUSADA').length,
       concluidas: solicitacoes.filter((s) => s.status === 'CONCLUIDA').length,
     }),
-    [solicitacoes]
+    [solicitacoes],
   );
 
   const filtradas = useMemo(() => {
@@ -189,91 +179,35 @@ export default function SolicitacoesPage() {
     navigate('/viagens', { state: { solicitacaoId: solicitacao.id } });
   };
 
-
-
   return (
-    <div style={{ display: 'grid', gap: '20px', minWidth: 0, width: '100%' }}>
+    <div className="grid w-full min-w-0 gap-5">
       {/* Toast de Feedback */}
-      {mensagemSucesso && (
-        <div
-          style={{
-            padding: '12px 16px',
-            background: 'var(--color-success-subtle, #ecfdf5)',
-            border: '1px solid var(--color-success-border, #a7f3d0)',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--color-success-text, #065f46)',
-            fontSize: '13px',
-            fontWeight: 500,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <CheckCircle2 size={16} /> {mensagemSucesso}
-        </div>
-      )}
+      {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
 
-      {mensagemErro && (
-        <div
-          style={{
-            padding: '12px 16px',
-            background: 'var(--color-danger-subtle, #fef2f2)',
-            border: '1px solid var(--color-danger-border, #fecaca)',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--color-danger, #b91c1c)',
-            fontSize: '13px',
-            fontWeight: 500,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <AlertTriangle size={16} /> {mensagemErro}
-        </div>
-      )}
+      {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
 
       {/* Cards de Métricas Superiores */}
       {podeListar && (
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '16px',
-        }}
-      >
-        <Card style={{ padding: '20px' }}>
-          <div style={cardValor('var(--color-text)')}>{totais.total}</div>
-          <div style={cardRotulo}>Total de Solicitações</div>
-        </Card>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <MetricCard label="Total de Solicitações" value={totais.total} tone="neutral" />
 
-        <Card style={{ padding: '20px' }}>
-          <div style={cardValor('var(--color-warning, #d97706)')}>
-            {totais.pendentes}
-          </div>
-          <div style={cardRotulo}>Pendentes de Decisão</div>
-        </Card>
+          <MetricCard label="Pendentes de Decisão" value={totais.pendentes} tone="warning" />
 
-        <Card style={{ padding: '20px' }}>
-          <div style={cardValor('var(--color-success, #059669)')}>
-            {totais.aprovadas}
-          </div>
-          <div style={cardRotulo}>Aprovadas (Aguard. Agendamento)</div>
-        </Card>
+          <MetricCard
+            label="Aprovadas (Aguard. Agendamento)"
+            value={totais.aprovadas}
+            tone="success"
+          />
 
-        <Card style={{ padding: '20px' }}>
-          <div style={cardValor('var(--color-primary)')}>
-            {totais.agendadas}
-          </div>
-          <div style={cardRotulo}>Viagens Agendadas</div>
-        </Card>
+          <MetricCard label="Viagens Agendadas" value={totais.agendadas} tone="primary" />
 
-        <Card style={{ padding: '20px' }}>
-          <div style={cardValor('var(--color-danger, #dc2626)')}>
-            {totais.recusadas}
-          </div>
-          <div style={cardRotulo}>Solicitações Recusadas</div>
-        </Card>
-      </div>
+          <MetricCard
+            label="Solicitações Recusadas"
+            value={totais.recusadas}
+            tone="danger"
+            className="col-span-2 lg:col-span-1"
+          />
+        </div>
       )}
 
       {/* Tabela e Filtros Principais */}
@@ -283,94 +217,65 @@ export default function SolicitacoesPage() {
           subtitle={`${filtradas.length} de ${solicitacoes.length} solicitações cadastradas no sistema`}
           newLabel="Nova Solicitação"
           onNew={() => setModalNovaAberto(true)}
+          onFilter={() => setFiltrosAbertos((f) => !f)}
+          isFilterActive={filtroAba !== 'TODAS' || Boolean(busca) || filtrosAbertos}
         />
 
         {/* Barra de Filtros e Busca */}
-        <div style={{ padding: '0 20px 16px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '12px',
-            }}
-          >
-            {/* Campo de Busca Textual (Esquerda) */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '6px 12px',
-                width: '320px',
+        <TableFilterCollapse isOpen={filtrosAbertos}>
+          {/* Busca textual na esquerda */}
+          <SearchInput
+            value={busca}
+            onChange={setBusca}
+            placeholder="Buscar por solicitante, trajeto..."
+          />
+
+          {/* Dropdown de status na sequência */}
+          <FilterSelect
+            aria-label="Filtrar por status"
+            value={filtroAba}
+            onChange={(val) => setFiltroAba(val as FiltroStatusAba)}
+            options={[
+              { value: 'TODAS', label: `Todos os status (${totais.total})` },
+              { value: 'PENDENTES', label: `Pendentes de Decisão (${totais.pendentes})` },
+              { value: 'APROVADAS', label: `Aprovadas (${totais.aprovadas})` },
+              { value: 'AGENDADAS', label: `Agendadas (${totais.agendadas})` },
+              { value: 'CONCLUIDAS', label: `Concluídas (${totais.concluidas})` },
+              { value: 'RECUSADAS', label: `Recusadas (${totais.recusadas})` },
+            ]}
+          />
+
+          {(filtroAba !== 'TODAS' || busca) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setBusca('');
+                setFiltroAba('TODAS');
               }}
             >
-              <Search size={14} color="var(--color-text-muted)" style={{ marginRight: '8px', flexShrink: 0 }} />
-              <input
-                type="text"
-                placeholder="Buscar por solicitante, trajeto..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                style={{
-                  border: 'none',
-                  outline: 'none',
-                  background: 'transparent',
-                  fontSize: '13px',
-                  width: '100%',
-                  color: 'var(--color-text)',
-                }}
-              />
-            </div>
-
-            {/* Dropdown de Filtro de Status */}
-            <div style={{ width: '240px' }}>
-              <select
-                aria-label="Filtrar por status"
-                value={filtroAba}
-                onChange={(e) => setFiltroAba(e.target.value as FiltroStatusAba)}
-                style={{
-                  width: '100%',
-                  padding: '7px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-text)',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  outline: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="TODAS">Todos os status ({totais.total})</option>
-                <option value="PENDENTES">Pendentes de Decisão ({totais.pendentes})</option>
-                <option value="APROVADAS">Aprovadas ({totais.aprovadas})</option>
-                <option value="AGENDADAS">Agendadas ({totais.agendadas})</option>
-                <option value="CONCLUIDAS">Concluídas ({totais.concluidas})</option>
-                <option value="RECUSADAS">Recusadas ({totais.recusadas})</option>
-              </select>
-            </div>
-          </div>
-        </div>
+              Limpar
+            </Button>
+          )}
+        </TableFilterCollapse>
 
         {/* Tabela de Dados */}
         <Table>
           <thead>
             <tr>
-              <th style={{ width: '80px' }}>ID</th>
+              <th className="w-20">ID</th>
               <th>Solicitante</th>
               <th>Trajeto Solicitado</th>
               <th>Período Pretendido</th>
               <th>Finalidade</th>
               <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Ação</th>
+              <th className="text-right">Ação</th>
             </tr>
           </thead>
           <tbody>
             {filtradas.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
+                <td colSpan={7} className="p-9 text-center text-slate-500">
                   {mensagemTabela}
                 </td>
               </tr>
@@ -381,47 +286,35 @@ export default function SolicitacoesPage() {
                     <IdBadge id={`#${s.id}`} />
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div className="flex items-center gap-2.5">
                       <Avatar name={s.solicitante_nome} size={28} />
                       <div>
-                        <div style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: '13px' }}>
+                        <div className="text-[13px] font-semibold text-slate-900">
                           {s.solicitante_nome}
                         </div>
-                        <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                        <div className="text-[11px] text-slate-500">
                           {s.unidade_nome ?? 'Sem unidade'}
                         </div>
                       </div>
                     </div>
                   </td>
                   <td>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 500 }}>
-                      {s.destino}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                      Origem: {s.origem}
-                    </div>
+                    <div className="text-[13px] font-medium text-slate-900">{s.destino}</div>
+                    <div className="text-[11px] text-slate-500">Origem: {s.origem}</div>
                   </td>
                   <td>
-                    <div style={{ fontSize: '12px', color: 'var(--color-text)', whiteSpace: 'nowrap' }}>
+                    <div className="text-xs whitespace-nowrap text-slate-900">
                       {formatarDataHora(s.data_saida_desejada)}
                     </div>
                     {s.data_chegada_desejada && (
-                      <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                      <div className="text-[11px] whitespace-nowrap text-slate-500">
                         Retorno: {formatarDataHora(s.data_chegada_desejada)}
                       </div>
                     )}
                   </td>
                   <td>
                     <span
-                      style={{
-                        fontSize: '12px',
-                        color: 'var(--color-text-muted)',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                        maxWidth: '280px',
-                      }}
+                      className="line-clamp-2 max-w-[280px] text-xs text-slate-500"
                       title={s.finalidade}
                     >
                       {s.finalidade}
@@ -432,7 +325,7 @@ export default function SolicitacoesPage() {
                       {LABELS_STATUS_SOLICITACAO[s.status]}
                     </Badge>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="text-right">
                     {s.status === 'PENDENTE_APROVACAO' ? (
                       <Button
                         size="sm"
@@ -445,18 +338,18 @@ export default function SolicitacoesPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                        className="border-primary text-primary hover:bg-primary-soft"
                         onClick={() => handleAgendar(s)}
                       >
-                        Agendar <ArrowRight size={12} style={{ marginLeft: '4px' }} />
+                        Agendar <ArrowRight size={12} className="ml-1" />
                       </Button>
                     ) : (
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         onClick={() => setSolicitacaoEmAnalise(s)}
                       >
-                        <Eye size={14} style={{ marginRight: '4px' }} /> Detalhes
+                        <Eye size={14} className="mr-1" /> Detalhes
                       </Button>
                     )}
                   </td>

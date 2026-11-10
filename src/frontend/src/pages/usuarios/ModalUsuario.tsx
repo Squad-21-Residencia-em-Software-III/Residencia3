@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Info } from 'lucide-react';
-import { Button, Input, Modal, Select } from '../../components/ui';
+import { Alert, Button, Input, Modal, Select } from '../../components/ui';
 import {
   DESCRICAO_PERFIS,
   LABELS_PERFIS,
@@ -73,7 +72,8 @@ export function ModalUsuario({
     }
 
     const emailJaExiste = emailsExistentes.some(
-      (em) => em.toLowerCase() === emailTrim && em.toLowerCase() !== usuarioEditando?.email.toLowerCase(),
+      (em) =>
+        em.toLowerCase() === emailTrim && em.toLowerCase() !== usuarioEditando?.email.toLowerCase(),
     );
     if (emailJaExiste) {
       setErro('Já existe um usuário cadastrado com este e-mail.');
@@ -120,27 +120,16 @@ export function ModalUsuario({
     <Modal title={isEdicao ? 'Editar Usuário' : 'Cadastrar Usuário'} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {erro && (
-          <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
+          <Alert tone="danger" className="mb-4">
+            {erro}
+          </Alert>
         )}
 
         {isProprioUsuario && (
-          <div
-            style={{
-              padding: '10px 14px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--color-surface-alt)',
-              border: '1px solid var(--color-border)',
-              fontSize: '12px',
-              color: 'var(--color-text-muted)',
-              marginBottom: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            <Info size={16} color="var(--color-primary)" style={{ flexShrink: 0 }} />
-            <span>Você está editando sua própria conta. Por segurança, seu perfil e status ativo estão fixados.</span>
-          </div>
+          <Alert tone="info" className="mb-4">
+            Você está editando sua própria conta. Por segurança, seu perfil e status ativo estão
+            fixados.
+          </Alert>
         )}
 
         <Input
@@ -163,7 +152,7 @@ export function ModalUsuario({
           required
         />
 
-        <div style={{ marginBottom: '16px' }}>
+        <div className="mb-4">
           <Select
             label="Perfil de Acesso *"
             value={perfil}
@@ -176,24 +165,8 @@ export function ModalUsuario({
               </option>
             ))}
           </Select>
-          <div
-            style={{
-              fontSize: '12px',
-              color: 'var(--color-text-muted)',
-              marginTop: '4px',
-              lineHeight: 1.4,
-            }}
-          >
-            {DESCRICAO_PERFIS[perfil]}
-          </div>
-          <div
-            style={{
-              fontSize: '11px',
-              color: 'var(--color-primary)',
-              marginTop: '4px',
-              fontWeight: 600,
-            }}
-          >
+          <div className="mt-1 text-xs leading-snug text-slate-500">{DESCRICAO_PERFIS[perfil]}</div>
+          <div className="mt-1 text-[11px] font-semibold text-primary">
             Tipo de usuário no banco: {tipoPrevisao}
           </div>
         </div>
@@ -208,15 +181,9 @@ export function ModalUsuario({
               onChange={(e: ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)}
               required
             />
-            <div
-              style={{
-                fontSize: '11px',
-                color: 'var(--color-text-muted)',
-                marginTop: '-8px',
-                marginBottom: '14px',
-              }}
-            >
-              Requisitos: mínimo de 8 caracteres com letras maiúsculas, minúsculas, números e símbolo.
+            <div className="-mt-2 mb-3.5 text-[11px] text-slate-500">
+              Requisitos: mínimo de 8 caracteres com letras maiúsculas, minúsculas, números e
+              símbolo.
             </div>
 
             <Input
@@ -231,7 +198,7 @@ export function ModalUsuario({
         )}
 
         {isEdicao && (
-          <div style={{ marginBottom: '16px' }}>
+          <div className="mb-4">
             <Select
               label="Status da Conta *"
               value={ativo ? 'true' : 'false'}
@@ -244,7 +211,7 @@ export function ModalUsuario({
           </div>
         )}
 
-        <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
+        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>

@@ -21,7 +21,7 @@ function StopSignIllustration({
       viewBox="0 0 280 220"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ overflow: 'visible', margin: '0 auto 16px' }}
+      className="mx-auto mb-4 overflow-visible"
       aria-hidden="true"
     >
       {/* Nuvens decorativas estilizadas em traço vetorial limpo */}
@@ -114,7 +114,7 @@ export interface ErrorLayoutProps {
   code: string;
   title: string;
   description: string;
-  icon?: ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
+  icon?: ComponentType<{ size?: number; className?: string }>;
   signColor?: string;
   primaryAction?: {
     label: string;
@@ -148,100 +148,20 @@ export function ErrorLayout({
   const PrimaryIcon = primaryAction.icon === 'refresh' ? RefreshCw : Home;
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 'var(--space-6)',
-        background: `
-          radial-gradient(ellipse 70% 50% at 50% 15%, rgba(21, 84, 184, 0.05), transparent 70%),
-          radial-gradient(ellipse 50% 40% at 85% 85%, rgba(226, 232, 240, 0.6), transparent 70%),
-          linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 50%, #E2E8F0 100%)
-        `,
-        boxSizing: 'border-box',
-        fontFamily: 'var(--font-sans)',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-50 via-slate-100 to-slate-200 p-6 font-sans">
       {/* Elementos decorativos de fundo suaves (bolinhas com tons de anil e cinza claro) */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '8%',
-          left: '12%',
-          width: '56px',
-          height: '56px',
-          borderRadius: '50%',
-          backgroundColor: 'rgba(21, 84, 184, 0.06)',
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          top: '18%',
-          right: '18%',
-          width: '44px',
-          height: '44px',
-          borderRadius: '50%',
-          backgroundColor: '#E2E8F0',
-          opacity: 0.7,
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '22%',
-          left: '16%',
-          width: '40px',
-          height: '40px',
-          borderRadius: '50%',
-          backgroundColor: '#E2E8F0',
-          opacity: 0.6,
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '15%',
-          right: '14%',
-          width: '60px',
-          height: '60px',
-          borderRadius: '50%',
-          backgroundColor: 'rgba(21, 84, 184, 0.05)',
-          pointerEvents: 'none',
-        }}
-      />
+      <div className="pointer-events-none absolute top-[8%] left-[12%] h-14 w-14 rounded-full bg-primary/6" />
+      <div className="pointer-events-none absolute top-[18%] right-[18%] h-11 w-11 rounded-full bg-slate-200/70" />
+      <div className="pointer-events-none absolute bottom-[22%] left-[16%] h-10 w-10 rounded-full bg-slate-200/60" />
+      <div className="pointer-events-none absolute right-[14%] bottom-[15%] h-15 w-15 rounded-full bg-primary/5" />
 
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '540px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
-          position: 'relative',
-          zIndex: 1,
-        }}
-      >
+      <div className="relative z-10 flex w-full max-w-[540px] flex-col items-center text-center">
         {/* FSPH PIN Institucional Centralizado */}
-        <div style={{ marginBottom: '24px' }}>
+        <div className="mb-6">
           <img
             src="/assets/FSPH_PIN.png"
             alt="FSPH - Fundação de Saúde Parreiras Horta"
-            style={{
-              height: '56px',
-              maxWidth: '100%',
-              objectFit: 'contain',
-            }}
+            className="h-14 max-w-full object-contain"
           />
         </div>
 
@@ -249,50 +169,24 @@ export function ErrorLayout({
         <StopSignIllustration code={code} signColor={signColor} />
 
         {/* Título Principal */}
-        <h1
-          style={{
-            margin: '4px 0 8px',
-            fontSize: '24px',
-            fontWeight: 800,
-            color: 'var(--color-text)',
-            fontFamily: 'var(--font-display)',
-            letterSpacing: '-0.02em',
-          }}
-        >
+        <h1 className="mt-1 mb-2 font-display text-2xl font-extrabold tracking-tight text-slate-900">
           {title}
         </h1>
 
         {/* Descrição Amigável */}
-        <p
-          style={{
-            margin: '0 0 28px',
-            fontSize: '14px',
-            color: 'var(--color-text-secondary)',
-            lineHeight: 1.55,
-            maxWidth: '400px',
-          }}
-        >
+        <p className="mb-7 max-w-[400px] text-sm leading-relaxed text-slate-600">
           {description}
         </p>
 
         {/* Botões de Ação */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '12px',
-            width: '100%',
-            flexWrap: 'wrap',
-          }}
-        >
+        <div className="flex w-full flex-wrap items-center justify-center gap-3">
           <Button
             variant="primary"
             size="md"
             onClick={handlePrimaryClick}
-            style={{ minWidth: '170px', justifyContent: 'center' }}
+            className="min-w-[170px] justify-center"
           >
-            <PrimaryIcon size={16} style={{ marginRight: '8px' }} />
+            <PrimaryIcon size={16} className="mr-2" />
             {primaryAction.label}
           </Button>
 
@@ -301,23 +195,16 @@ export function ErrorLayout({
               variant="outline"
               size="md"
               onClick={() => navigate(-1)}
-              style={{ minWidth: '170px', justifyContent: 'center' }}
+              className="min-w-[170px] justify-center"
             >
-              <ArrowLeft size={16} style={{ marginRight: '8px' }} />
+              <ArrowLeft size={16} className="mr-2" />
               Voltar
             </Button>
           )}
         </div>
 
         {/* Rodapé Corporativo Sutil */}
-        <div
-          style={{
-            marginTop: '36px',
-            fontSize: '11px',
-            color: 'var(--color-text-muted)',
-            lineHeight: 1.4,
-          }}
-        >
+        <div className="mt-9 text-[11px] leading-snug text-slate-500">
           Sistema Integrado de Gestão de Frotas • FSPH
         </div>
       </div>
