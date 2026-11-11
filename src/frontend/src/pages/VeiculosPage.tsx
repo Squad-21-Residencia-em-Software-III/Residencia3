@@ -79,10 +79,11 @@ export default function VeiculosPage() {
       });
       setModalAbastecimentoAberto(false);
       setVeiculoPreSelecionado(null);
-      carregarVeiculos();
+      await carregarVeiculos();
       exibirFeedback('Abastecimento registrado com sucesso!');
     } catch (error) {
       exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
   };
 
@@ -91,10 +92,11 @@ export default function VeiculosPage() {
       await multasApi.criar(nova);
       setModalMultaAberto(false);
       setVeiculoPreSelecionado(null);
-      carregarVeiculos();
+      await carregarVeiculos();
       exibirFeedback('Multa registrada com sucesso!');
     } catch (error) {
       exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
   };
 
