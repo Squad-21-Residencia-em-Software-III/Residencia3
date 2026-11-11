@@ -10,6 +10,17 @@ export interface RegistroAuditoria {
   data_hora: string; // timestamp
 }
 
+/** Resposta paginada de GET /auditorias?pagina=&limite= (limite máximo 100). */
+export interface ListaAuditorias {
+  dados: RegistroAuditoria[];
+  paginacao: {
+    pagina: number;
+    limite: number;
+    total: number;
+    totalPaginas: number;
+  };
+}
+
 /** Rótulos de exibição dos módulos conhecidos; códigos novos aparecem como vierem da API. */
 export const LABELS_MODULO_AUDITORIA: Record<string, string> = {
   AUTENTICACAO: 'Autenticação',

@@ -1,7 +1,11 @@
-import type { RegistroAuditoria } from '../../types/auditoria'
-import { request } from './http'
+import type { ListaAuditorias } from '../../types/auditoria';
+import { request } from './http';
 
 export const auditoriaApi = {
-  /** Somente Administrador (o backend responde 403 aos demais perfis). */
-  listar: () => request<RegistroAuditoria[]>('GET', '/auditorias'),
-}
+  /**
+   * Uma página dos registros, do mais recente para o mais antigo.
+   * Somente Administrador (o backend responde 403 aos demais perfis).
+   */
+  listar: (pagina = 1, limite = 20) =>
+    request<ListaAuditorias>('GET', '/auditorias', { query: { pagina, limite } }),
+};
