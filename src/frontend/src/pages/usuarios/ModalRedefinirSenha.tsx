@@ -2,11 +2,12 @@ import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
 import type { Usuario } from '../../types/usuario';
+import { mensagemDeErro } from '../../services/api/http';
 
 interface ModalRedefinirSenhaProps {
   usuario: Usuario;
   onClose: () => void;
-  onSalvar: (novaSenha: string) => void;
+  onSalvar: (novaSenha: string) => Promise<void> | void;
 }
 
 function validarSenhaForte(senha: string): string | null {
@@ -24,8 +25,9 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
   const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
 
@@ -40,8 +42,15 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
       return;
     }
 
-    onSalvar(senha);
-    onClose();
+    try {
+      setSalvando(true);
+      await onSalvar(senha);
+      onClose();
+    } catch (err) {
+      setErro(mensagemDeErro(err));
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -86,7 +95,9 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit">Salvar Nova Senha</Button>
+          <Button type="submit" disabled={salvando}>
+            {salvando ? 'Salvando...' : 'Salvar Nova Senha'}
+          </Button>
         </div>
       </form>
     </Modal>

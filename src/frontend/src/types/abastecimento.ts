@@ -20,6 +20,7 @@ export interface Abastecimento {
   veiculo_modelo?: string;
   motorista_nome?: string;
   valor_litro?: number; // valor_total / litros
+  preco_por_litro?: number; // computado pela API REST (valor_total / litros)
   consumo_kml?: number; // km rodados / litros
   status?: 'CONFIRMADO' | 'PENDENTE';
 }

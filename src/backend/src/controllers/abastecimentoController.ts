@@ -8,9 +8,8 @@ import { usuarioAutenticado } from '../middlewares/autenticar';
 export const abastecimentoController = {
   async criar(req: Request, res: Response): Promise<void> {
     const dados = criarAbastecimentoSchema.parse(req.body);
-
-  const autor = usuarioAutenticado(req);
-const abastecimento = await abastecimentoService.criar(dados, autor.id);
+    const autor = usuarioAutenticado(req);
+    const abastecimento = await abastecimentoService.criar(dados, autor);
 
     res.status(201)
       .location(`/api/abastecimentos/${abastecimento.id}`)
@@ -24,8 +23,9 @@ const abastecimento = await abastecimentoService.criar(dados, autor.id);
       throw new AppError('ID do veículo inválido', 400);
     }
 
+    const autor = usuarioAutenticado(req);
     const abastecimentos =
-      await abastecimentoService.listarPorVeiculo(veiculoId);
+      await abastecimentoService.listarPorVeiculo(veiculoId, autor);
 
     res.json(abastecimentos);
   },
