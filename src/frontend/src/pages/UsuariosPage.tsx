@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Avatar,
@@ -15,12 +15,22 @@ import {
   type BadgeTone,
 } from '../components/ui';
 import { LABELS_PERFIS, type Perfil, type Usuario } from '../types/usuario';
-import { storageService } from '../services/storageService';
+import { mensagemDeErro } from '../services/api/http';
+import { usuariosApi } from '../services/api/usuariosApi';
+import { useAuth } from '../contexts/AuthContext';
 import { ModalUsuario } from './usuarios/ModalUsuario';
 import { ModalRedefinirSenha } from './usuarios/ModalRedefinirSenha';
 import { GestoresUnidadesSecao } from './usuarios/GestoresUnidadesSecao';
 
-type FiltroCategoria = 'TODOS' | 'ADMIN' | 'GESTAO' | 'SOLICITANTE' | 'MOTORISTA' | 'INATIVOS';
+type FiltroCategoria =
+  | 'TODOS'
+  | 'ADMINISTRADOR'
+  | 'GESTOR_FROTA'
+  | 'GESTOR_SVO'
+  | 'MOTORISTA_FROTA'
+  | 'MOTORISTA_SVO'
+  | 'SOLICITANTE'
+  | 'INATIVOS';
 
 function obterBadgeTonePerfil(perfil: Perfil): BadgeTone {
   switch (perfil) {
@@ -39,18 +49,24 @@ function obterBadgeTonePerfil(perfil: Perfil): BadgeTone {
 }
 
 export default function UsuariosPage() {
-  const [usuarios, setUsuarios] = useState<Usuario[]>(storageService.getUsuarios());
+  const { usuario: usuarioLogado } = useAuth();
+  const usuarioLogadoId = usuarioLogado?.id ?? 1;
+
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
+
   const [filtro, setFiltro] = useState<FiltroCategoria>('TODOS');
   const [busca, setBusca] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const [totalRegistros, setTotalRegistros] = useState(0);
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
+
   const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
   const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
   const [usuarioRedefinirSenha, setUsuarioRedefinirSenha] = useState<Usuario | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
-
-  // Usuário 1 (Carlos Silva - Admin) simula o usuário logado
-  const usuarioLogadoId = 1;
 
   const exibirFeedback = (msg: string, isError = false) => {
     if (isError) {
@@ -66,41 +82,75 @@ export default function UsuariosPage() {
     }, 4000);
   };
 
-  const totais = useMemo(
-    () => ({
-      total: usuarios.length,
-      ativos: usuarios.filter((u) => u.ativo).length,
-      inativos: usuarios.filter((u) => !u.ativo).length,
-      motoristas: usuarios.filter((u) => u.tipo_usuario === 'MOTORISTA').length,
-    }),
-    [usuarios],
-  );
+  const [totaisGlobais, setTotaisGlobais] = useState({
+    total: 0,
+    ativos: 0,
+    inativos: 0,
+    motoristas: 0,
+  });
 
-  const filtrados = useMemo(() => {
-    return usuarios.filter((u) => {
-      // 1. Filtro de categoria / abas
-      if (filtro === 'ADMIN' && u.perfil !== 'ADMINISTRADOR') return false;
-      if (filtro === 'GESTAO' && u.perfil !== 'GESTOR_FROTA' && u.perfil !== 'GESTOR_SVO')
-        return false;
-      if (filtro === 'SOLICITANTE' && u.perfil !== 'SOLICITANTE') return false;
-      if (filtro === 'MOTORISTA' && u.tipo_usuario !== 'MOTORISTA') return false;
-      if (filtro === 'INATIVOS' && u.ativo) return false;
+  const carregarMetricasGlobais = useCallback(async () => {
+    try {
+      const [resAtivos, resInativos, resMotFrota, resMotSvo] = await Promise.all([
+        usuariosApi.listar({ ativo: true, limite: 1 }),
+        usuariosApi.listar({ ativo: false, limite: 1 }),
+        usuariosApi.listar({ perfil: 'MOTORISTA_FROTA', limite: 1 }),
+        usuariosApi.listar({ perfil: 'MOTORISTA_SVO', limite: 1 }),
+      ]);
+      const totalAtivos = resAtivos.paginacao.total;
+      const totalInativos = resInativos.paginacao.total;
+      const totalMotoristas = resMotFrota.paginacao.total + resMotSvo.paginacao.total;
+      setTotaisGlobais({
+        total: totalAtivos + totalInativos,
+        ativos: totalAtivos,
+        inativos: totalInativos,
+        motoristas: totalMotoristas,
+      });
+    } catch {
+      // Ignora erro ao obter métricas secundárias
+    }
+  }, []);
 
-      // 2. Busca por texto (nome ou e-mail com ILIKE simulado)
-      if (busca.trim()) {
-        const termo = busca.trim().toLowerCase();
-        const matchNome = u.nome.toLowerCase().includes(termo);
-        const matchEmail = u.email.toLowerCase().includes(termo);
-        if (!matchNome && !matchEmail) return false;
+  const carregarUsuarios = useCallback(async () => {
+    try {
+      setCarregando(true);
+      let perfilQuery: Perfil | undefined;
+      let ativoQuery: boolean | undefined;
+
+      if (filtro === 'INATIVOS') {
+        ativoQuery = false;
+      } else if (filtro !== 'TODOS') {
+        perfilQuery = filtro as Perfil;
       }
 
-      return true;
-    });
-  }, [usuarios, filtro, busca]);
+      const resposta = await usuariosApi.listar({
+        pagina,
+        limite: 50,
+        busca: busca.trim() || undefined,
+        perfil: perfilQuery,
+        ativo: ativoQuery,
+      });
+      setUsuarios(resposta.dados);
+      setTotalRegistros(resposta.paginacao.total);
+      setErroCarga(null);
+    } catch (error) {
+      setErroCarga(mensagemDeErro(error));
+    } finally {
+      setCarregando(false);
+    }
+  }, [pagina, busca, filtro]);
+
+  useEffect(() => {
+    carregarUsuarios();
+  }, [carregarUsuarios]);
+
+  useEffect(() => {
+    carregarMetricasGlobais();
+  }, [carregarMetricasGlobais]);
 
   const emailsExistentes = useMemo(() => usuarios.map((u) => u.email), [usuarios]);
 
-  const handleSalvarUsuario = (dados: {
+  const handleSalvarUsuario = async (dados: {
     nome: string;
     email: string;
     senha?: string;
@@ -109,76 +159,82 @@ export default function UsuariosPage() {
   }) => {
     try {
       if (usuarioEditando) {
-        // Edição
-        storageService.updateUsuario(usuarioEditando.id, {
+        await usuariosApi.atualizar(usuarioEditando.id, {
           nome: dados.nome,
           email: dados.email,
           perfil: dados.perfil,
           ativo: dados.ativo,
         });
-        setUsuarios(storageService.getUsuarios());
         exibirFeedback(`Usuário "${dados.nome}" atualizado com sucesso.`);
       } else {
-        // Novo cadastro
-        storageService.createUsuario({
+        await usuariosApi.criar({
           nome: dados.nome,
           email: dados.email,
           senha: dados.senha || '',
           perfil: dados.perfil,
         });
-        setUsuarios(storageService.getUsuarios());
         exibirFeedback(`Usuário "${dados.nome}" cadastrado com sucesso.`);
       }
       setUsuarioEditando(null);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
+      carregarUsuarios();
+      carregarMetricasGlobais();
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
   };
 
-  const handleAlternarStatus = (usuario: Usuario) => {
+  const handleAlternarStatus = async (usuario: Usuario) => {
     if (usuario.id === usuarioLogadoId) {
       exibirFeedback('Você não pode desativar a sua própria conta de administrador.', true);
       return;
     }
     try {
-      storageService.toggleStatusUsuario(usuario.id, !usuario.ativo);
-      setUsuarios(storageService.getUsuarios());
+      await usuariosApi.atualizar(usuario.id, { ativo: !usuario.ativo });
       exibirFeedback(
         `Usuário "${usuario.nome}" foi ${!usuario.ativo ? 'ativado' : 'desativado'} com sucesso.`,
       );
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
+      carregarUsuarios();
+      carregarMetricasGlobais();
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
     }
   };
 
-  const handleSalvarNovaSenha = (novaSenha: string) => {
+  const handleSalvarNovaSenha = async (novaSenha: string) => {
     if (!usuarioRedefinirSenha) return;
-    // No backend é feito via PATCH /api/usuarios/:id/senha com hash bcrypt
-    console.log(`Senha redefinida para o usuário id=${usuarioRedefinirSenha.id}: ${novaSenha}`);
-    exibirFeedback(`Senha do usuário "${usuarioRedefinirSenha.nome}" redefinida com sucesso.`);
-    setUsuarioRedefinirSenha(null);
+    try {
+      await usuariosApi.redefinirSenha(usuarioRedefinirSenha.id, novaSenha);
+      exibirFeedback(`Senha do usuário "${usuarioRedefinirSenha.nome}" redefinida com sucesso.`);
+      setUsuarioRedefinirSenha(null);
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
+      throw error;
+    }
   };
 
   return (
     <div className="grid gap-6">
       {/* Feedback de sucesso e erro */}
-      {(mensagemSucesso || mensagemErro) && (
-        <Alert tone={mensagemErro ? 'danger' : 'success'}>{mensagemErro || mensagemSucesso}</Alert>
+      {(mensagemSucesso || mensagemErro || erroCarga) && (
+        <Alert tone={mensagemErro || erroCarga ? 'danger' : 'success'}>
+          {mensagemErro || erroCarga || mensagemSucesso}
+        </Alert>
       )}
 
       {/* 4 Cards de Resumo (2x2 no mobile) */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <MetricCard
           label="Total de Usuários"
-          value={totais.total}
+          value={totaisGlobais.total || totalRegistros}
           tone="neutral"
           className="px-5 py-4"
         />
-        <MetricCard label="Ativos" value={totais.ativos} tone="success" className="px-5 py-4" />
-        <MetricCard label="Inativos" value={totais.inativos} tone="danger" className="px-5 py-4" />
+        <MetricCard label="Ativos" value={totaisGlobais.ativos} tone="success" className="px-5 py-4" />
+        <MetricCard label="Inativos" value={totaisGlobais.inativos} tone="danger" className="px-5 py-4" />
         <MetricCard
           label="Motoristas Operacionais"
-          value={totais.motoristas}
+          value={totaisGlobais.motoristas}
           tone="warning"
           className="px-5 py-4"
         />
@@ -187,7 +243,11 @@ export default function UsuariosPage() {
       <Card>
         <TableToolbar
           title="Gestão de Usuários"
-          subtitle={`${filtrados.length} usuários listados`}
+          subtitle={
+            carregando
+              ? 'Carregando usuários...'
+              : `${totalRegistros} usuário${totalRegistros === 1 ? '' : 's'} encontrado${totalRegistros === 1 ? '' : 's'}`
+          }
           newLabel="Novo Usuário"
           onNew={() => {
             setUsuarioEditando(null);
@@ -199,24 +259,30 @@ export default function UsuariosPage() {
 
         {/* Barra de Filtros e Busca */}
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          {/* Busca textual na esquerda */}
           <SearchInput
             value={busca}
-            onChange={setBusca}
+            onChange={(val) => {
+              setBusca(val);
+              setPagina(1);
+            }}
             placeholder="Buscar por nome ou e-mail..."
           />
 
-          {/* Filtros em dropdown na sequência */}
           <FilterSelect
             aria-label="Filtrar por perfil"
             value={filtro}
-            onChange={(val) => setFiltro(val as FiltroCategoria)}
+            onChange={(val) => {
+              setFiltro(val as FiltroCategoria);
+              setPagina(1);
+            }}
             options={[
               { value: 'TODOS', label: 'Todos os perfis' },
-              { value: 'ADMIN', label: 'Administradores' },
-              { value: 'GESTAO', label: 'Gestores' },
+              { value: 'ADMINISTRADOR', label: 'Administradores' },
+              { value: 'GESTOR_FROTA', label: 'Gestores de Frota' },
+              { value: 'GESTOR_SVO', label: 'Gestores SVO' },
+              { value: 'MOTORISTA_FROTA', label: 'Motoristas de Frota' },
+              { value: 'MOTORISTA_SVO', label: 'Motoristas SVO' },
               { value: 'SOLICITANTE', label: 'Solicitantes' },
-              { value: 'MOTORISTA', label: 'Motoristas' },
               { value: 'INATIVOS', label: 'Usuários Inativos' },
             ]}
           />
@@ -228,6 +294,7 @@ export default function UsuariosPage() {
               onClick={() => {
                 setBusca('');
                 setFiltro('TODOS');
+                setPagina(1);
               }}
             >
               Limpar
@@ -248,14 +315,31 @@ export default function UsuariosPage() {
             </tr>
           </thead>
           <tbody>
-            {filtrados.length === 0 ? (
+            {carregando ? (
+              <tr>
+                <td colSpan={6} className="p-9 text-center text-slate-500">
+                  Carregando lista de usuários da API...
+                </td>
+              </tr>
+            ) : erroCarga ? (
+              <tr>
+                <td colSpan={6} className="p-9 text-center text-rose-600">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <p className="font-medium">Falha na comunicação com o servidor: {erroCarga}</p>
+                    <Button variant="outline" size="sm" onClick={carregarUsuarios}>
+                      Tentar novamente
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ) : usuarios.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-9 text-center text-slate-500">
                   Nenhum usuário encontrado com os filtros selecionados.
                 </td>
               </tr>
             ) : (
-              filtrados.map((u) => {
+              usuarios.map((u) => {
                 const isProprio = u.id === usuarioLogadoId;
                 return (
                   <tr key={u.id}>
@@ -341,7 +425,12 @@ export default function UsuariosPage() {
           </tbody>
         </Table>
 
-        <Pagination showing={`1–${filtrados.length}`} total={filtrados.length} />
+        <Pagination
+          currentPage={pagina}
+          pageSize={50}
+          totalItems={totalRegistros}
+          onPageChange={(novaPagina) => setPagina(novaPagina)}
+        />
       </Card>
 
       {/* Associação de gestores às unidades (BL15) — dados vêm da API */}
