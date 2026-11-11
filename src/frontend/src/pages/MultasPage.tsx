@@ -45,6 +45,7 @@ export default function MultasPage() {
   const [documentosAlerta, setDocumentosAlerta] = useState<DocumentoComAlerta[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
+  const [avisoDependencias, setAvisoDependencias] = useState<string | null>(null);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [multaEditando, setMultaEditando] = useState<Multa | undefined>();
@@ -65,12 +66,32 @@ export default function MultasPage() {
     try {
       setCarregando(true);
       setErroCarga(null);
-      const [listaMultas, listaVeiculos, listaMotoristas, listaDocs] = await Promise.all([
+      setAvisoDependencias(null);
+
+      const [resMultas, resVeiculos, resMotoristas, resDocs] = await Promise.allSettled([
         multasApi.listar(),
         veiculosApi.listar(),
-        motoristasApi.listar().catch(() => []),
-        documentosApi.listarVencimentos().catch(() => []),
+        motoristasApi.listar(),
+        documentosApi.listarVencimentos(),
       ]);
+
+      if (resMultas.status === 'rejected') {
+        throw resMultas.reason;
+      }
+      if (resVeiculos.status === 'rejected') {
+        throw resVeiculos.reason;
+      }
+
+      const listaMultas = resMultas.value;
+      const listaVeiculos = resVeiculos.value;
+      const listaMotoristas = resMotoristas.status === 'fulfilled' ? resMotoristas.value : [];
+      const listaDocs = resDocs.status === 'fulfilled' ? resDocs.value : [];
+
+      if (resMotoristas.status === 'rejected' || resDocs.status === 'rejected') {
+        setAvisoDependencias(
+          'Algumas informações complementares (condutores ou alertas de vencimento) não puderam ser carregadas do servidor.'
+        );
+      }
 
       const mapaVeiculos = new Map(listaVeiculos.map((v) => [v.id, v]));
       const mapaMotoristas = new Map(listaMotoristas.map((m) => [m.id, m]));
@@ -182,6 +203,7 @@ export default function MultasPage() {
   return (
     <div className="grid gap-6">
       {feedback && <Alert tone={feedback.erro ? 'danger' : 'success'}>{feedback.msg}</Alert>}
+      {avisoDependencias && <Alert tone="warning">{avisoDependencias}</Alert>}
 
       {/* Alerta Preventivo de Vencimento de CNH/CRLV (RN15) */}
       {documentosAlerta.length > 0 && (

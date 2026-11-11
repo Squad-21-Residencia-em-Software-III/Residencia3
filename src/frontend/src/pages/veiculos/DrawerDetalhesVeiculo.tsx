@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -62,24 +62,44 @@ export function DrawerDetalhesVeiculo({
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [abastecimentos, setAbastecimentos] = useState<Abastecimento[]>([]);
   const [multas, setMultas] = useState<Multa[]>([]);
+  const [erroManutencoes, setErroManutencoes] = useState<string | null>(null);
+  const [erroAbastecimentos, setErroAbastecimentos] = useState<string | null>(null);
+  const [erroMultas, setErroMultas] = useState<string | null>(null);
+
+  const carregarDadosHistorico = useCallback(async () => {
+    if (!veiculoState) return;
+    setErroManutencoes(null);
+    setErroAbastecimentos(null);
+    setErroMultas(null);
+
+    const [mRes, aRes, muRes] = await Promise.allSettled([
+      manutencoesApi.listarPorVeiculo(veiculoState.id),
+      abastecimentosApi.listarPorVeiculo(veiculoState.id),
+      multasApi.listar(),
+    ]);
+
+    if (mRes.status === 'fulfilled') {
+      setManutencoes(mRes.value);
+    } else {
+      setErroManutencoes('Falha ao consultar histórico de manutenções.');
+    }
+
+    if (aRes.status === 'fulfilled') {
+      setAbastecimentos(aRes.value);
+    } else {
+      setErroAbastecimentos('Falha ao consultar abastecimentos do veículo.');
+    }
+
+    if (muRes.status === 'fulfilled') {
+      setMultas(muRes.value.filter((m) => m.veiculo_id === veiculoState.id));
+    } else {
+      setErroMultas('Falha ao consultar multas do veículo.');
+    }
+  }, [veiculoState]);
 
   useEffect(() => {
-    if (!veiculoState) return;
-    let ativo = true;
-    Promise.all([
-      manutencoesApi.listarPorVeiculo(veiculoState.id).catch(() => []),
-      abastecimentosApi.listarPorVeiculo(veiculoState.id).catch(() => []),
-      multasApi.listar().catch(() => []),
-    ]).then(([mList, aList, muList]) => {
-      if (!ativo) return;
-      setManutencoes(mList);
-      setAbastecimentos(aList);
-      setMultas(muList.filter((m) => m.veiculo_id === veiculoState.id));
-    });
-    return () => {
-      ativo = false;
-    };
-  }, [veiculoState]);
+    carregarDadosHistorico();
+  }, [carregarDadosHistorico]);
 
   const dadosVeiculo = useMemo(() => {
     if (!veiculoState) return null;
@@ -232,28 +252,40 @@ export function DrawerDetalhesVeiculo({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="text-xs text-text-muted">Gasto em Manutenção</div>
-              <div className="mt-0.5 font-display text-base font-bold text-primary">
-                {dadosVeiculo?.totalGastoManutencao.toLocaleString('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                })}
-              </div>
-              <div className="text-[11px] text-slate-400">
-                {dadosVeiculo?.manutencoes.length ?? 0} ordens registradas
-              </div>
+              {erroManutencoes ? (
+                <div className="mt-0.5 text-xs text-danger font-medium">{erroManutencoes}</div>
+              ) : (
+                <>
+                  <div className="mt-0.5 font-display text-base font-bold text-primary">
+                    {dadosVeiculo?.totalGastoManutencao.toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    })}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {dadosVeiculo?.manutencoes.length ?? 0} ordens registradas
+                  </div>
+                </>
+              )}
             </div>
 
             <div>
               <div className="text-xs text-text-muted">Gasto em Combustível</div>
-              <div className="mt-0.5 font-display text-base font-bold text-emerald-700">
-                {dadosVeiculo?.totalGastoCombustivel.toLocaleString('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                })}
-              </div>
-              <div className="text-[11px] text-slate-400">
-                {dadosVeiculo?.abastecimentos.length ?? 0} abastecimentos
-              </div>
+              {erroAbastecimentos ? (
+                <div className="mt-0.5 text-xs text-danger font-medium">{erroAbastecimentos}</div>
+              ) : (
+                <>
+                  <div className="mt-0.5 font-display text-base font-bold text-emerald-700">
+                    {dadosVeiculo?.totalGastoCombustivel.toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    })}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {dadosVeiculo?.abastecimentos.length ?? 0} abastecimentos
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -276,7 +308,18 @@ export function DrawerDetalhesVeiculo({
             </button>
           </div>
 
-          {!dadosVeiculo?.ultimasManutencoes.length ? (
+          {erroManutencoes ? (
+            <div className="rounded-lg border border-danger/30 bg-danger-soft p-3 text-center text-xs text-danger">
+              <p className="m-0 font-medium">{erroManutencoes}</p>
+              <button
+                type="button"
+                onClick={carregarDadosHistorico}
+                className="mt-1 font-semibold underline cursor-pointer"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          ) : !dadosVeiculo?.ultimasManutencoes.length ? (
             <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-text-muted">
               Nenhuma manutenção registrada para este veículo.
             </div>
@@ -334,6 +377,18 @@ export function DrawerDetalhesVeiculo({
         </div>
 
         {/* 5. Alertas & Multas Pendentes (se houver) */}
+        {erroMultas && (
+          <div className="rounded-xl border border-danger/30 bg-danger-soft p-3 text-xs text-danger flex items-center justify-between">
+            <span>{erroMultas}</span>
+            <button
+              type="button"
+              onClick={carregarDadosHistorico}
+              className="font-semibold underline cursor-pointer"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
         {dadosVeiculo && dadosVeiculo.multasPendentes.length > 0 && (
           <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-4">
             <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">

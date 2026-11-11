@@ -13,6 +13,7 @@ import {
   TableToolbar,
 } from '../components/ui';
 import type { Abastecimento, NovoAbastecimentoInput } from '../types/abastecimento';
+import type { Motorista } from '../types/motorista';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { abastecimentosApi } from '../services/api/abastecimentosApi';
@@ -28,6 +29,7 @@ export default function AbastecimentoPage() {
   const [abastecimentos, setAbastecimentos] = useState<AbastecimentoEnriquecido[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
+  const [avisoMotoristas, setAvisoMotoristas] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
@@ -52,8 +54,30 @@ export default function AbastecimentoPage() {
     try {
       setCarregando(true);
       setErroCarga(null);
+      setAvisoMotoristas(null);
+
       const veiculos = await veiculosApi.listar();
-      const motoristas = await motoristasApi.listar().catch(() => []);
+
+      let motoristas: Motorista[] = [];
+      let falhaMotoristas = false;
+      try {
+        motoristas = await motoristasApi.listar();
+      } catch {
+        try {
+          const meuPerfil = await motoristasApi.buscarMeuPerfil();
+          if (meuPerfil) {
+            motoristas = [meuPerfil];
+          } else {
+            falhaMotoristas = true;
+          }
+        } catch {
+          falhaMotoristas = true;
+        }
+      }
+
+      if (falhaMotoristas) {
+        setAvisoMotoristas('Não foi possível carregar os nomes de alguns condutores.');
+      }
 
       const mapaVeiculos = new Map(veiculos.map((v) => [v.id, v]));
       const mapaMotoristas = new Map(motoristas.map((m) => [m.id, m]));
@@ -228,6 +252,7 @@ export default function AbastecimentoPage() {
       {(mensagemSucesso || mensagemErro) && (
         <Alert tone={mensagemErro ? 'danger' : 'success'}>{mensagemErro || mensagemSucesso}</Alert>
       )}
+      {avisoMotoristas && <Alert tone="warning">{avisoMotoristas}</Alert>}
 
       {/* 4 Cards de Métricas Operacionais (100% integrados à API) */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">

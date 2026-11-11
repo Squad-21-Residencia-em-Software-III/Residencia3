@@ -45,16 +45,30 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
 
   useEffect(() => {
     let ativo = true;
-    Promise.all([veiculosApi.listar(), motoristasApi.listar()])
-      .then(([vList, mList]) => {
+    Promise.allSettled([veiculosApi.listar(), motoristasApi.listar()]).then(
+      ([vRes, mRes]) => {
         if (!ativo) return;
-        setVeiculos(vList);
-        setMotoristas(mList);
-        if (!veiculoId && vList.length > 0) {
-          setVeiculoId(String(vList[0].id));
+
+        if (vRes.status === 'fulfilled') {
+          setVeiculos(vRes.value);
+          if (!veiculoId && vRes.value.length > 0) {
+            setVeiculoId(String(vRes.value[0].id));
+          }
+        } else {
+          setErro('Falha ao carregar veículos.');
         }
-      })
-      .catch(() => {});
+
+        if (mRes.status === 'fulfilled') {
+          setMotoristas(mRes.value);
+        } else {
+          setErro((prev) =>
+            prev
+              ? `${prev} | Falha ao carregar motoristas para vinculação.`
+              : 'Falha ao carregar lista de motoristas para vinculação.'
+          );
+        }
+      }
+    );
     return () => {
       ativo = false;
     };
