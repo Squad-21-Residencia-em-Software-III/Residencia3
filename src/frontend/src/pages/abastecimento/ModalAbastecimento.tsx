@@ -45,38 +45,32 @@ export function ModalAbastecimento({
     let ativo = true;
 
     if (isMotorista) {
-      Promise.all([
+      Promise.allSettled([
         veiculosApi.listar(),
-        motoristasApi.buscarMeuPerfil().catch(() => null),
-      ])
-        .then(([listaV, meuMot]) => {
-          if (!ativo) return;
-          setVeiculos(listaV);
-          if (meuMot) {
-            setMotoristas([meuMot]);
-            setMotoristaId(String(meuMot.id));
-          } else if (usuario?.id) {
-            setMotoristas([
-              {
-                id: usuario.id,
-                usuario_id: usuario.id,
-                nome: usuario.nome,
-                numero_cnh: '',
-                categoria_cnh: '',
-                validade_cnh: '',
-                tipo_motorista: 'FROTA',
-                status: 'DISPONIVEL',
-              },
-            ]);
-            setMotoristaId(String(usuario.id));
+        motoristasApi.buscarMeuPerfil(),
+      ]).then(([vRes, mRes]) => {
+        if (!ativo) return;
+
+        if (vRes.status === 'fulfilled') {
+          setVeiculos(vRes.value);
+          if (!veiculoId && vRes.value.length > 0) {
+            setVeiculoId(String(vRes.value[0].id));
           }
-          if (!veiculoId && listaV.length > 0) {
-            setVeiculoId(String(listaV[0].id));
-          }
-        })
-        .catch((err) => {
-          if (ativo) setErro(`Falha ao carregar veículos: ${mensagemDeErro(err)}`);
-        });
+        } else {
+          setErro(`Falha ao carregar veículos: ${mensagemDeErro(vRes.reason)}`);
+        }
+
+        if (mRes.status === 'fulfilled' && mRes.value) {
+          setMotoristas([mRes.value]);
+          setMotoristaId(String(mRes.value.id));
+        } else {
+          setMotoristas([]);
+          setMotoristaId('');
+          setErro(
+            'Seu usuário não possui um registro de motorista ativo vinculado no sistema. O cadastro de abastecimento está bloqueado.'
+          );
+        }
+      });
     } else {
       Promise.all([veiculosApi.listar(), motoristasApi.listar()])
         .then(([listaV, listaM]) => {
@@ -124,8 +118,8 @@ export function ModalAbastecimento({
       setErro('Selecione um veículo.');
       return;
     }
-    if (!mId) {
-      setErro('Selecione um motorista.');
+    if (!mId || (isMotorista && motoristas.length === 0)) {
+      setErro('Registro de motorista não identificado. Operação bloqueada.');
       return;
     }
     if (!dataAbastecimento) {
@@ -277,7 +271,11 @@ export function ModalAbastecimento({
           <Button variant="ghost" type="button" onClick={onClose} disabled={salvando}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit" disabled={salvando}>
+          <Button
+            variant="primary"
+            type="submit"
+            disabled={salvando || (isMotorista && motoristas.length === 0)}
+          >
             {salvando ? 'Salvando...' : 'Salvar Abastecimento'}
           </Button>
         </div>
