@@ -1,5 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Badge, Button, Card, IdBadge, Input, Pagination, Select, Table, TableFilterCollapse, TableToolbar } from '../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  FilterSelect,
+  IdBadge,
+  MetricCard,
+  Pagination,
+  SearchInput,
+  Table,
+  TableFilterCollapse,
+  TableToolbar,
+} from '../components/ui';
 import type { BadgeTone } from '../components/ui';
 import { storageService } from '../services/storageService';
 import { LABELS_STATUS_MULTA } from '../types/multa';
@@ -12,7 +26,8 @@ const TOM_STATUS: Record<StatusPagamentoMulta, BadgeTone> = {
   CANCELADO: 'neutral',
 };
 
-const brl = (n: number) => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const brl = (n: number) =>
+  Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 function formatarDataHora(iso: string): string {
   const [data, hora] = iso.split('T');
@@ -24,6 +39,7 @@ export default function MultasPage() {
   const [multas, setMultas] = useState<Multa[]>(() => storageService.getMultas());
   const [modalAberto, setModalAberto] = useState(false);
   const [multaEditando, setMultaEditando] = useState<Multa | undefined>();
+  const [multaExcluir, setMultaExcluir] = useState<Multa | null>(null);
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<'' | StatusPagamentoMulta>('');
   const [de, setDe] = useState('');
@@ -42,7 +58,8 @@ export default function MultasPage() {
       total: multas.length,
       qtdPendentes: pendentes.length,
       valorPendentes: brl(pendentes.reduce((acc, m) => acc + Number(m.valor), 0)),
-      semMotorista: multas.filter((m) => !m.motorista_id && m.status_pagamento !== 'CANCELADO').length,
+      semMotorista: multas.filter((m) => !m.motorista_id && m.status_pagamento !== 'CANCELADO')
+        .length,
     };
   }, [multas]);
 
@@ -87,7 +104,9 @@ export default function MultasPage() {
     try {
       if (multaEditando) {
         storageService.updateMulta(multaEditando.id, dados);
-        exibirFeedback(`Multa MLT-${String(multaEditando.id).padStart(4, '0')} atualizada com sucesso.`);
+        exibirFeedback(
+          `Multa MLT-${String(multaEditando.id).padStart(4, '0')} atualizada com sucesso.`,
+        );
       } else {
         const criada = storageService.createMulta(dados);
         exibirFeedback(`Multa MLT-${String(criada.id).padStart(4, '0')} registrada com sucesso.`);
@@ -98,105 +117,100 @@ export default function MultasPage() {
     }
   };
 
-  const handleExcluir = (id: number) => {
-    if (!window.confirm(`Tem certeza que deseja excluir a multa MLT-${String(id).padStart(4, '0')}?`)) return;
+  const handleConfirmarExclusao = () => {
+    if (!multaExcluir) return;
     try {
-      storageService.deleteMulta(id);
+      storageService.deleteMulta(multaExcluir.id);
       setMultas(storageService.getMultas());
       exibirFeedback('Multa removida com sucesso.');
     } catch (error) {
       exibirFeedback(error instanceof Error ? error.message : 'Erro ao excluir a multa.', true);
+    } finally {
+      setMultaExcluir(null);
     }
   };
 
-  const kpiTitulo = { fontSize: '12px', fontWeight: 600, color: 'var(--color-text-muted)', fontFamily: 'var(--font-display)', marginBottom: '8px' } as const;
-  const kpiValor = { fontSize: '26px', fontWeight: 700, color: 'var(--color-text)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' } as const;
-  const kpiRodape = { fontSize: '12px', marginTop: '8px', color: 'var(--color-text-subtle)' } as const;
-
   return (
-    <div style={{ display: 'grid', gap: '24px' }}>
-      {feedback && (
-        <div
-          role={feedback.erro ? 'alert' : 'status'}
-          style={{
-            padding: '12px 20px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface)',
-            border: `1px solid ${feedback.erro ? 'var(--color-danger)' : 'var(--color-success)'}`,
-            color: feedback.erro ? 'var(--color-danger)' : 'var(--color-success)',
-            fontSize: '14px',
-            fontWeight: 600,
-            boxShadow: 'var(--shadow-card)',
-          }}
-        >
-          {feedback.msg}
-        </div>
-      )}
+    <div className="grid gap-6">
+      {feedback && <Alert tone={feedback.erro ? 'danger' : 'success'}>{feedback.msg}</Alert>}
 
-      <div className="kpi-grid">
-        <Card style={{ padding: '20px' }}>
-          <div style={kpiTitulo}>Multas registradas</div>
-          <div style={kpiValor}>{kpis.total}</div>
-          <div style={kpiRodape}>Total na frota</div>
-        </Card>
-        <Card style={{ padding: '20px' }}>
-          <div style={kpiTitulo}>Pendentes de pagamento</div>
-          <div style={{ ...kpiValor, color: 'var(--color-warning)' }}>{kpis.qtdPendentes}</div>
-          <div style={{ ...kpiRodape, color: 'var(--color-warning)' }}>{kpis.valorPendentes} em aberto</div>
-        </Card>
-        <Card style={{ padding: '20px' }}>
-          <div style={kpiTitulo}>Sem motorista vinculado</div>
-          <div style={kpiValor}>{kpis.semMotorista}</div>
-          <div style={kpiRodape}>Aguardando identificação do responsável</div>
-        </Card>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <MetricCard
+          label="Multas registradas"
+          value={kpis.total}
+          subtitle="Total na frota"
+          tone="neutral"
+        />
+        <MetricCard
+          label="Pendentes de pagamento"
+          value={kpis.qtdPendentes}
+          subtitle={`${kpis.valorPendentes} em aberto`}
+          tone="warning"
+        />
+        <MetricCard
+          label="Sem motorista vinculado"
+          value={kpis.semMotorista}
+          subtitle="Aguardando identificação do responsável"
+          tone="neutral"
+        />
       </div>
 
       <Card>
         <TableToolbar
           title="Multas e infrações"
           subtitle={`${filtradas.length} registros`}
-          newLabel="Registrar multa"
+          newLabel="Nova Multa"
           onNew={abrirNova}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
           isFilterActive={temFiltro || filtrosAbertosMobile}
         />
 
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          <div style={{ flex: '1 1 280px', maxWidth: '360px' }}>
-            <Input
-              label="Buscar"
-              type="text"
-              placeholder="Placa, motorista, código ou descrição..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
+          {/* Busca textual na esquerda */}
+          <SearchInput
+            value={busca}
+            onChange={setBusca}
+            placeholder="Buscar por placa, motorista ou descrição..."
+          />
+
+          {/* Filtros em dropdown e datas na sequência */}
+          <FilterSelect
+            aria-label="Filtrar por status"
+            value={filtroStatus}
+            onChange={(val) => setFiltroStatus(val as '' | StatusPagamentoMulta)}
+            options={[
+              { value: '', label: 'Todos os status' },
+              ...(Object.keys(LABELS_STATUS_MULTA) as StatusPagamentoMulta[]).map((s) => ({
+                value: s,
+                label: LABELS_STATUS_MULTA[s],
+              })),
+            ]}
+          />
+
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span>De:</span>
+            <input
+              type="date"
+              value={de}
+              onChange={(e) => setDe(e.target.value)}
+              className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-[13px] text-slate-900 outline-none focus:border-primary"
             />
           </div>
-          <div style={{ width: '180px' }}>
-            <Select
-              label="Status"
-              value={filtroStatus}
-              onChange={(e) => setFiltroStatus(e.target.value as '' | StatusPagamentoMulta)}
-            >
-              <option value="">Todos os status</option>
-              {(Object.keys(LABELS_STATUS_MULTA) as StatusPagamentoMulta[]).map((s) => (
-                <option key={s} value={s}>
-                  {LABELS_STATUS_MULTA[s]}
-                </option>
-              ))}
-            </Select>
+
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span>Até:</span>
+            <input
+              type="date"
+              value={ate}
+              onChange={(e) => setAte(e.target.value)}
+              className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-[13px] text-slate-900 outline-none focus:border-primary"
+            />
           </div>
-          <div style={{ width: '170px' }}>
-            <Input label="De" type="date" value={de} onChange={(e) => setDe(e.target.value)} />
-          </div>
-          <div style={{ width: '170px' }}>
-            <Input label="Até" type="date" value={ate} onChange={(e) => setAte(e.target.value)} />
-          </div>
+
           {temFiltro && (
-            <div style={{ alignSelf: 'flex-end', marginBottom: '4px' }}>
-              <Button variant="ghost" size="sm" onClick={limparFiltros}>
-                Limpar filtros
-              </Button>
-            </div>
+            <Button variant="ghost" size="sm" onClick={limparFiltros}>
+              Limpar
+            </Button>
           )}
         </TableFilterCollapse>
 
@@ -210,14 +224,16 @@ export default function MultasPage() {
               <th>Infração</th>
               <th>Valor</th>
               <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Ações</th>
+              <th className="text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
             {filtradas.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-muted)' }}>
-                  {temFiltro ? 'Nenhuma multa encontrada com os filtros aplicados.' : 'Nenhuma multa registrada.'}
+                <td colSpan={8} className="p-8 text-center text-slate-500">
+                  {temFiltro
+                    ? 'Nenhuma multa encontrada com os filtros aplicados.'
+                    : 'Nenhuma multa registrada.'}
                 </td>
               </tr>
             ) : (
@@ -227,65 +243,73 @@ export default function MultasPage() {
                     <IdBadge id={`MLT-${String(m.id).padStart(4, '0')}`} />
                   </td>
                   <td>
-                    <span style={{ fontSize: '13px', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                    <span className="text-[13px] whitespace-nowrap text-slate-500">
                       {formatarDataHora(m.data_infracao)}
                     </span>
                     {m.data_vencimento && (
-                      <div style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
+                      <div className="text-xs text-slate-400">
                         Vence em {formatarDataHora(m.data_vencimento)}
                       </div>
                     )}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span style={{ fontFamily: 'monospace', fontSize: '13px', fontWeight: 600, color: 'var(--color-text-strong)' }}>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono text-[13px] font-semibold text-slate-900">
                         {m.veiculo_placa ?? 'N/D'}
                       </span>
-                      <span style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>{m.veiculo_modelo}</span>
+                      <span className="text-xs text-slate-400">{m.veiculo_modelo}</span>
                     </div>
                   </td>
                   <td>
                     {m.motorista_nome ? (
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+                      <span className="text-[13px] font-medium text-slate-700">
                         {m.motorista_nome}
                       </span>
                     ) : (
-                      <span style={{ fontSize: '13px', fontStyle: 'italic', color: 'var(--color-text-subtle)' }}>
-                        Sem motorista
-                      </span>
+                      <span className="text-[13px] text-slate-400 italic">Sem motorista</span>
                     )}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[13px] text-slate-700">
                         {m.descricao ?? 'Sem descrição'}
                       </span>
-                      <span style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
-                        {[m.id_infracao, m.orgao_autuador, `${m.pontos} pts`].filter(Boolean).join(' · ')}
+                      <span className="text-xs text-slate-400">
+                        {[m.id_infracao, m.orgao_autuador, `${m.pontos} pts`]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </span>
                     </div>
                   </td>
                   <td>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-text)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap' }}>
+                    <span className="font-display text-[13px] font-bold whitespace-nowrap text-slate-900">
                       {brl(m.valor)}
                     </span>
                   </td>
                   <td>
-                    <Badge tone={TOM_STATUS[m.status_pagamento]}>{LABELS_STATUS_MULTA[m.status_pagamento]}</Badge>
+                    <Badge tone={TOM_STATUS[m.status_pagamento]}>
+                      {LABELS_STATUS_MULTA[m.status_pagamento]}
+                    </Badge>
                   </td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <Button variant="ghost" size="sm" title="Editar multa" onClick={() => abrirEdicao(m)}>
-                      Editar
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="Excluir multa"
-                      style={{ color: 'var(--color-danger)' }}
-                      onClick={() => handleExcluir(m.id)}
-                    >
-                      Excluir
-                    </Button>
+                  <td className="text-right whitespace-nowrap">
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title="Editar multa"
+                        onClick={() => abrirEdicao(m)}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="danger-outline"
+                        size="sm"
+                        title="Excluir multa"
+                        onClick={() => setMultaExcluir(m)}
+                      >
+                        Excluir
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -293,7 +317,10 @@ export default function MultasPage() {
           </tbody>
         </Table>
 
-        <Pagination showing={`${filtradas.length === 0 ? 0 : 1}–${filtradas.length}`} total={filtradas.length} />
+        <Pagination
+          showing={`${filtradas.length === 0 ? 0 : 1}–${filtradas.length}`}
+          total={filtradas.length}
+        />
       </Card>
 
       {modalAberto && (
@@ -303,6 +330,21 @@ export default function MultasPage() {
           onSalvar={handleSalvar}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={Boolean(multaExcluir)}
+        title="Excluir Multa"
+        description={
+          multaExcluir
+            ? `Tem certeza que deseja excluir a multa MLT-${String(multaExcluir.id).padStart(4, '0')}?`
+            : ''
+        }
+        confirmLabel="Sim, Excluir"
+        cancelLabel="Cancelar"
+        variant="danger"
+        onConfirm={handleConfirmarExclusao}
+        onClose={() => setMultaExcluir(null)}
+      />
     </div>
   );
 }

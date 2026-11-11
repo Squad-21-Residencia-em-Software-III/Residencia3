@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Button, Input, Modal, Select } from '../../components/ui';
+import { Alert, Button, Input, Modal, Select, Textarea } from '../../components/ui';
 import type { NovaSolicitacaoApiInput } from '../../types/solicitacao';
 import type { Unidade } from '../../types/unidade';
 import { useAuth } from '../../contexts/AuthContext';
@@ -97,24 +97,11 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
 
   return (
     <Modal onClose={onClose} title="Nova Solicitação de Viagem" maxWidth="560px">
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 'var(--space-4)' }}>
-        {erro && (
-          <div
-            style={{
-              padding: 'var(--space-2) var(--space-3)',
-              background: 'var(--color-danger-subtle, #fee2e2)',
-              color: 'var(--color-danger, #b91c1c)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '13px',
-              fontWeight: 500,
-            }}
-          >
-            {erro}
-          </div>
-        )}
+      <form onSubmit={handleSubmit} className="grid gap-4">
+        {erro && <Alert tone="danger">{erro}</Alert>}
 
         {/* Solicitante (usuário autenticado) e Unidade que analisará o pedido */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input label="Solicitante" value={usuario?.nome ?? ''} disabled />
           <Select
             label="Unidade *"
@@ -132,7 +119,7 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
         </div>
 
         {/* Trajeto */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Local de Origem"
             placeholder="Ex: Sede FSPH - Aracaju"
@@ -152,7 +139,7 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
         </div>
 
         {/* Horários */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             type="datetime-local"
             label="Data/Hora de Saída Desejada"
@@ -169,53 +156,19 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
         </div>
 
         {/* Finalidade */}
-        <div>
-          <label
-            htmlFor="nova-solicitacao-finalidade"
-            style={{
-              display: 'block',
-              fontSize: '12px',
-              fontWeight: 600,
-              color: 'var(--color-text)',
-              marginBottom: 'var(--space-1)',
-            }}
-          >
-            Finalidade Institucional <span style={{ color: 'var(--color-danger)' }}>*</span>
-          </label>
-          <textarea
-            id="nova-solicitacao-finalidade"
-            value={finalidade}
-            onChange={(e) => setFinalidade(e.target.value)}
-            placeholder="Descreva o motivo da viagem, passageiros previstos, transporte de cargas ou documentos..."
-            rows={3}
-            required
-            style={{
-              width: '100%',
-              padding: 'var(--space-2)',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-border)',
-              background: 'var(--color-surface)',
-              color: 'var(--color-text)',
-              fontSize: '13px',
-              fontFamily: 'inherit',
-              resize: 'vertical',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
+        <Textarea
+          id="nova-solicitacao-finalidade"
+          label="Finalidade Institucional *"
+          value={finalidade}
+          onChange={(e) => setFinalidade(e.target.value)}
+          placeholder="Descreva o motivo da viagem, passageiros previstos, transporte de cargas ou documentos..."
+          rows={3}
+          required
+        />
 
         {/* Rodapé de Ações */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 'var(--space-2)',
-            marginTop: 'var(--space-2)',
-            paddingTop: 'var(--space-3)',
-            borderTop: '1px solid var(--color-divider)',
-          }}
-        >
-          <Button variant="outline" type="button" onClick={onClose}>
+        <div className="mt-2 flex justify-end gap-2 border-t border-slate-100 pt-3">
+          <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
           <Button variant="primary" type="submit" disabled={salvando}>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Input, Modal, Select } from '../../components/ui';
+import { Alert, Input, Modal, Select } from '../../components/ui';
 import { storageService } from '../../services/storageService';
 import { LABELS_STATUS_MULTA, STATUS_MULTA } from '../../types/multa';
 import type { Multa, NovaMultaInput, StatusPagamentoMulta } from '../../types/multa';
@@ -10,6 +10,7 @@ interface ModalMultaProps {
   multa?: Multa;
   onClose: () => void;
   onSalvar: (multa: NovaMultaInput) => void;
+  veiculoIdInicial?: string;
 }
 
 /** Data/hora local no formato do input datetime-local (AAAA-MM-DDTHH:mm). */
@@ -19,12 +20,14 @@ function agoraLocal(): string {
   return d.toISOString().slice(0, 16);
 }
 
-export function ModalMulta({ multa, onClose, onSalvar }: ModalMultaProps) {
+export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: ModalMultaProps) {
   const veiculos = useMemo(() => storageService.getVeiculos(), []);
   const motoristas = useMemo(() => storageService.getMotoristas(), []);
   const agora = useMemo(agoraLocal, []);
 
-  const [veiculoId, setVeiculoId] = useState(multa ? String(multa.veiculo_id) : '');
+  const [veiculoId, setVeiculoId] = useState(
+    multa ? String(multa.veiculo_id) : veiculoIdInicial ?? '',
+  );
   const [motoristaId, setMotoristaId] = useState(multa?.motorista_id ? String(multa.motorista_id) : '');
   const [dataInfracao, setDataInfracao] = useState(multa?.data_infracao?.slice(0, 16) ?? agora);
   const [dataVencimento, setDataVencimento] = useState(multa?.data_vencimento ?? '');
@@ -80,12 +83,12 @@ export function ModalMulta({ multa, onClose, onSalvar }: ModalMultaProps) {
     >
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
-          <p role="alert" style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>
+          <Alert tone="danger" className="mb-4">
             {erro}
-          </p>
+          </Alert>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
             label="Veículo *"
             value={veiculoId}
@@ -113,7 +116,7 @@ export function ModalMulta({ multa, onClose, onSalvar }: ModalMultaProps) {
           </Select>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Data e hora da infração *"
             type="datetime-local"
@@ -129,7 +132,7 @@ export function ModalMulta({ multa, onClose, onSalvar }: ModalMultaProps) {
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Código da infração (Detran)"
             placeholder="Ex: A123456789"
@@ -146,7 +149,7 @@ export function ModalMulta({ multa, onClose, onSalvar }: ModalMultaProps) {
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Input
             label="Valor (R$) *"
             type="number"

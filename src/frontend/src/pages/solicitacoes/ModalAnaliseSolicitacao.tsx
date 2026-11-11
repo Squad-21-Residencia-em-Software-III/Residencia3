@@ -11,7 +11,7 @@ import {
   User,
   XCircle,
 } from 'lucide-react';
-import { Avatar, Badge, Button, IdBadge, Modal } from '../../components/ui';
+import { Alert, Avatar, Badge, Button, IdBadge, Modal, Textarea } from '../../components/ui';
 import type { BadgeTone } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { mensagemDeErro } from '../../services/api/http';
@@ -23,6 +23,7 @@ import type {
 } from '../../types/solicitacao';
 import { LABELS_STATUS_SOLICITACAO } from '../../types/solicitacao';
 import { PERFIS } from '../../types/usuario';
+import { cn } from '../../utils/cn';
 
 interface ModalAnaliseSolicitacaoProps {
   solicitacao: SolicitacaoViagem | null;
@@ -137,49 +138,22 @@ export function ModalAnaliseSolicitacao({
     disponibilidade.motoristas_disponiveis.length > 0;
 
   return (
-    <Modal
-      onClose={onClose}
-      title={`Análise da Solicitação #${solicitacao.id}`}
-      maxWidth="640px"
-    >
-      <div style={{ display: 'grid', gap: 'var(--space-4)', padding: 'var(--space-1) 0' }}>
-        {erro && (
-          <div
-            style={{
-              padding: 'var(--space-3) var(--space-4)',
-              background: 'var(--color-danger-subtle, #fee2e2)',
-              color: 'var(--color-danger, #b91c1c)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '13px',
-              fontWeight: 500,
-            }}
-          >
-            {erro}
-          </div>
-        )}
+    <Modal onClose={onClose} title={`Análise da Solicitação #${solicitacao.id}`} maxWidth="640px">
+      <div className="grid gap-4 py-1">
+        {erro && <Alert tone="danger">{erro}</Alert>}
 
         {/* 1. Header do Resumo: Solicitante e Status */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'var(--color-surface-subtle, #f8fafc)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-md)',
-            padding: 'var(--space-4)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center gap-3">
             <Avatar name={solicitacao.solicitante_nome} size={42} />
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <strong style={{ fontSize: '15px', color: 'var(--color-text)' }}>
+              <div className="flex items-center gap-2">
+                <strong className="text-[15px] text-slate-900">
                   {solicitacao.solicitante_nome}
                 </strong>
                 <IdBadge id={`#${solicitacao.id}`} />
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+              <div className="mt-0.5 text-xs text-slate-500">
                 Unidade: {solicitacao.unidade_nome ?? 'Não informada'}
               </div>
             </div>
@@ -190,89 +164,30 @@ export function ModalAnaliseSolicitacao({
         </div>
 
         {/* 2. Trajeto e Horários */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: 'var(--space-3)',
-          }}
-        >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Card Trajeto */}
-          <div
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: 'var(--space-3) var(--space-4)',
-            }}
-          >
-            <div
-              style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--color-text-muted)',
-                textTransform: 'uppercase',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                marginBottom: '6px',
-              }}
-            >
-              <MapPin size={13} color="var(--color-primary)" /> Trajeto Solicitado
+          <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase">
+              <MapPin size={13} className="text-primary" /> Trajeto Solicitado
             </div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text)' }}>
-              {solicitacao.origem}
-            </div>
-            <div
-              style={{
-                fontSize: '11px',
-                color: 'var(--color-primary)',
-                margin: '2px 0',
-                fontWeight: 600,
-              }}
-            >
-              ↓ destino
-            </div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text)' }}>
-              {solicitacao.destino}
-            </div>
+            <div className="text-[13px] font-semibold text-slate-900">{solicitacao.origem}</div>
+            <div className="my-0.5 text-[11px] font-semibold text-primary">↓ destino</div>
+            <div className="text-[13px] font-semibold text-slate-900">{solicitacao.destino}</div>
           </div>
 
           {/* Card Horários */}
-          <div
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: 'var(--space-3) var(--space-4)',
-            }}
-          >
-            <div
-              style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--color-text-muted)',
-                textTransform: 'uppercase',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                marginBottom: '6px',
-              }}
-            >
-              <Clock size={13} color="var(--color-primary)" /> Período Pretendido
+          <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase">
+              <Clock size={13} className="text-primary" /> Período Pretendido
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-              Saída desejada:
-            </div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text)', marginBottom: '4px' }}>
+            <div className="text-xs text-slate-500">Saída desejada:</div>
+            <div className="mb-1 text-[13px] font-semibold text-slate-900">
               {formatarDataHora(solicitacao.data_saida_desejada)}
             </div>
             {solicitacao.data_chegada_desejada && (
               <>
-                <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                  Retorno previsto:
-                </div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text)' }}>
+                <div className="text-xs text-slate-500">Retorno previsto:</div>
+                <div className="text-[13px] font-semibold text-slate-900">
                   {formatarDataHora(solicitacao.data_chegada_desejada)}
                 </div>
               </>
@@ -281,63 +196,35 @@ export function ModalAnaliseSolicitacao({
         </div>
 
         {/* 3. Finalidade e Justificativa */}
-        <div
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-sm)',
-            padding: 'var(--space-3) var(--space-4)',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: 'var(--color-text-muted)',
-              textTransform: 'uppercase',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              marginBottom: '4px',
-            }}
-          >
+        <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase">
             <FileText size={13} /> Finalidade & Justificativa Institucional
           </div>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--color-text)', lineHeight: 1.5 }}>
-            {solicitacao.finalidade}
-          </p>
+          <p className="m-0 text-[13px] leading-relaxed text-slate-900">{solicitacao.finalidade}</p>
         </div>
 
         {/* 4. Validação de Disponibilidade de Recursos (SCRUM-73) */}
         {disponibilidade && (
           <div
-            style={{
-              background: temRecursosDisponiveis
-                ? 'var(--color-success-subtle, #ecfdf5)'
-                : 'var(--color-warning-subtle, #fffbeb)',
-              border: `1px solid ${
-                temRecursosDisponiveis
-                  ? 'var(--color-success-border, #a7f3d0)'
-                  : 'var(--color-warning-border, #fde68a)'
-              }`,
-              borderRadius: 'var(--radius-sm)',
-              padding: 'var(--space-3) var(--space-4)',
-            }}
+            className={cn(
+              'rounded-md border px-4 py-3',
+              temRecursosDisponiveis
+                ? 'border-emerald-200 bg-emerald-50'
+                : 'border-amber-200 bg-amber-50',
+            )}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 {temRecursosDisponiveis ? (
-                  <ShieldCheck size={18} color="var(--color-success, #059669)" />
+                  <ShieldCheck size={18} className="text-emerald-600" />
                 ) : (
-                  <AlertTriangle size={18} color="var(--color-warning, #d97706)" />
+                  <AlertTriangle size={18} className="text-amber-600" />
                 )}
                 <strong
-                  style={{
-                    fontSize: '13px',
-                    color: temRecursosDisponiveis
-                      ? 'var(--color-success-text, #065f46)'
-                      : 'var(--color-warning-text, #92400e)',
-                  }}
+                  className={cn(
+                    'text-[13px]',
+                    temRecursosDisponiveis ? 'text-emerald-900' : 'text-amber-900',
+                  )}
                 >
                   Disponibilidade Operacional no Período
                 </strong>
@@ -347,22 +234,15 @@ export function ModalAnaliseSolicitacao({
               </Badge>
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                gap: 'var(--space-4)',
-                marginTop: 'var(--space-2)',
-                fontSize: '12px',
-                color: 'var(--color-text)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Truck size={14} color="var(--color-text-muted)" />
+            <div className="mt-2 flex gap-4 text-xs text-slate-900">
+              <div className="flex items-center gap-1">
+                <Truck size={14} className="text-slate-500" />
                 <strong>{disponibilidade.veiculos_disponiveis.length}</strong> veículos disponíveis
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <User size={14} color="var(--color-text-muted)" />
-                <strong>{disponibilidade.motoristas_disponiveis.length}</strong> motoristas habilitados
+              <div className="flex items-center gap-1">
+                <User size={14} className="text-slate-500" />
+                <strong>{disponibilidade.motoristas_disponiveis.length}</strong> motoristas
+                habilitados
               </div>
             </div>
           </div>
@@ -370,77 +250,38 @@ export function ModalAnaliseSolicitacao({
 
         {/* 5. Se já foi Recusada: Mostra o motivo gravado */}
         {solicitacao.status === 'RECUSADA' && solicitacao.motivo_recusa && (
-          <div
-            style={{
-              background: 'var(--color-danger-subtle, #fef2f2)',
-              border: '1px solid var(--color-danger-border, #fecaca)',
-              borderRadius: 'var(--radius-sm)',
-              padding: 'var(--space-3) var(--space-4)',
-            }}
-          >
-            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-danger)', textTransform: 'uppercase', marginBottom: '2px' }}>
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
+            <div className="mb-0.5 text-[11px] font-semibold text-rose-700 uppercase">
               Motivo da Recusa Registrado
             </div>
-            <div style={{ fontSize: '13px', color: 'var(--color-danger)' }}>
-              {solicitacao.motivo_recusa}
-            </div>
+            <div className="text-[13px] text-rose-700">{solicitacao.motivo_recusa}</div>
           </div>
         )}
 
         {/* 6. Modo de Recusa com Justificativa (SCRUM-74) */}
         {modoRecusa && (
-          <div
-            style={{
-              background: 'var(--color-surface-subtle)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: 'var(--space-3) var(--space-4)',
-            }}
-          >
-            <label
-              htmlFor="motivo-recusa-input"
-              style={{
-                display: 'block',
-                fontSize: '12px',
-                fontWeight: 600,
-                color: 'var(--color-text)',
-                marginBottom: 'var(--space-1)',
-              }}
-            >
-              Justificativa da Recusa (opcional, máx. 200 caracteres):
-            </label>
-            <textarea
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+            <Textarea
               id="motivo-recusa-input"
+              label="Justificativa da Recusa (opcional, máx. 200 caracteres):"
               value={motivoRecusa}
               onChange={(e) => setMotivoRecusa(e.target.value)}
               placeholder="Ex: Veículos da categoria alocados em outra missão de urgência."
               maxLength={200}
               rows={3}
-              style={{
-                width: '100%',
-                padding: 'var(--space-2)',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                background: 'var(--color-surface)',
-                color: 'var(--color-text)',
-                fontSize: '13px',
-                fontFamily: 'inherit',
-                resize: 'vertical',
-                boxSizing: 'border-box',
-              }}
+              className="bg-white text-[13px]"
             />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
-              <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">
                 {motivoRecusa.length}/200 caracteres
               </span>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <div className="flex gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setModoRecusa(false)}>
                   Cancelar
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
-                  style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
+                  variant="danger-outline"
                   onClick={handleConfirmarRecusa}
                   disabled={processando}
                 >
@@ -452,36 +293,19 @@ export function ModalAnaliseSolicitacao({
         )}
 
         {/* 7. Barra de Ações do Rodapé (Aprovação / Recusa / Agendamento) */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 'var(--space-2)',
-            marginTop: 'var(--space-2)',
-            paddingTop: 'var(--space-3)',
-            borderTop: '1px solid var(--color-divider)',
-          }}
-        >
-          <Button variant="outline" onClick={onClose}>
+        <div className="mt-2 flex justify-end gap-2 border-t border-slate-100 pt-3">
+          <Button variant="ghost" onClick={onClose}>
             Fechar
           </Button>
 
           {solicitacao.status === 'PENDENTE_APROVACAO' && !modoRecusa && (
             <>
-              <Button
-                variant="outline"
-                style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
-                onClick={() => setModoRecusa(true)}
-              >
-                <XCircle size={15} style={{ marginRight: '6px' }} />
+              <Button variant="danger-outline" onClick={() => setModoRecusa(true)}>
+                <XCircle size={15} className="mr-1.5" />
                 Recusar
               </Button>
-              <Button
-                variant="primary"
-                onClick={handleConfirmarAprovacao}
-                disabled={processando}
-              >
-                <CheckCircle2 size={15} style={{ marginRight: '6px' }} />
+              <Button variant="primary" onClick={handleConfirmarAprovacao} disabled={processando}>
+                <CheckCircle2 size={15} className="mr-1.5" />
                 Aprovar Solicitação
               </Button>
             </>
@@ -495,7 +319,7 @@ export function ModalAnaliseSolicitacao({
                 onAgendar(solicitacao);
               }}
             >
-              Agendar Viagem <ArrowRight size={14} style={{ marginLeft: '6px' }} />
+              Agendar Viagem <ArrowRight size={14} className="ml-1.5" />
             </Button>
           )}
         </div>

@@ -46,7 +46,22 @@ exports.seed = async function(knex) {
   ]).returning('id');
 
   const solSvo = await knex('solicitacoes_svo').insert([
-    { registrante_id: idUser('gestor.svo@exemplo.com'), dados_solicitante: 'Hospital de Urgência', local_ocorrencia: 'Av. Tancredo Neves', material_sensivel: true, status: 'EM_ANDAMENTO' }
+    {
+      registrante_id: idUser('gestor.svo@exemplo.com'),
+      dados_solicitante: 'Hospital de Urgência',
+      local_ocorrencia: 'Av. Tancredo Neves',
+      observacoes: 'Óbito natural em unidade hospitalar, documentação médica conferida.',
+      material_sensivel: true,
+      status: 'EM_ANDAMENTO'
+    },
+    {
+      registrante_id: idUser('gestor.svo@exemplo.com'),
+      dados_solicitante: 'Maria da Silva (Familiar) - Tel: (79) 99999-0000',
+      local_ocorrencia: 'Rua São Cristóvão, 412, Bairro Getúlio Vargas, Aracaju/SE',
+      observacoes: 'Óbito em residência sem sinais de violência externa. Aguardando triagem do plantão.',
+      material_sensivel: false,
+      status: 'EM_TRIAGEM'
+    }
   ]).returning('id');
 
   await knex('escalas_svo').insert([

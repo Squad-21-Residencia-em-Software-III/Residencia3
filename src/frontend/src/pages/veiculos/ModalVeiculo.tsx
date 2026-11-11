@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Input, Modal, Select } from '../../components/ui';
+import { Alert, Button, Input, Modal, Select } from '../../components/ui';
 import { mensagemDeErro } from '../../services/api/http';
 import type { NovoVeiculoInput, TipoFrota } from '../../types/veiculo';
 
@@ -62,7 +62,9 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
     <Modal title="Cadastrar Veículo" onClose={onClose}>
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
-          <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
+          <Alert tone="danger" className="mb-4">
+            {erro}
+          </Alert>
         )}
 
         <Input
@@ -83,11 +85,13 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
           required
         />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
             label="Tipo de Frota"
             value={tipoFrota}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setTipoFrota(e.target.value as TipoFrota)}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+              setTipoFrota(e.target.value as TipoFrota)
+            }
           >
             <option value="ADMINISTRATIVA">Administrativa</option>
             <option value="SVO">SVO</option>
@@ -118,7 +122,7 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmAtual(e.target.value)}
         />
 
-        <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
+        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>

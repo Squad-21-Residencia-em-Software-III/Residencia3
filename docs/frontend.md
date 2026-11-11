@@ -3,67 +3,117 @@
 Documento único do front-end. Atualize-o a cada nova tela ou mudança de padrão.
 
 ## 1. Stack
-- React 19 + TypeScript (modo estrito) + Vite
-- CSS puro com variáveis (sem Tailwind)
-- `react-router-dom` para as rotas
+- **React 19 + TypeScript (modo estrito) + Vite 8**
+- **Tailwind CSS v4 (`@tailwindcss/vite`)** com tokens institucionais centralizados na diretiva `@theme` em `src/styles/global.css` (zero arquivos `.css` secundários)
+- **Design System em TypeScript**: variantes estritamente tipadas com `class-variance-authority` (`cva` + `VariantProps`) e fusão inteligente de classes com `clsx` + `tailwind-merge` (`src/utils/cn.ts`)
+- **Padronização de Código**: `prettier` + `prettier-plugin-tailwindcss` para ordenação automática e determinística das classes utilitárias
+- `react-router-dom` para roteamento e controle de acesso (RBAC)
 - `lucide-react` para ícones vetoriais padronizados (sem emojis)
+- **Vitest + React Testing Library** para testes automatizados de componentes e páginas
 
 ## 2. Como rodar
 ```bash
 cd src/frontend
 npm install
-npm run dev      # http://localhost:5173/
-npm run build    # confere tipos e gera o build
+npm run dev          # Inicia o servidor de desenvolvimento em http://localhost:5173/
+npm run build        # Confere tipos TypeScript (tsc -b) e gera o bundle de produção
+npm test             # Executa a suíte de testes unitários e de integração (Vitest)
+npm run format       # Formata o código e ordena classes Tailwind CSS com Prettier
+npm run format:check # Verifica a formatação e ordenação de classes sem alterar arquivos
 ```
 
 > [!IMPORTANT]
 > **Atenção aos desenvolvedores**:
-> 1. Foi adicionada a dependência `lucide-react`. Ao atualizar ou clonar a branch, é obrigatório rodar `npm install` dentro de `src/frontend`.
+> 1. Ao atualizar ou clonar a branch, é obrigatório rodar `npm install` dentro de `src/frontend` para instalar os pacotes do Tailwind CSS v4 (`tailwindcss`, `@tailwindcss/vite`), `class-variance-authority`, `clsx`, `tailwind-merge` e `lucide-react`.
 > 2. Crie o arquivo `src/frontend/.env` com `VITE_API_URL=http://localhost:3000/api` para comunicação correta com o back-end em desenvolvimento.
 
-O front-end **está oficialmente conectado ao back-end para Autenticação e Sessão** (`POST /api/auth/login`, `GET /api/auth/me`). Os módulos operacionais (Veículos, Motoristas, Viagens, Abastecimento, Multas) utilizam persistência no navegador via `storageService` enquanto aguardam a conexão de seus endpoints REST definitivos.
+O front-end **está conectado ao back-end para os módulos centrais da operação**:
+- **Autenticação e Sessão**: `POST /api/auth/login`, `GET /api/auth/me`.
+- **Veículos**: `GET /api/veiculos`, `POST /api/veiculos`.
+- **Motoristas**: `GET /api/motoristas`.
+- **Viagens Operacionais**: `GET /api/viagens`, agendar, iniciar, finalizar e cancelar viagens via API.
+- **Solicitações de Viagem**: `GET /api/solicitacoes-viagem`, criação, consulta de disponibilidade (`SCRUM-73`), aprovação e recusa com justificativa auditável (`SCRUM-74`).
+- **Unidades & Gestores**: `GET /api/unidades`, integração com isolamento por unidade (BL15 / SCRUM-142).
+
+Os módulos de **Dashboard**, **Usuários**, **Multas**, **Abastecimento** e **Agenda** encontram-se em fase de transição (endpoints do back-end já desenvolvidos, aguardando conexão dos serviços na interface conforme o roadmap).
 
 ## 3. Estrutura de pastas
 ```
 src/frontend/
-├─ public/assets/        logos e ícone
+├─ public/assets/        logos e ícones institucionais
+├─ .prettierrc           configuração do Prettier + prettier-plugin-tailwindcss
 └─ src/
    ├─ contexts/          AuthContext (estado global da sessão e usuário logado)
-   ├─ styles/            tokens.css (cores, fontes, raios...) e global.css
+   ├─ styles/            global.css (única folha de estilo: @import "tailwindcss", @theme e @layer base)
+   ├─ utils/             cn.ts (helper clsx + tailwind-merge para resolução de conflitos de classes)
    ├─ components/
-   │  ├─ ui/             Button, Card, Badge, Avatar, Input, Select, Modal, Table, ícones
-   │  └─ layout/         AppLayout (barra lateral dinâmica por perfil e topo)
-   ├─ pages/             uma página por rota (ex.: LoginPage.tsx, VeiculosPage.tsx)
-   ├─ routes/            index.tsx (roteamento) e guards.tsx (proteção de rotas e RBAC)
+   │  ├─ ui/             Design System tipado (Button, Card, Badge, IdBadge, Avatar, Field, Input, Select,
+   │  │                  Modal, ModalForm, Drawer, FilterBar, PlacaMercosul, Table, TableToolbar,
+   │  │                  TableFilterCollapse, Pagination, MetricCard, Alert, PageHeader, ConfirmDialog,
+   │  │                  EmptyState, icons)
+   │  └─ layout/         AppLayout (sidebar retrátil com divisão de domínios, drawer mobile e topbar) e ErrorLayout
+   ├─ pages/             uma página por rota + subpastas de modais/drawers por domínio e testes (*.test.tsx)
+   │  ├─ veiculos/       DrawerDetalhesVeiculo.tsx e ModalManutencoesVeiculo.tsx
+   │  ├─ viagens/        DrawerDetalhesViagem.tsx
+   │  ├─ solicitacoes/   ModalAnaliseSolicitacao.tsx e ModalNovaSolicitacao.tsx
+   │  ├─ abastecimento/  ModalAbastecimento.tsx
+   │  ├─ multas/         ModalMulta.tsx
+   │  └─ usuarios/       GestoresUnidadesSecao.tsx
+   ├─ routes/            index.tsx (roteamento, redirecionamentos e navegação) e guards.tsx (RBAC)
    ├─ services/
-   │  ├─ api/            http.ts (cliente HTTP com interceptors) e authApi.ts (endpoints de auth)
-   │  ├─ mocks/          dados fictícios iniciais
-   │  └─ storageService.ts persistência local no localStorage para os módulos operacionais
+   │  ├─ api/            http.ts (cliente HTTP), dashboardApi.ts e contratos REST por módulo
+   │  ├─ mocks/          dados iniciais padronizados
+   │  └─ storageService.ts persistência local no localStorage para os módulos em transição
    └─ types/             tipos TypeScript espelhando as entidades do banco e domínio
 ```
 
-## 4. Padrões
-- **Estilo**: usar as variáveis de `styles/tokens.css`. Não escrever cores fixas nos componentes.
-- **Componentes**: reutilizar os de `components/ui`. Importar por `components/ui`.
-- **Tipos**: cada tipo em `types/` espelha uma tabela do banco (ver `docs/dicionario-de-dados.md`). Não adicionar campos que não existam na tabela.
-- **Dados**: a tela consome uma lista de `services/`. Quando houver API, troca-se só essa origem.
+## 4. Arquitetura de Estilização e Boas Práticas (Tailwind CSS v4 + TypeScript)
 
-### 4.1 Padronização de Botões e Controles (Design System)
-Para assegurar consistência visual e eliminar desalinhamentos verticais entre componentes interativos:
-- **Altura unificada de controles de Toolbar (`38px`)**:
-  - `Button` com `size="md"`, `Input` de busca e `Select` compartilham exatamente a mesma altura nas barras de filtros e cabeçalhos.
-- **Tamanhos e Usos de Botões (`Button.tsx`)**:
-  - `size="md"` (padrão, `38px` de altura, `padding: 10px 20px`, `font-size: 13px`): Botões de ação primária em cabeçalhos (+ Novo Veículo, + Nova Solicitação), ações principais e submits de modais.
-  - `size="sm"` (`32px` de altura, `padding: 6px 12px`, `font-size: 12px`): Exclusivo para ações inline dentro das tabelas (Aprovar, Recusar, Detalhes, Senha, Remover) e filtros rápidos em chips.
-- **Hierarquia Visual de Variantes**:
-  - `btn--primary`: Ações de criação ou confirmação de alto impacto (cor institucional `var(--color-primary)`).
-  - `btn--outline`: Ações secundárias, filtros e cancelamentos neutros (`border: 1px solid var(--color-border-strong)`).
-  - `btn--ghost`: Ações terciárias, botões de ícone e atalhos contextuais sem borda.
+O front-end adota um conjunto estrito de boas práticas de engenharia para garantir alta legibilidade, tipagem forte e manutenção escalável com **Tailwind CSS v4**:
 
-### 4.2 Padrão de Barras de Ferramentas (`TableToolbar`)
-Todas as listagens corporativas seguem o mesmo arranjo espacial:
-- **Lado Esquerdo**: Campo de busca textual (`Input`) por nome, placa, ID ou e-mail.
-- **Lado Direito**: Dropdown de filtro de status (`Select`) + Botão de ação primária (`Button` variant `primary`).
+1. **Reutilização via Componentes TypeScript (Zero `@apply`)**:
+   - Não utilizamos a diretiva `@apply` nem arquivos `.css` por página. Toda reutilização visual acontece na camada de componentes React tipados em `src/components/ui/`.
+2. **Combinação de Classes (`cn`) e Variantes Tipadas (`CVA`)**:
+   - A função utilitária `cn(...inputs)` (`src/utils/cn.ts`) combina `clsx` e `tailwind-merge`, permitindo que qualquer componente base receba `className` via props e resolva conflitos de especificidade automaticamente (a última classe vence).
+   - Componentes com múltiplas variações visuais (`Button`, `Badge`, `Alert`, `MetricCard`, `ConfirmDialog`) utilizam **`class-variance-authority` (`cva` + `VariantProps`)**, oferecendo autocompletar estrito no TypeScript.
+3. **Proibição de Classes Dinâmicas Interpoladas**:
+   - O compilador do Tailwind analisa os arquivos estaticamente. É **proibido** concatenar strings dinâmicas como ``className={`bg-${cor}-500`}``.
+   - Sempre mapeie estados e enums (`StatusViagem`, `BadgeTone`, `MetricTone`, `ExcecaoAgenda['tipo']`) por meio de objetos estáticos tipados (`Record<Chave, string>`) ou variantes do `cva`.
+4. **Tokens Centralizados (`@theme`) e Mobile-First**:
+   - Cores institucionais (`bg-primary`, `bg-navy-900`, `text-text-muted`, `border-divider`), fontes (`font-sans`, `font-display`), raios (`rounded-modal`) e sombras (`shadow-card`, `shadow-modal`) estão declarados na diretiva `@theme` dentro de `src/styles/global.css`.
+   - Os layouts seguem a filosofia **Mobile-First**: classes base descrevem a visualização mobile (`flex-col`, `grid-cols-1`, `hidden`) e os prefixos responsivos (`sm:`, `md:`, `lg:`) adaptam o layout para telas maiores.
+   - A propriedade `style={{ ... }}` é restrita exclusivamente a coordenadas matemáticas calculadas em tempo de execução (como `left`/`width` proporcionais aos minutos nas barras do Gantt da Agenda e barras dinâmicas de progresso).
+5. **Ordenação Automática de Classes (`prettier-plugin-tailwindcss`)**:
+   - O plugin oficial do Prettier ordena automaticamente todas as classes Tailwind seguindo a ordem canônica oficial (layout → posicionamento → espaçamento → tipografia → cores → efeitos).
+
+### 4.1 Catálogo de Componentes do Design System (`src/components/ui/`)
+- **`Button` (`Button.tsx`)**:
+  - Variantes CVA (`variant`): `'primary'` | `'ghost'` | `'outline'` | `'danger'` | `'success'`.
+  - Tamanhos (`size`): `'md'` (padrão, controles principais e modais) e `'sm'` (ações inline em tabelas e barras de ferramentas).
+- **`Badge` e `IdBadge` (`Badge.tsx`)**:
+  - `Badge`: pílula semântica com indicador circular e variantes CVA (`tone`): `'success'` | `'warning'` | `'info'` | `'danger'` | `'neutral'` | `'purple'`.
+  - `IdBadge`: selo monoespaçado padronizado para chaves primárias (`#1042`, placas).
+- **`MetricCard` (`MetricCard.tsx`)**:
+  - Card executivo de KPI utilizado no topo das telas operacionais (`Home`, `Dashboard`, `Veículos`, `Solicitações`, `Viagens`, `Motoristas`, `Abastecimento`, `Multas`, `Usuários`), com suporte a `label`, `value`, `subtitle`, `badge`, `icon`, `tone` (`blue` | `green` | `amber` | `red` | `purple` | `slate`) e `footer`.
+- **`Alert` (`Alert.tsx`)**:
+  - Caixa de feedback contextual com variantes CVA (`tone`: `'info'` | `'success'` | `'warning'` | `'danger'`), suporte a `title`, `icon` e botão de fechamento (`onClose`).
+- **`ConfirmDialog` (`ConfirmDialog.tsx`)**:
+  - Modal padronizado para confirmação de ações destrutivas ou críticas (`variant="danger"` | `"primary"`), substituindo o uso de `window.confirm` nativo em todo o sistema.
+- **`PageHeader` (`PageHeader.tsx`)** e **`EmptyState` (`EmptyState.tsx`)**:
+  - `PageHeader`: cabeçalho de página institucional com `eyebrow`, `title`, `subtitle` e slot `actions`.
+  - `EmptyState`: estado vazio padronizado com ícone, título, descrição e ação de recuperação.
+- **`Drawer` (`Drawer.tsx`)**:
+  - Painel lateral deslizante (sheet) ancorado à direita com backdrop escurecido, suporte a tecla `Escape`, trava de scroll no body e foco acessível. Utilizado em `DrawerDetalhesVeiculo` e `DrawerDetalhesViagem` para inspeção profunda e auditoria sem perder o contexto da tabela subjacente.
+- **`PlacaMercosul` (`PlacaMercosul.tsx`)**:
+  - Componente de renderização visual de placas de veículos em conformidade com o padrão oficial Mercosul (topo azul com nome 'BRASIL', bandeira nacional e sigla 'BR' em tipografia monoespaçada) e suporte ao padrão convencional cinza (`variant="mercosul" | "padrao"`), disponível nos tamanhos `'sm'` e `'md'`.
+- **`ModalForm`, `FormRow` e `ModalFooter` (`ModalForm.tsx`)**:
+  - Estrutura tipada para composição de formulários modais de cadastro e edição (`ModalForm`), garantindo espaçamento vertical consistente, colunas responsivas (`FormRow`) e barra de botões de rodapé padronizada (`ModalFooter`).
+- **`FilterBar` (`FilterBar.tsx`)**:
+  - Barra consolidada de filtros com campo de busca textual e slots para dropdowns e ações de limpeza com micro-interações responsivas.
+- **`Table`, `TableToolbar`, `TableFilterCollapse` e `Pagination` (`Table.tsx`)**:
+  - `Table`: tabela responsiva com rolagem horizontal suave e ocultação automática de avatares em telas pequenas (`< 768px`).
+  - `TableToolbar`: cabeçalho de tabela com título, subtítulo, botão de alternância de filtros mobile e CTA primário.
+  - `TableFilterCollapse`: barra de filtros sempre visível no desktop (`md:flex`) e retrátil no mobile (`isOpen`).
 
 ## 5. Rotas e Permissões
 
@@ -71,16 +121,18 @@ Todas as listagens corporativas seguem o mesmo arranjo espacial:
 |---|---|---|---|
 | `/login` | `LoginPage` | Pública (`RotaPublica`) | Qualquer visitante (usuário logado é redirecionado para `/inicio`) |
 | `/` | Redirecionamento | Protegida | Redireciona para `/inicio` |
-| `/inicio` | `HomePage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (visão geral e central de operações) |
+| `/inicio` | `HomePage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (visão geral, métricas via `dashboardApi` e atalho de Nova Solicitação) |
 | `/dashboard` | `DashboardPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (métricas executivas e gráficos) |
 | `/solicitacoes` | `SolicitacoesPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (triagem, análise de disponibilidade e despacho) |
-| `/viagens` | `ViagensPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/viagens` | `ViagensPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (acompanhamento operacional e Drawer de Detalhes) |
 | `/agenda` | `AgendaPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
-| `/veiculos` | `VeiculosPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
+| `/veiculos` | `VeiculosPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (frota ativa, Drawer de Detalhes e modal de manutenções) |
 | `/abastecimento` | `AbastecimentoPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
-| `/motoristas` | `MotoristasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
-| `/multas` | `MultasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado |
-| `/usuarios` | `UsuariosPage` | Restrita por Perfil (`RotaPorPerfil`) | Exclusivo para perfil `ADMINISTRADOR` |
+| `/manutencoes` | `ManutencoesPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (histórico de manutenções com IdBadge e controle de oficina) |
+| `/multas` | `MultasPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (infrações e pontuação CNH) |
+| `/equipe` | `EquipePage` | Restrita por Perfil (`RotaPorPerfil`) | Exclusivo para perfil `ADMINISTRADOR` (gestão integrada com abas de Motoristas e Usuários) |
+| `/motoristas` | Redirecionamento | Protegida | Redireciona para `/equipe?aba=motoristas` |
+| `/usuarios` | Redirecionamento | Restrita por Perfil | Redireciona para `/equipe?aba=usuarios` |
 | `/sobre` | `SobreNosPage` | Protegida (`RotaProtegida`) | Qualquer usuário autenticado (apresentação institucional da FSPH, frota e créditos) |
 | `/404`, `/500`, `/403` | Páginas de Erro | Pública / Erro | Telas ilustradas e padronizadas para cada código de erro HTTP |
 | qualquer outra | `NotFoundPage` | Protegida | Exibida para rotas não mapeadas |
@@ -167,76 +219,87 @@ Todos os usuários de teste usam a senha padrão: **`Senha@123`**
 
 ---
 
-## 7. Origem dos dados
-> [!WARNING]
-> Os dados exibidos são **fictícios (mock)**. Não vêm do banco nem da API. Itens cadastrados pela tela existem só na memória do navegador e somem ao recarregar.
+## 7. Origem dos Dados e Status de Integração
 
-| Tela | Origem | Observação |
+A aplicação adota arquitetura híbrida em transição acelerada para API REST direta:
+
+| Módulo / Tela | Origem Atual | Situação e Contrato |
 |---|---|---|
-| Veículos | `services/mocks/veiculosMock.ts` | dados baseados nos 5 veículos do seed (`src/backend/database/seeds/01_dados_iniciais.js`) |
-| Motoristas | `services/mocks/motoristasMock.ts` | lista de motoristas simulados (respeitando o schema de `motoristas` e perfis de `usuarios`) |
-| Usuários | `services/mocks/usuariosMock.ts` | dados baseados nos 7 usuários do seed (`src/backend/database/seeds/01_dados_iniciais.js`) e regras dos 6 perfis oficiais |
-| Dashboard / Solicitações | `services/mocks/solicitacoesMock.ts` | resumo de solicitações de viagens e viagens ativas consolidando dados com veículos e motoristas |
-| Viagens | `services/mocks/viagensMock.ts` | dados estruturados conforme as tabelas `viagens_frota` e `ordens_svo` do banco de dados |
-| Agenda | `services/mocks/agendaMock.ts` | rotas padronizadas nos 5 veículos oficiais do seed e sincronizadas com as viagens |
+| **Autenticação** (`/login`) | **API REST Real** (`authApi.ts`) | `POST /api/auth/login`, `GET /api/auth/me` com emissão e validação de JWT. |
+| **Veículos** (`/veiculos`) | **API REST Real** (`veiculosApi.ts`) | `GET /api/veiculos`, `POST /api/veiculos` conectado ao PostgreSQL. |
+| **Motoristas** (`/motoristas`) | **API REST Real** (`motoristasApi.ts`) | `GET /api/motoristas` com dados relacionais; cadastro aguarda `POST /api/motoristas`. |
+| **Viagens** (`/viagens`) | **API REST Real** (`viagensApi.ts`) | Agendamento, início, conclusão com cálculo de odômetro e cancelamento via API. |
+| **Solicitações** (`/solicitacoes`) | **API REST Real** (`solicitacoesApi.ts`) | Listagem paginada, criação, análise de recursos (`SCRUM-73`), aprovação e recusa com motivo (`SCRUM-74`). |
+| **Unidades** (Seleção/Filtro) | **API REST Real** (`unidadesApi.ts`) | `GET /api/unidades` para isolamento operacional (BL15 / SCRUM-142). |
+| **Início / Dashboard** (`/inicio`, `/dashboard`) | **API REST Real** (`dashboardApi.ts`) / Storage | Consumo de `GET /api/dashboard` (BL34) com agregação de métricas reais da frota, viagens e solicitações. |
+| **Manutenções** (`/manutencoes`) | Storage (`storageService.ts`) | Padrão de Histórico operacional com `IdBadge` (`MAN-XXXX`), cards de status de oficina e integração pronta para `manutencaoRoutes.ts`. |
+| **Equipe** (`/equipe`) | **API REST Real** (`motoristasApi.ts`) / Storage | Gestão centralizada em abas: Motoristas (API) e Usuários (Storage em transição para `/api/usuarios`). |
+| **Multas / Infrações** (`/multas`) | Storage (`storageService.ts`) | Em transição: `GET /api/multas` e `POST /api/multas` prontos no backend. |
+| **Abastecimento** (`/abastecimento`) | Storage (`storageService.ts`) | Em transição: `POST /api/abastecimentos` e `GET /api/abastecimentos/veiculo/:id` prontos no backend. |
+| **Agenda** (`/agenda`) | Mocks (`agendaMock.ts`) | Em transição: estrutura preparada para consumo de viagens agendadas da API. |
+| **Sobre Nós** (`/sobre`) | Componente Institucional Estático | Apresentação institucional da equipe (Squad 21) e atribuições na topbar. |
 
-## 7. Tela de Veículos
+---
+
+## 8. Tela de Veículos (`/veiculos`)
 Tabela `veiculos`, conforme `docs/dicionario-de-dados.md` e as migrations.
 
 | Coluna no banco | Regra | Campo no front |
 |---|---|---|
-| `id` | serial, PK | `id` (gerado localmente no mock) |
-| `placa` | varchar(10), único | `placa` |
+| `id` | serial, PK | `id` (gerado localmente no mock / serial PostgreSQL) |
+| `placa` | varchar(10), único | `placa` (renderizada via `<PlacaMercosul />`) |
 | `modelo` | varchar(100) | `modelo` |
 | `tipo_frota` | `ADMINISTRATIVA` ou `SVO` | `tipo_frota` |
 | `capacidade_maxima` | inteiro, >= 0 | `capacidade_maxima` |
-| `status` | padrão `DISPONIVEL` | `status` |
+| `status` | padrão `DISPONIVEL` | `status` (`DISPONIVEL`, `RESERVADO`, `EM_USO`, `MANUTENCAO`) |
 
-Status usados: `DISPONIVEL`, `EM_USO`, `MANUTENCAO`.
+### Inovações de Interface em Veículos:
+- **`DrawerDetalhesVeiculo.tsx`**: Painel lateral deslizante com abertura ao clicar em qualquer linha da tabela. Exibe:
+  - Cabeçalho com placa Mercosul em destaque e status operacional;
+  - Cards de métricas rápidas (Quilometragem atual, Consumo médio registrado e Capacidade);
+  - Histórico recente de manutenções com atalho de cadastro direto;
+  - Resumo de abastecimentos vinculados e especificações técnicas;
+  - Rodapé de ações rápidas: registrar manutenção preventiva ou corretiva e visualizar logs de auditoria.
+- **`ModalManutencoesVeiculo.tsx`**: Modal dedicado para consulta e abertura de ordens de serviço específicas do veículo selecionado, com alternância para colocar o veículo em manutenção imediata.
 
-**Removido do protótipo do Figma**, por não existir no banco: ano, quilometragem, motorista responsável, tipo de veículo (Caminhão, Van) e os status `Inativo` e `Em Viagem`. Se o Squad quiser algum deles, é preciso uma migration antes.
+---
 
-## 8. Tela de Motoristas
-Tabela `motoristas`, conforme as migrations e o seed.
+## 9. Tela de Manutenções (`/manutencoes`)
+Tabela `manutencoes`, conectada às ordens de serviço preventivas e corretivas da frota FSPH.
 
-| Coluna no banco | Regra | Campo no front (`types/motorista.ts`) | Onde aparece |
+| Métrica / Elemento | Origem no Banco / Storage | Regra de Negócio | Onde aparece |
 |---|---|---|---|
-| `id` | serial, PK | `id` | gerado localmente nos mocks |
-| `usuario_id` | FK para `usuarios.id` | `usuario_id` | vínculo relacional com usuário |
-| `numero_cnh` | varchar(20), único | `numero_cnh` | tabela, badge e modal |
-| `categoria_cnh` | varchar(5) | `categoria_cnh` | tabela e modal |
-| `validade_cnh` | date | `validade_cnh` | tabela e modal |
-| `tipo_motorista` | varchar(20); valores: `FROTA` ou `SVO` | `tipo_motorista` | tabela, filtro e modal |
-| `status` | padrão `DISPONIVEL` | `status` | tabela |
-| (não é coluna) | vem de `usuarios.nome` via `usuario_id` | `nome` | tabela, avatar e modal |
+| **Em oficina agora** | `manutencoes.status = 'EM_ANDAMENTO'` | **Card 1 Prioritário**: Quantidade de veículos retidos e indisponíveis para operação | Topo esquerdo (destaque vermelho/verde) |
+| **Total investido** | `SUM(manutencoes.custo)` | Soma de custos de manutenções registradas | Card 2 de resumo |
+| **Preventivas vs Corretivas** | `manutencoes.tipo_manutencao` | Contagem e proporção de manutenções planejadas vs corretivas emergenciais | Card 3 de resumo |
+| **Concluídas no mês** | `manutencoes.status = 'CONCLUIDA'` | Ordens finalizadas com sucesso no mês corrente | Card 4 de resumo |
+| **Identificador de Registro** | `manutencoes.id` | Formato padrão de identificador histórico `<IdBadge id="MAN-0001" />` | Coluna 1 da tabela |
 
-- **CNH vencida**: o selo "Vencida" e o card "CNH Vencida" são calculados no front comparando `validade_cnh` com a data de hoje. Não existe coluna para isso no banco.
-- **Cadastro**: no mock, o nome é digitado e o `usuario_id` é gerado localmente. No sistema real integrado, o motorista será vinculado a um operador já existente na tabela `usuarios`.
-- **Removido do protótipo do Figma**: telefone, quantidade de viagens acumuladas, veículo fixo vinculado e status `Ativo`, `Em Viagem` e `Licença` (não existem na modelagem do banco).
+### Padrão de Histórico e Ações Operacionais:
+- **Histórico Unificado**: A tabela opera no mesmo padrão consolidado da tela de Abastecimento, trazendo a listagem histórica cronológica de todas as manutenções com busca e filtros por tipo e status.
+- **Workflow de Oficina**:
+  - Ordens `AGENDADA`: exibem botão contextual `[ Iniciar ]` que muda o status para `EM_ANDAMENTO` e automaticamente coloca o veículo como `MANUTENCAO`.
+  - Ordens `EM_ANDAMENTO`: exibem botão contextual `[ Concluir ]` que finaliza o serviço e libera o veículo de volta para `DISPONIVEL`.
+- **Exclusão Segura**: Todas as linhas possuem ação `[ Excluir ]` protegida por `<ConfirmDialog>`, garantindo integridade de registros.
+- **Status Exclusivo**: O status do registro é exibido unicamente na coluna **Status** via `<Badge>`, eliminando duplicidades na coluna de ações.
 
-### Como testar a Tela de Motoristas:
-1. Abra `http://localhost:5173/motoristas`.
-2. Verifique os 4 cards de métricas no topo (`Total de Motoristas`, `Frota`, `SVO` e `CNH Vencida`).
-3. Confira a badge vermelha de **Vencida** ao lado das datas expiradas (ex: 2024).
-4. Alterne os filtros rápidos: **Todos**, **Motoristas Frota** e **Motoristas SVO**.
-5. Clique em **Novo Motorista**, preencha os dados e confirme o cadastro para ver a nova linha ser inserida instantaneamente no topo da tabela.
+---
 
-## 9. Tela de Usuários
-Tabela `usuarios`, conforme as migrations (`20261014000001_create_initial_schema.js`, `20261014200000_regras_usuarios.js` e `20261015000000_integridade_usuarios.js`), o seed e a API backend.
+## 10. Tela de Gestão de Equipe (`/equipe`)
+Unificação da gestão operacional de pessoas da FSPH em uma única interface restrita a **Administradores**.
 
-| Coluna no banco | Regra | Campo no front (`types/usuario.ts`) | Onde aparece |
-|---|---|---|---|
-| `id` | serial, PK | `id` | gerado localmente nos mocks / PK relacional |
-| `nome` | varchar(255), mín. 3 caracteres | `nome` | tabela, avatar e modais |
-| `email` | varchar(255), formato de e-mail, único (lower) | `email` | tabela, busca e modais |
-| `senha` | varchar(255), hash bcrypt | `senha` | apenas nos modais de cadastro e redefinição; **nunca exposto em listagens** |
-| `tipo_usuario` | varchar(50), constraint `chk_usuarios_tipo_usuario` | `tipo_usuario` | tabela (badge secundária de categoria) e métricas |
-| `perfil` | varchar(50), constraint `chk_usuarios_perfil` | `perfil` | tabela, badges coloridas, abas de filtro e modais |
-| `ativo` | boolean, NOT NULL, default `true` | `ativo` | tabela (badge Ativo/Inativo), cards e alternador de status |
-
-- **Perfis válidos**: restrito aos 6 perfis oficiais da FSPH (`ADMINISTRADOR`, `SOLICITANTE`, `GESTOR_FROTA`, `GESTOR_SVO`, `MOTORISTA_FROTA`, `MOTORISTA_SVO`).
-- **`tipo_usuario` derivado**: usuários com perfil `MOTORISTA_FROTA` ou `MOTORISTA_SVO` recebem `tipo_usuario = 'MOTORISTA'`. Para os demais perfis, o valor é idêntico ao próprio perfil.
-- **Proteção do Administrador**: o backend impede que um administrador desative sua própria conta (`ativo: false`) ou retire seu próprio perfil de administrador. A tela possui travas visuais para o usuário logado (Carlos Silva - ID #1).
+### Estrutura de Abas ("Pill Segmented"):
+- A tela consolida o cadastro e acompanhamento de **Motoristas** e **Usuários** em duas abas horizontais com transição suave via CSS (`animate-tab-fade`):
+  1. **Aba Motoristas (`/equipe?aba=motoristas`)**:
+     - Visualização completa da tabela `motoristas` com 4 cards de topo (`Total de Motoristas`, `Frota`, `SVO` e `CNH Vencida`).
+     - Alerta proativo de CNH expirada ou próxima do vencimento.
+     - Filtros por tipo de motorista (`FROTA` / `SVO`) e status (`DISPONIVEL`, `DESIGNADO`, `EM_VIAGEM`, etc.).
+  2. **Aba Usuários (`/equipe?aba=usuarios`)**:
+     - Visualização da tabela `usuarios` com cards de status (`Ativos`, `Inativos`, etc.).
+     - Filtros rápidos por perfil (`ADMINISTRADOR`, `GESTAO`, `SOLICITANTE`, `MOTORISTA`, `INATIVOS`).
+     - Ações de redefinição de senha (`PATCH /api/usuarios/:id/senha`) e alternador de ativação/desativação.
+     - Seção dedicada de **Gestores por Unidade (BL15)** para vinculação institucional (SVO, HEMOSE, LACEN).
+- **Redirecionamentos Transparentes**: As rotas legadas `/motoristas` e `/usuarios` redirecionam automaticamente para `/equipe`, preservando compatibilidade de links antigos e histórico do navegador.
 - **Removido do protótipo do Figma**:
   - Coluna "Último Acesso" (`ultimo`): não existe na tabela `usuarios`.
   - Status "Licença": no banco o status de conta é puramente booleano (`ativo: true/false`).
@@ -357,16 +420,19 @@ Tabelas `viagens_frota`, `solicitacoes_viagem` e `ordens_svo`, conforme as migra
 - **Unificação de Horários na Tabela**: Em vez de ocupar duas colunas inteiras isoladas para `Partida` e `Chegada`, os horários foram unificados em uma única coluna hierárquica **Horários**, exibindo Saída, Chegada / Em trânsito / Aguardando saída com micro-indicadores de status.
 - **Hierarquia do Trajeto**: A coluna **Origem / Destino** utiliza indicador visual com ícone de pin na origem e conector `↳` no destino, permitindo que trajetos longos respirem com limite de quebra em 2 linhas sem espremer o restante da tabela.
 - **Contenção e Espaçamentos do Card**: Ajustado o padding horizontal padrão de células da tabela para 14px (com 20px nas extremidades alinhados à barra de ferramentas) e aplicada contenção `min-width: 0; max-width: 100%` no container `.card`, evitando estouros horizontais quando a sidebar estiver aberta em desktops e laptops.
-- **Ações Otimizadas**: A última coluna agora acomoda apenas a ação operacional ativa (`Finalizar`, restrita a viagens em andamento) com botão contextual e o ícone rotativo de expansão do ticket.
+- **Drawer de Detalhes da Viagem (`DrawerDetalhesViagem.tsx`)**:
+  - A visualização detalhada da viagem evoluiu para um **Drawer lateral** deslizante (`<Drawer>`), permitindo inspecionar o manifesto de bordo, odômetro auditado, motorista, veículo, horários e finalidade sem perder o contexto da listagem nem distorcer a paginação da tabela.
+  - Acesso direto ao clicar na linha da tabela ou no ícone de detalhes (`ChevronRight`).
+  - Suporte a ações operacionais contextualizadas: iniciar viagem, registrar retorno/odômetro final e cancelamento com confirmação.
 
 ### Como testar a Tela de Viagens:
 1. Abra `http://localhost:5173/viagens`.
 2. Confira os 4 cards de métricas no topo (`Total de Viagens`, `Em Andamento`, `Agendadas` e `Concluídas`).
 3. Alterne as abas de filtro: `Todas`, `Em Andamento`, `Agendadas`, `Concluídas`, `Frota` e `SVO`.
 4. Digite no campo de busca para filtrar por trajeto, condutor ou placa em tempo real.
-5. Clique em qualquer linha da tabela para expandir o **Ticket de Viagem** inline, com detalhes completos do manifesto, odômetro e rota. Clique novamente ou no botão 'X' para recolher.
+5. Clique em qualquer linha da tabela para abrir o **Drawer de Detalhes da Viagem**, com manifesto completo, métricas de odômetro e rota auditada.
 6. Clique em **Nova Viagem** para vincular uma solicitação aprovada a um veículo e motorista disponíveis com registro de odômetro inicial.
-7. Em uma viagem com status `Em Andamento`, clique em **Finalizar** (na tabela ou dentro do próprio ticket) para preencher o odômetro final (`km_final`) e registrar a conclusão da viagem.
+7. Em uma viagem com status `Em Andamento`, clique em **Finalizar** (na tabela ou dentro do próprio drawer) para preencher o odômetro final (`km_final`) e registrar a conclusão da viagem.
 
 ## 12. Tela de Agenda (`/agenda`)
 Painel de alocação temporal e monitoramento da frota, alimentado pelas tabelas `viagens_frota`, `solicitacoes_viagem`, `veiculos` e `motoristas`.
@@ -396,7 +462,7 @@ A tela organiza visualmente o uso dos recursos (veículos e motoristas) ao longo
 | **Status da Viagem** | Textos livres com acento ("Concluída", "Em Andamento", "Agendada") | Enums padronizados em caixa alta (`AGENDADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA`) | **Alinhado ao Banco**: Utiliza a mesma chave de status e estilo unificado de badges de `/viagens`. |
 | **Ícones e Alertas de Exceção** | Emojis textuais (`🔴`, `⚠️`, `🟢`) na visão Mês | Proibido pelo design system do projeto | **Removido do Figma**: Substituído por ícones vetoriais padronizados `lucide-react` (`AlertCircle`, `AlertTriangle`, `CheckCircle2`, `Clock`). |
 | **Quilometragem / Distância** | Texto estático solto ("99 km") | Cálculo a partir do odômetro (`km_final - km_inicial`) ou estimativa de trajeto | **Adequado ao Banco**: Exibição da distância apurada ou planejada em conformidade com o odômetro. |
-| **Estilos & Layout** | Tailwind CSS e cores inline soltas | Vanilla CSS com variáveis de `tokens.css` | **Adequado ao Padrão**: Uso rigoroso de variáveis do tema (`var(--color-primary)`, etc.). |
+| **Estilos & Layout** | Tailwind CSS e cores inline soltas | **Tailwind CSS v4 (`@theme`) + Mapas Estáticos TypeScript** | **Adequado ao Padrão**: Tokens institucionais em `global.css` (`@theme`) e coordenadas matemáticas de tempo via `style` dinâmico. |
 
 ### Composição das 3 Visualizações da Agenda:
 1. **Modo "Hoje" (Gantt Horário Interativo)**:
@@ -452,7 +518,7 @@ Página institucional acessível a todos os usuários autenticados através da b
      - **HEMOSE (Centro de Hemoterapia de Sergipe)**: Logística de transporte de hemoderivados e doadores.
      - **LACEN (Laboratório Central de Saúde Pública)**: Coleta e distribuição de amostras biológicas e exames diagnósticos.
   3. **Especificações Técnicas e Arquitetura**:
-     - Stack: React 19, TypeScript, CSS Variables, Express, Knex, PostgreSQL.
+     - Stack: React 19, TypeScript, Tailwind CSS v4 (`@theme` + CVA), Express, Knex, PostgreSQL.
      - Versão atual da plataforma e ambiente de execução.
   4. **Créditos do Projeto**:
      - Projeto desenvolvido no âmbito da **Residência em Software III (Squad 21)**.
@@ -717,3 +783,148 @@ O módulo de solicitações conecta o solicitante institucional ao despacho da f
 - **`SolicitacoesPage.tsx`**: Página com cards de métricas (total, pendentes, aprovadas, agendadas, recusadas), busca textual à esquerda, dropdown de filtro de status e tabela de solicitações com avatares e badges.
 - **`ModalAnaliseSolicitacao.tsx`**: Painel de análise com resumo institucional, checagem de recursos em tempo real e ações de Aprovar / Recusar (com justificativa) / Agendar Viagem.
 - **`ModalNovaSolicitacao.tsx`**: Modal de cadastro validado conforme os schemas do backend.
+
+---
+
+## 18. Roadmap Estratégico do Projeto (Frontend & Sistema Integrado)
+
+Este roadmap consolida todos os marcos de evolução técnica e de negócio da plataforma de Gestão de Frotas e Transportes da FSPH (FMS/TMS), alinhando o planejamento do Squad 21 às diretrizes da Residência em Software III.
+
+```mermaid
+flowchart TD
+    subgraph Eixo1["1. Conexão REST dos Módulos Restantes"]
+        A1["Dashboard Executivo (GET /api/dashboard)"]
+        A2["Usuários e Senhas (GET/POST/PATCH /api/usuarios)"]
+        A3["Multas e Pontuação CNH (GET/POST /api/multas)"]
+        A4["Abastecimento e Km/L (POST/GET /api/abastecimentos)"]
+        A5["Manutenções e Bloqueio de Frota (POST/PATCH /api/manutencoes)"]
+        A6["Cadastro de Motoristas (POST /api/motoristas)"]
+    end
+
+    subgraph Eixo2["2. Design System & Transição do CSS"]
+        B1["Remoção de Estilos Inline Remanescentes"]
+        B2["Arquitetura de Saída do CSS (CSS Modules / Utility)"]
+        B3["Componentização: StatCard, FilterCollapse, PageHeader"]
+        B4["Componentização: ConfirmDialog, EmptyState, DatePicker"]
+    end
+
+    subgraph Eixo3["3. Módulo de Agenda Interativa"]
+        C1["Conexão Direta com a API de Viagens"]
+        C2["Gantt Diário (Timeline 24h por Veículo)"]
+        C3["Algoritmo Visual de Detecção de Conflitos (RN04/RF14)"]
+        C4["Filtro por Unidade e Frota Administrativa vs SVO"]
+    end
+
+    subgraph Eixo4["4. Especialização do Módulo SVO"]
+        D1["Gestão de Ordens de Coleta de Óbito (ordens_svo)"]
+        D2["Bloqueio Rígido de Lotação (Máx. 4 Corpos - RN11/RN12)"]
+        D3["Controle de Escalas e Plantões das Equipes SVO (RF26)"]
+    end
+
+    subgraph Eixo5["5. Alertas, Auditoria, Anexos & Relatórios"]
+        E1["Alertas de Vencimento de CNH e CRLV (30 dias - RN15)"]
+        E2["Upload de Documentos e Notas Fiscais (documentoRoutes)"]
+        E3["Trilha de Auditoria de Ações Críticas (RN18/RF27)"]
+        E4["Exportação de Relatórios Gerenciais em PDF e Excel (RF18)"]
+    end
+
+    subgraph Eixo6["6. Conectividade Resiliente & Testes"]
+        F1["Estratégia PWA e Operação Offline (IndexedDB no Interior)"]
+        F2["Suíte de Testes no Frontend (Vitest + Testing Library)"]
+    end
+
+    Eixo1 --> Eixo2 --> Eixo3 --> Eixo4 --> Eixo5 --> Eixo6
+```
+
+---
+
+### Eixo 1: Conexão dos Módulos Restantes à API REST
+Concluir a substituição de armazenamentos temporários (`storageService` / mocks estáticos) pelos contratos oficiais já existentes no back-end Express + PostgreSQL:
+1. **Dashboard Executivo (`/dashboard`)**:
+   - Integrar o endpoint `GET /api/dashboard` (BL34, protegido para Gestor de Frota e Administrador).
+   - Alimentar os 4 cards de KPI com números reais do banco (viagens ativas, solicitações pendentes, viaturas em manutenção e custo de combustível).
+   - Renderizar os gráficos de consumo médio mensal e taxa de ocupação da frota com agregação real.
+2. **Administração de Usuários (`/usuarios`)**:
+   - Integrar os 4 endpoints já prontos no back-end (`GET /api/usuarios`, `POST /api/usuarios`, `PATCH /api/usuarios/:id`, `PATCH /api/usuarios/:id/senha`).
+   - Aplicar validação rigorosa de unicidade de e-mail e políticas de senha forte (mínimo 8 caracteres, maiúsculas, números e símbolos) diretamente pelo PostgreSQL.
+3. **Multas & Infrações de Trânsito (`/multas`)**:
+   - Integrar `GET /api/multas` e `POST /api/multas` (`multaRoutes.ts`).
+   - Vincular infrações registradas ao condutor responsável (`motorista_id`), recalculando a pontuação acumulada na CNH conforme regras do CTB (`RN17`, `RF10`).
+4. **Abastecimento & Controle de Eficiência (`/abastecimento`)**:
+   - Integrar `POST /api/abastecimentos` e `GET /api/abastecimentos/veiculo/:veiculoId` (`abastecimentoRoutes.ts`).
+   - Calcular automaticamente o consumo médio ponderado (km/L) a partir da diferença de hodômetro entre abastecimentos consecutivos (`RF09`).
+5. **Manutenções Preventivas e Corretivas**:
+   - Integrar `POST /api/manutencoes`, `GET /api/manutencoes/veiculo/:veiculoId` e `PATCH /api/manutencoes/:id/status` (`manutencaoRoutes.ts`).
+   - Ao registrar manutenção aberta, alternar atomicamente o status do veículo para `MANUTENCAO`, bloqueando-o para novos agendamentos até a liberação.
+6. **Cadastro Completo de Motoristas (`POST /api/motoristas`)**:
+   - Construir no back-end a mutation `POST /api/motoristas` com validação de formato de CNH e categoria (B, C, D, E), reabilitando o botão de cadastro no modal do front-end.
+
+---
+
+### Eixo 2: Design System, Componentização e Migração para Tailwind CSS v4 (✅ Concluído)
+A migração arquitetural do front-end para **Tailwind CSS v4 + TypeScript Design System** foi integralmente concluída:
+1. **Eliminação de Arquivos CSS Isolados e Estilos Inline**:
+   - Todos os 6 arquivos CSS secundários legados (`login.css`, `home.css`, `layout.css`, `agenda.css`, `ui.css` e `tokens.css`) foram migrados e removidos, restando exclusivamente `src/styles/global.css` com a diretiva `@theme` e resets em `@layer base`.
+   - Todos os estilos inline (`style={{ ... }}`) estáticos foram convertidos para classes utilitárias semânticas do Tailwind CSS v4, mantendo `style` apenas para coordenadas dinâmicas em tempo de execução (como posição/largura matemática dos blocos no Gantt da Agenda e barras de proporção).
+   - Configurado `prettier` + `prettier-plugin-tailwindcss` (`src/frontend/.prettierrc`) para ordenação automática de classes.
+2. **Componentização Completa com CVA e `tailwind-merge` (`src/components/ui/`)**:
+   - **`Button`**, **`Badge`**, **`Alert`**, **`MetricCard`**, **`ConfirmDialog`**, **`PageHeader`**, **`EmptyState`**, **`Card`**, **`Avatar`**, **`Field` / `Input` / `Select`**, **`Modal`** e **`Table` / `TableToolbar` / `TableFilterCollapse` / `Pagination`** refatorados com `cva` (`class-variance-authority`) e `cn` (`clsx` + `tailwind-merge`).
+
+---
+
+### Eixo 3: Funcionamento Completo da Tela de Agenda (`/agenda`)
+Evoluir a tela de Agenda de visualização estática para uma central de planejamento visual dinâmico (`RF13`, `RF14`, `RF16`):
+1. **Conexão Real com a API de Viagens**:
+   - Consumir as viagens agendadas e em andamento direto de `viagensApi.ts` ou rota especializada `/api/viagens/agenda`.
+2. **Visualização Gantt Diária (Linha do Tempo 24h)**:
+   - Apresentar cada veículo da frota em uma linha horizontal, com blocos coloridos representando as viagens no decorrer das horas do dia selecionado.
+3. **Visão Semanal e Mensal**:
+   - Alternância rápida entre visão diária (detalhe de horário), semanal (distribuição por dia da semana) e mensal (mapa de calor de ocupação).
+4. **Algoritmo de Detecção Visual de Conflitos**:
+   - Destacar em vermelho brilhante qualquer sobreposição de horário para o mesmo veículo (`RN04`) ou mesmo motorista (`RN05`).
+   - Impedir o arraste ou agendamento em horários já ocupados.
+5. **Filtros e Segmentação Operacional**:
+   - Filtro rápido por Unidade hospitalar (LACEN, Hemose, SVO, Sede) e separação clara entre **Frota Administrativa** e **Frota SVO** (`RN21`).
+6. **Ações Contextuais no Evento**:
+   - Clique em um bloco da agenda abre o resumo da viagem (origem, destino, solicitante, motorista, odômetro de saída) com atalho para iniciar despacho diretamente da timeline.
+
+---
+
+### Eixo 4: Especialização do Módulo SVO (Serviço de Verificação de Óbito)
+Atendimento aos fluxos operacionais específicos da fundação para remoção e transporte de corpos (`RF19` a `RF26`, `RN08` a `RN14`):
+1. **Ordens de Coleta SVO (`ordens_svo`)**:
+   - Gestão do ciclo de vida: *Solicitação Recebida → Triagem → Ordem Gerada → Alocada → Em Deslocamento → Coleta Realizada → Transporte → Finalizada*.
+2. **Controle Rígido de Lotação Simultânea (`RN11`, `RN12`, `RN13`)**:
+   - Cada viatura do SVO possui capacidade máxima estrita de **até 4 óbitos simultâneos**.
+   - O sistema deve bloquear alocações que excedam esse limite e apresentar a barra de ocupação visual no card da viatura (`Ex: 2/4 vagas ocupadas`).
+3. **Gestão de Escalas e Plantões das Equipes SVO (`RN08`, `RF26`)**:
+   - Cadastro e consulta da escala de motoristas e auxiliares de necrópsia por turno/plantão, garantindo que ordens de coleta só sejam designadas a equipes ativas no plantão.
+
+---
+
+### Eixo 5: Alertas Preventivos, Trilha de Auditoria, Documentos & Exportação
+Reforço de compliance, segurança jurídica e gestão documental:
+1. **Monitoramento e Alertas de Vencimento (`RN15`, `RF06`)**:
+   - Alerta visual no topo da aplicação quando a CNH de qualquer motorista estiver a **menos de 30 dias do vencimento**.
+   - Alerta preventivo de licenciamento/CRLV e revisão preventiva de veículos por quilometragem atingida.
+2. **Upload e Armazenamento de Documentos (`documentoRoutes.ts`)**:
+   - Upload de imagens e PDFs para CNH dos condutores, CRLV dos veículos e cupons fiscais digitalizados nos lançamentos de combustível.
+3. **Trilha de Auditoria de Ações Críticas (`RN18`, `RF27`)**:
+   - Registro automático e imutável de autor, data, hora, IP e ação realizada para: aprovação/recusa de viagens, cancelamentos de viagens em andamento, criação de usuários e redefinição de senhas.
+4. **Exportação de Relatórios Gerenciais (`RN20`, `RF18`)**:
+   - Emissão de relatórios em formato **PDF formatado** (com cabeçalho oficial FSPH) e planilha **Excel / CSV** para:
+     - Relatório de Quilometragem e Produtividade da Frota;
+     - Relatório de Custos com Combustível e Consumo Médio;
+     - Relatório de Tempo de Atendimento do SVO.
+
+---
+
+### Eixo 6: Conectividade Resiliente (PWA/Offline) & Suíte de Testes
+Garantia de operação em campo e estabilidade contínua da aplicação:
+1. **Estratégia PWA & Modo Offline no Interior de Sergipe**:
+   - Configuração de Service Worker e cache local via **IndexedDB** para permitir que motoristas em viagens ao interior sem cobertura móvel registrem o encerramento da viagem (KM final e horário), sincronizando automaticamente quando restabelecida a conexão.
+2. **Suíte de Testes Automatizados no Frontend**:
+   - Implementação de testes de componentes e de integração com **Vitest + React Testing Library**:
+     - Testes de renderização de rotas protegidas e guardas de perfil (RBAC);
+     - Teste do fluxo de análise de solicitações (aprovação, recusa com justificativa e verificação de disponibilidade);
+     - Teste de despacho e cálculo de odômetro em viagens.
