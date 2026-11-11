@@ -61,7 +61,34 @@ describe('Rotas de Abastecimentos (/api/abastecimentos)', () => {
       expect(resposta.status).toBe(201);
       expect(resposta.headers.location).toBe('/api/abastecimentos/10');
       expect(resposta.body).toMatchObject({ id: 10, preco_por_litro: 6.154 });
-      expect(abastecimentoService.criar).toHaveBeenCalledWith(abastecimentoValido, 1);
+      expect(abastecimentoService.criar).toHaveBeenCalledWith(abastecimentoValido, {
+        id: 1,
+        perfil: PERFIS.MOTORISTA_FROTA,
+      });
+    });
+
+    it('deve retornar 403 se o perfil for SOLICITANTE', async () => {
+      autenticarComo(PERFIS.SOLICITANTE);
+
+      const resposta = await request(app)
+        .post('/api/abastecimentos')
+        .set('Authorization', token)
+        .send(abastecimentoValido);
+
+      expect(resposta.status).toBe(403);
+      expect(abastecimentoService.criar).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar 403 se o perfil for GESTOR_SVO', async () => {
+      autenticarComo(PERFIS.GESTOR_SVO);
+
+      const resposta = await request(app)
+        .post('/api/abastecimentos')
+        .set('Authorization', token)
+        .send(abastecimentoValido);
+
+      expect(resposta.status).toBe(403);
+      expect(abastecimentoService.criar).not.toHaveBeenCalled();
     });
 
     it('deve rejeitar campos adicionais devido ao .strict() do Zod', async () => {
@@ -112,7 +139,32 @@ describe('Rotas de Abastecimentos (/api/abastecimentos)', () => {
       expect(resposta.status).toBe(200);
       expect(resposta.body).toHaveLength(1);
       expect(resposta.body[0].preco_por_litro).toBe(6.0);
-      expect(abastecimentoService.listarPorVeiculo).toHaveBeenCalledWith(1);
+      expect(abastecimentoService.listarPorVeiculo).toHaveBeenCalledWith(1, {
+        id: 1,
+        perfil: PERFIS.MOTORISTA_FROTA,
+      });
+    });
+
+    it('deve retornar 403 na listagem se o perfil for SOLICITANTE', async () => {
+      autenticarComo(PERFIS.SOLICITANTE);
+
+      const resposta = await request(app)
+        .get('/api/abastecimentos/veiculo/1')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(403);
+      expect(abastecimentoService.listarPorVeiculo).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar 403 na listagem se o perfil for GESTOR_SVO', async () => {
+      autenticarComo(PERFIS.GESTOR_SVO);
+
+      const resposta = await request(app)
+        .get('/api/abastecimentos/veiculo/1')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(403);
+      expect(abastecimentoService.listarPorVeiculo).not.toHaveBeenCalled();
     });
 
     it('deve retornar 400 para ID de veículo inválido', async () => {
