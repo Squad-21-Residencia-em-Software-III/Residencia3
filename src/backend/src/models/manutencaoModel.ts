@@ -130,6 +130,14 @@ export const manutencaoModel = {
     excluirId?: number,
     trx?: Knex.Transaction
   ): Promise<boolean> {
+    return this.temManutencaoAtiva(veiculoId, excluirId, trx);
+  },
+
+  async temManutencaoAtiva(
+    veiculoId: number,
+    excluirId?: number,
+    trx?: Knex.Transaction
+  ): Promise<boolean> {
     const conexao = trx || db;
     const query = conexao('manutencoes')
       .where({ veiculo_id: veiculoId, status: 'EM_ANDAMENTO' });

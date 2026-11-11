@@ -1,3 +1,4 @@
+import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
@@ -20,9 +21,76 @@ async function garantirVeiculoExiste(veiculoId: number) {
   return veiculo;
 }
 
+export async function recalcularStatusVeiculo(
+  trx: Knex.Transaction,
+  veiculoId: number,
+  manutencaoIdIgnorada?: number
+): Promise<void> {
+  const veiculo = await trx('veiculos').where({ id: veiculoId }).first();
+  if (!veiculo) {
+    return;
+  }
+
+  // Veículos inativos não devem ter seu status alterado automaticamente
+  if (veiculo.status === 'INATIVO') {
+    return;
+  }
+
+  // 1. Manutenções ativas (bloqueantes: EM_ANDAMENTO)
+  const temManutencaoAtiva = await manutencaoModel.temManutencaoAtiva(
+    veiculoId,
+    manutencaoIdIgnorada,
+    trx
+  );
+
+  if (temManutencaoAtiva) {
+    if (veiculo.status !== 'MANUTENCAO') {
+      await trx('veiculos').where({ id: veiculoId }).update({ status: 'MANUTENCAO' });
+    }
+    return;
+  }
+
+  // 2. Viagens ou ordens em andamento/deslocamento -> EM_USO
+  const viagemEmAndamento = await trx('viagens_frota')
+    .where({ veiculo_id: veiculoId, status: 'EM_ANDAMENTO' })
+    .first();
+
+  const ordemEmAndamento = await trx('ordens_svo')
+    .where({ veiculo_id: veiculoId, status: 'EM_DESLOCAMENTO' })
+    .first();
+
+  if (viagemEmAndamento || ordemEmAndamento) {
+    if (veiculo.status !== 'EM_USO') {
+      await trx('veiculos').where({ id: veiculoId }).update({ status: 'EM_USO' });
+    }
+    return;
+  }
+
+  // 3. Agendamentos futuros ou ordens alocadas -> RESERVADO
+  const viagemAgendada = await trx('viagens_frota')
+    .where({ veiculo_id: veiculoId, status: 'AGENDADA' })
+    .first();
+
+  const ordemAlocada = await trx('ordens_svo')
+    .where({ veiculo_id: veiculoId, status: 'ALOCADA' })
+    .first();
+
+  if (viagemAgendada || ordemAlocada) {
+    if (veiculo.status !== 'RESERVADO') {
+      await trx('veiculos').where({ id: veiculoId }).update({ status: 'RESERVADO' });
+    }
+    return;
+  }
+
+  // 4. Sem manutenções ativas, viagens ativas ou agendamentos -> DISPONIVEL
+  if (veiculo.status !== 'DISPONIVEL') {
+    await trx('veiculos').where({ id: veiculoId }).update({ status: 'DISPONIVEL' });
+  }
+}
+
 export const manutencaoService = {
   async criar(dados: CriarManutencaoInput, autorId: number): Promise<Manutencao> {
-    const veiculo = await garantirVeiculoExiste(dados.veiculo_id);
+    await garantirVeiculoExiste(dados.veiculo_id);
 
     if (dados.fornecedor_id !== undefined && dados.fornecedor_id !== null) {
       const fornecedor = await db('fornecedores')
@@ -48,22 +116,7 @@ export const manutencaoService = {
         trx
       );
 
-      if (dados.status === 'EM_ANDAMENTO') {
-        await trx('veiculos')
-          .where({ id: dados.veiculo_id })
-          .update({ status: 'MANUTENCAO' });
-      } else if (dados.status === 'CONCLUIDA' && veiculo.status === 'MANUTENCAO') {
-        const temOutraEmAndamento = await manutencaoModel.temManutencaoEmAndamento(
-          dados.veiculo_id,
-          undefined,
-          trx
-        );
-        if (!temOutraEmAndamento) {
-          await trx('veiculos')
-            .where({ id: dados.veiculo_id })
-            .update({ status: 'DISPONIVEL' });
-        }
-      }
+      await recalcularStatusVeiculo(trx, dados.veiculo_id);
 
       await auditoriaModel.registrar(
         {
@@ -103,26 +156,12 @@ export const manutencaoService = {
         throw new AppError('Erro ao atualizar manutenção', 500);
       }
 
-      const veiculoId = manutencao.veiculo_id;
-      const statusFinal = dados.status ?? manutencao.status;
-
-      if (statusFinal === 'EM_ANDAMENTO') {
-        await trx('veiculos')
-          .where({ id: veiculoId })
-          .update({ status: 'MANUTENCAO' });
-      } else if (manutencao.status === 'EM_ANDAMENTO') {
-        const temOutra = await manutencaoModel.temManutencaoEmAndamento(veiculoId, id, trx);
-        if (!temOutra) {
-          await trx('veiculos')
-            .where({ id: veiculoId })
-            .update({ status: 'DISPONIVEL' });
-        }
-      }
+      await recalcularStatusVeiculo(trx, manutencao.veiculo_id);
 
       await auditoriaModel.registrar(
         {
           usuario_id: autorId,
-          acao: `ATUALIZOU_MANUTENCAO id=${id} veiculo=${veiculoId}`,
+          acao: `ATUALIZOU_MANUTENCAO id=${id} veiculo=${manutencao.veiculo_id}`,
           modulo: MODULOS_AUDITORIA.MANUTENCOES,
         },
         trx
@@ -150,27 +189,7 @@ export const manutencaoService = {
         throw new AppError('Erro ao atualizar status da manutenção', 500);
       }
 
-      if (novoStatus === 'EM_ANDAMENTO') {
-        await trx('veiculos')
-          .where({ id: manutencao.veiculo_id })
-          .update({ status: 'MANUTENCAO' });
-      } else if (
-        novoStatus === 'CONCLUIDA' ||
-        novoStatus === 'AGENDADA' ||
-        novoStatus === 'CANCELADA'
-      ) {
-        const temOutraEmAndamento = await manutencaoModel.temManutencaoEmAndamento(
-          manutencao.veiculo_id,
-          id,
-          trx
-        );
-
-        if (!temOutraEmAndamento) {
-          await trx('veiculos')
-            .where({ id: manutencao.veiculo_id })
-            .update({ status: 'DISPONIVEL' });
-        }
-      }
+      await recalcularStatusVeiculo(trx, manutencao.veiculo_id);
 
       await auditoriaModel.registrar(
         {
@@ -193,19 +212,7 @@ export const manutencaoService = {
 
     await db.transaction(async (trx) => {
       await manutencaoModel.excluir(id, trx);
-
-      if (manutencao.status === 'EM_ANDAMENTO') {
-        const temOutra = await manutencaoModel.temManutencaoEmAndamento(
-          manutencao.veiculo_id,
-          id,
-          trx
-        );
-        if (!temOutra) {
-          await trx('veiculos')
-            .where({ id: manutencao.veiculo_id })
-            .update({ status: 'DISPONIVEL' });
-        }
-      }
+      await recalcularStatusVeiculo(trx, manutencao.veiculo_id);
 
       await auditoriaModel.registrar(
         {
