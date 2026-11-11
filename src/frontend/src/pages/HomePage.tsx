@@ -55,20 +55,35 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [metricasApi, setMetricasApi] = useState<DashboardData | null>(null);
   const [solicitacoesPendentes, setSolicitacoesPendentes] = useState<SolicitacaoViagem[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroMetricas, setErroMetricas] = useState<string | null>(null);
+  const [erroSolicitacoes, setErroSolicitacoes] = useState<string | null>(null);
   const [modalNovaSolicitacaoAberto, setModalNovaSolicitacaoAberto] = useState(false);
   const [mensagemFeedback, setMensagemFeedback] = useState<string | null>(null);
 
   const carregarDados = useCallback(async () => {
-    try {
-      const [metricasData, solicitacoesData] = await Promise.all([
-        dashboardApi.consultar().catch(() => null),
-        solicitacoesApi.listar('PENDENTE_APROVACAO').catch(() => [] as SolicitacaoViagem[]),
-      ]);
-      setMetricasApi(metricasData);
-      setSolicitacoesPendentes(solicitacoesData);
-    } catch {
-      // Falha tratada silenciosamente nos promises individuais
+    setCarregando(true);
+    setErroMetricas(null);
+    setErroSolicitacoes(null);
+
+    const [metricasRes, solicitacoesRes] = await Promise.allSettled([
+      dashboardApi.consultar(),
+      solicitacoesApi.listar('PENDENTE_APROVACAO'),
+    ]);
+
+    if (metricasRes.status === 'fulfilled') {
+      setMetricasApi(metricasRes.value);
+    } else {
+      setErroMetricas('Não foi possível carregar os indicadores operacionais da frota.');
     }
+
+    if (solicitacoesRes.status === 'fulfilled') {
+      setSolicitacoesPendentes(solicitacoesRes.value);
+    } else {
+      setErroSolicitacoes('Não foi possível carregar a fila de solicitações pendentes.');
+    }
+
+    setCarregando(false);
   }, []);
 
   useEffect(() => {
@@ -107,6 +122,19 @@ export default function HomePage() {
         <Alert tone="success" className="animate-in fade-in duration-200">
           {mensagemFeedback}
         </Alert>
+      )}
+
+      {/* Alerta de Erro na Comunicação de Métricas */}
+      {erroMetricas && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={18} className="shrink-0" />
+            <span>{erroMetricas}</span>
+          </div>
+          <Button size="sm" variant="outline" onClick={carregarDados} className="shrink-0">
+            Tentar novamente
+          </Button>
+        </div>
       )}
 
       {/* 2. Indicadores Operacionais Executivos (KPIs integrados à API REST) */}
@@ -203,7 +231,20 @@ export default function HomePage() {
             </Badge>
           </div>
 
-          {solicitacoesPendentes.length === 0 ? (
+          {carregando ? (
+            <div className="flex items-center justify-center px-4 py-8 text-center text-text-muted">
+              <span className="text-sm">Carregando solicitações...</span>
+            </div>
+          ) : erroSolicitacoes ? (
+            <div className="flex flex-col items-center justify-center px-4 py-8 text-center text-text-muted">
+              <AlertTriangle size={32} className="mx-auto mb-2 block text-danger" />
+              <p className="m-0 text-sm font-semibold text-text-strong">Falha na comunicação</p>
+              <span className="mb-3 text-xs">{erroSolicitacoes}</span>
+              <Button size="sm" variant="outline" onClick={carregarDados}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : solicitacoesPendentes.length === 0 ? (
             <div className="px-4 py-8 text-center text-text-muted">
               <CheckCircle2 size={32} className="mx-auto mb-2 block text-success" />
               <p className="m-0 text-sm font-semibold text-text-strong">Fila limpa</p>

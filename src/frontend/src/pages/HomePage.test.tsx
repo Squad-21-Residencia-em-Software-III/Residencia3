@@ -63,5 +63,55 @@ describe('HomePage (Central de Operações)', () => {
     expect(screen.getByText('Fila de Aprovação')).toBeInTheDocument();
     expect(screen.getByText('Bloqueios & Regularidade')).toBeInTheDocument();
   });
+
+  it('deve exibir "Fila limpa" quando a API retornar lista vazia de solicitações', async () => {
+    vi.mocked(solicitacoesApi.listar).mockResolvedValueOnce([]);
+
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Fila limpa')).toBeInTheDocument();
+      expect(screen.getByText('Nenhuma solicitação aguardando despacho no momento.')).toBeInTheDocument();
+    });
+  });
+
+  it('deve exibir mensagem de erro e botão de tentar novamente quando a listagem de solicitações falhar, sem exibir "Fila limpa"', async () => {
+    vi.mocked(solicitacoesApi.listar).mockRejectedValueOnce(new Error('Network error'));
+
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Falha na comunicação')).toBeInTheDocument();
+      expect(screen.getByText('Não foi possível carregar a fila de solicitações pendentes.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Tentar novamente/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Fila limpa')).not.toBeInTheDocument();
+  });
+
+  it('deve exibir alerta com opção de tentar novamente quando as métricas do dashboard falharem', async () => {
+    vi.mocked(dashboardApi.consultar).mockRejectedValueOnce(new Error('Falha no servidor'));
+
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Não foi possível carregar os indicadores operacionais da frota.')
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /Tentar novamente/i }).length).toBeGreaterThan(0);
+    });
+  });
 });
 
