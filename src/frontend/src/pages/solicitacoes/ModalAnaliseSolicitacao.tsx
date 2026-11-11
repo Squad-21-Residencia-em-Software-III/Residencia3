@@ -80,6 +80,8 @@ export function ModalAnaliseSolicitacao({
   const [disponibilidade, setDisponibilidade] = useState<DisponibilidadeSolicitacao | null>(null);
   const [carregandoDisponibilidade, setCarregandoDisponibilidade] = useState(false);
   const [erroDisponibilidade, setErroDisponibilidade] = useState<string | null>(null);
+  // Incrementado por "Tentar novamente" para repetir a consulta sem fechar o modal.
+  const [tentativaDisponibilidade, setTentativaDisponibilidade] = useState(0);
 
   // Consulta de disponibilidade no período pretendido (SCRUM-73).
   // A API libera essa rota somente para o Gestor de Frota.
@@ -108,7 +110,7 @@ export function ModalAnaliseSolicitacao({
     return () => {
       ativo = false;
     };
-  }, [solicitacaoId, podeConsultarDisponibilidade]);
+  }, [solicitacaoId, podeConsultarDisponibilidade, tentativaDisponibilidade]);
 
   if (!solicitacao) return null;
 
@@ -214,14 +216,20 @@ export function ModalAnaliseSolicitacao({
 
         {/* 4. Validação de Disponibilidade de Recursos (SCRUM-73) */}
         {podeConsultarDisponibilidade && carregandoDisponibilidade && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-            Consultando disponibilidade no período...
-          </div>
+          <Alert tone="info">Consultando disponibilidade no período...</Alert>
         )}
         {podeConsultarDisponibilidade && erroDisponibilidade && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-            Não foi possível consultar a disponibilidade: {erroDisponibilidade}
-          </div>
+          <Alert tone="warning">
+            <div>Não foi possível consultar a disponibilidade: {erroDisponibilidade}</div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() => setTentativaDisponibilidade((n) => n + 1)}
+            >
+              Tentar novamente
+            </Button>
+          </Alert>
         )}
         {disponibilidade && (
           <div
