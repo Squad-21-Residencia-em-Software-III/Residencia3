@@ -1,18 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card } from '../components/ui';
 import type { DiaAgendaSemana, ModoVisualizacaoAgenda, RotaAgenda } from '../types/agenda';
-import {
-  MOCK_AGENDA_HOJE,
-  MOCK_AGENDA_SEMANA,
-  MOCK_EXCECOES_MES,
-  MOCK_HISTORICO_MES,
-} from '../services/mocks/agendaMock';
+import { storageService } from '../services/storageService';
+import { cn } from '../utils/cn';
 import { AgendaGanttHoje } from './agenda/AgendaGanttHoje';
 import { AgendaSemana } from './agenda/AgendaSemana';
 import { AgendaMes } from './agenda/AgendaMes';
 import { ModalDetalhesRota } from './agenda/ModalDetalhesRota';
-import './agenda/agenda.css';
 
 const DIAS_SEMANA_DADOS: DiaAgendaSemana[] = [
   { data: '2026-10-19', label: 'Seg', diaNumero: 19, isToday: true },
@@ -27,10 +22,11 @@ const DIAS_SEMANA_DADOS: DiaAgendaSemana[] = [
 export default function AgendaPage() {
   const [modoVisualizacao, setModoVisualizacao] = useState<ModoVisualizacaoAgenda>('hoje');
   const [rotaSelecionada, setRotaSelecionada] = useState<RotaAgenda | null>(null);
+  const agenda = useMemo(() => storageService.getAgenda(), []);
 
   // Totais do dia
-  const totalRotasHoje = MOCK_AGENDA_HOJE.length;
-  const veiculosUnicosHoje = new Set(MOCK_AGENDA_HOJE.map((r) => r.veiculo_id)).size;
+  const totalRotasHoje = agenda.hoje.length;
+  const veiculosUnicosHoje = new Set(agenda.hoje.map((r) => r.veiculo_id)).size;
 
   const handleSelecionarDiaNoMes = (_dia: number) => {
     // Ao clicar em um dia no mês, abre a timeline daquele dia
@@ -38,29 +34,29 @@ export default function AgendaPage() {
   };
 
   return (
-    <div className="agenda-container">
+    <div className="flex h-full min-h-0 flex-col gap-3 md:gap-5">
       {/* ── Barra de Cabeçalho e Controles da Agenda ── */}
-      <Card className="agenda-header">
-        <div className="agenda-header__nav">
+      <Card className="flex shrink-0 flex-col items-stretch justify-between gap-3 p-3 md:flex-row md:items-center md:px-6 md:py-3.5">
+        <div className="flex w-full items-center justify-between gap-3 md:w-auto md:justify-start">
           <button
             type="button"
-            className="agenda-header__nav-btn"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-all duration-150 hover:border-border-strong hover:bg-surface-alt hover:text-text"
             aria-label="Dia anterior"
             title="Dia anterior"
           >
             <ChevronLeft size={16} />
           </button>
           <div>
-            <span className="agenda-header__date-title">
+            <span className="block text-center font-display text-[14px] font-bold text-text md:inline md:text-left md:text-base">
               Segunda-feira, 19 de Outubro de 2026
             </span>
-            <span className="agenda-header__date-sub">
+            <span className="mt-0.5 block text-center text-[11px] text-text-muted md:mt-0 md:ml-3 md:inline md:text-left md:text-xs">
               Hoje · {totalRotasHoje} viagens · {veiculosUnicosHoje} veículos alocados
             </span>
           </div>
           <button
             type="button"
-            className="agenda-header__nav-btn"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-all duration-150 hover:border-border-strong hover:bg-surface-alt hover:text-text"
             aria-label="Próximo dia"
             title="Próximo dia"
           >
@@ -69,42 +65,37 @@ export default function AgendaPage() {
         </div>
 
         {/* Seletor Segmentado de Visualização (Hoje | Semana | Mês) */}
-        <div className="agenda-view-toggle">
-          <button
-            type="button"
-            onClick={() => setModoVisualizacao('hoje')}
-            className={`agenda-view-toggle__btn ${modoVisualizacao === 'hoje' ? 'is-active' : ''}`}
-          >
-            Hoje
-          </button>
-          <button
-            type="button"
-            onClick={() => setModoVisualizacao('semana')}
-            className={`agenda-view-toggle__btn ${modoVisualizacao === 'semana' ? 'is-active' : ''}`}
-          >
-            Semana
-          </button>
-          <button
-            type="button"
-            onClick={() => setModoVisualizacao('mes')}
-            className={`agenda-view-toggle__btn ${modoVisualizacao === 'mes' ? 'is-active' : ''}`}
-          >
-            Mês
-          </button>
+        <div className="flex w-full items-center overflow-hidden rounded-lg border-[1.5px] border-border bg-surface md:w-auto">
+          {(['hoje', 'semana', 'mes'] as const).map((modo) => {
+            const label = modo === 'hoje' ? 'Hoje' : modo === 'semana' ? 'Semana' : 'Mês';
+            const isAtivo = modoVisualizacao === modo;
+            return (
+              <button
+                key={modo}
+                type="button"
+                onClick={() => setModoVisualizacao(modo)}
+                className={cn(
+                  'flex-1 cursor-pointer border-r border-border px-0 py-2 text-center font-display text-[13px] font-semibold transition-all duration-150 last:border-r-0 md:flex-none md:px-4 md:py-1.5 md:text-xs',
+                  isAtivo
+                    ? 'bg-primary text-white'
+                    : 'bg-transparent text-text-muted hover:bg-surface-alt hover:text-text',
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </Card>
 
       {/* ── Visualização Ativa ── */}
       {modoVisualizacao === 'hoje' && (
-        <AgendaGanttHoje
-          rotas={MOCK_AGENDA_HOJE}
-          onSelecionarRota={setRotaSelecionada}
-        />
+        <AgendaGanttHoje rotas={agenda.hoje} onSelecionarRota={setRotaSelecionada} />
       )}
 
       {modoVisualizacao === 'semana' && (
         <AgendaSemana
-          rotas={MOCK_AGENDA_SEMANA}
+          rotas={agenda.semana}
           diasSemana={DIAS_SEMANA_DADOS}
           onSelecionarRota={setRotaSelecionada}
         />
@@ -112,18 +103,15 @@ export default function AgendaPage() {
 
       {modoVisualizacao === 'mes' && (
         <AgendaMes
-          excecoes={MOCK_EXCECOES_MES}
-          historicoMes={MOCK_HISTORICO_MES}
+          excecoes={agenda.excecoesMes}
+          historicoMes={agenda.historicoMes}
           diaAtualNumero={19}
           onSelecionarDia={handleSelecionarDiaNoMes}
         />
       )}
 
       {/* ── Modal de Detalhes da Rota (Alinhado ao Banco) ── */}
-      <ModalDetalhesRota
-        rota={rotaSelecionada}
-        onClose={() => setRotaSelecionada(null)}
-      />
+      <ModalDetalhesRota rota={rotaSelecionada} onClose={() => setRotaSelecionada(null)} />
     </div>
   );
 }

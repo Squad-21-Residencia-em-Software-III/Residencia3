@@ -22,15 +22,32 @@ export interface ResultadoLogin {
 
 const CREDENCIAIS_INVALIDAS = 'E-mail ou senha inválidos';
 
+// Tentativas recusadas também são eventos de segurança (RN18). O e-mail digitado não é
+// gravado: pode conter erro de digitação com dados sensíveis (ex.: a própria senha).
+// Uma falha ao auditar não pode trocar a resposta de erro original por um 500.
+async function registrarTentativaRecusada(usuarioId: number | null, acao: string): Promise<void> {
+  try {
+    await auditoriaModel.registrar({ usuario_id: usuarioId, acao, modulo: MODULOS_AUDITORIA.AUTENTICACAO });
+  } catch (erro) {
+    console.error('Falha ao registrar auditoria de autenticação:', erro);
+  }
+}
+
 export const authService = {
   async login({ email, senha }: LoginInput): Promise<ResultadoLogin> {
     const usuario = await usuarioModel.buscarPorEmailComSenha(email);
     const senhaConfere = await senhaService.comparar(senha, usuario?.senha ?? HASH_FICTICIO);
 
-    if (!usuario || !senhaConfere) {
+    if (!usuario) {
+      await registrarTentativaRecusada(null, 'LOGIN_FALHOU motivo=USUARIO_NAO_ENCONTRADO');
+      throw new AppError(CREDENCIAIS_INVALIDAS, 401);
+    }
+    if (!senhaConfere) {
+      await registrarTentativaRecusada(usuario.id, 'LOGIN_FALHOU motivo=SENHA_INCORRETA');
       throw new AppError(CREDENCIAIS_INVALIDAS, 401);
     }
     if (!usuario.ativo) {
+      await registrarTentativaRecusada(usuario.id, 'LOGIN_RECUSADO motivo=USUARIO_INATIVO');
       throw new AppError('Usuário inativo. Procure o administrador do sistema.', 403);
     }
 
@@ -71,6 +88,7 @@ export const authService = {
   async alterarPropriaSenha(usuarioId: number, { senhaAtual, novaSenha }: AlterarSenhaInput): Promise<void> {
     const usuario = await usuarioModel.buscarPorIdComSenha(usuarioId);
     if (!usuario || !(await senhaService.comparar(senhaAtual, usuario.senha))) {
+      await registrarTentativaRecusada(usuarioId, 'ALTERACAO_SENHA_RECUSADA motivo=SENHA_ATUAL_INCORRETA');
       throw new AppError('Senha atual incorreta', 400);
     }
 

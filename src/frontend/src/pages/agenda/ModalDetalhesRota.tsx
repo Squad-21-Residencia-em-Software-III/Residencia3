@@ -32,25 +32,27 @@ export function ModalDetalhesRota({ rota, onClose }: ModalDetalhesRotaProps) {
       confirmLabel="Fechar"
       onConfirm={onClose}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div className="flex flex-col gap-5">
         {/* Cabeçalho do trajeto */}
-        <div className="modal-rota-header">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <div className="mb-1.5 flex items-center gap-2">
               <Navigation size={18} color="var(--color-primary)" />
-              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {rota.tipo_operacao === 'SVO' ? 'Serviço de Verificação de Óbito (SVO)' : 'Frota Administrativa FSPH'}
+              <span className="text-xs font-bold tracking-[0.05em] text-primary uppercase">
+                {rota.tipo_operacao === 'SVO'
+                  ? 'Serviço de Verificação de Óbito (SVO)'
+                  : 'Frota Administrativa FSPH'}
               </span>
             </div>
-            <div className="modal-rota-route-title">
+            <div className="font-display text-base leading-[1.2] font-extrabold text-text md:text-xl">
               {rota.origem} → {rota.destino}
             </div>
-            <div className="modal-rota-meta">
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div className="mt-2 flex items-center gap-3 text-sm text-text-muted">
+              <span className="flex items-center gap-1">
                 <Clock size={14} /> {rota.hora_inicio} às {rota.hora_fim}
               </span>
               <span>·</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span className="flex items-center gap-1">
                 <Calendar size={14} /> {rota.data.split('-').reverse().join('/')}
               </span>
               <span>·</span>
@@ -58,62 +60,66 @@ export function ModalDetalhesRota({ rota, onClose }: ModalDetalhesRotaProps) {
             </div>
           </div>
           <Badge tone={obterBadgeTone(rota.status)}>
-            {rota.status === 'EM_ANDAMENTO' ? 'Em Andamento' : rota.status === 'CONCLUIDA' ? 'Concluída' : 'Agendada'}
+            {rota.status === 'EM_ANDAMENTO'
+              ? 'Em Andamento'
+              : rota.status === 'CONCLUIDA'
+                ? 'Concluída'
+                : 'Agendada'}
           </Badge>
         </div>
 
         {/* Grid de Recursos Alocados (Alinhado com o Banco de Dados) */}
-        <div className="modal-rota-grid">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-3">
           {/* Veículo */}
-          <div className="modal-rota-card">
-            <div className="modal-rota-card__label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="rounded-lg border border-border bg-surface-alt px-4 py-3">
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.05em] text-text-muted uppercase">
               <Truck size={13} /> Veículo Alocado
             </div>
-            <div className="modal-rota-card__value">{rota.veiculo_modelo}</div>
-            <div className="modal-rota-card__sub" style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: 'var(--font-mono)' }}>Placa: {rota.veiculo_placa}</span>
+            <div className="text-sm font-bold text-text">{rota.veiculo_modelo}</div>
+            <div className="mt-0.5 flex justify-between text-[11px] text-text-muted">
+              <span className="font-mono">Placa: {rota.veiculo_placa}</span>
               <span>Lotação: {rota.capacidade_maxima} vagas</span>
             </div>
           </div>
 
           {/* Condutor */}
-          <div className="modal-rota-card">
-            <div className="modal-rota-card__label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="rounded-lg border border-border bg-surface-alt px-4 py-3">
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.05em] text-text-muted uppercase">
               <User size={13} /> Condutor Responsável
             </div>
-            <div className="modal-rota-card__value">{rota.motorista_nome}</div>
-            <div className="modal-rota-card__sub">Motorista Oficial FSPH</div>
+            <div className="text-sm font-bold text-text">{rota.motorista_nome}</div>
+            <div className="mt-0.5 text-[11px] text-text-muted">Motorista Oficial FSPH</div>
           </div>
 
           {/* Solicitante Institucional */}
-          <div className="modal-rota-card">
-            <div className="modal-rota-card__label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="rounded-lg border border-border bg-surface-alt px-4 py-3">
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.05em] text-text-muted uppercase">
               <ShieldCheck size={13} /> Solicitante Institucional
             </div>
-            <div className="modal-rota-card__value">{rota.solicitante_nome}</div>
-            <div className="modal-rota-card__sub">Solicitação #{rota.solicitacao_id}</div>
+            <div className="text-sm font-bold text-text">{rota.solicitante_nome}</div>
+            <div className="mt-0.5 text-[11px] text-text-muted">
+              Solicitação #{rota.solicitacao_id}
+            </div>
           </div>
 
           {/* Tipo de Frota */}
-          <div className="modal-rota-card">
-            <div className="modal-rota-card__label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="rounded-lg border border-border bg-surface-alt px-4 py-3">
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.05em] text-text-muted uppercase">
               <MapPin size={13} /> Operação
             </div>
-            <div className="modal-rota-card__value">
+            <div className="text-sm font-bold text-text">
               {rota.tipo_operacao === 'SVO' ? 'Operação SVO' : 'Frota Geral'}
             </div>
-            <div className="modal-rota-card__sub">Governança RN21</div>
+            <div className="mt-0.5 text-[11px] text-text-muted">Governança RN21</div>
           </div>
         </div>
 
         {/* Finalidade do Deslocamento */}
-        <div className="modal-rota-purpose">
-          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted)' }}>
+        <div className="rounded-lg border border-border bg-[#f8fafc] px-4 py-3">
+          <div className="text-[11px] font-bold tracking-[0.05em] text-text-muted uppercase">
             Finalidade Institucional do Deslocamento:
           </div>
-          <div className="modal-rota-purpose__text">
-            {rota.finalidade}
-          </div>
+          <div className="mt-1 text-sm leading-[1.4] text-text-muted">{rota.finalidade}</div>
         </div>
       </div>
     </Modal>

@@ -5,6 +5,7 @@ import { solicitacaoViagemService } from '../services/solicitacaoViagemService';
 describe('Solicitação de viagem - regras de datas', () => {
   it('deve rejeitar data de saída no passado', async () => {
     const dados = {
+      unidade_id: 2,
       origem: 'Aracaju',
       destino: 'Itabaiana',
       finalidade: 'Visita técnica',
@@ -20,6 +21,7 @@ describe('Solicitação de viagem - regras de datas', () => {
 
   it('deve rejeitar chegada anterior à saída', async () => {
     const dados = {
+      unidade_id: 2,
       origem: 'Aracaju',
       destino: 'Itabaiana',
       finalidade: 'Visita técnica',

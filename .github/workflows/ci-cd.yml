@@ -1,3 +1,4 @@
+
 name: CI - Verificacao do Projeto
 
 on:
@@ -5,16 +6,28 @@ on:
     branches:
       - develop
       - main
+
   push:
     branches:
       - chore/ci-cd-pipeline
+      - fix/ci-backend-tests
       - develop
       - main
+
+# Permite apenas leitura do conteúdo do repositório.
+permissions:
+  contents: read
+
+# Cancela execuções antigas da mesma branch ou PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   frontend:
     name: Verificar Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     defaults:
       run:
@@ -34,12 +47,16 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      - name: Executar testes automatizados
+        run: npm test
+
       - name: Compilar frontend
         run: npm run build
 
   backend:
     name: Verificar Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     defaults:
       run:
@@ -58,6 +75,11 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
+
+      - name: Executar testes automatizados
+        run: npm test
+        env:
+          JWT_SECRET: ci-test-only-secret-not-for-production
 
       - name: Verificar tipos TypeScript
         run: npm run typecheck

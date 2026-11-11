@@ -1,56 +1,49 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle,
-  ArrowRight,
-  Car,
-  Clock,
-  Eye,
-  ParkingSquare,
-} from 'lucide-react';
-import {
-  Avatar,
   Badge,
-  Button,
   Card,
   IdBadge,
-  Pagination,
+  Avatar,
+  Button,
   Table,
   TableToolbar,
-  type BadgeTone,
+  Pagination,
+  MetricCard,
 } from '../components/ui';
-import { MOCK_VEICULOS } from '../services/mocks/veiculosMock';
-import { MOCK_MOTORISTAS } from '../services/mocks/motoristasMock';
-import {
-  MOCK_SOLICITACOES,
-  MOCK_VIAGENS_ATIVAS,
-} from '../services/mocks/solicitacoesMock';
-import {
-  LABELS_STATUS_SOLICITACAO,
-  type StatusSolicitacao,
-} from '../types/solicitacao';
+import type { BadgeTone } from '../components/ui';
+import { Clock, Navigation, ParkingSquare, AlertTriangle, Eye } from 'lucide-react';
+import type { StatusSolicitacao } from '../types/solicitacao';
+import { LABELS_STATUS_SOLICITACAO } from '../types/solicitacao';
+import { storageService } from '../services/storageService';
 
 function cnhVencida(validade: string): boolean {
-  return validade < new Date().toISOString().slice(0, 10);
+  return new Date(validade) < new Date();
 }
 
-function formatarDataHora(isoString: string): string {
-  const data = new Date(isoString);
-  const dia = String(data.getDate()).padStart(2, '0');
-  const mes = String(data.getMonth() + 1).padStart(2, '0');
-  const ano = data.getFullYear();
-  const horas = String(data.getHours()).padStart(2, '0');
-  const minutos = String(data.getMinutes()).padStart(2, '0');
-  return `${dia}/${mes}/${ano} às ${horas}:${minutos}`;
+function formatarDataHora(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return (
+      d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ' às ' +
+      d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    );
+  } catch {
+    return iso;
+  }
 }
 
 function obterBadgeToneStatus(status: StatusSolicitacao): BadgeTone {
   switch (status) {
+    case 'APROVADA':
+    case 'CONCLUIDA':
+      return 'success';
     case 'PENDENTE_APROVACAO':
       return 'warning';
-    case 'APROVADA':
-      return 'success';
-    case 'REJEITADA':
+    case 'AGENDADA':
+      return 'info';
+    case 'RECUSADA':
       return 'danger';
     case 'CANCELADA':
     default:
@@ -61,17 +54,21 @@ function obterBadgeToneStatus(status: StatusSolicitacao): BadgeTone {
 export default function DashboardPage() {
   const navigate = useNavigate();
 
-  // Métricas dinâmicas calculadas a partir dos dados do banco/mocks
-  const metricas = useMemo(() => {
-    const pendentes = MOCK_SOLICITACOES.filter((s) => s.status === 'PENDENTE_APROVACAO').length;
-    const viagensAtivas = MOCK_VIAGENS_ATIVAS.length;
+  // Dados e métricas calculados a partir do cache central (storageService)
+  const solicitacoes = useMemo(() => storageService.getSolicitacoes(), []);
 
-    const veiculosDisponiveis = MOCK_VEICULOS.filter((v) => v.status === 'DISPONIVEL');
+  const metricas = useMemo(() => {
+    const veiculos = storageService.getVeiculos();
+    const motoristas = storageService.getMotoristas();
+    const pendentes = solicitacoes.filter((s) => s.status === 'PENDENTE_APROVACAO').length;
+    const viagensAtivas = storageService.getViagens().filter((v) => v.status === 'EM_ANDAMENTO').length;
+
+    const veiculosDisponiveis = veiculos.filter((v) => v.status === 'DISPONIVEL');
     const frotaAdmDisponivel = veiculosDisponiveis.filter((v) => v.tipo_frota === 'ADMINISTRATIVA').length;
     const svoDisponivel = veiculosDisponiveis.filter((v) => v.tipo_frota === 'SVO').length;
 
-    const veiculosManutencao = MOCK_VEICULOS.filter((v) => v.status === 'MANUTENCAO').length;
-    const motoristasCnhVencida = MOCK_MOTORISTAS.filter((m) => cnhVencida(m.validade_cnh)).length;
+    const veiculosManutencao = veiculos.filter((v) => v.status === 'MANUTENCAO').length;
+    const motoristasCnhVencida = motoristas.filter((m) => cnhVencida(m.validade_cnh)).length;
     const alertasCriticos = veiculosManutencao + motoristasCnhVencida;
 
     return {
@@ -84,429 +81,128 @@ export default function DashboardPage() {
       motoristasCnhVencida,
       alertasCriticos,
     };
-  }, []);
+  }, [solicitacoes]);
 
   return (
-    <div style={{ display: 'grid', gap: '24px' }}>
-      {/* 4 Cards de Sumário Operacional (Desktop 4 colunas, Mobile 2x2) */}
-      <div className="dashboard-kpi-grid">
-        {/* Card 1: Solicitações Pendentes */}
-        <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div className="dashboard-kpi-body" style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              className="dashboard-kpi-icon"
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: '#FFF7ED',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Clock size={20} color="#E66A12" strokeWidth={2.2} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                className="dashboard-kpi-value"
-                style={{
-                  fontSize: '28px',
-                  fontWeight: 800,
-                  color: 'var(--color-warning)',
-                  fontFamily: 'var(--font-display)',
-                  lineHeight: 1,
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                {metricas.pendentes}
-              </div>
-              <div className="dashboard-kpi-label" style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                Solicitações pendentes
-              </div>
-            </div>
-            {metricas.pendentes > 0 && (
-              <span
-                className="dashboard-kpi-badge"
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  background: '#FEF3C7',
-                  color: '#B45309',
-                }}
-              >
-                Ação
-              </span>
-            )}
-          </div>
-          <div
-            className="dashboard-kpi-footer"
-            style={{
-              padding: '10px 20px',
-              borderTop: '1px solid var(--color-border)',
-              background: 'var(--color-surface-alt)',
-              marginTop: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <span className="dashboard-kpi-footer-text" style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-              Última recebida há pouco
-            </span>
-            <button
-              onClick={() => navigate('/viagens')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--color-warning)',
-                fontWeight: 700,
-                fontSize: '12px',
-                cursor: 'pointer',
-                padding: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              Revisar <ArrowRight size={13} />
-            </button>
-          </div>
-        </Card>
-
-        {/* Card 2: Viagens em Andamento */}
-        <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div className="dashboard-kpi-body" style={{ padding: '20px 20px 12px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              className="dashboard-kpi-icon"
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: '#EFF6FF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Car size={20} color="#1D4ED8" strokeWidth={2.2} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                className="dashboard-kpi-value"
-                style={{
-                  fontSize: '28px',
-                  fontWeight: 800,
-                  color: 'var(--color-primary)',
-                  fontFamily: 'var(--font-display)',
-                  lineHeight: 1,
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                {metricas.viagensAtivas}
-              </div>
-              <div className="dashboard-kpi-label" style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                Viagens em andamento
-              </div>
-            </div>
-          </div>
-          <div
-            className="dashboard-kpi-footer"
-            style={{
-              padding: '10px 20px',
-              borderTop: '1px solid var(--color-border)',
-              background: 'var(--color-surface-alt)',
-              marginTop: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-            }}
-          >
-            <button
-              onClick={() => navigate('/viagens')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--color-primary)',
-                fontWeight: 700,
-                fontSize: '12px',
-                cursor: 'pointer',
-                padding: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              Ver ativas <ArrowRight size={13} />
-            </button>
-          </div>
-        </Card>
-
-        {/* Card 3: Veículos no Pátio (Disponíveis) */}
-        <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div className="dashboard-kpi-body" style={{ padding: '20px 20px 14px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              className="dashboard-kpi-icon"
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: '#DCFCE7',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <ParkingSquare size={20} color="#15803D" strokeWidth={2.2} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                className="dashboard-kpi-value"
-                style={{
-                  fontSize: '28px',
-                  fontWeight: 800,
-                  color: 'var(--color-success)',
-                  fontFamily: 'var(--font-display)',
-                  lineHeight: 1,
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                {metricas.veiculosDisponiveis}
-              </div>
-              <div className="dashboard-kpi-label" style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                Veículos no pátio
-              </div>
-            </div>
-            <span className="dashboard-kpi-badge">
-              <Badge tone="success">Prontos</Badge>
-            </span>
-          </div>
-          <div
-            className="dashboard-kpi-footer"
-            style={{
-              padding: '10px 20px',
-              borderTop: '1px solid var(--color-border)',
-              background: 'var(--color-surface-alt)',
-              marginTop: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div className="dashboard-kpi-footer-text" style={{ display: 'flex', gap: '6px' }}>
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: '#DCFCE7',
-                  color: '#15803D',
-                }}
-              >
-                {metricas.frotaAdmDisponivel} Adm.
-              </span>
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: '#EDE9FE',
-                  color: '#6D28D9',
-                }}
-              >
-                {metricas.svoDisponivel} SVO
-              </span>
-            </div>
-            <button
-              onClick={() => navigate('/veiculos')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--color-success)',
-                fontWeight: 700,
-                fontSize: '12px',
-                cursor: 'pointer',
-                padding: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              Ver frota <ArrowRight size={13} />
-            </button>
-          </div>
-        </Card>
-
-        {/* Card 4: Alertas da Operação */}
-        <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div className="dashboard-kpi-body" style={{ padding: '20px 20px 14px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              className="dashboard-kpi-icon"
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: '#FEF2F2',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <AlertTriangle size={20} color="#DC2626" strokeWidth={2.2} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                className="dashboard-kpi-value"
-                style={{
-                  fontSize: '28px',
-                  fontWeight: 800,
-                  color: 'var(--color-danger)',
-                  fontFamily: 'var(--font-display)',
-                  lineHeight: 1,
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                {metricas.alertasCriticos}
-              </div>
-              <div className="dashboard-kpi-label" style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                Alertas da operação
-              </div>
-            </div>
-            {metricas.alertasCriticos > 0 && (
-              <span className="dashboard-kpi-badge">
-                <Badge tone="danger">Atenção</Badge>
-              </span>
-            )}
-          </div>
-          <div
-            className="dashboard-kpi-footer"
-            style={{
-              padding: '10px 20px',
-              borderTop: '1px solid var(--color-border)',
-              background: 'var(--color-surface-alt)',
-              marginTop: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <span className="dashboard-kpi-footer-text" style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-              {metricas.veiculosManutencao} manut. • {metricas.motoristasCnhVencida} CNH
-            </span>
-            <button
-              onClick={() => navigate('/motoristas')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--color-danger)',
-                fontWeight: 700,
-                fontSize: '12px',
-                cursor: 'pointer',
-                padding: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              Ver alertas <ArrowRight size={13} />
-            </button>
-          </div>
-        </Card>
-      </div>
-
-      {/* Tabela de Solicitações Recentes */}
-      <Card>
-        <TableToolbar
-          title="Solicitações Recentes de Viagem"
-          subtitle={`${MOCK_SOLICITACOES.length} solicitações registradas no sistema`}
-          newLabel="Nova Solicitação"
-          onNew={() => navigate('/viagens')}
+    <div className="flex flex-col gap-6">
+      {/* ── 4 Cards de Sumário Operacional (Desktop 4 colunas, Tablet 2x2, Mobile 1 coluna) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          label="Solicitações pendentes"
+          value={metricas.pendentes}
+          tone="warning"
+          icon={<Clock size={20} className="text-amber-600" />}
+          subtitle="Ação de triagem requerida"
+          onClick={() => navigate('/solicitacoes')}
         />
 
-        <Table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Solicitante</th>
-              <th>Trajeto (Origem → Destino)</th>
-              <th>Data Desejada</th>
-              <th>Finalidade</th>
-              <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MOCK_SOLICITACOES.map((s) => (
-              <tr key={s.id}>
-                <td>
-                  <IdBadge id={`#${s.id}`} />
-                </td>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Avatar name={s.solicitante_nome} size={28} />
-                    <span style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: '13px' }}>
-                      {s.solicitante_nome}
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 500 }}>
-                    {s.destino}
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                    Origem: {s.origem}
-                  </div>
-                </td>
-                <td>
-                  <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                    {formatarDataHora(s.data_saida_desejada)}
-                  </span>
-                </td>
-                <td>
-                  <span
-                    style={{
-                      fontSize: '12px',
-                      color: 'var(--color-text-muted)',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 1,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      maxWidth: '280px',
-                    }}
-                    title={s.finalidade}
-                  >
-                    {s.finalidade}
-                  </span>
-                </td>
-                <td>
-                  <Badge tone={obterBadgeToneStatus(s.status)}>
-                    {LABELS_STATUS_SOLICITACAO[s.status]}
-                  </Badge>
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate('/viagens')}
-                    title="Acompanhar solicitação"
-                  >
-                    <Eye size={14} style={{ marginRight: '4px' }} /> Detalhes
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+        <MetricCard
+          label="Viagens em andamento"
+          value={metricas.viagensAtivas}
+          tone="info"
+          icon={<Navigation size={20} className="text-blue-600" />}
+          subtitle="Em deslocamento agora"
+          onClick={() => navigate('/viagens')}
+        />
 
-        <Pagination showing={`1–${MOCK_SOLICITACOES.length}`} total={MOCK_SOLICITACOES.length} />
+        <MetricCard
+          label="Veículos no pátio"
+          value={metricas.veiculosDisponiveis}
+          tone="success"
+          icon={<ParkingSquare size={20} className="text-emerald-600" />}
+          subtitle={`${metricas.frotaAdmDisponivel} Adm. • ${metricas.svoDisponivel} SVO`}
+          onClick={() => navigate('/veiculos')}
+        />
+
+        <MetricCard
+          label="Alertas da operação"
+          value={metricas.alertasCriticos}
+          tone="danger"
+          icon={<AlertTriangle size={20} className="text-rose-600" />}
+          subtitle={`${metricas.veiculosManutencao} manutenção • ${metricas.motoristasCnhVencida} CNH`}
+          onClick={() => navigate('/motoristas')}
+        />
+      </div>
+
+      {/* ── Tabela de Solicitações Recentes ── */}
+      <Card className="overflow-hidden">
+        <TableToolbar
+          title="Solicitações Recentes de Viagem"
+          subtitle={`${solicitacoes.length} solicitações registradas no sistema`}
+          newLabel="Nova Solicitação"
+          onNew={() => navigate('/solicitacoes')}
+        />
+
+        <div className="overflow-x-auto min-w-0">
+          <Table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Solicitante</th>
+                <th>Trajeto (Origem → Destino)</th>
+                <th>Data Desejada</th>
+                <th>Finalidade</th>
+                <th>Status</th>
+                <th className="text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {solicitacoes.map((s) => (
+                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                  <td>
+                    <IdBadge id={`#${s.id}`} />
+                  </td>
+                  <td>
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={s.solicitante_nome} size={28} />
+                      <span className="font-semibold text-slate-800 text-xs sm:text-sm">
+                        {s.solicitante_nome}
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="text-xs font-medium text-slate-800 sm:text-sm">
+                      {s.destino}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Origem: {s.origem}
+                    </div>
+                  </td>
+                  <td>
+                    <span className="text-xs whitespace-nowrap text-slate-500">
+                      {formatarDataHora(s.data_saida_desejada)}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      className="block max-w-56 truncate text-xs text-slate-500"
+                      title={s.finalidade}
+                    >
+                      {s.finalidade}
+                    </span>
+                  </td>
+                  <td>
+                    <Badge tone={obterBadgeToneStatus(s.status)}>
+                      {LABELS_STATUS_SOLICITACAO[s.status]}
+                    </Badge>
+                  </td>
+                  <td className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate('/solicitacoes')}
+                      title="Acompanhar solicitação"
+                    >
+                      <Eye size={14} className="mr-1" /> Detalhes
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+
+        <Pagination showing={`1–${solicitacoes.length}`} total={solicitacoes.length} />
       </Card>
     </div>
   );

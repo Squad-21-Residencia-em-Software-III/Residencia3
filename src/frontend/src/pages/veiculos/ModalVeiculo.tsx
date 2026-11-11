@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Button, Input, Modal, Select } from '../../components/ui';
-import type { TipoFrota, Veiculo } from '../../types/veiculo';
+import { Alert, Button, Input, Modal, Select } from '../../components/ui';
+import { mensagemDeErro } from '../../services/api/http';
+import type { NovoVeiculoInput, TipoFrota } from '../../types/veiculo';
 
 interface ModalVeiculoProps {
   onClose: () => void;
-  onSalvar: (veiculo: Omit<Veiculo, 'id'>) => void;
+  onSalvar: (veiculo: NovoVeiculoInput) => Promise<void>;
 }
 
 export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
@@ -13,9 +14,11 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
   const [modelo, setModelo] = useState('');
   const [tipoFrota, setTipoFrota] = useState<TipoFrota>('ADMINISTRATIVA');
   const [capacidade, setCapacidade] = useState('4');
+  const [kmAtual, setKmAtual] = useState('0');
   const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
 
@@ -33,22 +36,35 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
       return;
     }
 
-    onSalvar({
-      placa: placa.trim().toUpperCase(),
-      modelo: modelo.trim(),
-      tipo_frota: tipoFrota,
-      capacidade_maxima: capacidadeNum,
-      status: 'DISPONIVEL', // padrão do banco
-    });
+    const kmAtualNum = Number(kmAtual);
+    if (!kmAtual || !Number.isInteger(kmAtualNum) || kmAtualNum < 0) {
+      setErro('A quilometragem deve ser um número inteiro maior ou igual a 0.');
+      return;
+    }
 
-    onClose();
+    setSalvando(true);
+    try {
+      await onSalvar({
+        placa: placa.trim().toUpperCase(),
+        modelo: modelo.trim(),
+        tipo_frota: tipoFrota,
+        capacidade_maxima: capacidadeNum,
+        km_atual: kmAtualNum,
+      });
+      onClose();
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+      setSalvando(false);
+    }
   };
 
   return (
     <Modal title="Cadastrar Veículo" onClose={onClose}>
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
-          <p style={{ color: 'var(--color-danger)', fontSize: '13px', margin: '0 0 16px' }}>{erro}</p>
+          <Alert tone="danger" className="mb-4">
+            {erro}
+          </Alert>
         )}
 
         <Input
@@ -69,11 +85,13 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
           required
         />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
             label="Tipo de Frota"
             value={tipoFrota}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setTipoFrota(e.target.value as TipoFrota)}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+              setTipoFrota(e.target.value as TipoFrota)
+            }
           >
             <option value="ADMINISTRATIVA">Administrativa</option>
             <option value="SVO">SVO</option>
@@ -95,11 +113,22 @@ export function ModalVeiculo({ onClose, onSalvar }: ModalVeiculoProps) {
           />
         </div>
 
-        <div className="modal__footer" style={{ borderTop: 'none', padding: 0 }}>
+        <Input
+          label="Quilometragem Atual *"
+          type="number"
+          min="0"
+          step="1"
+          value={kmAtual}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setKmAtual(e.target.value)}
+        />
+
+        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit">Cadastrar Veículo</Button>
+          <Button type="submit" disabled={salvando}>
+            {salvando ? 'Cadastrando...' : 'Cadastrar Veículo'}
+          </Button>
         </div>
       </form>
     </Modal>

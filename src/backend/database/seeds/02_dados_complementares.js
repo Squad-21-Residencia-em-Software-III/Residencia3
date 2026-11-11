@@ -1,15 +1,23 @@
 exports.seed = async function(knex) {
   if (process.env.NODE_ENV === 'production') return;
 
-  await knex.raw('TRUNCATE TABLE fornecedores, equipes_svo RESTART IDENTITY CASCADE');
+  await knex.raw('TRUNCATE TABLE fornecedores, equipes_svo, gestores_unidades RESTART IDENTITY CASCADE');
 
   const usuarios = await knex('usuarios').select('id', 'email');
   const veiculos = await knex('veiculos').select('id', 'placa');
   const motoristas = await knex('motoristas').select('id', 'numero_cnh');
+  const unidades = await knex('unidades').select('id', 'nome');
 
   const idUser = (email) => usuarios.find(u => u.email === email)?.id;
   const idVeic = (placa) => veiculos.find(v => v.placa === placa)?.id;
   const idMot = (cnh) => motoristas.find(m => m.numero_cnh === cnh)?.id;
+  const idUnid = (nome) => unidades.find(u => u.nome === nome)?.id;
+
+  await knex('gestores_unidades').insert([
+    { unidade_id: idUnid('SVO'), usuario_id: idUser('gestor.svo@exemplo.com') },
+    { unidade_id: idUnid('HEMOSE'), usuario_id: idUser('gestor.frota@exemplo.com') },
+    { unidade_id: idUnid('LACEN'), usuario_id: idUser('gestor.frota@exemplo.com') }
+  ]);
 
   const fornecedores = await knex('fornecedores').insert([
     { nome: 'Posto PetroBrasil', cnpj: '11111111000111', tipo_servico: 'Posto de Combustível', contrato: 'CT-2026-01' },
@@ -34,11 +42,26 @@ exports.seed = async function(knex) {
   ]);
 
   const solViagem = await knex('solicitacoes_viagem').insert([
-    { solicitante_id: idUser('solicitante@exemplo.com'), origem: 'Sede Aracaju', destino: 'Filial Estância', finalidade: 'Reunião', data_saida_desejada: new Date('2026-10-30T08:00:00Z'), status: 'APROVADA' }
+    { solicitante_id: idUser('solicitante@exemplo.com'), unidade_id: idUnid('HEMOSE'), origem: 'Sede Aracaju', destino: 'Filial Estância', finalidade: 'Reunião', data_saida_desejada: new Date('2026-10-30T08:00:00Z'), status: 'APROVADA' }
   ]).returning('id');
 
   const solSvo = await knex('solicitacoes_svo').insert([
-    { registrante_id: idUser('gestor.svo@exemplo.com'), dados_solicitante: 'Hospital de Urgência', local_ocorrencia: 'Av. Tancredo Neves', material_sensivel: true, status: 'EM_ANDAMENTO' }
+    {
+      registrante_id: idUser('gestor.svo@exemplo.com'),
+      dados_solicitante: 'Hospital de Urgência',
+      local_ocorrencia: 'Av. Tancredo Neves',
+      observacoes: 'Óbito natural em unidade hospitalar, documentação médica conferida.',
+      material_sensivel: true,
+      status: 'EM_ANDAMENTO'
+    },
+    {
+      registrante_id: idUser('gestor.svo@exemplo.com'),
+      dados_solicitante: 'Maria da Silva (Familiar) - Tel: (79) 99999-0000',
+      local_ocorrencia: 'Rua São Cristóvão, 412, Bairro Getúlio Vargas, Aracaju/SE',
+      observacoes: 'Óbito em residência sem sinais de violência externa. Aguardando triagem do plantão.',
+      material_sensivel: false,
+      status: 'EM_TRIAGEM'
+    }
   ]).returning('id');
 
   await knex('escalas_svo').insert([

@@ -34,7 +34,8 @@ Registo dos veículos pertencentes à frota geral e ao Serviço de Verificação
 | `modelo` | Varchar(100) | NOT NULL | Marca e modelo. |
 | `tipo_frota` | Varchar(20) | NOT NULL | CHECK: `ADMINISTRATIVA`, `SVO`. |
 | `capacidade_maxima` | Integer | NOT NULL | Lotação (CHECK: `>= 0`). |
-| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `EM_USO`, `MANUTENCAO`. |
+| `km_atual` | Integer | NOT NULL, DEFAULT 0 | Quilometragem atual do veículo (CHECK: `>= 0`). |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `RESERVADO`, `EM_USO`, `MANUTENCAO`. |
 
 ## 4. Tabela: `equipes_svo`
 Registo das equipas alocadas ao serviço SVO.
@@ -53,7 +54,7 @@ Registo de ações realizadas no sistema (logs de segurança).
 | `usuario_id` | Integer | FOREIGN KEY | Ligação à tabela `usuarios` (RESTRICT). |
 | `acao` | Varchar(255) | NOT NULL | Descrição da ação executada. |
 | `modulo` | Varchar(100) | NOT NULL | Módulo afetado pela ação. |
-| `data_hora` | Timestamp | DEFAULT now() | Data e hora exatas da operação. |
+| `data_hora` | Timestamptz | DEFAULT now() | Data e hora exatas da operação (com fuso horário). |
 
 ## 6. Tabela: `motoristas`
 Registo detalhado das habilitações dos utilizadores com perfil de condução.
@@ -66,7 +67,7 @@ Registo detalhado das habilitações dos utilizadores com perfil de condução.
 | `categoria_cnh` | Varchar(5) | NOT NULL | Categoria da carta (Ex: B, C, D). |
 | `validade_cnh` | Date | NOT NULL | Data de validade do documento. |
 | `tipo_motorista` | Varchar(20) | NOT NULL | CHECK: `FROTA`, `SVO`. |
-| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `EM_VIAGEM`, `INATIVO`, `AFASTADO`. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `DESIGNADO`, `EM_VIAGEM`, `INATIVO`, `AFASTADO`. |
 
 ## 7. Tabela: `manutencoes`
 Histórico de manutenções preventivas e corretivas da frota.
@@ -99,12 +100,14 @@ Pedidos de deslocação da frota administrativa.
 | :--- | :--- | :--- | :--- |
 | `id` | Integer / Serial | PRIMARY KEY | Identificador do pedido. |
 | `solicitante_id` | Integer | FOREIGN KEY | Utilizador que realizou o pedido (RESTRICT). |
+| `unidade_id` | Integer | FOREIGN KEY, NULLABLE | Unidade da FSPH vinculada ao pedido (`unidades.id`, RESTRICT). |
 | `origem` | Varchar(255) | NOT NULL | Ponto de partida. |
 | `destino` | Varchar(255) | NOT NULL | Local de chegada. |
 | `finalidade` | Text | NOT NULL | Motivo da deslocação. |
-| `data_saida_desejada` | Timestamp | NOT NULL | Início planeado. |
-| `data_chegada_desejada`| Timestamp | NULLABLE, CHECK: `>= data_saida_desejada` | Fim planeado da viagem. |
-| `status` | Varchar(30) | NOT NULL, DEFAULT 'PENDENTE_APROVACAO' | CHECK: `PENDENTE_APROVACAO`, `APROVADA`, `RECUSADA`, `CANCELADA`. |
+| `data_saida_desejada` | Timestamptz | NOT NULL | Início planeado (com fuso horário). |
+| `data_chegada_desejada`| Timestamptz | NULLABLE, CHECK: `>= data_saida_desejada` | Fim planeado da viagem (com fuso horário). |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'PENDENTE_APROVACAO' | CHECK: `PENDENTE_APROVACAO`, `APROVADA`, `AGENDADA`, `CONCLUIDA`, `RECUSADA`, `CANCELADA`. |
+| `motivo_recusa` | Text | NULLABLE | Justificativa gravada na recusa da solicitação (migration 20261104133113). |
 
 ## 10. Tabela: `solicitacoes_svo`
 Triagem de pedidos para o Serviço de Verificação de Óbitos.
@@ -112,11 +115,14 @@ Triagem de pedidos para o Serviço de Verificação de Óbitos.
 | Coluna | Tipo | Restrições / Notas | Descrição |
 | :--- | :--- | :--- | :--- |
 | `id` | Integer / Serial | PRIMARY KEY | Identificador do pedido de SVO. |
-| `registrante_id` | Integer | FOREIGN KEY | Utilizador que registou a ocorrência (RESTRICT). |
+| `registrante_id` | Integer | FOREIGN KEY, NOT NULL | Utilizador que registou a ocorrência (RESTRICT). |
 | `dados_solicitante` | Text | NOT NULL | Informação de quem contactou a instituição. |
 | `local_ocorrencia` | Varchar(255) | NOT NULL | Morada do incidente. |
-| `material_sensivel` | Boolean | DEFAULT false | Exige protocolos específicos de transporte. |
-| `status` | Varchar(30) | NOT NULL, DEFAULT 'EM_TRIAGEM' | CHECK: `EM_TRIAGEM`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA`. |
+| `observacoes` | Text | NULLABLE | Dados complementares da ocorrência e causa/contexto do óbito para triagem (RF20). |
+| `material_sensivel` | Boolean | NOT NULL, DEFAULT false | Exige protocolos específicos de transporte. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'EM_TRIAGEM' | CHECK: `EM_TRIAGEM`, `CONFIRMADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `RECUSADA`, `CANCELADA`. |
+| `motivo_recusa` | Text | NULLABLE | Justificativa quando a solicitação é recusada na triagem (ex.: encaminhamento ao IML). |
+| `criado_em` | Timestamptz | NOT NULL, DEFAULT now() | Data e hora do registo do chamado para ordenação da fila e cálculo de SLA. |
 
 ## 11. Tabela: `escalas_svo`
 Planeamento de horários das equipas SVO.
@@ -125,8 +131,8 @@ Planeamento de horários das equipas SVO.
 | :--- | :--- | :--- | :--- |
 | `id` | Integer / Serial | PRIMARY KEY | Identificador do turno. |
 | `equipe_id` | Integer | FOREIGN KEY | Equipa escalada (RESTRICT). |
-| `data_inicio` | Timestamp | NOT NULL | Início do turno. |
-| `data_fim` | Timestamp | NOT NULL, CHECK: `>= data_inicio` | Fim do turno. |
+| `data_inicio` | Timestamptz | NOT NULL | Início do turno (com fuso horário). |
+| `data_fim` | Timestamptz | NOT NULL, CHECK: `>= data_inicio` | Fim do turno (com fuso horário). |
 
 ## 12. Tabela: `multas`
 Armazena o registo de infrações de trânsito vinculadas aos veículos e motoristas.
@@ -138,7 +144,7 @@ Armazena o registo de infrações de trânsito vinculadas aos veículos e motori
 | `motorista_id` | Integer | FOREIGN KEY | Vínculo com a tabela `motoristas` (RESTRICT). |
 | `id_infracao` | Varchar(255) | NULLABLE | Código da infração registado pelo Detran. |
 | `orgao_autuador` | Varchar(255) | NULLABLE | Entidade responsável pela autuação (Ex: PRF, SMTT). |
-| `data_infracao` | Timestamp | NOT NULL | Data e hora exatas da ocorrência da infração. |
+| `data_infracao` | Timestamptz | NOT NULL | Data e hora exatas da ocorrência da infração (com fuso horário). |
 | `data_vencimento`| Date | NULLABLE | Data limite para pagamento com desconto. |
 | `status_pagamento`| Varchar(255) | NOT NULL, DEFAULT 'PENDENTE' | CHECK: `PENDENTE`, `PAGO`, `CANCELADO`. |
 | `valor` | Decimal(10,2) | NOT NULL | CHECK: `> 0`. |
@@ -171,8 +177,8 @@ Execução efetiva das deslocações administrativas aprovadas.
 | `motorista_id` | Integer | FOREIGN KEY | Motorista encarregue (RESTRICT). |
 | `km_inicial` | Integer | NULLABLE | CHECK: `>= 0`. |
 | `km_final` | Integer | NULLABLE | CHECK: `>= km_inicial`. |
-| `data_hora_efetiva_saida` | Timestamp | NULLABLE | Hora de início real. |
-| `data_hora_efetiva_chegada`| Timestamp | NULLABLE | Hora de conclusão real. |
+| `data_hora_efetiva_saida` | Timestamptz | NULLABLE | Hora de início real (com fuso horário). |
+| `data_hora_efetiva_chegada`| Timestamptz | NULLABLE | Hora de conclusão real (com fuso horário). |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'AGENDADA' | CHECK: `AGENDADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA`. |
 
 ## 15. Tabela: `ordens_svo`
@@ -186,8 +192,26 @@ Alocação e execução de chamadas do Serviço de Verificação de Óbitos.
 | `motorista_id` | Integer | FOREIGN KEY | Condutor do SVO (RESTRICT). |
 | `equipe_id` | Integer | FOREIGN KEY | Profissionais alocados (RESTRICT). |
 | `capacidade_utilizada`| Integer | NOT NULL, DEFAULT 1 | CHECK: `> 0`. |
-| `data_hora_chamado` | Timestamp | DEFAULT now() | Momento da ativação da equipa. |
-| `data_hora_conclusao`| Timestamp | NULLABLE | Regresso e término da operação. |
+| `data_hora_chamado` | Timestamptz | DEFAULT now() | Momento da ativação da equipa (com fuso horário). |
+| `data_hora_saida` | Timestamptz | NULLABLE | Momento de início do deslocamento (com fuso horário). |
+| `data_hora_conclusao`| Timestamptz | NULLABLE, CHECK: `>= data_hora_saida` | Regresso e término da operação (com fuso horário). |
 | `km_inicial` | Integer | NULLABLE | CHECK: `>= 0`. |
 | `km_final` | Integer | NULLABLE | CHECK: `>= km_inicial`. |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'ALOCADA' | CHECK: `ALOCADA`, `EM_DESLOCAMENTO`, `CONCLUIDA`, `CANCELADA`. |
+
+## 16. Tabela: `unidades`
+Unidades da FSPH disponíveis para encaminhamento e gestão de solicitações (BL15).
+
+| Coluna | Tipo | Restrições / Notas | Descrição |
+| :--- | :--- | :--- | :--- |
+| `id` | Integer / Serial | PRIMARY KEY | Identificador único da unidade. |
+| `nome` | Varchar(50) | NOT NULL, UNIQUE | CHECK: `SVO`, `HEMOSE`, `LACEN`. |
+| `tipo` | Varchar(30) | NOT NULL | CHECK: `SVO`, `ADMINISTRATIVA`. |
+
+## 17. Tabela: `gestores_unidades`
+Relação associativa (N:N) entre gestores e unidades da FSPH (BL15).
+
+| Coluna | Tipo | Restrições / Notas | Descrição |
+| :--- | :--- | :--- | :--- |
+| `unidade_id` | Integer | PRIMARY KEY, FOREIGN KEY | Unidade gerida (`unidades.id`, CASCADE). |
+| `usuario_id` | Integer | PRIMARY KEY, FOREIGN KEY | Utilizador gestor associado (`usuarios.id`, CASCADE, indexado). |

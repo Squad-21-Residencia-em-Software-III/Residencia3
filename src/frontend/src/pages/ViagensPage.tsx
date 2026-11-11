@@ -1,43 +1,54 @@
-import { Fragment, useMemo, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { ChevronRight, Flag, MapPin, Play } from 'lucide-react';
 import {
-  CheckCircle2,
-  ChevronDown,
-  Flag,
-  MapPin,
-} from 'lucide-react';
-import {
-  Avatar,
+  Alert,
   Badge,
   Button,
   Card,
+  ConfirmDialog,
+  FilterSelect,
   IdBadge,
+  MetricCard,
   Pagination,
+  SearchInput,
   Table,
   TableFilterCollapse,
   TableToolbar,
   type BadgeTone,
 } from '../components/ui';
-import { storageService } from '../services/storageService';
+import { mensagemDeErro } from '../services/api/http';
+import { motoristasApi } from '../services/api/motoristasApi';
+import { solicitacoesApi } from '../services/api/solicitacoesApi';
+import { veiculosApi } from '../services/api/veiculosApi';
+import { viagensApi } from '../services/api/viagensApi';
+import type { Motorista } from '../types/motorista';
+import type { SolicitacaoViagem } from '../types/solicitacao';
+import type { Veiculo } from '../types/veiculo';
 import {
   LABELS_STATUS_VIAGEM,
+  type NovaViagemInput,
   type StatusViagem,
   type Viagem,
 } from '../types/viagem';
-import { ModalDetalhesViagem } from './viagens/ModalDetalhesViagem';
+import { cn } from '../utils/cn';
+import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
 import { ModalFinalizarViagem } from './viagens/ModalFinalizarViagem';
+import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
-import { TicketViagem } from './viagens/TicketViagem';
 
-type FiltroAba = 'TODAS' | 'EM_ANDAMENTO' | 'AGENDADAS' | 'CONCLUIDAS' | 'FROTA' | 'SVO';
+type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+type FiltroOperacaoViagem = 'TODAS' | 'ADMINISTRATIVA' | 'SVO';
 
-const cardValor = (cor: string) => ({
-  fontSize: '24px',
-  fontWeight: 800,
-  color: cor,
-  fontFamily: 'var(--font-display)',
-});
-const cardRotulo = { fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' };
+interface DadosNovaViagem {
+  veiculos: Veiculo[];
+  motoristas: Motorista[];
+  solicitacoes: SolicitacaoViagem[];
+  erroSolicitacoes: string | null;
+}
+
+// Viagens administrativas e ordens SVO têm ids independentes e podem repetir o mesmo número
+const chaveViagem = (v: Viagem) => `${v.tipo_operacao}-${v.id}`;
 
 function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
@@ -63,21 +74,36 @@ function formatarDataHora(isoString?: string | null): string {
   return `${dia}/${mes} ${horas}:${minutos}`;
 }
 
-function limitarTexto(texto: string, maximo = 28): string {
-  if (!texto) return '';
+function limitarTexto(texto: string | null, maximo = 28): string {
+  if (!texto) return '—';
   return texto.length > maximo ? `${texto.slice(0, maximo)}...` : texto;
 }
 
 export default function ViagensPage() {
-  const [viagens, setViagens] = useState<Viagem[]>(storageService.getViagens());
-  const [filtro, setFiltro] = useState<FiltroAba>('TODAS');
+  const location = useLocation();
+  const [viagens, setViagens] = useState<Viagem[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatusViagem>('TODOS');
+  const [filtroOperacao, setFiltroOperacao] = useState<FiltroOperacaoViagem>('TODAS');
+  const [filtroMotorista, setFiltroMotorista] = useState<string>('TODOS');
+  const [filtroVeiculo, setFiltroVeiculo] = useState<string>('TODOS');
   const [busca, setBusca] = useState('');
-  const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
+  const [dadosNovaViagem, setDadosNovaViagem] = useState<DadosNovaViagem | null>(null);
+
+  useEffect(() => {
+    if (location.state?.solicitacaoId) {
+      setModalNovaAberto(true);
+    }
+  }, [location.state]);
   const [viagemDetalhes, setViagemDetalhes] = useState<Viagem | null>(null);
+  const [viagemIniciar, setViagemIniciar] = useState<Viagem | null>(null);
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
-  const [viagemExpandidaId, setViagemExpandidaId] = useState<number | null>(null);
+  const [viagemCancelar, setViagemCancelar] = useState<Viagem | null>(null);
+  const [cancelandoViagem, setCancelandoViagem] = useState(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
@@ -95,6 +121,54 @@ export default function ViagensPage() {
     }, 4000);
   };
 
+  const carregarViagens = useCallback(async () => {
+    try {
+      setViagens(await viagensApi.listar());
+      setErroCarga(null);
+    } catch (error) {
+      setErroCarga(mensagemDeErro(error));
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarViagens();
+  }, [carregarViagens]);
+
+  // Veículos e motoristas são buscados a cada abertura para refletir os status atuais do backend
+  useEffect(() => {
+    if (!modalNovaAberto) {
+      setDadosNovaViagem(null);
+      return;
+    }
+
+    let ativo = true;
+    Promise.all([
+      veiculosApi.listar(),
+      motoristasApi.listar(),
+      solicitacoesApi
+        .listarAprovadas()
+        .then((solicitacoes) => ({ solicitacoes, erroSolicitacoes: null }))
+        .catch((error) => ({
+          solicitacoes: [],
+          erroSolicitacoes: mensagemDeErro(error),
+        })),
+    ])
+      .then(([veiculos, motoristas, resultado]) => {
+        if (ativo) setDadosNovaViagem({ veiculos, motoristas, ...resultado });
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        setModalNovaAberto(false);
+        exibirFeedback(mensagemDeErro(error), true);
+      });
+
+    return () => {
+      ativo = false;
+    };
+  }, [modalNovaAberto]);
+
   const totais = useMemo(
     () => ({
       total: viagens.length,
@@ -105,278 +179,310 @@ export default function ViagensPage() {
     [viagens],
   );
 
+  // Opções de motoristas e veículos extraídas das viagens registradas
+  const opcoesMotoristas = useMemo(() => {
+    const mapa = new Map<number, string>();
+    viagens.forEach((v) => {
+      if (v.motorista_id && v.motorista_nome) {
+        mapa.set(v.motorista_id, v.motorista_nome);
+      }
+    });
+    return Array.from(mapa.entries())
+      .map(([id, nome]) => ({ value: String(id), label: nome }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [viagens]);
+
+  const opcoesVeiculos = useMemo(() => {
+    const mapa = new Map<number, { placa: string; modelo: string }>();
+    viagens.forEach((v) => {
+      if (v.veiculo_id && v.veiculo_placa) {
+        mapa.set(v.veiculo_id, { placa: v.veiculo_placa, modelo: v.veiculo_modelo });
+      }
+    });
+    return Array.from(mapa.entries())
+      .map(([id, info]) => ({ value: String(id), label: `${info.placa} (${info.modelo})` }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [viagens]);
+
   const filtradas = useMemo(() => {
     return viagens.filter((v) => {
-      if (filtro === 'EM_ANDAMENTO' && v.status !== 'EM_ANDAMENTO') return false;
-      if (filtro === 'AGENDADAS' && v.status !== 'AGENDADA') return false;
-      if (filtro === 'CONCLUIDAS' && v.status !== 'CONCLUIDA') return false;
-      if (filtro === 'FROTA' && v.tipo_operacao !== 'ADMINISTRATIVA') return false;
-      if (filtro === 'SVO' && v.tipo_operacao !== 'SVO') return false;
+      if (filtroStatus !== 'TODOS' && v.status !== filtroStatus) return false;
+      if (filtroOperacao !== 'TODAS' && v.tipo_operacao !== filtroOperacao) return false;
+      if (filtroMotorista !== 'TODOS' && String(v.motorista_id) !== filtroMotorista) return false;
+      if (filtroVeiculo !== 'TODOS' && String(v.veiculo_id) !== filtroVeiculo) return false;
 
       if (busca.trim()) {
         const termo = busca.trim().toLowerCase();
-        const matchOrigem = v.origem.toLowerCase().includes(termo);
-        const matchDestino = v.destino.toLowerCase().includes(termo);
+        const matchOrigem = (v.origem ?? '').toLowerCase().includes(termo);
+        const matchDestino = (v.destino ?? '').toLowerCase().includes(termo);
         const matchMotorista = v.motorista_nome.toLowerCase().includes(termo);
         const matchPlaca = v.veiculo_placa.toLowerCase().includes(termo);
-        const matchSolicitante = v.solicitante_nome.toLowerCase().includes(termo);
+        const matchSolicitante = (v.solicitante_nome ?? '').toLowerCase().includes(termo);
         if (!matchOrigem && !matchDestino && !matchMotorista && !matchPlaca && !matchSolicitante) {
           return false;
         }
       }
       return true;
     });
-  }, [viagens, filtro, busca]);
+  }, [viagens, filtroStatus, filtroOperacao, filtroMotorista, filtroVeiculo, busca]);
 
-  const handleSalvarNovaViagem = (nova: Omit<Viagem, 'id'>) => {
-    try {
-      storageService.createViagem(nova);
-      setViagens(storageService.getViagens());
-      exibirFeedback(`Viagem agendada com sucesso!`);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
-    }
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const ITENS_POR_PAGINA = 10;
+
+  // Reseta para a página 1 ao alterar qualquer critério de filtro
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [busca, filtroStatus, filtroOperacao, filtroMotorista, filtroVeiculo]);
+
+  const totalItens = filtradas.length;
+  const totalPaginas = Math.max(1, Math.ceil(totalItens / ITENS_POR_PAGINA));
+  const paginaSegura = Math.min(paginaAtual, totalPaginas);
+
+  const viagensPaginadas = useMemo(() => {
+    const inicio = (paginaSegura - 1) * ITENS_POR_PAGINA;
+    return filtradas.slice(inicio, inicio + ITENS_POR_PAGINA);
+  }, [filtradas, paginaSegura]);
+
+  const handleSalvarNovaViagem = async (nova: NovaViagemInput) => {
+    await viagensApi.criar(nova);
+    await carregarViagens();
+    exibirFeedback(`Viagem agendada com sucesso!`);
   };
 
-  const handleFinalizarViagem = (dados: { km_final: number; data_hora_efetiva_chegada: string }) => {
+  const handleIniciarViagem = async (kmInicial: number) => {
+    if (!viagemIniciar) return;
+    await viagensApi.iniciar(viagemIniciar, kmInicial);
+    await carregarViagens();
+    exibirFeedback(`Viagem #${viagemIniciar.id} iniciada com sucesso.`);
+  };
+
+  const handleFinalizarViagem = async (kmFinal: number) => {
     if (!viagemFinalizar) return;
+    await viagensApi.finalizar(viagemFinalizar, kmFinal);
+    await carregarViagens();
+    exibirFeedback(`Viagem #${viagemFinalizar.id} finalizada com sucesso.`);
+  };
+
+  const handleConfirmarCancelamento = async () => {
+    if (!viagemCancelar) return;
+    setCancelandoViagem(true);
     try {
-      storageService.updateViagem(viagemFinalizar.id, {
-        ...dados,
-        status: 'CONCLUIDA',
-      });
-      setViagens(storageService.getViagens());
-      exibirFeedback(`Viagem #${viagemFinalizar.id} finalizada com sucesso.`);
-      setViagemFinalizar(null);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
+      await viagensApi.cancelar(viagemCancelar);
+      await carregarViagens();
+      exibirFeedback(`Viagem #${viagemCancelar.id} cancelada.`);
+      setViagemCancelar(null);
+    } catch (error) {
+      exibirFeedback(mensagemDeErro(error), true);
+      setViagemCancelar(null);
+    } finally {
+      setCancelandoViagem(false);
     }
   };
 
   return (
-    <div style={{ display: 'grid', gap: '20px', minWidth: 0, width: '100%' }}>
-      {mensagemSucesso && (
-        <div
-          style={{
-            padding: '12px 20px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-success)',
-            color: 'var(--color-success)',
-            fontSize: '14px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
-          <span>{mensagemSucesso}</span>
-        </div>
-      )}
+    <div className="grid w-full min-w-0 gap-5">
+      {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
 
-      {mensagemErro && (
-        <div
-          style={{
-            padding: '12px 20px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-danger)',
-            color: 'var(--color-danger)',
-            fontSize: '14px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <span style={{ fontSize: '18px' }}>❌</span>
-          <span>{mensagemErro}</span>
-        </div>
-      )}
+      {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
 
-      <div className="kpi-grid">
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-text)')}>{totais.total}</div>
-          <div style={cardRotulo}>Total de Viagens</div>
-        </Card>
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-primary)')}>{totais.emAndamento}</div>
-          <div style={cardRotulo}>Em Andamento</div>
-        </Card>
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-purple)')}>{totais.agendadas}</div>
-          <div style={cardRotulo}>Agendadas</div>
-        </Card>
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-success)')}>{totais.concluidas}</div>
-          <div style={cardRotulo}>Concluídas</div>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+        <MetricCard
+          label="Total de Viagens"
+          value={totais.total}
+          tone="neutral"
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="Em Andamento"
+          value={totais.emAndamento}
+          tone="primary"
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="Agendadas"
+          value={totais.agendadas}
+          tone="purple"
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="Concluídas"
+          value={totais.concluidas}
+          tone="success"
+          className="px-5 py-4"
+        />
       </div>
 
       <Card>
         <TableToolbar
           title="Registro de Viagens"
-          subtitle={`${filtradas.length} viagens exibidas`}
+          subtitle={`${filtradas.length} de ${viagens.length} viagens registradas`}
           newLabel="Nova Viagem"
           onNew={() => setModalNovaAberto(true)}
-          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
-          isFilterActive={filtro !== 'TODAS' || Boolean(busca) || filtrosAbertosMobile}
+          onFilter={() => setFiltrosAbertos((f) => !f)}
+          isFilterActive={
+            filtroStatus !== 'TODOS' ||
+            filtroOperacao !== 'TODAS' ||
+            filtroMotorista !== 'TODOS' ||
+            filtroVeiculo !== 'TODOS' ||
+            Boolean(busca) ||
+            filtrosAbertos
+          }
         />
 
-        <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {([
-              { id: 'TODAS', label: 'Todas' },
-              { id: 'EM_ANDAMENTO', label: 'Em Andamento' },
-              { id: 'AGENDADAS', label: 'Agendadas' },
-              { id: 'CONCLUIDAS', label: 'Concluídas' },
-              { id: 'FROTA', label: 'Frota' },
-              { id: 'SVO', label: 'SVO' },
-            ] as const).map((aba) => (
-              <button
-                key={aba.id}
-                onClick={() => setFiltro(aba.id)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: 'none',
-                  background: filtro === aba.id ? 'var(--color-primary)' : 'transparent',
-                  color: filtro === aba.id ? '#ffffff' : 'var(--color-text-muted)',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {aba.label}
-              </button>
-            ))}
-          </div>
+        <TableFilterCollapse isOpen={filtrosAbertos}>
+          {/* Busca por campo de texto na esquerda */}
+          <SearchInput
+            value={busca}
+            onChange={setBusca}
+            placeholder="Buscar por trajeto, condutor ou placa..."
+          />
 
-          <div style={{ minWidth: '220px', flex: '1', maxWidth: '320px' }}>
-            <input
-              type="text"
-              placeholder="Buscar por trajeto, condutor ou placa..."
-              value={busca}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setBusca(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '7px 12px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                background: 'var(--color-surface)',
-                fontSize: '13px',
-                color: 'var(--color-text)',
-                outline: 'none',
+          {/* Filtros em dropdown na sequência */}
+          <FilterSelect
+            aria-label="Filtrar por status"
+            value={filtroStatus}
+            onChange={(val) => setFiltroStatus(val as FiltroStatusViagem)}
+            options={[
+              { value: 'TODOS', label: 'Todos os status' },
+              { value: 'AGENDADA', label: 'Agendadas' },
+              { value: 'EM_ANDAMENTO', label: 'Em Andamento' },
+              { value: 'CONCLUIDA', label: 'Concluídas' },
+              { value: 'CANCELADA', label: 'Canceladas' },
+            ]}
+          />
+
+          <FilterSelect
+            aria-label="Filtrar por operação"
+            value={filtroOperacao}
+            onChange={(val) => setFiltroOperacao(val as FiltroOperacaoViagem)}
+            options={[
+              { value: 'TODAS', label: 'Todas as operações' },
+              { value: 'ADMINISTRATIVA', label: 'Frota Institucional' },
+              { value: 'SVO', label: 'Serviço SVO' },
+            ]}
+          />
+
+          <FilterSelect
+            aria-label="Filtrar por motorista"
+            value={filtroMotorista}
+            onChange={setFiltroMotorista}
+            options={[
+              { value: 'TODOS', label: 'Todos os motoristas' },
+              ...opcoesMotoristas,
+            ]}
+          />
+
+          <FilterSelect
+            aria-label="Filtrar por veículo"
+            value={filtroVeiculo}
+            onChange={setFiltroVeiculo}
+            options={[
+              { value: 'TODOS', label: 'Todos os veículos' },
+              ...opcoesVeiculos,
+            ]}
+          />
+
+          {(filtroStatus !== 'TODOS' ||
+            filtroOperacao !== 'TODAS' ||
+            filtroMotorista !== 'TODOS' ||
+            filtroVeiculo !== 'TODOS' ||
+            busca) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setBusca('');
+                setFiltroStatus('TODOS');
+                setFiltroOperacao('TODAS');
+                setFiltroMotorista('TODOS');
+                setFiltroVeiculo('TODOS');
               }}
-            />
-          </div>
+            >
+              Limpar
+            </Button>
+          )}
         </TableFilterCollapse>
 
         <Table>
           <colgroup>
-            <col style={{ width: '65px' }} />
-            <col style={{ width: '85px' }} />
-            <col style={{ width: 'auto' }} />
-            <col style={{ width: '140px' }} />
-            <col style={{ width: '160px' }} />
-            <col style={{ width: '120px' }} />
-            <col style={{ width: '130px' }} />
-            <col style={{ width: '120px' }} />
-            <col style={{ width: '80px' }} />
+            <col className="w-[65px]" />
+            <col className="w-[85px]" />
+            <col className="w-auto" />
+            <col className="w-[140px]" />
+            <col className="w-[160px]" />
+            <col className="w-[120px]" />
+            <col className="w-[130px]" />
+            <col className="w-[120px]" />
+            <col className="w-[200px]" />
           </colgroup>
           <thead>
             <tr>
-              <th style={{ paddingRight: '6px' }}>ID</th>
-              <th style={{ paddingLeft: '6px', paddingRight: '12px' }}>Operação</th>
+              <th className="pr-1.5">ID</th>
+              <th className="px-1.5 pr-3">Operação</th>
               <th>Origem / Destino</th>
               <th>Horários</th>
               <th>Motorista</th>
               <th>Veículo</th>
               <th>Odômetro / Km</th>
               <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Ações</th>
+              <th className="text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
             {filtradas.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
-                  Nenhuma viagem encontrada com os filtros selecionados.
+                <td colSpan={9} className="p-9 text-center text-slate-500">
+                  {carregando
+                    ? 'Carregando viagens...'
+                    : (erroCarga ?? 'Nenhuma viagem encontrada com os filtros selecionados.')}
                 </td>
               </tr>
             ) : (
-              filtradas.map((v) => {
+              viagensPaginadas.map((v) => {
                 const kmRodados =
-                  v.km_final !== null && v.km_final !== undefined
+                  v.km_final !== null && v.km_final !== undefined && v.km_inicial !== null
                     ? v.km_final - v.km_inicial
                     : null;
-                const estaExpandida = viagemExpandidaId === v.id;
+                const chave = chaveViagem(v);
 
                 return (
-                  <Fragment key={v.id}>
-                    <tr
-                      onClick={() => setViagemExpandidaId(estaExpandida ? null : v.id)}
-                      style={{
-                        cursor: 'pointer',
-                        background: estaExpandida ? 'var(--color-primary-soft)' : undefined,
-                        transition: 'background 0.15s ease',
-                      }}
-                      title="Clique para ver o manifesto / ticket desta viagem"
-                    >
-                      <td style={{ paddingRight: '6px' }}>
+                  <tr
+                    key={chave}
+                    onClick={() => setViagemDetalhes(v)}
+                    className="group cursor-pointer transition-colors duration-150 hover:!bg-surface-hover"
+                    title="Clique para ver os detalhes da viagem"
+                  >
+                      <td className="pr-1.5">
                         <IdBadge id={`#${v.id}`} />
                       </td>
-                      <td style={{ paddingLeft: '6px', paddingRight: '12px' }}>
+                      <td className="px-1.5 pr-3">
                         <span
-                          style={{
-                            fontSize: '10px',
-                            fontWeight: 700,
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            background: v.tipo_operacao === 'ADMINISTRATIVA' ? '#EFF6FF' : '#F5F3FF',
-                            color: v.tipo_operacao === 'ADMINISTRATIVA' ? '#1D4ED8' : '#6D28D9',
-                            textTransform: 'uppercase',
-                            whiteSpace: 'nowrap',
-                          }}
+                          className={cn(
+                            'rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap uppercase',
+                            v.tipo_operacao === 'ADMINISTRATIVA'
+                              ? 'bg-blue-50 text-blue-700'
+                              : 'bg-violet-50 text-violet-700',
+                          )}
                         >
                           {v.tipo_operacao === 'ADMINISTRATIVA' ? 'Frota' : 'SVO'}
                         </span>
                       </td>
                       <td>
-                        <div className="viagem-trajeto-col" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <MapPin size={13} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin size={13} className="shrink-0 text-primary" />
                             <span
-                              style={{
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                color: 'var(--color-text)',
-                                lineHeight: 1.3,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                              title={v.origem}
+                              className="truncate text-xs leading-tight font-semibold text-slate-900"
+                              title={v.origem ?? undefined}
                             >
                               {limitarTexto(v.origem, 26)}
                             </span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '8px' }}>
-                            <span style={{ color: 'var(--color-text-subtle)', fontSize: '11px', flexShrink: 0 }}>↳</span>
+                          <div className="flex items-center gap-1 pl-2">
+                            <span className="shrink-0 text-[11px] text-slate-400">↳</span>
                             <span
-                              style={{
-                                fontSize: '12px',
-                                color: 'var(--color-text-muted)',
-                                lineHeight: 1.3,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                              title={v.destino}
+                              className="truncate text-xs leading-tight text-slate-500"
+                              title={v.destino ?? undefined}
                             >
                               {limitarTexto(v.destino, 26)}
                             </span>
@@ -384,97 +490,81 @@ export default function ViagensPage() {
                         </div>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        <div className="flex flex-col gap-0.5 text-xs whitespace-nowrap">
                           {v.status === 'AGENDADA' ? (
                             <>
-                              <span style={{ color: 'var(--color-purple)', fontWeight: 600 }}>
-                                <span style={{ color: 'var(--color-text-muted)', fontSize: '11px', fontWeight: 500 }}>Partida: </span>
-                                {formatarDataHora(v.data_hora_efetiva_saida)}
+                              <span className="font-semibold text-purple">
+                                <span className="text-[11px] font-medium text-slate-500">
+                                  Partida:{' '}
+                                </span>
+                                {formatarDataHora(v.inicio_previsto ?? v.data_hora_efetiva_saida)}
                               </span>
-                              <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
-                                Aguardando saída
-                              </span>
+                              <span className="text-[11px] text-slate-500">Aguardando saída</span>
                             </>
                           ) : (
                             <>
-                              <span style={{ color: 'var(--color-text)' }}>
-                                <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>Saída: </span>
+                              <span className="text-slate-900">
+                                <span className="text-[11px] text-slate-500">Saída: </span>
                                 {formatarDataHora(v.data_hora_efetiva_saida)}
                               </span>
                               {v.data_hora_efetiva_chegada ? (
-                                <span style={{ color: 'var(--color-text-muted)' }}>
-                                  <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>Chegada: </span>
+                                <span className="text-slate-500">
+                                  <span className="text-[11px] text-slate-500">Chegada: </span>
                                   {formatarDataHora(v.data_hora_efetiva_chegada)}
                                 </span>
                               ) : (
-                                <span style={{ color: 'var(--color-primary)', fontSize: '11px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-primary)' }} />
-                                  Em trânsito
-                                </span>
+                                v.status === 'EM_ANDAMENTO' && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                    Em trânsito
+                                  </span>
+                                )
                               )}
                             </>
                           )}
                         </div>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '170px' }}>
-                          <Avatar name={v.motorista_nome} size={26} />
-                          <span
-                            style={{
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              color: 'var(--color-text)',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                            title={v.motorista_nome}
-                          >
-                            {v.motorista_nome}
-                          </span>
-                        </div>
+                        <span
+                          className="block max-w-[170px] truncate text-[13px] font-medium text-slate-900"
+                          title={v.motorista_nome}
+                        >
+                          {v.motorista_nome}
+                        </span>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', whiteSpace: 'nowrap' }}>
+                        <div className="flex flex-col gap-0.5 whitespace-nowrap">
                           <span
-                            style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              fontFamily: 'monospace',
-                              color: 'var(--color-text)',
-                              background: 'var(--color-surface-alt)',
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--color-border)',
-                              width: 'fit-content',
-                            }}
+                            className="text-[13px] font-medium text-slate-900 leading-tight"
+                            title={v.veiculo_modelo}
                           >
-                            {v.veiculo_placa}
-                          </span>
-                          <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
                             {v.veiculo_modelo}
                           </span>
+                          <span className="w-fit rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-600">
+                            {v.veiculo_placa}
+                          </span>
                         </div>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', whiteSpace: 'nowrap' }}>
+                        <div className="flex flex-col gap-0.5 whitespace-nowrap">
                           {kmRodados !== null ? (
                             <>
-                              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-success)' }}>
+                              <span className="text-xs font-bold text-emerald-700">
                                 {kmRodados} km rodados
                               </span>
-                              <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>
-                                {v.km_inicial.toLocaleString('pt-BR')} → {v.km_final?.toLocaleString('pt-BR')} km
+                              <span className="font-mono text-[10px] text-slate-500">
+                                {v.km_inicial?.toLocaleString('pt-BR')} →{' '}
+                                {v.km_final?.toLocaleString('pt-BR')} km
                               </span>
                             </>
                           ) : (
                             <>
-                              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text)' }}>
-                                {v.km_inicial.toLocaleString('pt-BR')} km
+                              <span className="text-xs font-semibold text-slate-900">
+                                {v.km_inicial !== null
+                                  ? `${v.km_inicial.toLocaleString('pt-BR')} km`
+                                  : '—'}
                               </span>
-                              <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
-                                Odômetro inicial
-                              </span>
+                              <span className="text-[10px] text-slate-500">Odômetro inicial</span>
                             </>
                           )}
                         </div>
@@ -484,8 +574,34 @@ export default function ViagensPage() {
                           {LABELS_STATUS_VIAGEM[v.status]}
                         </Badge>
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                      <td className="text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-2">
+                          {v.status === 'AGENDADA' && (
+                            <>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViagemIniciar(v);
+                                }}
+                                title="Registrar saída da viagem"
+                              >
+                                <Play size={13} className="mr-1" /> Iniciar
+                              </Button>
+                              <Button
+                                variant="danger-outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViagemCancelar(v);
+                                }}
+                                title="Cancelar viagem e liberar veículo e motorista"
+                              >
+                                Cancelar
+                              </Button>
+                            </>
+                          )}
                           {v.status === 'EM_ANDAMENTO' && (
                             <Button
                               variant="primary"
@@ -496,75 +612,69 @@ export default function ViagensPage() {
                               }}
                               title="Registrar retorno da viagem"
                             >
-                              <Flag size={13} style={{ marginRight: '3px' }} /> Finalizar
+                              <Flag size={13} className="mr-1" /> Finalizar
                             </Button>
                           )}
                           <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: '26px',
-                              height: '26px',
-                              borderRadius: '50%',
-                              background: estaExpandida ? 'var(--color-primary)' : 'var(--color-surface-hover)',
-                              color: estaExpandida ? '#ffffff' : 'var(--color-text-muted)',
-                              border: '1px solid var(--color-border)',
-                              transition: 'all 0.2s ease',
-                            }}
-                            title={estaExpandida ? 'Recolher manifesto' : 'Abrir manifesto da viagem'}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:bg-primary/10 group-hover:text-primary"
+                            title="Ver detalhes da viagem"
+                            aria-hidden="true"
                           >
-                            <ChevronDown
-                              size={14}
-                              style={{
-                                transform: estaExpandida ? 'rotate(180deg)' : 'none',
-                                transition: 'transform 0.2s ease',
-                              }}
-                            />
+                            <ChevronRight size={15} />
                           </span>
                         </div>
                       </td>
                     </tr>
-                    {estaExpandida && (
-                      <tr style={{ background: 'var(--color-primary-soft)' }}>
-                        <td colSpan={9} style={{ padding: '0 20px 16px', borderTop: 'none' }}>
-                          <TicketViagem
-                            viagem={v}
-                            onFinalizar={() => setViagemFinalizar(v)}
-                            onRecolher={() => setViagemExpandidaId(null)}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })
+                  );
+                })
             )}
           </tbody>
         </Table>
 
-        <Pagination showing={`1–${filtradas.length}`} total={filtradas.length} />
+        <Pagination
+          currentPage={paginaSegura}
+          totalItems={filtradas.length}
+          pageSize={ITENS_POR_PAGINA}
+          onPageChange={setPaginaAtual}
+        />
       </Card>
 
       {/* Modais */}
-      {modalNovaAberto && (
+      {modalNovaAberto && dadosNovaViagem && (
         <ModalNovaViagem
-          solicitacoesAprovadas={[]} // Aqui precisaremos de um mock/service de solicitações
-          veiculos={storageService.getVeiculos()}
-          motoristas={storageService.getMotoristas()}
+          solicitacoesAprovadas={dadosNovaViagem.solicitacoes}
+          erroSolicitacoes={dadosNovaViagem.erroSolicitacoes}
+          veiculos={dadosNovaViagem.veiculos}
+          motoristas={dadosNovaViagem.motoristas}
+          solicitacaoIdInicial={location.state?.solicitacaoId}
           onClose={() => setModalNovaAberto(false)}
           onSalvar={handleSalvarNovaViagem}
         />
       )}
 
-      {viagemDetalhes && (
-        <ModalDetalhesViagem
-          viagem={viagemDetalhes}
-          onClose={() => setViagemDetalhes(null)}
-          onFinalizar={(v) => {
-            setViagemDetalhes(null);
-            setViagemFinalizar(v);
-          }}
+      {/* Drawer de Detalhes da Viagem */}
+      <DrawerDetalhesViagem
+        viagem={viagemDetalhes}
+        onClose={() => setViagemDetalhes(null)}
+        onIniciar={(v) => {
+          setViagemDetalhes(null);
+          setViagemIniciar(v);
+        }}
+        onFinalizar={(v) => {
+          setViagemDetalhes(null);
+          setViagemFinalizar(v);
+        }}
+        onCancelar={(v) => {
+          setViagemDetalhes(null);
+          setViagemCancelar(v);
+        }}
+      />
+
+      {viagemIniciar && (
+        <ModalIniciarViagem
+          viagem={viagemIniciar}
+          onClose={() => setViagemIniciar(null)}
+          onSalvar={handleIniciarViagem}
         />
       )}
 
@@ -575,6 +685,22 @@ export default function ViagensPage() {
           onSalvar={handleFinalizarViagem}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={Boolean(viagemCancelar)}
+        title="Cancelar Viagem"
+        description={
+          viagemCancelar
+            ? `Tem certeza que deseja cancelar a viagem #${viagemCancelar.id}? O veículo (${viagemCancelar.veiculo_placa}) e o motorista (${viagemCancelar.motorista_nome}) serão liberados.`
+            : ''
+        }
+        confirmLabel="Sim, Cancelar Viagem"
+        cancelLabel="Voltar"
+        variant="danger"
+        isLoading={cancelandoViagem}
+        onConfirm={handleConfirmarCancelamento}
+        onClose={() => setViagemCancelar(null)}
+      />
     </div>
   );
 }

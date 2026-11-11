@@ -1,20 +1,61 @@
-import { useMemo, useState } from 'react';
-import { Avatar, Badge, Card, IdBadge, Pagination, Table, TableFilterCollapse, TableToolbar } from '../components/ui';
-import type { BadgeTone } from '../components/ui';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  FilterSelect,
+  IdBadge,
+  MetricCard,
+  Pagination,
+  SearchInput,
+  Table,
+  TableFilterCollapse,
+  TableToolbar,
+} from '../components/ui';
+import type { BadgeTone, MetricTone } from '../components/ui';
 import type { Motorista, StatusMotorista, TipoMotorista } from '../types/motorista';
-import { storageService } from '../services/storageService';
-import { ModalMotorista } from './motoristas/ModalMotorista';
+import { mensagemDeErro } from '../services/api/http';
+import { motoristasApi } from '../services/api/motoristasApi';
 
 type FiltroTipo = 'TODOS' | TipoMotorista;
 type FiltroStatus = 'TODOS' | StatusMotorista;
 
 // Status é definido pelo backend (sincronização com viagens); a tela apenas exibe.
-const STATUS_MAP: Record<StatusMotorista, { label: string; tone: BadgeTone; cor: string }> = {
-  DISPONIVEL: { label: 'Disponível', tone: 'success', cor: 'var(--color-success)' },
-  DESIGNADO: { label: 'Designado', tone: 'warning', cor: 'var(--color-warning)' },
-  EM_VIAGEM: { label: 'Em Viagem', tone: 'info', cor: 'var(--color-primary)' },
-  AFASTADO: { label: 'Afastado', tone: 'danger', cor: 'var(--color-danger)' },
-  INATIVO: { label: 'Inativo', tone: 'neutral', cor: 'var(--color-text-muted)' },
+const STATUS_MAP: Record<
+  StatusMotorista,
+  { label: string; tone: BadgeTone; metricTone: MetricTone; activeClass: string }
+> = {
+  DISPONIVEL: {
+    label: 'Disponível',
+    tone: 'success',
+    metricTone: 'success',
+    activeClass: 'border-emerald-600 bg-emerald-600 text-white',
+  },
+  DESIGNADO: {
+    label: 'Designado',
+    tone: 'warning',
+    metricTone: 'warning',
+    activeClass: 'border-amber-600 bg-amber-600 text-white',
+  },
+  EM_VIAGEM: {
+    label: 'Em Viagem',
+    tone: 'info',
+    metricTone: 'primary',
+    activeClass: 'border-primary bg-primary text-white',
+  },
+  AFASTADO: {
+    label: 'Afastado',
+    tone: 'danger',
+    metricTone: 'danger',
+    activeClass: 'border-rose-600 bg-rose-600 text-white',
+  },
+  INATIVO: {
+    label: 'Inativo',
+    tone: 'neutral',
+    metricTone: 'neutral',
+    activeClass: 'border-slate-500 bg-slate-500 text-white',
+  },
 };
 
 function cnhVencida(validade: string) {
@@ -26,36 +67,22 @@ function formatarData(iso: string) {
   return `${dia}/${mes}/${ano}`;
 }
 
-const cardValor = (cor: string) => ({
-  fontSize: '24px',
-  fontWeight: 800,
-  color: cor,
-  fontFamily: 'var(--font-display)',
-});
-const cardRotulo = { fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' };
-
 export default function MotoristasPage() {
-  const [motoristas, setMotoristas] = useState<Motorista[]>(storageService.getMotoristas());
+  const [motoristas, setMotoristas] = useState<Motorista[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('TODOS');
+  const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
-  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
-  const exibirFeedback = (msg: string, isError = false) => {
-    if (isError) {
-      setMensagemErro(msg);
-      setMensagemSucesso(null);
-    } else {
-      setMensagemSucesso(msg);
-      setMensagemErro(null);
-    }
-    setTimeout(() => {
-      setMensagemSucesso(null);
-      setMensagemErro(null);
-    }, 4000);
-  };
+  useEffect(() => {
+    motoristasApi
+      .listar()
+      .then(setMotoristas)
+      .catch((error) => setErroCarga(mensagemDeErro(error)))
+      .finally(() => setCarregando(false));
+  }, []);
 
   const totais = useMemo(
     () => ({
@@ -73,131 +100,124 @@ export default function MotoristasPage() {
       motoristas.filter((m) => {
         const bateTipo = filtroTipo === 'TODOS' || m.tipo_motorista === filtroTipo;
         const bateStatus = filtroStatus === 'TODOS' || m.status === filtroStatus;
-        return bateTipo && bateStatus;
+        if (!bateTipo || !bateStatus) return false;
+        if (busca.trim()) {
+          const termo = busca.trim().toLowerCase();
+          const matchNome = m.nome.toLowerCase().includes(termo);
+          const matchCnh = (m.numero_cnh ?? '').toLowerCase().includes(termo);
+          if (!matchNome && !matchCnh) return false;
+        }
+        return true;
       }),
-    [motoristas, filtroTipo, filtroStatus],
+    [motoristas, filtroTipo, filtroStatus, busca],
   );
-
-  const handleSalvar = (novo: Omit<Motorista, 'id' | 'usuario_id'>) => {
-    try {
-      storageService.createMotorista(novo);
-      setMotoristas(storageService.getMotoristas());
-      exibirFeedback(`Motorista ${novo.nome} cadastrado com sucesso!`);
-    } catch (error: any) {
-      exibirFeedback(error.message, true);
-    }
-  };
-
-  const botaoFiltro = (ativo: boolean, cor = 'var(--color-primary)') => ({
-    padding: '6px 14px',
-    borderRadius: 'var(--radius-sm)',
-    fontSize: '12px',
-    fontWeight: 600,
-    background: ativo ? cor : 'transparent',
-    color: ativo ? '#fff' : 'var(--color-text-secondary)',
-    border: '1px solid',
-    borderColor: ativo ? cor : 'var(--color-border)',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-  });
-
-  const cardFiltro = (status: StatusMotorista) => ({
-    padding: '16px 20px',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-    border: filtroStatus === status ? `2px solid ${STATUS_MAP[status].cor}` : '1px solid var(--color-border)',
-    boxShadow: filtroStatus === status ? 'var(--shadow-sm)' : undefined,
-  });
 
   const alternarStatus = (status: StatusMotorista) =>
     setFiltroStatus(filtroStatus === status ? 'TODOS' : status);
 
   return (
-    <div style={{ display: 'grid', gap: '24px' }}>
-      {/* Feedback de sucesso e erro */}
-      {(mensagemSucesso || mensagemErro) && (
-        <div
-          style={{
-            padding: '12px 20px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--color-surface)',
-            border: `1px solid ${mensagemErro ? 'var(--color-danger)' : 'var(--color-success)'}`,
-            color: mensagemErro ? 'var(--color-danger)' : 'var(--color-success)',
-            fontSize: '14px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {mensagemErro ? '❌' : '✅'} {mensagemErro || mensagemSucesso}
-          </span>
-        </div>
-      )}
-
+    <div className="grid gap-6">
       {/* ── Cards de Resumo (Clicáveis como Filtros Rápidos) ── */}
-      <div className="kpi-grid">
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-text)')}>{totais.total}</div>
-          <div style={cardRotulo}>Total de Motoristas</div>
-        </Card>
-        <Card onClick={() => alternarStatus('DISPONIVEL')} style={cardFiltro('DISPONIVEL')}>
-          <div style={cardValor(STATUS_MAP.DISPONIVEL.cor)}>{totais.disponiveis}</div>
-          <div style={cardRotulo}>Disponíveis {filtroStatus === 'DISPONIVEL' ? '• Ativo' : ''}</div>
-        </Card>
-        <Card onClick={() => alternarStatus('DESIGNADO')} style={cardFiltro('DESIGNADO')}>
-          <div style={cardValor(STATUS_MAP.DESIGNADO.cor)}>{totais.designados}</div>
-          <div style={cardRotulo}>Designados {filtroStatus === 'DESIGNADO' ? '• Ativo' : ''}</div>
-        </Card>
-        <Card onClick={() => alternarStatus('EM_VIAGEM')} style={cardFiltro('EM_VIAGEM')}>
-          <div style={cardValor(STATUS_MAP.EM_VIAGEM.cor)}>{totais.emViagem}</div>
-          <div style={cardRotulo}>Em Viagem {filtroStatus === 'EM_VIAGEM' ? '• Ativo' : ''}</div>
-        </Card>
-        <Card style={{ padding: '16px 20px' }}>
-          <div style={cardValor('var(--color-danger)')}>{totais.vencidas}</div>
-          <div style={cardRotulo}>CNH Vencida</div>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 lg:gap-4">
+        <MetricCard
+          label="Total de Motoristas"
+          value={totais.total}
+          tone="neutral"
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="Disponíveis"
+          value={totais.disponiveis}
+          tone="success"
+          isActive={filtroStatus === 'DISPONIVEL'}
+          onClick={() => alternarStatus('DISPONIVEL')}
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="Designados"
+          value={totais.designados}
+          tone="warning"
+          isActive={filtroStatus === 'DESIGNADO'}
+          onClick={() => alternarStatus('DESIGNADO')}
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="Em Viagem"
+          value={totais.emViagem}
+          tone="primary"
+          isActive={filtroStatus === 'EM_VIAGEM'}
+          onClick={() => alternarStatus('EM_VIAGEM')}
+          className="px-5 py-4"
+        />
+        <MetricCard
+          label="CNH Vencida"
+          value={totais.vencidas}
+          tone="danger"
+          className="col-span-2 px-5 py-4 lg:col-span-1"
+        />
       </div>
 
       <Card>
         <TableToolbar
           title="Motoristas"
-          subtitle={`${filtrados.length} motoristas listados`}
-          newLabel="Novo Motorista"
-          onNew={() => setModalAberto(true)}
+          subtitle={`${filtrados.length} de ${motoristas.length} motoristas listados`}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
-          isFilterActive={filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || filtrosAbertosMobile}
+          isFilterActive={
+            filtroTipo !== 'TODOS' ||
+            filtroStatus !== 'TODOS' ||
+            Boolean(busca) ||
+            filtrosAbertosMobile
+          }
         />
 
-        {/* Barra de Filtros: Tipo + Status */}
+        {/* Barra de Filtros: Busca + Tipo + Status */}
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text-secondary)' }}>Tipo:</span>
-            {(['TODOS', 'FROTA', 'SVO'] as const).map((f) => (
-              <button key={f} type="button" onClick={() => setFiltroTipo(f)} style={botaoFiltro(filtroTipo === f)}>
-                {f === 'TODOS' ? 'Todos' : f === 'SVO' ? 'Motoristas SVO' : 'Motoristas Frota'}
-              </button>
-            ))}
-          </div>
+          {/* Busca textual na esquerda */}
+          <SearchInput
+            value={busca}
+            onChange={setBusca}
+            placeholder="Buscar por nome ou CNH..."
+          />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text-secondary)' }}>Status:</span>
-            <button type="button" onClick={() => setFiltroStatus('TODOS')} style={botaoFiltro(filtroStatus === 'TODOS')}>
-              Todos
-            </button>
-            {(Object.keys(STATUS_MAP) as StatusMotorista[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setFiltroStatus(s)}
-                style={botaoFiltro(filtroStatus === s, STATUS_MAP[s].cor)}
-              >
-                {STATUS_MAP[s].label}
-              </button>
-            ))}
-          </div>
+          {/* Filtros em dropdown na sequência */}
+          <FilterSelect
+            aria-label="Filtrar por tipo de motorista"
+            value={filtroTipo}
+            onChange={(val) => setFiltroTipo(val as FiltroTipo)}
+            options={[
+              { value: 'TODOS', label: 'Todos os tipos' },
+              { value: 'FROTA', label: 'Motoristas Frota' },
+              { value: 'SVO', label: 'Motoristas SVO' },
+            ]}
+          />
+
+          <FilterSelect
+            aria-label="Filtrar por status do motorista"
+            value={filtroStatus}
+            onChange={(val) => setFiltroStatus(val as FiltroStatus)}
+            options={[
+              { value: 'TODOS', label: 'Todos os status' },
+              { value: 'DISPONIVEL', label: 'Disponível' },
+              { value: 'DESIGNADO', label: 'Designado' },
+              { value: 'EM_VIAGEM', label: 'Em Viagem' },
+              { value: 'AFASTADO', label: 'Afastado' },
+              { value: 'INATIVO', label: 'Inativo' },
+            ]}
+          />
+
+          {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || busca) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setBusca('');
+                setFiltroTipo('TODOS');
+                setFiltroStatus('TODOS');
+              }}
+            >
+              Limpar
+            </Button>
+          )}
         </TableFilterCollapse>
 
         <Table>
@@ -214,8 +234,8 @@ export default function MotoristasPage() {
           <tbody>
             {filtrados.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-muted)' }}>
-                  Nenhum motorista encontrado para este filtro.
+                <td colSpan={6} className="p-8 text-center text-slate-500">
+                  {carregando ? 'Carregando motoristas...' : erroCarga ?? 'Nenhum motorista encontrado para este filtro.'}
                 </td>
               </tr>
             ) : (
@@ -224,9 +244,9 @@ export default function MotoristasPage() {
                 return (
                   <tr key={m.id}>
                     <td>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span className="flex items-center gap-2.5">
                         <Avatar name={m.nome} />
-                        <strong style={{ color: 'var(--color-text-strong)', fontWeight: 600 }}>{m.nome}</strong>
+                        <strong className="font-semibold text-slate-900">{m.nome}</strong>
                       </span>
                     </td>
                     <td>
@@ -234,7 +254,7 @@ export default function MotoristasPage() {
                     </td>
                     <td>{m.categoria_cnh}</td>
                     <td>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="flex items-center gap-2">
                         {formatarData(m.validade_cnh)}
                         {cnhVencida(m.validade_cnh) && <Badge tone="danger">Vencida</Badge>}
                       </span>
@@ -254,14 +274,6 @@ export default function MotoristasPage() {
 
         <Pagination showing={`1–${filtrados.length}`} total={filtrados.length} />
       </Card>
-
-      {modalAberto && (
-        <ModalMotorista
-          cnhsExistentes={motoristas.map((m) => m.numero_cnh)}
-          onClose={() => setModalAberto(false)}
-          onSalvar={handleSalvar}
-        />
-      )}
     </div>
   );
 }

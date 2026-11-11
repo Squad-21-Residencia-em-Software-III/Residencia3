@@ -1,4 +1,6 @@
+import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { PERFIS_ANALISAM_TODAS } from '../constants/unidades';
 import { AppError } from '../errors/AppError';
 import {
   auditoriaModel,
@@ -7,12 +9,46 @@ import {
 import {
   solicitacaoViagemModel,
   type SolicitacaoViagem,
+  type SolicitacaoViagemDetalhada,
 } from '../models/solicitacaoViagemModel';
+import { unidadeModel } from '../models/unidadeModel';
+import type { Usuario } from '../models/usuarioModel';
 import type {
   CriarSolicitacaoViagemInput,
+  ListarSolicitacoesViagemInput,
 } from '../validators/solicitacaoViagemSchemas';
+import type { ListaPaginada } from './usuarioService';
+
+type Analista = Pick<Usuario, 'id' | 'perfil'>;
 
 export const solicitacaoViagemService = {
+  // Encaminhamento: cada analista vê apenas as solicitações das unidades que gere
+  async listar(
+    analista: Analista,
+    filtros: ListarSolicitacoesViagemInput
+  ): Promise<ListaPaginada<SolicitacaoViagemDetalhada>> {
+    let resultado = { dados: [] as SolicitacaoViagemDetalhada[], total: 0 };
+
+    if (PERFIS_ANALISAM_TODAS.includes(analista.perfil)) {
+      resultado = await solicitacaoViagemModel.listar(filtros);
+    } else {
+      const unidadeIds = await unidadeModel.idsDasUnidadesDoGestor(analista.id);
+      if (unidadeIds.length > 0) {
+        resultado = await solicitacaoViagemModel.listar({ ...filtros, unidadeIds });
+      }
+    }
+
+    return {
+      dados: resultado.dados,
+      paginacao: {
+        pagina: filtros.pagina,
+        limite: filtros.limite,
+        total: resultado.total,
+        totalPaginas: Math.ceil(resultado.total / filtros.limite),
+      },
+    };
+  },
+
   async criar(
     dados: CriarSolicitacaoViagemInput,
     solicitanteId: number
@@ -41,6 +77,13 @@ export const solicitacaoViagemService = {
     }
 
     return db.transaction(async (trx) => {
+      if (!(await unidadeModel.buscarPorId(dados.unidade_id, trx))) {
+        throw new AppError(
+          'Unidade inválida. Escolha SVO, HEMOSE ou LACEN',
+          400
+        );
+      }
+
       const solicitacao =
         await solicitacaoViagemModel.cadastrar(
           {
@@ -65,27 +108,50 @@ export const solicitacaoViagemService = {
 
   async aprovar(
     id: number,
-    autorId: number
+    autor: Analista
   ): Promise<SolicitacaoViagem> {
-    return analisar(id, 'APROVADA', autorId);
+    return analisar(id, 'APROVADA', autor);
   },
 
   async recusar(
     id: number,
-    autorId: number,
+    autor: Analista,
     motivo?: string
   ): Promise<SolicitacaoViagem> {
-    return analisar(id, 'RECUSADA', autorId, motivo);
+    return analisar(id, 'RECUSADA', autor, motivo);
   },
 };
+
+// Administrador e Gestor de Frota analisam tudo, inclusive solicitações de unidade sem gestor;
+// os demais gestores, apenas as solicitações das unidades a que estão associados
+async function garantirCompetencia(
+  autor: Analista,
+  unidadeId: number | null,
+  trx: Knex.Transaction
+): Promise<void> {
+  if (PERFIS_ANALISAM_TODAS.includes(autor.perfil)) {
+    return;
+  }
+
+  if (unidadeId !== null && (await unidadeModel.estaAssociado(unidadeId, autor.id, trx))) {
+    return;
+  }
+
+  throw new AppError(
+    'Você não é gestor da unidade desta solicitação',
+    403
+  );
+}
 
 // Aprova ou recusa uma solicitação pendente
 async function analisar(
   id: number,
   novoStatus: 'APROVADA' | 'RECUSADA',
-  autorId: number,
+  autor: Analista,
   motivo?: string
 ): Promise<SolicitacaoViagem> {
+  const autorId = autor.id;
+
   return db.transaction(async (trx) => {
     const solicitacao =
       await solicitacaoViagemModel.buscarParaAtualizar(id, trx);
@@ -96,6 +162,8 @@ async function analisar(
         404
       );
     }
+
+    await garantirCompetencia(autor, solicitacao.unidade_id, trx);
 
     if (solicitacao.status !== 'PENDENTE_APROVACAO') {
       throw new AppError(
