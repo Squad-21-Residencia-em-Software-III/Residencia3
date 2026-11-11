@@ -55,6 +55,20 @@ export const veiculoModel = {
     return veiculo;
   },
 
+  async atualizarVeiculo(
+    id: number,
+    dados: Partial<NovoVeiculo & { status: StatusVeiculo }>,
+    trx?: Knex.Transaction
+  ): Promise<Veiculo | undefined> {
+    const conexao = trx || db;
+    const [veiculo] = await conexao('veiculos')
+      .where({ id })
+      .update(dados)
+      .returning(COLUNAS_VEICULO);
+
+    return veiculo;
+  },
+
   async atualizarStatus(id: number, status: StatusVeiculo, trx?: Knex.Transaction): Promise<void> {
     const conexao = trx || db;
     await conexao('veiculos').where({ id }).update({ status });

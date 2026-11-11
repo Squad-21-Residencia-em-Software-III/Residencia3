@@ -16,8 +16,14 @@ manutencaoRoutes.post(
 
 manutencaoRoutes.get(
   '/veiculo/:veiculoId',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO),
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
   manutencaoController.listarPorVeiculo
+);
+
+manutencaoRoutes.put(
+  '/:id',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  manutencaoController.atualizar
 );
 
 manutencaoRoutes.patch(
@@ -26,8 +32,8 @@ manutencaoRoutes.patch(
   manutencaoController.atualizarStatus
 );
 
-manutencaoRoutes.use(autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA));
-
-manutencaoRoutes.post('/', manutencaoController.criar);
-
-manutencaoRoutes.get('/veiculo/:veiculoId', manutencaoController.listarPorVeiculo);
+manutencaoRoutes.delete(
+  '/:id',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  manutencaoController.excluir
+);
