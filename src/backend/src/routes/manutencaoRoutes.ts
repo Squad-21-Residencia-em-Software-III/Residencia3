@@ -16,7 +16,7 @@ manutencaoRoutes.post(
 
 manutencaoRoutes.get(
   '/veiculo/:veiculoId',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO),
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
   manutencaoController.listarPorVeiculo
 );
 

@@ -193,5 +193,27 @@ describe('Rotas de Manutenções (/api/manutencoes)', () => {
       expect(resposta.body[0].veiculo_placa).toBe('IAI-2026');
       expect(manutencaoService.listarPorVeiculo).toHaveBeenCalledWith(1);
     });
+
+    it('deve retornar 403 se o perfil for GESTOR_SVO', async () => {
+      autenticarComo(PERFIS.GESTOR_SVO);
+
+      const resposta = await request(app)
+        .get('/api/manutencoes/veiculo/1')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(403);
+      expect(manutencaoService.listarPorVeiculo).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar 403 se o perfil for MOTORISTA_FROTA', async () => {
+      autenticarComo(PERFIS.MOTORISTA_FROTA);
+
+      const resposta = await request(app)
+        .get('/api/manutencoes/veiculo/1')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(403);
+      expect(manutencaoService.listarPorVeiculo).not.toHaveBeenCalled();
+    });
   });
 });
