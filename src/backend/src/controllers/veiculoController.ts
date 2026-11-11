@@ -12,6 +12,10 @@ export const veiculoController = {
     res.json(await veiculoService.listarSvoDisponiveis());
   },
 
+  async listarOcupacaoSvo(_req: Request, res: Response): Promise<void> {
+    res.json(await veiculoService.listarOcupacaoSvo());
+  },
+
   async criar(req: Request, res: Response): Promise<void> {
     const dados = criarVeiculoSchema.parse(req.body);
     const autor = usuarioAutenticado(req);

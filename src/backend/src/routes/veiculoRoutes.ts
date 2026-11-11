@@ -15,6 +15,12 @@ veiculoRoutes.get(
 );
 
 veiculoRoutes.get(
+  '/svo/ocupacao',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO, PERFIS.GESTOR_FROTA),
+  veiculoController.listarOcupacaoSvo
+);
+
+veiculoRoutes.get(
   '/',
   autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO),
   veiculoController.listar
