@@ -155,4 +155,34 @@ describe('GET /api/auditorias', () => {
     expect(resposta.body.paginacao.total).toBe(0);
     expect(resposta.body.paginacao.totalPaginas).toBe(0);
   });
+
+  it('deve aceitar o limite máximo de 100 registros', async () => {
+    const resposta = await request(app)
+      .get(`${endpoint}?pagina=1&limite=100`)
+      .set('Authorization', 'Bearer token-teste');
+
+    expect(resposta.status).toBe(200);
+    expect(auditoriaService.listar).toHaveBeenCalledWith(1, 100);
+  });
+
+  it('deve retornar 500 sem expor detalhes internos', async () => {
+    const mensagemInterna =
+      'ERRO_INTERNO_SENSIVEL: senha=segredo_teste';
+
+    vi.mocked(auditoriaService.listar).mockRejectedValueOnce(
+      new Error(mensagemInterna)
+    );
+
+    const resposta = await request(app)
+      .get(endpoint)
+      .set('Authorization', 'Bearer token-teste');
+
+    expect(resposta.status).toBe(500);
+
+    const corpoResposta = JSON.stringify(resposta.body);
+
+    expect(corpoResposta).not.toContain(mensagemInterna);
+    expect(corpoResposta).not.toContain('segredo_teste');
+    expect(corpoResposta).not.toContain('stack');
+  });
 });

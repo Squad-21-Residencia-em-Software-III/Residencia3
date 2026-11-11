@@ -1,3 +1,4 @@
+
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
@@ -12,7 +13,8 @@ export const MODULOS_AUDITORIA = {
   UNIDADES: 'UNIDADES',
 } as const;
 
-export type ModuloAuditoria = (typeof MODULOS_AUDITORIA)[keyof typeof MODULOS_AUDITORIA];
+export type ModuloAuditoria =
+  (typeof MODULOS_AUDITORIA)[keyof typeof MODULOS_AUDITORIA];
 
 export interface RegistroAuditoria {
   usuario_id: number | null;
@@ -26,31 +28,48 @@ export interface Auditoria extends RegistroAuditoria {
 }
 
 export const auditoriaModel = {
-  async registrar(registro: RegistroAuditoria, conn: Knex = db): Promise<void> {
+  async registrar(
+    registro: RegistroAuditoria,
+    conn: Knex = db
+  ): Promise<void> {
     await conn('auditorias').insert(registro);
   },
 
-async listar(
-  pagina: number,
-  limite: number
-): Promise<{ dados: Auditoria[]; total: number }> {
-  const consulta = db<Auditoria>('auditorias');
+  async listar(
+    pagina: number,
+    limite: number,
+    conexao: Knex | Knex.Transaction = db,
+    idsFiltro?: number[]
+  ): Promise<{ dados: Auditoria[]; total: number }> {
+    const consulta = conexao<Auditoria>('auditorias');
 
-  const [dados, contagem] = await Promise.all([
-    consulta
-      .clone()
-      .select('id', 'usuario_id', 'acao', 'modulo', 'data_hora')
-      .orderBy('data_hora', 'desc')
-      .orderBy('id', 'desc')
-      .limit(limite)
-      .offset((pagina - 1) * limite),
+    if (idsFiltro !== undefined) {
+      consulta.whereIn('id', idsFiltro);
+    }
 
-    consulta.clone().count<{ total: string }[]>({ total: '*' }),
-  ]);
+    const [dados, contagem] = await Promise.all([
+      consulta
+        .clone()
+        .select(
+          'id',
+          'usuario_id',
+          'acao',
+          'modulo',
+          'data_hora'
+        )
+        .orderBy('data_hora', 'desc')
+        .orderBy('id', 'desc')
+        .limit(limite)
+        .offset((pagina - 1) * limite),
 
-  return {
-    dados,
-    total: Number(contagem[0]?.total ?? 0),
-  };
+      consulta
+        .clone()
+        .count<{ total: string }[]>({ total: '*' }),
+    ]);
+
+    return {
+      dados,
+      total: Number(contagem[0]?.total ?? 0),
+    };
   },
 };
