@@ -1,5 +1,5 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
-import { ClipboardCheck, ScrollText, Wrench } from 'lucide-react'
+import { ClipboardCheck, ClipboardList, ScrollText, Wrench } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
 import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
@@ -17,6 +17,7 @@ import NotFoundPage from '../pages/NotFoundPage'
 import ServerErrorPage from '../pages/ServerErrorPage'
 import SobreNosPage from '../pages/SobreNosPage'
 import SolicitacoesPage from '../pages/SolicitacoesPage'
+import TriagemSvoPage from '../pages/TriagemSvoPage'
 import VeiculosPage from '../pages/VeiculosPage'
 import ViagensPage from '../pages/ViagensPage'
 import { LABELS_PERFIS, PERFIS } from '../types/usuario'
@@ -32,6 +33,13 @@ export const navItems: NavItemComPerfil[] = [
 
   // OPERAÇÃO
   { path: '/solicitacoes', label: 'Solicitações', icon: ClipboardCheck, section: 'Operação' },
+  {
+    path: '/triagem-svo',
+    label: 'Triagem SVO',
+    icon: ClipboardList,
+    section: 'Operação',
+    perfis: [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO],
+  },
   { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação' },
   { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação' },
 
@@ -99,6 +107,11 @@ export function AppRoutes() {
           <Route path="/multas" element={<MultasPage />} />
           <Route path="/equipe" element={<EquipePage />} />
           <Route path="/sobre" element={<SobreNosPage />} />
+
+          {/* Triagem SVO: os mesmos perfis aceitos pela API (BL27) */}
+          <Route element={<RotaPorPerfil perfis={[PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO]} />}>
+            <Route path="/triagem-svo" element={<TriagemSvoPage />} />
+          </Route>
 
           {/* Só administrador (o backend também bloqueia com 403) */}
           <Route element={<RotaPorPerfil perfis={[PERFIS.ADMINISTRADOR]} />}>
