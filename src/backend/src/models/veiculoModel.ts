@@ -43,6 +43,11 @@ export const veiculoModel = {
     return conexao('veiculos').where({ id }).first();
   },
 
+  // Busca e bloqueia a linha até o fim da transação (mesma trava usada na alocação SVO)
+  async buscarParaAtualizar(id: number, trx: Knex.Transaction): Promise<Veiculo | undefined> {
+    return trx('veiculos').where({ id }).forUpdate().first();
+  },
+
   async buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
     const conexao = trx || db;
     return conexao('veiculos').where({ placa }).first();

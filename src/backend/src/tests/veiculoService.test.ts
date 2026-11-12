@@ -30,6 +30,7 @@ vi.mock('../config/database', () => ({ db: mockDb }));
 vi.mock('../models/veiculoModel', () => ({
   veiculoModel: {
     buscarPorId: vi.fn(),
+    buscarParaAtualizar: vi.fn(),
     buscarPorPlaca: vi.fn(),
     atualizarVeiculo: vi.fn(),
   },
@@ -59,7 +60,7 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
     estado.ocupacao = 0;
     estado.consultas = [];
 
-    vi.mocked(veiculoModel.buscarPorId).mockResolvedValue(veiculoSvo as any);
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue(veiculoSvo as any);
     vi.mocked(veiculoModel.atualizarVeiculo).mockImplementation(
       async (_id, dados) => ({ ...veiculoSvo, ...dados }) as any
     );
@@ -81,7 +82,7 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
     await expect(veiculoService.atualizar(10, { capacidade_maxima: 3 } as any, 1)).resolves.toMatchObject({
       capacidade_maxima: 3,
     });
-    expect(estado.consultas).toEqual(['veiculos', 'ordens_svo']);
+    expect(estado.consultas).toEqual(['ordens_svo']);
   });
 
   it('deve permitir reduzir a capacidade sem ordens ativas', async () => {
@@ -108,7 +109,35 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
     await veiculoService.atualizar(10, { modelo: 'Outro', capacidade_maxima: 4 } as any, 1);
 
     expect(estado.consultas).toEqual([]);
-    expect(mockTrx).not.toHaveBeenCalled();
     expect(veiculoModel.atualizarVeiculo).toHaveBeenCalled();
+  });
+
+  it('deve ler e bloquear o veículo dentro da transação, sem leitura prévia', async () => {
+    await veiculoService.atualizar(10, { modelo: 'Outro' } as any, 1);
+
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+    expect(veiculoModel.buscarParaAtualizar).toHaveBeenCalledWith(10, mockTrx);
+    expect(veiculoModel.buscarPorId).not.toHaveBeenCalled();
+  });
+
+  it('deve retornar 404 quando o veículo não existe', async () => {
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue(undefined);
+
+    await expect(veiculoService.atualizar(99, { modelo: 'Outro' } as any, 1)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect(veiculoModel.atualizarVeiculo).not.toHaveBeenCalled();
+  });
+
+  it('deve validar com o estado atual do banco, não com o que o cliente supõe', async () => {
+    // Outra requisição já reduziu a capacidade para 3; o cliente envia 4 (o valor que viu antes)
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, capacidade_maxima: 3 } as any);
+    estado.ocupacao = 3;
+
+    await expect(veiculoService.atualizar(10, { capacidade_maxima: 4 } as any, 1)).resolves.toMatchObject({
+      capacidade_maxima: 4,
+    });
+    // A mudança 3 -> 4 é detectada pelo valor do banco e a ocupação é conferida
+    expect(estado.consultas).toEqual(['ordens_svo']);
   });
 });

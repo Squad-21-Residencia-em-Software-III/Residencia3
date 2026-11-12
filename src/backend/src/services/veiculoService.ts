@@ -58,33 +58,32 @@ export const veiculoService = {
   },
 
   async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number): Promise<Veiculo> {
-    const veiculo = await veiculoModel.buscarPorId(id);
-    if (!veiculo) {
-      throw new AppError('Veículo não encontrado', 404);
-    }
-
-    const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
-    const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
-
-    if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
-      throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);
-    }
-
-    if (dados.placa && dados.placa !== veiculo.placa) {
-      const comPlaca = await veiculoModel.buscarPorPlaca(dados.placa);
-      if (comPlaca) {
-        throw new AppError('Já existe um veículo cadastrado com essa placa', 409);
-      }
-    }
-
     return db.transaction(async (trx) => {
-      const mudaCapacidade =
-        dados.capacidade_maxima !== undefined && dados.capacidade_maxima !== veiculo.capacidade_maxima;
-      const mudaFrota = dados.tipo_frota !== undefined && dados.tipo_frota !== veiculo.tipo_frota;
+      // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco,
+      // e edições e alocações SVO do mesmo veículo ficam em fila
+      const veiculo = await veiculoModel.buscarParaAtualizar(id, trx);
+      if (!veiculo) {
+        throw new AppError('Veículo não encontrado', 404);
+      }
+
+      const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
+      const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
+
+      if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
+        throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);
+      }
+
+      if (dados.placa && dados.placa !== veiculo.placa) {
+        const comPlaca = await veiculoModel.buscarPorPlaca(dados.placa, trx);
+        if (comPlaca) {
+          throw new AppError('Já existe um veículo cadastrado com essa placa', 409);
+        }
+      }
+
+      const mudaCapacidade = capacidadeFinal !== veiculo.capacidade_maxima;
+      const mudaFrota = tipoFrotaFinal !== veiculo.tipo_frota;
 
       if (mudaCapacidade || mudaFrota) {
-        // Trava o veículo como na alocação SVO, para que uma ordem nova não entre no meio da edição
-        await trx('veiculos').where({ id }).forUpdate().first('id');
         const ocupacao = await ocupacaoSvo(trx, id);
 
         if (mudaFrota && veiculo.tipo_frota === 'SVO' && ocupacao > 0) {
