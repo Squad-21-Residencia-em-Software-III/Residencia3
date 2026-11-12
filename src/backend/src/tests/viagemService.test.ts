@@ -950,15 +950,39 @@ describe('viagemService.finalizarViagem', () => {
     expect(ref.estado.updates).toHaveLength(0);
   });
 
-  it('deve rejeitar km final menor que o km inicial', async () => {
-    await expect(
-      viagemService.finalizarViagem(
-        'ADMINISTRATIVA',
-        5,
-        999,
-        gestorFrota
-      )
-    ).rejects.toMatchObject({ statusCode: 400 });
+  // BL17: a API valida a quilometragem final, sem depender da interface
+  it.each([
+    ['ADMINISTRATIVA', 'EM_ANDAMENTO', () => gestorFrota],
+    ['SVO', 'EM_DESLOCAMENTO', () => gestorSvo],
+  ] as const)('deve rejeitar km final menor que o km inicial (%s) sem gravar nada', async (tipo, status, autor) => {
+    ref.estado.viagem = { ...ref.estado.viagem, status };
+
+    await expect(viagemService.finalizarViagem(tipo, 5, 999, autor())).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'O km final não pode ser menor que o km inicial (1000)',
+    });
+    expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('deve permitir km final igual ao km inicial', async () => {
+    await viagemService.finalizarViagem('ADMINISTRATIVA', 5, 1000, gestorFrota);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'viagens_frota',
+      valores: expect.objectContaining({ status: 'CONCLUIDA', km_final: 1000 }),
+    });
+  });
+
+  it.each([null, undefined])('deve rejeitar a finalização quando o km inicial é %s', async (kmInicial) => {
+    ref.estado.viagem = { ...ref.estado.viagem, km_inicial: kmInicial };
+
+    await expect(viagemService.finalizarViagem('ADMINISTRATIVA', 5, 1050, gestorFrota)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'A viagem não possui km inicial registrado',
+    });
+    expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
   });
 
   it('deve concluir, atualizar o km do veículo e liberar os recursos', async () => {
