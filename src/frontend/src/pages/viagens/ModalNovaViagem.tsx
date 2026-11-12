@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Modal, Select } from '../../components/ui';
 import { mensagemDeErro } from '../../services/api/http';
+import { veiculosApi } from '../../services/api/veiculosApi';
 import type { Motorista, StatusMotorista } from '../../types/motorista';
-import type { StatusVeiculo, Veiculo } from '../../types/veiculo';
+import type { OcupacaoVeiculoSvo, StatusVeiculo, Veiculo } from '../../types/veiculo';
 import type { SolicitacaoViagem } from '../../types/solicitacao';
 import type { NovaViagemInput, TipoOperacaoViagem } from '../../types/viagem';
+import { motivoBloqueioSvo, OcupacaoVeiculoSvoPainel, rotuloOcupacao } from './OcupacaoVeiculoSvo';
 
 interface ModalNovaViagemProps {
   solicitacoesAprovadas: SolicitacaoViagem[];
@@ -67,10 +69,15 @@ export function ModalNovaViagem({
   });
   const [erro, setErro] = useState<string>('');
   const [salvando, setSalvando] = useState(false);
+  const [ocupacoes, setOcupacoes] = useState<OcupacaoVeiculoSvo[]>([]);
+  const [erroOcupacao, setErroOcupacao] = useState<string | null>(null);
 
   const veiculosFiltrados = veiculosDoTipo(tipoOperacao);
   const motoristasFiltrados = motoristasDoTipo(tipoOperacao);
   const isSvo = tipoOperacao === 'SVO';
+  const ocupacaoDoVeiculo = ocupacoes.find((o) => String(o.id) === veiculoId);
+  const ocupacaoPorId = (id: number) => ocupacoes.find((o) => o.id === id);
+  const bloqueioSvo = isSvo && ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
   const podeSalvar = !isSvo && Boolean(solicitacaoId && veiculoId && motoristaId);
 
   const avisoSolicitacao = isSvo
@@ -80,6 +87,25 @@ export function ModalNovaViagem({
       : solicitacoesAprovadas.length === 0
         ? 'Não há solicitações aprovadas aguardando agendamento.'
         : null;
+
+  // Ocupação atual dos veículos SVO (BL30): carregada ao escolher a operação SVO
+  useEffect(() => {
+    if (!isSvo) return;
+    let ativo = true;
+    veiculosApi
+      .listarOcupacaoSvo()
+      .then((dados) => {
+        if (!ativo) return;
+        setOcupacoes(dados);
+        setErroOcupacao(null);
+      })
+      .catch((error) => {
+        if (ativo) setErroOcupacao(mensagemDeErro(error));
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [isSvo]);
 
   const handleMudarTipo = (novoTipo: TipoOperacaoViagem) => {
     setTipoOperacao(novoTipo);
@@ -166,11 +192,15 @@ export function ModalNovaViagem({
             required
           >
             {veiculosFiltrados.length === 0 && <option value="">Nenhum veículo disponível</option>}
-            {veiculosFiltrados.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.modelo} ({v.placa}){sufixoStatus(v.status)}
-              </option>
-            ))}
+            {veiculosFiltrados.map((v) => {
+              const ocupacao = isSvo ? ocupacaoPorId(v.id) : undefined;
+              return (
+                <option key={v.id} value={v.id}>
+                  {v.modelo} ({v.placa}){sufixoStatus(v.status)}
+                  {ocupacao ? ` — ${rotuloOcupacao(ocupacao)}` : ''}
+                </option>
+              );
+            })}
           </Select>
 
           <Select
@@ -190,11 +220,18 @@ export function ModalNovaViagem({
           </Select>
         </div>
 
+        {isSvo && erroOcupacao && (
+          <Alert tone="warning" className="mt-3.5">
+            Não foi possível carregar a ocupação dos veículos: {erroOcupacao}
+          </Alert>
+        )}
+        {isSvo && ocupacaoDoVeiculo && <OcupacaoVeiculoSvoPainel veiculo={ocupacaoDoVeiculo} />}
+
         <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={!podeSalvar || salvando}>
+          <Button type="submit" disabled={!podeSalvar || salvando || Boolean(bloqueioSvo)}>
             {salvando ? 'Agendando...' : 'Agendar Viagem'}
           </Button>
         </div>
