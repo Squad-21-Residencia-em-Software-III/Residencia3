@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, senha: string) => {
     const resultado = await authApi.login(email, senha)
-    tokenStorage.set(resultado.token)
+    tokenStorage.set(resultado.token, resultado.refreshToken)
     setUsuario(resultado.usuario)
   }, [])
 
