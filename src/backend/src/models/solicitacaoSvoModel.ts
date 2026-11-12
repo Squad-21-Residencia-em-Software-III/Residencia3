@@ -1,17 +1,27 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
-import { ORDENS_SVO_ATIVAS, STATUS_SOLICITACAO_SVO } from '../constants/svo';
 import type { ListarSolicitacoesSvoInput } from '../validators/solicitacaoSvoSchemas';
 
-export interface SolicitacaoSvo {
-  id: number;
-  registrante_id: number | null;
+// Espelha a constraint chk_solicitacoes_svo_status
+export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'RECUSADA', 'CANCELADA'] as const;
+
+export type StatusSolicitacaoSvo = (typeof STATUS_SOLICITACAO_SVO)[number];
+
+// Ordens de coleta que ainda ocupam a solicitação (BL27)
+export const ORDENS_SVO_ATIVAS = ['AGUARDANDO_ALOCACAO', 'ALOCADA', 'EM_DESLOCAMENTO'];
+
+export interface NovaSolicitacaoSvo {
+  registrante_id: number;
   dados_solicitante: string;
   local_ocorrencia: string;
   material_sensivel: boolean;
-  status: (typeof STATUS_SOLICITACAO_SVO)[number];
-  confirmado_por: number | null;
-  confirmado_em: Date | null;
+  status: StatusSolicitacaoSvo;
+}
+
+export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
+  id: number;
+  confirmado_por?: number | null;
+  confirmado_em?: Date | null;
 }
 
 export interface OrdemSvo {
@@ -25,18 +35,34 @@ export interface OrdemSvo {
 }
 
 export const solicitacaoSvoModel = {
-  async listar(filtros: ListarSolicitacoesSvoInput): Promise<{ dados: SolicitacaoSvo[]; total: number }> {
-    const consulta = db<SolicitacaoSvo>('solicitacoes_svo');
-    if (filtros.status) consulta.where({ status: filtros.status });
-    const total = await consulta.clone().count<{ total: string }>('* as total').first();
-    const dados = await consulta.select('*').orderBy('id', 'desc')
-      .limit(filtros.limite)
-      .offset((filtros.pagina - 1) * filtros.limite);
-    return { dados, total: Number(total?.total ?? 0) };
+  async cadastrar(dados: NovaSolicitacaoSvo, trx?: Knex.Transaction): Promise<SolicitacaoSvo> {
+    const conexao = trx || db;
+    const [solicitacao] = await conexao('solicitacoes_svo').insert(dados).returning('*');
+    return solicitacao;
   },
 
-  async buscarPorId(id: number, conexao: Knex = db): Promise<SolicitacaoSvo | undefined> {
-    return conexao<SolicitacaoSvo>('solicitacoes_svo').where({ id }).first();
+  async listar(filtros: ListarSolicitacoesSvoInput): Promise<{ dados: SolicitacaoSvo[]; total: number }> {
+    const consulta = db<SolicitacaoSvo>('solicitacoes_svo');
+
+    if (filtros.status) {
+      consulta.where({ status: filtros.status });
+    }
+
+    const [dados, contagem] = await Promise.all([
+      consulta
+        .clone()
+        .select('*')
+        .orderBy('id', 'desc')
+        .limit(filtros.limite)
+        .offset((filtros.pagina - 1) * filtros.limite),
+      consulta.clone().count<{ total: string }[]>({ total: '*' }),
+    ]);
+
+    return { dados, total: Number(contagem[0]?.total ?? 0) };
+  },
+
+  async buscarPorId(id: number): Promise<SolicitacaoSvo | undefined> {
+    return db('solicitacoes_svo').where({ id }).first();
   },
 
   async buscarParaAtualizar(id: number, trx: Knex.Transaction): Promise<SolicitacaoSvo | undefined> {
@@ -44,26 +70,32 @@ export const solicitacaoSvoModel = {
   },
 
   async buscarOrdemAtiva(solicitacaoId: number, conexao: Knex = db): Promise<OrdemSvo | undefined> {
-    return conexao<OrdemSvo>('ordens_svo').where({ solicitacao_id: solicitacaoId })
-      .whereIn('status', ORDENS_SVO_ATIVAS).first();
+    return conexao<OrdemSvo>('ordens_svo')
+      .where({ solicitacao_id: solicitacaoId })
+      .whereIn('status', ORDENS_SVO_ATIVAS)
+      .first();
   },
 
   async confirmar(id: number, autorId: number, trx: Knex.Transaction): Promise<SolicitacaoSvo> {
-    const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo').where({ id })
+    const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
+      .where({ id })
       .update({ status: 'CONFIRMADA', confirmado_por: autorId, confirmado_em: trx.fn.now() })
       .returning('*');
     return solicitacao!;
   },
 
+  // A ordem nasce sem recursos; veículo, motorista e equipe são definidos na alocação (BL28)
   async gerarOrdem(solicitacaoId: number, trx: Knex.Transaction): Promise<OrdemSvo> {
-    const [ordem] = await trx<OrdemSvo>('ordens_svo').insert({
-      solicitacao_id: solicitacaoId,
-      status: 'AGUARDANDO_ALOCACAO',
-      veiculo_id: null,
-      motorista_id: null,
-      equipe_id: null,
-      capacidade_utilizada: 1,
-    }).returning('*');
+    const [ordem] = await trx<OrdemSvo>('ordens_svo')
+      .insert({
+        solicitacao_id: solicitacaoId,
+        status: 'AGUARDANDO_ALOCACAO',
+        veiculo_id: null,
+        motorista_id: null,
+        equipe_id: null,
+        capacidade_utilizada: 1,
+      })
+      .returning('*');
     return ordem!;
   },
 };

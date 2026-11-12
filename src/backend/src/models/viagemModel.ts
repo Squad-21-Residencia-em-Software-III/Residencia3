@@ -1,8 +1,13 @@
+
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 import type { TipoOperacao } from '../validators/viagemSchemas';
 
-export type StatusViagem = 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+export type StatusViagem =
+  | 'AGENDADA'
+  | 'EM_ANDAMENTO'
+  | 'CONCLUIDA'
+  | 'CANCELADA';
 
 export interface ViagemDetalhada {
   id: number;
@@ -48,7 +53,8 @@ const VIAGENS_UNIFICADAS_SQL = `
     vf.km_final,
     vf.data_hora_efetiva_saida,
     vf.data_hora_efetiva_chegada,
-    vf.status
+    vf.status,
+    m.usuario_id AS motorista_usuario_id
   FROM viagens_frota vf
   LEFT JOIN solicitacoes_viagem sv ON sv.id = vf.solicitacao_id
   LEFT JOIN usuarios us ON us.id = sv.solicitante_id
@@ -81,7 +87,8 @@ const VIAGENS_UNIFICADAS_SQL = `
       WHEN 'ALOCADA' THEN 'AGENDADA'
       WHEN 'EM_DESLOCAMENTO' THEN 'EM_ANDAMENTO'
       ELSE o.status
-    END AS status
+    END AS status,
+    m.usuario_id AS motorista_usuario_id
   FROM ordens_svo o
   LEFT JOIN solicitacoes_svo ss ON ss.id = o.solicitacao_id
   LEFT JOIN usuarios ur ON ur.id = ss.registrante_id
@@ -92,12 +99,48 @@ const VIAGENS_UNIFICADAS_SQL = `
 `;
 
 export const viagemModel = {
-  async listar(tipos: TipoOperacao[]): Promise<ViagemDetalhada[]> {
-    return db
-      .select('*')
+  async listar(
+    tipos: TipoOperacao[],
+    usuarioMotoristaId?: number
+  ): Promise<ViagemDetalhada[]> {
+    const consulta = db
+      .select(
+        'id',
+        'solicitacao_id',
+        'tipo_operacao',
+        'origem',
+        'destino',
+        'finalidade',
+        'solicitante_nome',
+        'inicio_previsto',
+        'fim_previsto',
+        'veiculo_id',
+        'veiculo_modelo',
+        'veiculo_placa',
+        'motorista_id',
+        'motorista_nome',
+        'km_inicial',
+        'km_final',
+        'data_hora_efetiva_saida',
+        'data_hora_efetiva_chegada',
+        'status'
+      )
       .from(db.raw(`(${VIAGENS_UNIFICADAS_SQL}) AS viagens`))
-      .whereIn('tipo_operacao', tipos)
-      .orderByRaw('inicio_previsto DESC NULLS LAST, id DESC');
+      .whereIn('tipo_operacao', tipos);
+
+    // Motoristas visualizam somente as próprias viagens.
+    // Gestores continuam visualizando as viagens permitidas
+    // para seus respectivos perfis.
+    if (usuarioMotoristaId !== undefined) {
+      consulta.where(
+        'motorista_usuario_id',
+        usuarioMotoristaId
+      );
+    }
+
+    return consulta.orderByRaw(
+      'inicio_previsto DESC NULLS LAST, id DESC'
+    );
   },
 
   async buscarPorId(
@@ -106,9 +149,36 @@ export const viagemModel = {
     conexao: Knex = db
   ): Promise<ViagemDetalhada | undefined> {
     return conexao
-      .select('*')
-      .from(conexao.raw(`(${VIAGENS_UNIFICADAS_SQL}) AS viagens`))
-      .where({ tipo_operacao: tipo, id })
+      .select(
+        'id',
+        'solicitacao_id',
+        'tipo_operacao',
+        'origem',
+        'destino',
+        'finalidade',
+        'solicitante_nome',
+        'inicio_previsto',
+        'fim_previsto',
+        'veiculo_id',
+        'veiculo_modelo',
+        'veiculo_placa',
+        'motorista_id',
+        'motorista_nome',
+        'km_inicial',
+        'km_final',
+        'data_hora_efetiva_saida',
+        'data_hora_efetiva_chegada',
+        'status'
+      )
+      .from(
+        conexao.raw(
+          `(${VIAGENS_UNIFICADAS_SQL}) AS viagens`
+        )
+      )
+      .where({
+        tipo_operacao: tipo,
+        id,
+      })
       .first();
   },
 };

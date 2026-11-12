@@ -4,8 +4,5 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Relatório local de validação
-/BL27.md
-
 # Protótipo Figma
 docs/figma-prototipo/

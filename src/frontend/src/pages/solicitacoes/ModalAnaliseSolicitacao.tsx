@@ -11,7 +11,7 @@ import {
   User,
   XCircle,
 } from 'lucide-react';
-import { Alert, Avatar, Badge, Button, IdBadge, Modal, Textarea } from '../../components/ui';
+import { Alert, Avatar, Badge, Button, IdBadge, Modal, PlacaMercosul, Textarea } from '../../components/ui';
 import type { BadgeTone } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { mensagemDeErro } from '../../services/api/http';
@@ -78,6 +78,10 @@ export function ModalAnaliseSolicitacao({
   const [erro, setErro] = useState<string | null>(null);
   const [processando, setProcessando] = useState(false);
   const [disponibilidade, setDisponibilidade] = useState<DisponibilidadeSolicitacao | null>(null);
+  const [carregandoDisponibilidade, setCarregandoDisponibilidade] = useState(false);
+  const [erroDisponibilidade, setErroDisponibilidade] = useState<string | null>(null);
+  // Incrementado por "Tentar novamente" para repetir a consulta sem fechar o modal.
+  const [tentativaDisponibilidade, setTentativaDisponibilidade] = useState(0);
 
   // Consulta de disponibilidade no período pretendido (SCRUM-73).
   // A API libera essa rota somente para o Gestor de Frota.
@@ -88,18 +92,25 @@ export function ModalAnaliseSolicitacao({
   useEffect(() => {
     if (!solicitacaoId || !podeConsultarDisponibilidade) return;
     let ativo = true;
+    setCarregandoDisponibilidade(true);
+    setErroDisponibilidade(null);
     solicitacoesApi
       .consultarDisponibilidade(solicitacaoId)
       .then((resultado) => {
         if (ativo) setDisponibilidade(resultado);
       })
-      .catch(() => {
-        if (ativo) setDisponibilidade(null);
+      .catch((error) => {
+        if (!ativo) return;
+        setDisponibilidade(null);
+        setErroDisponibilidade(mensagemDeErro(error));
+      })
+      .finally(() => {
+        if (ativo) setCarregandoDisponibilidade(false);
       });
     return () => {
       ativo = false;
     };
-  }, [solicitacaoId, podeConsultarDisponibilidade]);
+  }, [solicitacaoId, podeConsultarDisponibilidade, tentativaDisponibilidade]);
 
   if (!solicitacao) return null;
 
@@ -204,6 +215,22 @@ export function ModalAnaliseSolicitacao({
         </div>
 
         {/* 4. Validação de Disponibilidade de Recursos (SCRUM-73) */}
+        {podeConsultarDisponibilidade && carregandoDisponibilidade && (
+          <Alert tone="info">Consultando disponibilidade no período...</Alert>
+        )}
+        {podeConsultarDisponibilidade && erroDisponibilidade && (
+          <Alert tone="warning">
+            <div>Não foi possível consultar a disponibilidade: {erroDisponibilidade}</div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() => setTentativaDisponibilidade((n) => n + 1)}
+            >
+              Tentar novamente
+            </Button>
+          </Alert>
+        )}
         {disponibilidade && (
           <div
             className={cn(
@@ -244,6 +271,36 @@ export function ModalAnaliseSolicitacao({
                 <strong>{disponibilidade.motoristas_disponiveis.length}</strong> motoristas
                 habilitados
               </div>
+            </div>
+
+            <div className="mt-3 border-t border-black/5 pt-3">
+              <div className="mb-1.5 text-[11px] font-semibold text-slate-500 uppercase">
+                Veículos disponíveis no período
+              </div>
+              {disponibilidade.veiculos_disponiveis.length === 0 ? (
+                <p className="m-0 text-xs text-amber-900">
+                  Nenhum veículo disponível para o período solicitado.
+                </p>
+              ) : (
+                <ul className="m-0 grid max-h-48 list-none gap-1.5 overflow-y-auto p-0">
+                  {disponibilidade.veiculos_disponiveis.map((veiculo) => (
+                    <li
+                      key={veiculo.id}
+                      className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2"
+                    >
+                      <div className="flex items-center gap-3">
+                        <PlacaMercosul placa={veiculo.placa} size="sm" />
+                        <span className="text-[13px] font-semibold text-slate-900">
+                          {veiculo.modelo}
+                        </span>
+                      </div>
+                      <span className="text-xs whitespace-nowrap text-slate-500">
+                        {veiculo.capacidade_maxima} lugares
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         )}

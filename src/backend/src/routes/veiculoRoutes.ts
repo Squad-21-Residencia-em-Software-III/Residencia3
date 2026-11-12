@@ -15,8 +15,20 @@ veiculoRoutes.get(
 );
 
 veiculoRoutes.get(
+  '/svo/ocupacao',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO, PERFIS.GESTOR_FROTA),
+  veiculoController.listarOcupacaoSvo
+);
+
+veiculoRoutes.get(
   '/',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO),
+  autorizar(
+    PERFIS.ADMINISTRADOR,
+    PERFIS.GESTOR_FROTA,
+    PERFIS.GESTOR_SVO,
+    PERFIS.MOTORISTA_FROTA,
+    PERFIS.MOTORISTA_SVO
+  ),
   veiculoController.listar
 );
 
@@ -24,4 +36,10 @@ veiculoRoutes.post(
   '/',
   autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
   veiculoController.criar
+);
+
+veiculoRoutes.put(
+  '/:id',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  veiculoController.atualizar
 );

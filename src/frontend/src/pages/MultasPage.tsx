@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Alert,
   Badge,
@@ -14,29 +14,39 @@ import {
   TableFilterCollapse,
   TableToolbar,
 } from '../components/ui';
-import type { BadgeTone } from '../components/ui';
-import { storageService } from '../services/storageService';
 import { LABELS_STATUS_MULTA } from '../types/multa';
 import type { Multa, NovaMultaInput, StatusPagamentoMulta } from '../types/multa';
+import { multasApi } from '../services/api/multasApi';
+import { veiculosApi } from '../services/api/veiculosApi';
+import { motoristasApi } from '../services/api/motoristasApi';
+import { documentosApi, type DocumentoComAlerta } from '../services/api/documentosApi';
+import { mensagemDeErro } from '../services/api/http';
 import { ModalMulta } from './multas/ModalMulta';
 
-const TOM_STATUS: Record<StatusPagamentoMulta, BadgeTone> = {
-  PENDENTE: 'warning',
-  PAGO: 'success',
-  CANCELADO: 'neutral',
-};
-
-const brl = (n: number) =>
-  Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
 function formatarDataHora(iso: string): string {
-  const [data, hora] = iso.split('T');
-  const d = data.split('-').reverse().join('/');
-  return hora ? `${d} ${hora.slice(0, 5)}` : d;
+  try {
+    const d = new Date(iso);
+    return (
+      d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ' ' +
+      d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    );
+  } catch {
+    return iso;
+  }
+}
+
+function brl(valor: number): string {
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export default function MultasPage() {
-  const [multas, setMultas] = useState<Multa[]>(() => storageService.getMultas());
+  const [multas, setMultas] = useState<Multa[]>([]);
+  const [documentosAlerta, setDocumentosAlerta] = useState<DocumentoComAlerta[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
+  const [avisoDependencias, setAvisoDependencias] = useState<string | null>(null);
+
   const [modalAberto, setModalAberto] = useState(false);
   const [multaEditando, setMultaEditando] = useState<Multa | undefined>();
   const [multaExcluir, setMultaExcluir] = useState<Multa | null>(null);
@@ -51,6 +61,66 @@ export default function MultasPage() {
     setFeedback({ msg, erro });
     setTimeout(() => setFeedback(null), 4000);
   };
+
+  const carregarDados = useCallback(async () => {
+    try {
+      setCarregando(true);
+      setErroCarga(null);
+      setAvisoDependencias(null);
+
+      const [resMultas, resVeiculos, resMotoristas, resDocs] = await Promise.allSettled([
+        multasApi.listar(),
+        veiculosApi.listar(),
+        motoristasApi.listar(),
+        documentosApi.listarVencimentos(),
+      ]);
+
+      if (resMultas.status === 'rejected') {
+        throw resMultas.reason;
+      }
+      if (resVeiculos.status === 'rejected') {
+        throw resVeiculos.reason;
+      }
+
+      const listaMultas = resMultas.value;
+      const listaVeiculos = resVeiculos.value;
+      const listaMotoristas = resMotoristas.status === 'fulfilled' ? resMotoristas.value : [];
+      const listaDocs = resDocs.status === 'fulfilled' ? resDocs.value : [];
+
+      if (resMotoristas.status === 'rejected' || resDocs.status === 'rejected') {
+        setAvisoDependencias(
+          'Algumas informações complementares (condutores ou alertas de vencimento) não puderam ser carregadas do servidor.'
+        );
+      }
+
+      const mapaVeiculos = new Map(listaVeiculos.map((v) => [v.id, v]));
+      const mapaMotoristas = new Map(listaMotoristas.map((m) => [m.id, m]));
+
+      const enriquecidas: Multa[] = listaMultas.map((m) => {
+        const v = mapaVeiculos.get(m.veiculo_id);
+        const mot = m.motorista_id ? mapaMotoristas.get(m.motorista_id) : undefined;
+        return {
+          ...m,
+          veiculo_placa: v?.placa,
+          veiculo_modelo: v?.modelo,
+          motorista_nome: mot?.nome,
+        };
+      });
+
+      setMultas(enriquecidas);
+      setDocumentosAlerta(listaDocs.filter((d) => d.status_vencimento !== 'VALIDO'));
+    } catch (err) {
+      const msg = mensagemDeErro(err);
+      setErroCarga(msg);
+      exibirFeedback(msg, true);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarDados();
+  }, [carregarDados]);
 
   const kpis = useMemo(() => {
     const pendentes = multas.filter((m) => m.status_pagamento === 'PENDENTE');
@@ -83,6 +153,7 @@ export default function MultasPage() {
   }, [multas, busca, filtroStatus, de, ate]);
 
   const temFiltro = Boolean(busca || filtroStatus || de || ate);
+
   const limparFiltros = () => {
     setBusca('');
     setFiltroStatus('');
@@ -100,31 +171,30 @@ export default function MultasPage() {
     setModalAberto(true);
   };
 
-  const handleSalvar = (dados: NovaMultaInput) => {
+  const handleSalvar = async (dados: NovaMultaInput) => {
     try {
       if (multaEditando) {
-        storageService.updateMulta(multaEditando.id, dados);
-        exibirFeedback(
-          `Multa MLT-${String(multaEditando.id).padStart(4, '0')} atualizada com sucesso.`,
-        );
+        await multasApi.atualizar(multaEditando.id, dados);
+        exibirFeedback(`Multa MLT-${String(multaEditando.id).padStart(4, '0')} atualizada com sucesso.`);
       } else {
-        const criada = storageService.createMulta(dados);
+        const criada = await multasApi.criar(dados);
         exibirFeedback(`Multa MLT-${String(criada.id).padStart(4, '0')} registrada com sucesso.`);
       }
-      setMultas(storageService.getMultas());
+      carregarDados();
     } catch (error) {
-      exibirFeedback(error instanceof Error ? error.message : 'Erro ao salvar a multa.', true);
+      exibirFeedback(mensagemDeErro(error), true);
+      throw error;
     }
   };
 
-  const handleConfirmarExclusao = () => {
+  const handleConfirmarExclusao = async () => {
     if (!multaExcluir) return;
     try {
-      storageService.deleteMulta(multaExcluir.id);
-      setMultas(storageService.getMultas());
-      exibirFeedback('Multa removida com sucesso.');
+      await multasApi.excluir(multaExcluir.id);
+      exibirFeedback(`Multa MLT-${String(multaExcluir.id).padStart(4, '0')} excluída com sucesso.`);
+      carregarDados();
     } catch (error) {
-      exibirFeedback(error instanceof Error ? error.message : 'Erro ao excluir a multa.', true);
+      exibirFeedback(mensagemDeErro(error), true);
     } finally {
       setMultaExcluir(null);
     }
@@ -133,77 +203,84 @@ export default function MultasPage() {
   return (
     <div className="grid gap-6">
       {feedback && <Alert tone={feedback.erro ? 'danger' : 'success'}>{feedback.msg}</Alert>}
+      {avisoDependencias && <Alert tone="warning">{avisoDependencias}</Alert>}
+
+      {/* Alerta Preventivo de Vencimento de CNH/CRLV (RN15) */}
+      {documentosAlerta.length > 0 && (
+        <Alert tone="warning">
+          <strong>Atenção operacional (RN15):</strong> Existem {documentosAlerta.length}{' '}
+          documento(s) com vencimento próximo (menos de 30 dias) ou vencidos na frota.
+        </Alert>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <MetricCard
           label="Multas registradas"
           value={kpis.total}
-          subtitle="Total na frota"
           tone="neutral"
+          subtitle={`${kpis.qtdPendentes} pendentes de regularização`}
         />
         <MetricCard
-          label="Pendentes de pagamento"
-          value={kpis.qtdPendentes}
-          subtitle={`${kpis.valorPendentes} em aberto`}
-          tone="warning"
+          label="Total a pagar"
+          value={kpis.valorPendentes}
+          tone={kpis.qtdPendentes > 0 ? 'danger' : 'success'}
+          subtitle="Valor acumulado pendente"
         />
         <MetricCard
-          label="Sem motorista vinculado"
+          label="Sem condutor identificado"
           value={kpis.semMotorista}
-          subtitle="Aguardando identificação do responsável"
-          tone="neutral"
+          tone={kpis.semMotorista > 0 ? 'warning' : 'neutral'}
+          subtitle="Risco de penalidade à instituição"
         />
       </div>
 
       <Card>
         <TableToolbar
-          title="Multas e infrações"
-          subtitle={`${filtradas.length} registros`}
-          newLabel="Nova Multa"
+          title="Multas & Autuações"
+          subtitle={
+            carregando
+              ? 'Carregando autuações...'
+              : `${filtradas.length} ${filtradas.length === 1 ? 'registro' : 'registros'}`
+          }
+          newLabel="Registrar multa"
           onNew={abrirNova}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
           isFilterActive={temFiltro || filtrosAbertosMobile}
         />
 
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
-          {/* Busca textual na esquerda */}
           <SearchInput
             value={busca}
             onChange={setBusca}
-            placeholder="Buscar por placa, motorista ou descrição..."
+            placeholder="Buscar por placa, condutor, código..."
           />
 
-          {/* Filtros em dropdown e datas na sequência */}
           <FilterSelect
             aria-label="Filtrar por status"
             value={filtroStatus}
             onChange={(val) => setFiltroStatus(val as '' | StatusPagamentoMulta)}
             options={[
               { value: '', label: 'Todos os status' },
-              ...(Object.keys(LABELS_STATUS_MULTA) as StatusPagamentoMulta[]).map((s) => ({
-                value: s,
-                label: LABELS_STATUS_MULTA[s],
-              })),
+              { value: 'PENDENTE', label: 'Pendente' },
+              { value: 'PAGO', label: 'Paga' },
+              { value: 'CANCELADO', label: 'Cancelada' },
             ]}
           />
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
             <span>De:</span>
             <input
               type="date"
               value={de}
               onChange={(e) => setDe(e.target.value)}
-              className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-[13px] text-slate-900 outline-none focus:border-primary"
+              className="h-[38px] rounded-md border border-slate-300 bg-white px-2.5 text-xs text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-          </div>
-
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
             <span>Até:</span>
             <input
               type="date"
               value={ate}
               onChange={(e) => setAte(e.target.value)}
-              className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-[13px] text-slate-900 outline-none focus:border-primary"
+              className="h-[38px] rounded-md border border-slate-300 bg-white px-2.5 text-xs text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
@@ -217,23 +294,39 @@ export default function MultasPage() {
         <Table>
           <thead>
             <tr>
-              <th>Registro</th>
-              <th>Data da infração</th>
+              <th>ID</th>
+              <th>Data/Hora</th>
               <th>Veículo</th>
-              <th>Motorista</th>
-              <th>Infração</th>
+              <th>Condutor</th>
+              <th>Infração / Órgão</th>
               <th>Valor</th>
+              <th>Pontos</th>
               <th>Status</th>
-              <th className="text-right">Ações</th>
+              <th>Ações</th>
             </tr>
           </thead>
           <tbody>
-            {filtradas.length === 0 ? (
+            {carregando ? (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-500">
-                  {temFiltro
-                    ? 'Nenhuma multa encontrada com os filtros aplicados.'
-                    : 'Nenhuma multa registrada.'}
+                <td colSpan={9} className="p-9 text-center text-slate-500">
+                  Carregando autuações da API...
+                </td>
+              </tr>
+            ) : erroCarga ? (
+              <tr>
+                <td colSpan={9} className="p-9 text-center text-rose-600">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <p className="font-medium">Falha na comunicação com o servidor: {erroCarga}</p>
+                    <Button variant="outline" size="sm" onClick={carregarDados}>
+                      Tentar novamente
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ) : filtradas.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="p-8 text-center text-slate-400">
+                  {temFiltro ? 'Nenhuma multa corresponde aos filtros aplicados.' : 'Nenhuma multa registrada.'}
                 </td>
               </tr>
             ) : (
@@ -243,56 +336,59 @@ export default function MultasPage() {
                     <IdBadge id={`MLT-${String(m.id).padStart(4, '0')}`} />
                   </td>
                   <td>
-                    <span className="text-[13px] whitespace-nowrap text-slate-500">
-                      {formatarDataHora(m.data_infracao)}
-                    </span>
+                    <div className="text-[13px] text-slate-700">{formatarDataHora(m.data_infracao)}</div>
                     {m.data_vencimento && (
-                      <div className="text-xs text-slate-400">
-                        Vence em {formatarDataHora(m.data_vencimento)}
+                      <div className="text-[11px] text-slate-400">
+                        Venc.: {new Date(m.data_vencimento).toLocaleDateString('pt-BR')}
                       </div>
                     )}
                   </td>
                   <td>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-mono text-[13px] font-semibold text-slate-900">
-                        {m.veiculo_placa ?? 'N/D'}
-                      </span>
-                      <span className="text-xs text-slate-400">{m.veiculo_modelo}</span>
+                    <div>
+                      <span className="font-semibold text-slate-900">{m.veiculo_placa ?? 'N/D'}</span>
+                      <div className="text-[11px] text-slate-500">{m.veiculo_modelo ?? ''}</div>
                     </div>
                   </td>
                   <td>
                     {m.motorista_nome ? (
-                      <span className="text-[13px] font-medium text-slate-700">
-                        {m.motorista_nome}
-                      </span>
+                      <span className="text-[13px] text-slate-700">{m.motorista_nome}</span>
                     ) : (
-                      <span className="text-[13px] text-slate-400 italic">Sem motorista</span>
+                      <Badge tone="danger">
+                        Não identificado
+                      </Badge>
                     )}
                   </td>
                   <td>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[13px] text-slate-700">
-                        {m.descricao ?? 'Sem descrição'}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {[m.id_infracao, m.orgao_autuador, `${m.pontos} pts`]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </span>
+                    <div className="text-[13px] text-slate-800">
+                      {m.id_infracao ?? (m.descricao ? m.descricao.slice(0, 30) : '—')}
                     </div>
+                    {m.orgao_autuador && (
+                      <div className="text-[11px] text-slate-400">{m.orgao_autuador}</div>
+                    )}
                   </td>
                   <td>
-                    <span className="font-display text-[13px] font-bold whitespace-nowrap text-slate-900">
-                      {brl(m.valor)}
-                    </span>
+                    <span className="font-semibold text-slate-900">{brl(Number(m.valor))}</span>
                   </td>
                   <td>
-                    <Badge tone={TOM_STATUS[m.status_pagamento]}>
+                    <Badge tone={m.pontos >= 7 ? 'danger' : m.pontos >= 4 ? 'warning' : 'neutral'}>
+                      {m.pontos} pts
+                    </Badge>
+                  </td>
+                  <td>
+                    <Badge
+                      tone={
+                        m.status_pagamento === 'PAGO'
+                          ? 'success'
+                          : m.status_pagamento === 'CANCELADO'
+                            ? 'neutral'
+                            : 'warning'
+                      }
+                    >
                       {LABELS_STATUS_MULTA[m.status_pagamento]}
                     </Badge>
                   </td>
-                  <td className="text-right whitespace-nowrap">
-                    <div className="inline-flex items-center justify-end gap-1.5">
+                  <td>
+                    <div className="flex items-center justify-start gap-1.5">
                       <Button
                         variant="outline"
                         size="sm"
@@ -317,10 +413,7 @@ export default function MultasPage() {
           </tbody>
         </Table>
 
-        <Pagination
-          showing={`${filtradas.length === 0 ? 0 : 1}–${filtradas.length}`}
-          total={filtradas.length}
-        />
+        <Pagination showing={`1–${filtradas.length}`} total={filtradas.length} />
       </Card>
 
       {modalAberto && (
@@ -331,20 +424,21 @@ export default function MultasPage() {
         />
       )}
 
-      <ConfirmDialog
-        isOpen={Boolean(multaExcluir)}
-        title="Excluir Multa"
-        description={
-          multaExcluir
-            ? `Tem certeza que deseja excluir a multa MLT-${String(multaExcluir.id).padStart(4, '0')}?`
-            : ''
-        }
-        confirmLabel="Sim, Excluir"
-        cancelLabel="Cancelar"
-        variant="danger"
-        onConfirm={handleConfirmarExclusao}
-        onClose={() => setMultaExcluir(null)}
-      />
+      {multaExcluir && (
+        <ConfirmDialog
+          isOpen={Boolean(multaExcluir)}
+          title="Excluir multa"
+          confirmLabel="Excluir"
+          variant="danger"
+          onClose={() => setMultaExcluir(null)}
+          onConfirm={handleConfirmarExclusao}
+          description={
+            <span>
+              Deseja realmente excluir a autuação <strong>MLT-{String(multaExcluir.id).padStart(4, '0')}</strong>?
+            </span>
+          }
+        />
+      )}
     </div>
   );
 }

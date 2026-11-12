@@ -27,12 +27,13 @@ vi.mock('../services/motoristaService', () => ({
         status: 'DISPONIVEL',
       },
     ]),
+    buscarPorUsuarioId: vi.fn(),
   },
 }));
 
-const autenticarComo = (perfil: Perfil) =>
+const autenticarComo = (perfil: Perfil, id = 3) =>
   vi.mocked(authService.usuarioDoToken).mockResolvedValue({
-    id: 3,
+    id,
     perfil,
   } as Awaited<ReturnType<typeof authService.usuarioDoToken>>);
 
@@ -73,5 +74,43 @@ describe('GET /api/motoristas', () => {
     const resposta = await request(app).get('/api/motoristas').set('Authorization', token);
 
     expect(resposta.status).toBe(403);
+  });
+});
+
+describe('GET /api/motoristas/me', () => {
+  const token = 'Bearer token-teste';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('deve retornar os dados do motorista autenticado', async () => {
+    autenticarComo(PERFIS.MOTORISTA_FROTA, 5);
+    vi.mocked(motoristaService.buscarPorUsuarioId).mockResolvedValueOnce({
+      id: 2,
+      usuario_id: 5,
+      nome: 'Lewis Hamilton',
+      numero_cnh: '44444444444',
+      categoria_cnh: 'D',
+      validade_cnh: '2029-05-15',
+      tipo_motorista: 'FROTA',
+      status: 'DISPONIVEL',
+    });
+
+    const resposta = await request(app).get('/api/motoristas/me').set('Authorization', token);
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toMatchObject({ id: 2, nome: 'Lewis Hamilton' });
+    expect(motoristaService.buscarPorUsuarioId).toHaveBeenCalledWith(5);
+  });
+
+  it('deve retornar 404 se o usuário autenticado não for um motorista cadastrado', async () => {
+    autenticarComo(PERFIS.SOLICITANTE, 99);
+    vi.mocked(motoristaService.buscarPorUsuarioId).mockResolvedValueOnce(undefined);
+
+    const resposta = await request(app).get('/api/motoristas/me').set('Authorization', token);
+
+    expect(resposta.status).toBe(404);
+    expect(resposta.body.erro).toContain('Registro de motorista não encontrado');
   });
 });

@@ -14,6 +14,8 @@ export interface VeiculoSvoDisponivel {
   vagas_disponiveis: number;
 }
 
+export type OcupacaoVeiculoSvo = VeiculoSvoDisponivel;
+
 export interface NovoVeiculo {
   placa: string;
   modelo: string;
@@ -41,6 +43,11 @@ export const veiculoModel = {
     return conexao('veiculos').where({ id }).first();
   },
 
+  // Busca e bloqueia a linha até o fim da transação (mesma trava usada na alocação SVO)
+  async buscarParaAtualizar(id: number, trx: Knex.Transaction): Promise<Veiculo | undefined> {
+    return trx('veiculos').where({ id }).forUpdate().first();
+  },
+
   async buscarPorPlaca(placa: string, trx?: Knex.Transaction): Promise<Veiculo | undefined> {
     const conexao = trx || db;
     return conexao('veiculos').where({ placa }).first();
@@ -50,6 +57,20 @@ export const veiculoModel = {
     const conexao = trx || db;
     const [veiculo] = await conexao('veiculos')
       .insert(dados)
+      .returning(COLUNAS_VEICULO);
+
+    return veiculo;
+  },
+
+  async atualizarVeiculo(
+    id: number,
+    dados: Partial<NovoVeiculo & { status: StatusVeiculo }>,
+    trx?: Knex.Transaction
+  ): Promise<Veiculo | undefined> {
+    const conexao = trx || db;
+    const [veiculo] = await conexao('veiculos')
+      .where({ id })
+      .update(dados)
       .returning(COLUNAS_VEICULO);
 
     return veiculo;
@@ -89,6 +110,36 @@ export const veiculoModel = {
         v.status
       HAVING v.capacidade_maxima >
         COALESCE(SUM(o.capacidade_utilizada), 0)
+      ORDER BY v.id
+    `);
+
+    return resultado.rows;
+  },
+
+  async listarOcupacaoSvo(): Promise<OcupacaoVeiculoSvo[]> {
+    const resultado = await db.raw<{ rows: OcupacaoVeiculoSvo[] }>(`
+      SELECT
+        v.id,
+        v.placa,
+        v.modelo,
+        v.capacidade_maxima,
+        v.status,
+        COALESCE(SUM(o.capacidade_utilizada), 0)::integer AS capacidade_utilizada,
+        (
+          v.capacidade_maxima -
+          COALESCE(SUM(o.capacidade_utilizada), 0)
+        )::integer AS vagas_disponiveis
+      FROM veiculos v
+      LEFT JOIN ordens_svo o
+        ON o.veiculo_id = v.id
+        AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO')
+      WHERE v.tipo_frota = 'SVO'
+      GROUP BY
+        v.id,
+        v.placa,
+        v.modelo,
+        v.capacidade_maxima,
+        v.status
       ORDER BY v.id
     `);
 

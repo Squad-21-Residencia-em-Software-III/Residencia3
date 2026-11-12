@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { solicitacaoSvoRoutes } from './solicitacaoSvoRoutes';
 import { db } from '../config/database';
 import { authRoutes } from './authRoutes';
 import { usuarioRoutes } from './usuarioRoutes';
@@ -13,6 +12,8 @@ import { viagemRoutes } from './viagemRoutes';
 import { motoristaRoutes } from './motoristaRoutes';
 import { unidadeRoutes } from './unidadeRoutes';
 import { dashboardRoutes } from './dashboardRoutes';
+import { solicitacaoSvoRoutes } from './solicitacaoSvoRoutes';
+import { auditoriaRoutes } from './auditoriaRoutes';
 
 export const routes = Router();
 
@@ -27,7 +28,6 @@ routes.get('/status', async (_req, res) => {
 });
 
 routes.use('/auth', authRoutes);
-routes.use('/solicitacoes-svo', solicitacaoSvoRoutes);
 routes.use('/usuarios', usuarioRoutes);
 routes.use('/veiculos', veiculoRoutes);
 routes.use('/abastecimentos', abastecimentoRoutes);
@@ -39,3 +39,5 @@ routes.use('/viagens', viagemRoutes);
 routes.use('/motoristas', motoristaRoutes);
 routes.use('/unidades', unidadeRoutes);
 routes.use('/dashboard', dashboardRoutes);
+routes.use('/solicitacoes-svo', solicitacaoSvoRoutes);
+routes.use('/auditorias', auditoriaRoutes);

@@ -8,6 +8,8 @@ export const motoristaRoutes = Router();
 
 motoristaRoutes.use(autenticar);
 
+motoristaRoutes.get('/me', motoristaController.me);
+
 motoristaRoutes.get(
   '/',
   autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO),

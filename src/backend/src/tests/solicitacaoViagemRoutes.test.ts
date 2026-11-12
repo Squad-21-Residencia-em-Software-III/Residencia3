@@ -16,6 +16,7 @@ vi.mock('../services/authService', () => ({
 vi.mock('../services/solicitacaoViagemService', () => ({
   solicitacaoViagemService: {
     criar: vi.fn(),
+    listarMinhas: vi.fn(),
   },
 }));
 
@@ -77,6 +78,20 @@ describe('POST /api/solicitacoes-viagem', () => {
     ).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['ausente', undefined],
+    ['vazio', ''],
+    ['só com espaços', '   '],
+  ])('deve retornar 400 quando o destino estiver %s', async (_caso, destino) => {
+    const resposta = await request(app)
+      .post(endpoint)
+      .set('Authorization', 'Bearer token-teste')
+      .send({ ...dadosValidos, destino });
+
+    expect(resposta.status).toBe(400);
+    expect(solicitacaoViagemService.criar).not.toHaveBeenCalled();
+  });
+
   it('deve retornar 400 quando a unidade não for informada', async () => {
     const { unidade_id: _ignorada, ...semUnidade } = dadosValidos;
 
@@ -132,5 +147,61 @@ describe('POST /api/solicitacoes-viagem', () => {
     expect(resposta.body.erro).toBe(
       'A data de chegada deve ser posterior à saída'
     );
+  });
+});
+
+describe('GET /api/solicitacoes-viagem/minhas', () => {
+  const endpoint = '/api/solicitacoes-viagem/minhas';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Usuário comum, sem perfil de analista
+    vi.mocked(authService.usuarioDoToken).mockResolvedValue({
+      id: 7,
+      perfil: 'SOLICITANTE',
+    } as unknown as Awaited<ReturnType<typeof authService.usuarioDoToken>>);
+
+    vi.mocked(solicitacaoViagemService.listarMinhas).mockResolvedValue({
+      dados: [],
+      paginacao: { pagina: 1, limite: 20, total: 0, totalPaginas: 0 },
+    });
+  });
+
+  it('deve listar as solicitações do usuário autenticado', async () => {
+    const resposta = await request(app).get(endpoint).set('Authorization', 'Bearer token-teste');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.paginacao).toEqual({ pagina: 1, limite: 20, total: 0, totalPaginas: 0 });
+    expect(solicitacaoViagemService.listarMinhas).toHaveBeenCalledWith(7, { pagina: 1, limite: 20 });
+  });
+
+  it('deve repassar o filtro de status e a paginação', async () => {
+    const resposta = await request(app)
+      .get(`${endpoint}?status=AGENDADA&pagina=2&limite=5`)
+      .set('Authorization', 'Bearer token-teste');
+
+    expect(resposta.status).toBe(200);
+    expect(solicitacaoViagemService.listarMinhas).toHaveBeenCalledWith(7, {
+      pagina: 2,
+      limite: 5,
+      status: 'AGENDADA',
+    });
+  });
+
+  it('deve retornar 400 para status inválido', async () => {
+    const resposta = await request(app)
+      .get(`${endpoint}?status=QUALQUER`)
+      .set('Authorization', 'Bearer token-teste');
+
+    expect(resposta.status).toBe(400);
+    expect(solicitacaoViagemService.listarMinhas).not.toHaveBeenCalled();
+  });
+
+  it('deve retornar 401 sem token', async () => {
+    const resposta = await request(app).get(endpoint);
+
+    expect(resposta.status).toBe(401);
+    expect(solicitacaoViagemService.listarMinhas).not.toHaveBeenCalled();
   });
 });

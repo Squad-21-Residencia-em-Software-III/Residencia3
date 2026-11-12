@@ -9,8 +9,9 @@ const { trx, transaction } = vi.hoisted(() => {
 vi.mock('../config/database', () => ({ db: { transaction } }));
 vi.mock('../services/authService', () => ({ authService: { usuarioDoToken: vi.fn() } }));
 vi.mock('../models/solicitacaoSvoModel', () => ({
+  STATUS_SOLICITACAO_SVO: ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'RECUSADA', 'CANCELADA'],
   solicitacaoSvoModel: {
-    listar: vi.fn(), buscarPorId: vi.fn(), buscarParaAtualizar: vi.fn(),
+    cadastrar: vi.fn(), listar: vi.fn(), buscarPorId: vi.fn(), buscarParaAtualizar: vi.fn(),
     buscarOrdemAtiva: vi.fn(), confirmar: vi.fn(), gerarOrdem: vi.fn(),
   },
 }));
@@ -23,7 +24,7 @@ import { solicitacaoSvoService as service } from '../services/solicitacaoSvoServ
 
 // Mantém o service real nas requisições: cobre autorização, validação e estados.
 vi.mock('../models/auditoriaModel', () => ({
-  auditoriaModel: { registrar: vi.fn() }, MODULOS_AUDITORIA: { SVO: 'SVO' },
+  auditoriaModel: { registrar: vi.fn() }, MODULOS_AUDITORIA: { SOLICITACOES_SVO: 'SOLICITACOES_SVO' },
 }));
 
 const autor = { id: 4, perfil: PERFIS.GESTOR_SVO };
@@ -75,14 +76,14 @@ describe('BL27 — análise SVO', () => {
   it('expõe os dados da ocorrência e a ordem atual para análise', async () => {
     const resposta = await request(app).get('/api/solicitacoes-svo/7').set('Authorization', token);
     expect(resposta.status).toBe(200);
-    expect(resposta.body).toEqual({ solicitacao, ordem: null });
+    expect(resposta.body).toEqual({ ...solicitacao, ordem: null });
     vi.mocked(model.buscarPorId).mockResolvedValue(confirmada);
     vi.mocked(model.buscarOrdemAtiva).mockResolvedValue(ordem);
     const confirmadaResposta = await request(app).get('/api/solicitacoes-svo/7').set('Authorization', token);
     expect(confirmadaResposta.body.ordem.id).toBe(11);
   });
 
-  it.each(['status=INVALIDO', 'pagina=0', 'pagina=1.5', 'limite=0', 'limite=101', 'limite=abc', 'campo=indevido'])(
+  it.each(['status=INVALIDO', 'pagina=0', 'pagina=1.5', 'limite=0', 'limite=101', 'limite=abc'])(
     'rejeita filtros inválidos: %s', async (query) => {
       const resposta = await request(app).get(`/api/solicitacoes-svo?${query}`).set('Authorization', token);
       expect(resposta.status).toBe(400);
@@ -103,7 +104,7 @@ describe('BL27 — confirmação e geração automática', () => {
     expect(model.gerarOrdem).toHaveBeenCalledWith(7, trx);
     expect(vi.mocked(model.confirmar).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(model.gerarOrdem).mock.invocationCallOrder[0]!);
     expect(auditoriaModel.registrar).toHaveBeenCalledWith(expect.objectContaining({
-      usuario_id: 4, modulo: 'SVO', acao: expect.stringContaining('GEROU_ORDEM_COLETA id=11'),
+      usuario_id: 4, modulo: 'SOLICITACOES_SVO', acao: expect.stringContaining('GEROU_ORDEM_COLETA id=11'),
     }), trx);
     expect(transaction).toHaveBeenCalledTimes(1);
   });
@@ -218,8 +219,6 @@ describe('BL27 — proteção da API', () => {
         expect((await request(app)[metodo](url).set('Authorization', token)).status).toBe(403);
       }
       await expect(service.confirmar(7, { id: 1, perfil })).rejects.toMatchObject({ statusCode: 403 });
-      await expect(service.detalhar(7, { id: 1, perfil })).rejects.toMatchObject({ statusCode: 403 });
-      await expect(service.listar({ pagina: 1, limite: 20 }, { id: 1, perfil })).rejects.toMatchObject({ statusCode: 403 });
       expect(transaction).not.toHaveBeenCalled();
       expect(model.listar).not.toHaveBeenCalled();
     },

@@ -25,8 +25,8 @@ type AlocarOrdemSvoInput = Extract<CriarViagemInput, { tipo_operacao: 'SVO' }>;
 
 // Tabela e status equivalentes de cada tipo de operação.
 // solicitacao*: status que a solicitação recebe em cada etapa (null = não muda).
-// solicitacoes_viagem só tem status de análise, então segue APROVADA durante a viagem
-// e volta a poder ser agendada quando a viagem é cancelada.
+// A solicitação administrativa fica AGENDADA durante a viagem, CONCLUIDA ao final
+// e volta a APROVADA (pode ser agendada de novo) quando a viagem é cancelada.
 const OPERACOES = {
   ADMINISTRATIVA: {
     tabela: 'viagens_frota',
@@ -35,6 +35,7 @@ const OPERACOES = {
     colunaSaida: 'data_hora_efetiva_saida',
     colunaChegada: 'data_hora_efetiva_chegada',
     tabelaSolicitacao: 'solicitacoes_viagem',
+    colunaDestino: 'destino',
     solicitacaoAtendida: 'AGENDADA',
     solicitacaoConcluida: 'CONCLUIDA',
     solicitacaoReaberta: 'APROVADA',
@@ -46,6 +47,7 @@ const OPERACOES = {
     colunaSaida: 'data_hora_saida',
     colunaChegada: 'data_hora_conclusao',
     tabelaSolicitacao: 'solicitacoes_svo',
+    colunaDestino: 'local_ocorrencia',
     solicitacaoAtendida: 'EM_ANDAMENTO',
     solicitacaoConcluida: 'CONCLUIDA',
     solicitacaoReaberta: 'EM_TRIAGEM',
@@ -59,7 +61,12 @@ async function atualizarSolicitacao(
   status: string | null
 ) {
   if (status) {
-    await trx(OPERACOES[tipo].tabelaSolicitacao).where({ id: solicitacaoId }).update({ status });
+    // Solicitação SVO que volta à triagem precisa ser confirmada de novo (BL27):
+    // a confirmação anterior não vale mais
+    const limparConfirmacao = tipo === 'SVO' && status === OPERACOES.SVO.solicitacaoReaberta;
+    await trx(OPERACOES[tipo].tabelaSolicitacao)
+      .where({ id: solicitacaoId })
+      .update(limparConfirmacao ? { status, confirmado_por: null, confirmado_em: null } : { status });
   }
 }
 
@@ -74,8 +81,51 @@ const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacao[]>> = {
 
 function garantirAcesso(perfil: Perfil, tipo: TipoOperacao): void {
   if (!(TIPOS_POR_PERFIL[perfil] ?? []).includes(tipo)) {
-    throw new AppError('Você não tem permissão para gerenciar este tipo de viagem', 403);
+    throw new AppError(
+      'Você não tem permissão para gerenciar este tipo de viagem',
+      403
+    );
   }
+}
+
+async function garantirAcessoAoRegistro(
+  trx: Knex.Transaction,
+  autor: Autor,
+  tipo: TipoOperacao,
+  viagem: { motorista_id: number }
+): Promise<void> {
+  if (
+    autor.perfil === PERFIS.MOTORISTA_FROTA ||
+    autor.perfil === PERFIS.MOTORISTA_SVO
+  ) {
+    const tipoPermitido =
+      autor.perfil === PERFIS.MOTORISTA_FROTA
+        ? 'ADMINISTRATIVA'
+        : 'SVO';
+
+    if (tipo !== tipoPermitido) {
+      throw new AppError(
+        'Você não tem permissão para esta viagem',
+        403
+      );
+    }
+
+    const motorista = await trx('motoristas')
+      .where({
+        id: viagem.motorista_id,
+        usuario_id: autor.id,
+      })
+      .first('id');
+
+    if (!motorista) {
+      throw new AppError(
+        'Esta viagem não está vinculada ao motorista autenticado',
+        403
+      );
+    }
+    return;
+  }
+  garantirAcesso(autor.perfil, tipo);
 }
 
 // Situação de um recurso considerando viagens administrativas e ordens SVO
@@ -317,10 +367,19 @@ async function detalhar(trx: Knex.Transaction, tipo: TipoOperacao, id: number): 
 }
 
 export const viagemService = {
-  async listar(perfil: Perfil): Promise<ViagemDetalhada[]> {
-    return viagemModel.listar(TIPOS_POR_PERFIL[perfil] ?? []);
-  },
+  async listar(autor: Autor): Promise<ViagemDetalhada[]> {
+  if (autor.perfil === PERFIS.MOTORISTA_FROTA) {
+    return viagemModel.listar(['ADMINISTRATIVA'], autor.id);
+  }
 
+  if (autor.perfil === PERFIS.MOTORISTA_SVO) {
+    return viagemModel.listar(['SVO'], autor.id);
+  }
+
+  const tiposPermitidos = TIPOS_POR_PERFIL[autor.perfil] ?? [];
+
+  return viagemModel.listar(tiposPermitidos);
+  },
   async criar(dados: CriarViagemInput, autor: Autor): Promise<ViagemDetalhada> {
     garantirAcesso(autor.perfil, dados.tipo_operacao);
 
@@ -348,13 +407,22 @@ export const viagemService = {
   },
 
   async iniciarViagem(tipo: TipoOperacao, viagemId: number, kmInicial: number, autor: Autor) {
-    garantirAcesso(autor.perfil, tipo);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
+      await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
       if (viagem.status !== operacao.agendada) {
         throw new AppError('Apenas viagens agendadas podem ser iniciadas', 400);
+      }
+
+      // A saída só pode ser registrada com destino definido (BL18), independentemente da interface
+      const solicitacao = await trx(operacao.tabelaSolicitacao)
+        .where({ id: viagem.solicitacao_id })
+        .first(operacao.colunaDestino);
+      const destino = solicitacao?.[operacao.colunaDestino];
+      if (typeof destino !== 'string' || destino.trim() === '') {
+        throw new AppError('Informe o destino antes de registrar a saída do veículo', 400);
       }
 
       // Valida veiculo e quilometragem
@@ -397,14 +465,16 @@ export const viagemService = {
   },
 
   async finalizarViagem(tipo: TipoOperacao, viagemId: number, kmFinal: number, autor: Autor) {
-    garantirAcesso(autor.perfil, tipo);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
-      const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
+    const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
+
+      await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
+
       if (viagem.status !== operacao.emAndamento) {
-        throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
-      }
+      throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
+    }
       if (kmFinal < viagem.km_inicial) {
         throw new AppError('O km final não pode ser menor que o km inicial', 400);
       }

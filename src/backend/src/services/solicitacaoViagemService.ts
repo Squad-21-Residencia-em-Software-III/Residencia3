@@ -10,6 +10,7 @@ import {
   solicitacaoViagemModel,
   type SolicitacaoViagem,
   type SolicitacaoViagemDetalhada,
+  type SolicitacaoViagemDoSolicitante,
 } from '../models/solicitacaoViagemModel';
 import { unidadeModel } from '../models/unidadeModel';
 import type { Usuario } from '../models/usuarioModel';
@@ -20,6 +21,21 @@ import type {
 import type { ListaPaginada } from './usuarioService';
 
 type Analista = Pick<Usuario, 'id' | 'perfil'>;
+
+function paginar<T>(
+  resultado: { dados: T[]; total: number },
+  filtros: Pick<ListarSolicitacoesViagemInput, 'pagina' | 'limite'>
+): ListaPaginada<T> {
+  return {
+    dados: resultado.dados,
+    paginacao: {
+      pagina: filtros.pagina,
+      limite: filtros.limite,
+      total: resultado.total,
+      totalPaginas: Math.ceil(resultado.total / filtros.limite),
+    },
+  };
+}
 
 export const solicitacaoViagemService = {
   // Encaminhamento: cada analista vê apenas as solicitações das unidades que gere
@@ -38,15 +54,15 @@ export const solicitacaoViagemService = {
       }
     }
 
-    return {
-      dados: resultado.dados,
-      paginacao: {
-        pagina: filtros.pagina,
-        limite: filtros.limite,
-        total: resultado.total,
-        totalPaginas: Math.ceil(resultado.total / filtros.limite),
-      },
-    };
+    return paginar(resultado, filtros);
+  },
+
+  // O solicitante acompanha a aprovação e o agendamento das próprias solicitações
+  async listarMinhas(
+    solicitanteId: number,
+    filtros: ListarSolicitacoesViagemInput
+  ): Promise<ListaPaginada<SolicitacaoViagemDoSolicitante>> {
+    return paginar(await solicitacaoViagemModel.listarDoSolicitante(solicitanteId, filtros), filtros);
   },
 
   async criar(

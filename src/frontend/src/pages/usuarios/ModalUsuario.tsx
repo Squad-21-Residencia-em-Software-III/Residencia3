@@ -9,6 +9,7 @@ import {
   type Perfil,
   type Usuario,
 } from '../../types/usuario';
+import { mensagemDeErro } from '../../services/api/http';
 
 interface ModalUsuarioProps {
   usuarioEditando?: Usuario | null;
@@ -21,7 +22,7 @@ interface ModalUsuarioProps {
     senha?: string;
     perfil: Perfil;
     ativo?: boolean;
-  }) => void;
+  }) => Promise<void> | void;
 }
 
 function validarSenhaForte(senha: string): string | null {
@@ -51,10 +52,11 @@ export function ModalUsuario({
   const [perfil, setPerfil] = useState<Perfil>(usuarioEditando?.perfil ?? 'SOLICITANTE');
   const [ativo, setAtivo] = useState(usuarioEditando?.ativo ?? true);
   const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
 
   const isProprioUsuario = isEdicao && usuarioEditando?.id === usuarioLogadoId;
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
 
@@ -104,14 +106,20 @@ export function ModalUsuario({
       }
     }
 
-    onSalvar({
-      nome: nomeTrim,
-      email: emailTrim,
-      ...(isEdicao ? { ativo } : { senha }),
-      perfil,
-    });
-
-    onClose();
+    try {
+      setSalvando(true);
+      await onSalvar({
+        nome: nomeTrim,
+        email: emailTrim,
+        ...(isEdicao ? { ativo } : { senha }),
+        perfil,
+      });
+      onClose();
+    } catch (err) {
+      setErro(mensagemDeErro(err));
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const tipoPrevisao = tipoUsuarioDoPerfil(perfil);
@@ -215,7 +223,9 @@ export function ModalUsuario({
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit">{isEdicao ? 'Salvar Alterações' : 'Cadastrar Usuário'}</Button>
+          <Button type="submit" disabled={salvando}>
+            {salvando ? 'Salvando...' : isEdicao ? 'Salvar Alterações' : 'Cadastrar Usuário'}
+          </Button>
         </div>
       </form>
     </Modal>
