@@ -2,7 +2,7 @@ import type { Knex } from 'knex';
 import { db } from '../config/database';
 
 // Espelha a constraint chk_solicitacoes_svo_status
-export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'EM_ANDAMENTO', 'CONCLUIDA', 'CANCELADA'] as const;
+export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'RECUSADA', 'CANCELADA'] as const;
 
 export type StatusSolicitacaoSvo = (typeof STATUS_SOLICITACAO_SVO)[number];
 

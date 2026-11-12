@@ -198,6 +198,21 @@ describe('Rotas de Solicitações SVO (/api/solicitacoes-svo)', () => {
       expect(solicitacaoSvoService.listar).toHaveBeenCalledWith('EM_TRIAGEM');
     });
 
+    it.each(['CONFIRMADA', 'RECUSADA'] as const)(
+      'aceita o status %s no filtro',
+      async (status) => {
+        vi.mocked(solicitacaoSvoService.listar).mockResolvedValueOnce([
+          { ...solicitacaoRegistrada, status },
+        ]);
+
+        const resposta = await request(app)
+          .get(`/api/solicitacoes-svo?status=${status}`)
+          .set('Authorization', token);
+
+        expect(resposta.status).toBe(200);
+        expect(solicitacaoSvoService.listar).toHaveBeenCalledWith(status);
+      },
+    );
     it('rejeita status inválido no filtro', async () => {
       const resposta = await request(app)
         .get('/api/solicitacoes-svo?status=QUALQUER')

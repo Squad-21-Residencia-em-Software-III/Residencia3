@@ -2,7 +2,7 @@ import type { Knex } from 'knex';
 import { db } from '../config/database';
 
 export type TipoManutencao = 'PREVENTIVA' | 'CORRETIVA';
-export type StatusManutencao = 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+export type StatusManutencao = 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA';
 
 export interface NovaManutencao {
   veiculo_id: number;
@@ -88,6 +88,21 @@ export const manutencaoModel = {
     return normalizar(registro);
   },
 
+  async atualizar(
+    id: number,
+    dados: Partial<NovaManutencao>,
+    trx?: Knex.Transaction
+  ): Promise<Manutencao | undefined> {
+    const conexao = trx || db;
+    const [atualizado] = await conexao('manutencoes')
+      .where({ id })
+      .update(dados)
+      .returning('*');
+
+    if (!atualizado) return undefined;
+    return normalizar(atualizado);
+  },
+
   async atualizarStatus(
     id: number,
     status: StatusManutencao,
@@ -104,7 +119,21 @@ export const manutencaoModel = {
     return normalizar(atualizado);
   },
 
+  async excluir(id: number, trx?: Knex.Transaction): Promise<boolean> {
+    const conexao = trx || db;
+    const rows = await conexao('manutencoes').where({ id }).delete();
+    return rows > 0;
+  },
+
   async temManutencaoEmAndamento(
+    veiculoId: number,
+    excluirId?: number,
+    trx?: Knex.Transaction
+  ): Promise<boolean> {
+    return this.temManutencaoAtiva(veiculoId, excluirId, trx);
+  },
+
+  async temManutencaoAtiva(
     veiculoId: number,
     excluirId?: number,
     trx?: Knex.Transaction

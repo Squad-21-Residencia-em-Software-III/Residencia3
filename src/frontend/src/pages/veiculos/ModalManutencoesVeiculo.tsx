@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { ArrowLeft, CheckCircle2, ClipboardList, Play, Plus, Wrench } from 'lucide-react';
+import { ArrowLeft, ClipboardList, Plus, Wrench } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -20,11 +20,12 @@ import type { BadgeTone } from '../../components/ui';
 import type { Veiculo } from '../../types/veiculo';
 import type {
   Manutencao,
-  NovaManutencaoInput,
   StatusManutencao,
   TipoManutencao,
 } from '../../types/manutencao';
-import { storageService } from '../../services/storageService';
+import { manutencoesApi } from '../../services/api/manutencoesApi';
+import { veiculosApi } from '../../services/api/veiculosApi';
+import { mensagemDeErro } from '../../services/api/http';
 import { cn } from '../../utils/cn';
 
 interface ModalManutencoesVeiculoProps {
@@ -50,9 +51,7 @@ export function ModalManutencoesVeiculo({
   onManutencaoSalva,
 }: ModalManutencoesVeiculoProps) {
   const [veiculoAtual, setVeiculoAtual] = useState<Veiculo>(veiculo);
-  const [manutencoes, setManutencoes] = useState<Manutencao[]>(() =>
-    storageService.getManutencoesPorVeiculo(veiculo.id),
-  );
+  const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
 
   const [modoCriacao, setModoCriacao] = useState<boolean>(false);
 
@@ -66,6 +65,22 @@ export function ModalManutencoesVeiculo({
   const [descricao, setDescricao] = useState<string>('');
   const [atualizarStatusVeiculo, setAtualizarStatusVeiculo] = useState<boolean>(false);
   const [erro, setErro] = useState<string>('');
+
+  const carregarManutencoes = useCallback(async () => {
+    try {
+      const lista = await manutencoesApi.listarPorVeiculo(veiculo.id);
+      setManutencoes(lista);
+      const veiculos = await veiculosApi.listar();
+      const vAtual = veiculos.find((v) => v.id === veiculo.id);
+      if (vAtual) setVeiculoAtual(vAtual);
+    } catch {
+      // Ignora erro inicial
+    }
+  }, [veiculo.id]);
+
+  useEffect(() => {
+    carregarManutencoes();
+  }, [carregarManutencoes]);
 
   // Totalizadores do veículo
   const totais = useMemo(() => {
@@ -94,47 +109,27 @@ export function ModalManutencoesVeiculo({
     }
   };
 
-  const handleConcluirManutencao = (id: number) => {
+  const handleConcluirManutencao = async (id: number) => {
     try {
-      const res = storageService.atualizarStatusManutencao(id, 'CONCLUIDA');
-      const listaAtualizada = storageService.getManutencoesPorVeiculo(veiculoAtual.id);
-      setManutencoes(listaAtualizada);
-
-      // Sincroniza estado do veículo local
-      const veiculos = storageService.getVeiculos();
-      const vAtual = veiculos.find((v) => v.id === veiculoAtual.id);
-      if (vAtual) setVeiculoAtual(vAtual);
-
-      const msg = res.veiculoLiberado
-        ? `Manutenção concluída! Veículo ${veiculoAtual.placa} liberado para DISPONÍVEL.`
-        : `Manutenção concluída com sucesso!`;
-
-      onManutencaoSalva(msg);
-    } catch (err: any) {
-      setErro(err.message || 'Erro ao concluir manutenção.');
+      await manutencoesApi.atualizarStatus(id, 'CONCLUIDA');
+      await carregarManutencoes();
+      onManutencaoSalva(`Manutenção concluída! Veículo ${veiculoAtual.placa} atualizado.`);
+    } catch (err) {
+      setErro(mensagemDeErro(err));
     }
   };
 
-  const handleIniciarManutencao = (id: number) => {
+  const handleIniciarManutencao = async (id: number) => {
     try {
-      storageService.atualizarStatusManutencao(id, 'EM_ANDAMENTO');
-      const listaAtualizada = storageService.getManutencoesPorVeiculo(veiculoAtual.id);
-      setManutencoes(listaAtualizada);
-
-      // Sincroniza estado do veículo local
-      const veiculos = storageService.getVeiculos();
-      const vAtual = veiculos.find((v) => v.id === veiculoAtual.id);
-      if (vAtual) setVeiculoAtual(vAtual);
-
-      onManutencaoSalva(
-        `Manutenção iniciada! Veículo ${veiculoAtual.placa} colocado em MANUTENÇÃO.`,
-      );
-    } catch (err: any) {
-      setErro(err.message || 'Erro ao iniciar manutenção.');
+      await manutencoesApi.atualizarStatus(id, 'EM_ANDAMENTO');
+      await carregarManutencoes();
+      onManutencaoSalva(`Manutenção iniciada! Veículo ${veiculoAtual.placa} colocado em MANUTENÇÃO.`);
+    } catch (err) {
+      setErro(mensagemDeErro(err));
     }
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
 
@@ -156,7 +151,7 @@ export function ModalManutencoesVeiculo({
     }
 
     try {
-      const payload: NovaManutencaoInput = {
+      await manutencoesApi.criar({
         veiculo_id: veiculoAtual.id,
         tipo_manutencao: tipo,
         data_manutencao: dataManutencao,
@@ -164,32 +159,18 @@ export function ModalManutencoesVeiculo({
         custo: custoNum,
         status,
         atualizar_status_veiculo: atualizarStatusVeiculo || status === 'EM_ANDAMENTO',
-      };
+      });
 
-      storageService.createManutencao(payload);
-      const listaAtualizada = storageService.getManutencoesPorVeiculo(veiculoAtual.id);
-      setManutencoes(listaAtualizada);
-
-      // Sincroniza estado do veículo local
-      const veiculos = storageService.getVeiculos();
-      const vAtual = veiculos.find((v) => v.id === veiculoAtual.id);
-      if (vAtual) setVeiculoAtual(vAtual);
+      await carregarManutencoes();
 
       // Limpar formulário
       setDescricao('');
       setCusto('');
       setModoCriacao(false);
 
-      const msgVeiculo =
-        status === 'EM_ANDAMENTO'
-          ? ` (Veículo colocado em MANUTENÇÃO)`
-          : vAtual?.status === 'DISPONIVEL' && veiculoAtual.status === 'MANUTENCAO'
-            ? ` (Veículo liberado para DISPONÍVEL)`
-            : '';
-
-      onManutencaoSalva(`Manutenção ${tipo.toLowerCase()} registrada com sucesso!${msgVeiculo}`);
-    } catch (err: any) {
-      setErro(err.message || 'Erro ao salvar manutenção.');
+      onManutencaoSalva(`Manutenção ${tipo.toLowerCase()} registrada com sucesso!`);
+    } catch (err) {
+      setErro(mensagemDeErro(err));
     }
   };
 
@@ -356,32 +337,33 @@ export function ModalManutencoesVeiculo({
                               <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                             </td>
                             <td className="text-right whitespace-nowrap">
-                              {m.status === 'EM_ANDAMENTO' ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleConcluirManutencao(m.id)}
-                                  title="Finalizar serviço e liberar o veículo"
-                                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-600 hover:text-white"
-                                >
-                                  <CheckCircle2 size={13} /> Concluir
-                                </Button>
-                              ) : m.status === 'AGENDADA' ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="primary"
-                                  onClick={() => handleIniciarManutencao(m.id)}
-                                  title="Iniciar serviço e colocar veículo em manutenção"
-                                >
-                                  <Play size={13} /> Iniciar
-                                </Button>
-                              ) : (
-                                <span className="text-xs font-semibold text-slate-400 select-none pr-2">
-                                  —
-                                </span>
-                              )}
+                              <div className="flex items-center justify-end gap-1.5">
+                                {m.status === 'EM_ANDAMENTO' ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="primary"
+                                    onClick={() => handleConcluirManutencao(m.id)}
+                                    title="Finalizar serviço e liberar o veículo"
+                                  >
+                                    Concluir
+                                  </Button>
+                                ) : m.status === 'AGENDADA' ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="primary"
+                                    onClick={() => handleIniciarManutencao(m.id)}
+                                    title="Iniciar serviço e colocar veículo em manutenção"
+                                  >
+                                    Iniciar
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs font-semibold text-slate-400 select-none pr-2">
+                                    —
+                                  </span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );

@@ -26,7 +26,7 @@ export const solicitacaoSvoService = {
       await auditoriaModel.registrar(
         {
           usuario_id: registranteId,
-          acao: `Solicitação SVO ${solicitacao.id} registrada para triagem`,
+          acao: `CRIOU_SOLICITACAO_SVO id=${solicitacao.id}`,
           modulo: MODULOS_AUDITORIA.SOLICITACOES_SVO,
         },
         trx,

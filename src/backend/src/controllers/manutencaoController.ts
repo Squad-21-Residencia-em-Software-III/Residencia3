@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { manutencaoService } from '../services/manutencaoService';
 import {
   criarManutencaoSchema,
+  atualizarManutencaoSchema,
   atualizarStatusManutencaoSchema,
 } from '../validators/manutencaoSchemas';
 import { idParamSchema } from '../validators/comuns';
@@ -21,6 +22,19 @@ export const manutencaoController = {
       .json(manutencao);
   },
 
+  async atualizar(req: Request, res: Response): Promise<void> {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new AppError('ID da manutenção inválido', 400);
+    }
+
+    const dados = atualizarManutencaoSchema.parse(req.body);
+    const autor = usuarioAutenticado(req);
+
+    const manutencao = await manutencaoService.atualizar(id, dados, autor.id);
+    res.json(manutencao);
+  },
+
   async atualizarStatus(req: Request, res: Response): Promise<void> {
     const id = Number(req.params.id);
 
@@ -33,6 +47,17 @@ export const manutencaoController = {
 
     const manutencao = await manutencaoService.atualizarStatus(id, status, autor.id);
     res.json(manutencao);
+  },
+
+  async excluir(req: Request, res: Response): Promise<void> {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new AppError('ID da manutenção inválido', 400);
+    }
+
+    const autor = usuarioAutenticado(req);
+    await manutencaoService.excluir(id, autor.id);
+    res.status(204).send();
   },
 
   async listarPorVeiculo(req: Request, res: Response): Promise<void> {

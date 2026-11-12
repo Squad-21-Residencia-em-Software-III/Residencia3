@@ -16,7 +16,13 @@ veiculoRoutes.get(
 
 veiculoRoutes.get(
   '/',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO),
+  autorizar(
+    PERFIS.ADMINISTRADOR,
+    PERFIS.GESTOR_FROTA,
+    PERFIS.GESTOR_SVO,
+    PERFIS.MOTORISTA_FROTA,
+    PERFIS.MOTORISTA_SVO
+  ),
   veiculoController.listar
 );
 
@@ -24,4 +30,10 @@ veiculoRoutes.post(
   '/',
   autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
   veiculoController.criar
+);
+
+veiculoRoutes.put(
+  '/:id',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  veiculoController.atualizar
 );

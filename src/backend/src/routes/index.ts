@@ -13,6 +13,7 @@ import { motoristaRoutes } from './motoristaRoutes';
 import { unidadeRoutes } from './unidadeRoutes';
 import { dashboardRoutes } from './dashboardRoutes';
 import { solicitacaoSvoRoutes } from './solicitacaoSvoRoutes';
+import { auditoriaRoutes } from './auditoriaRoutes';
 
 export const routes = Router();
 
@@ -39,3 +40,4 @@ routes.use('/motoristas', motoristaRoutes);
 routes.use('/unidades', unidadeRoutes);
 routes.use('/dashboard', dashboardRoutes);
 routes.use('/solicitacoes-svo', solicitacaoSvoRoutes);
+routes.use('/auditorias', auditoriaRoutes);

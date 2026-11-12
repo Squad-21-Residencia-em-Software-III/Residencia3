@@ -42,4 +42,12 @@ export const criarMultaSchema = z.object({
   orgao_autuador: z.string().trim().optional().nullable(),
 });
 
+export const atualizarMultaSchema = criarMultaSchema
+  .partial()
+  .strict()
+  .refine((dados) => Object.keys(dados).length > 0, {
+    message: 'Ao menos um campo deve ser informado para atualização',
+  });
+
 export type CriarMultaInput = z.infer<typeof criarMultaSchema>;
+export type AtualizarMultaInput = z.infer<typeof atualizarMultaSchema>;

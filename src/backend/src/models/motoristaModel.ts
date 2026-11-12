@@ -50,6 +50,24 @@ export const motoristaModel = {
     return conexao('motoristas').where({ id }).first();
   },
 
+  buscarPorUsuarioId(usuarioId: number, trx?: Knex.Transaction): Promise<MotoristaComNome | undefined> {
+    const conexao = trx || db;
+    return conexao('motoristas as m')
+      .leftJoin('usuarios as u', 'u.id', 'm.usuario_id')
+      .select(
+        'm.id',
+        'm.usuario_id',
+        'u.nome',
+        'm.numero_cnh',
+        'm.categoria_cnh',
+        db.raw("to_char(m.validade_cnh, 'YYYY-MM-DD') as validade_cnh"),
+        'm.tipo_motorista',
+        'm.status'
+      )
+      .where('m.usuario_id', usuarioId)
+      .first();
+  },
+
   async atualizarStatus(id: number, status: StatusMotorista, trx?: Knex.Transaction): Promise<void> {
     const conexao = trx || db;
     await conexao('motoristas').where({ id }).update({ status });

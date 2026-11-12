@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -14,16 +14,11 @@ import {
   Truck,
 } from 'lucide-react';
 import { Button, Card, IdBadge, Badge, MetricCard, PageHeader, Alert } from '../components/ui';
-import { storageService } from '../services/storageService';
 import { dashboardApi, type DashboardData } from '../services/api/dashboardApi';
 import { solicitacoesApi } from '../services/api/solicitacoesApi';
-import type { NovaSolicitacaoApiInput } from '../types/solicitacao';
+import type { NovaSolicitacaoApiInput, SolicitacaoViagem } from '../types/solicitacao';
 import { ModalNovaSolicitacao } from './solicitacoes/ModalNovaSolicitacao';
 import { cn } from '../utils/cn';
-
-function cnhVencida(validade: string): boolean {
-  return validade < new Date().toISOString().slice(0, 10);
-}
 
 const ATALHOS = [
   {
@@ -59,75 +54,60 @@ const ATALHOS = [
 export default function HomePage() {
   const navigate = useNavigate();
   const [metricasApi, setMetricasApi] = useState<DashboardData | null>(null);
+  const [solicitacoesPendentes, setSolicitacoesPendentes] = useState<SolicitacaoViagem[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroMetricas, setErroMetricas] = useState<string | null>(null);
+  const [erroSolicitacoes, setErroSolicitacoes] = useState<string | null>(null);
   const [modalNovaSolicitacaoAberto, setModalNovaSolicitacaoAberto] = useState(false);
   const [mensagemFeedback, setMensagemFeedback] = useState<string | null>(null);
 
-  const carregarMetricas = () => {
-    dashboardApi
-      .consultar()
-      .then(setMetricasApi)
-      .catch(() => {
-        // Fallback silencioso para dados locais do storageService
-      });
-  };
+  const carregarDados = useCallback(async () => {
+    setCarregando(true);
+    setErroMetricas(null);
+    setErroSolicitacoes(null);
+
+    const [metricasRes, solicitacoesRes] = await Promise.allSettled([
+      dashboardApi.consultar(),
+      solicitacoesApi.listar('PENDENTE_APROVACAO'),
+    ]);
+
+    if (metricasRes.status === 'fulfilled') {
+      setMetricasApi(metricasRes.value);
+    } else {
+      setErroMetricas('Não foi possível carregar os indicadores operacionais da frota.');
+    }
+
+    if (solicitacoesRes.status === 'fulfilled') {
+      setSolicitacoesPendentes(solicitacoesRes.value);
+    } else {
+      setErroSolicitacoes('Não foi possível carregar a fila de solicitações pendentes.');
+    }
+
+    setCarregando(false);
+  }, []);
 
   useEffect(() => {
-    let ativo = true;
-    dashboardApi
-      .consultar()
-      .then((data) => {
-        if (ativo) setMetricasApi(data);
-      })
-      .catch(() => {
-        // Fallback silencioso para dados locais do storageService
-      });
-    return () => {
-      ativo = false;
-    };
-  }, []);
+    carregarDados();
+  }, [carregarDados]);
 
   const handleSalvarNovaSolicitacao = async (nova: NovaSolicitacaoApiInput) => {
     const criada = await solicitacoesApi.criar(nova);
     setMensagemFeedback(`Solicitação #${criada.id} cadastrada com sucesso! Aguardando análise.`);
-    carregarMetricas();
+    carregarDados();
     setTimeout(() => setMensagemFeedback(null), 5000);
   };
 
-  const dados = useMemo(() => {
-    const veiculos = storageService.getVeiculos();
-    const motoristas = storageService.getMotoristas();
-
-    const pendentes = storageService.getSolicitacoesPendentes();
-    const motoristasIrregulares = motoristas.filter((m) => cnhVencida(m.validade_cnh));
-    const veiculosManutencao = veiculos.filter((v) => v.status === 'MANUTENCAO');
-    const totalAlertas = motoristasIrregulares.length + veiculosManutencao.length;
-
-    return {
-      pendentes,
-      motoristasIrregulares,
-      veiculosManutencao,
-      totalAlertas,
-    };
-  }, []);
-
   const totalSolicitacoesPendentes =
-    metricasApi?.solicitacoes_pendentes ?? dados.pendentes.length;
-  const totalViagensAtivas =
-    metricasApi?.viagens_em_andamento ??
-    storageService.getViagens().filter((v) => v.status === 'EM_ANDAMENTO').length;
-  const veiculosDisponiveis =
-    metricasApi?.veiculos_disponiveis.total ??
-    storageService.getVeiculos().filter((v) => v.status === 'DISPONIVEL').length;
-  const frotaAdmDisp =
-    metricasApi?.veiculos_disponiveis.administrativa ??
-    storageService.getVeiculos().filter((v) => v.status === 'DISPONIVEL' && v.tipo_frota === 'ADMINISTRATIVA').length;
-  const svoDisp =
-    metricasApi?.veiculos_disponiveis.svo ??
-    storageService.getVeiculos().filter((v) => v.status === 'DISPONIVEL' && v.tipo_frota === 'SVO').length;
-  const totalAlertas =
-    metricasApi?.alertas.total ?? dados.totalAlertas;
+    metricasApi?.solicitacoes_pendentes ?? solicitacoesPendentes.length;
+  const totalViagensAtivas = metricasApi?.viagens_em_andamento ?? 0;
+  const veiculosDisponiveis = metricasApi?.veiculos_disponiveis.total ?? 0;
+  const frotaAdmDisp = metricasApi?.veiculos_disponiveis.administrativa ?? 0;
+  const svoDisp = metricasApi?.veiculos_disponiveis.svo ?? 0;
+  const totalAlertas = metricasApi?.alertas.total ?? 0;
+  const totalVeiculosManutencao = metricasApi?.alertas.veiculos_em_manutencao ?? 0;
+  const totalCnhVencida = metricasApi?.alertas.motoristas_cnh_vencida ?? 0;
 
-  const temCnhIrregular = dados.motoristasIrregulares.length > 0;
+  const temCnhIrregular = totalCnhVencida > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -144,7 +124,20 @@ export default function HomePage() {
         </Alert>
       )}
 
-      {/* 2. Indicadores Operacionais Executivos (KPIs integrados) */}
+      {/* Alerta de Erro na Comunicação de Métricas */}
+      {erroMetricas && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={18} className="shrink-0" />
+            <span>{erroMetricas}</span>
+          </div>
+          <Button size="sm" variant="outline" onClick={carregarDados} className="shrink-0">
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+
+      {/* 2. Indicadores Operacionais Executivos (KPIs integrados à API REST) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           label="Solicitações pendentes"
@@ -178,12 +171,12 @@ export default function HomePage() {
           value={totalAlertas}
           tone="danger"
           icon={<AlertTriangle size={20} className="text-rose-600" />}
-          subtitle={`${dados.veiculosManutencao.length} manutenção • ${dados.motoristasIrregulares.length} CNH`}
+          subtitle={`${totalVeiculosManutencao} manutenção • ${totalCnhVencida} CNH`}
           onClick={() => navigate('/veiculos')}
         />
       </div>
 
-      {/* 2. Ações Rápidas (Atalhos Funcionais com Micro-interações) */}
+      {/* 3. Ações Rápidas (Atalhos Funcionais com Micro-interações) */}
       <div className="flex flex-col">
         <div className="mb-3 text-xs font-bold tracking-wider text-text-muted uppercase">
           Ações Rápidas
@@ -222,7 +215,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* 3. Painéis Principais: Fila de Decisão & Regularidade */}
+      {/* 4. Painéis Principais: Fila de Decisão & Regularidade */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Painel: Fila de Aprovação */}
         <Card className="flex flex-col p-5">
@@ -233,12 +226,25 @@ export default function HomePage() {
                 Fila de Aprovação
               </h2>
             </div>
-            <Badge tone={dados.pendentes.length > 0 ? 'warning' : 'neutral'}>
-              {dados.pendentes.length} pendente{dados.pendentes.length !== 1 ? 's' : ''}
+            <Badge tone={solicitacoesPendentes.length > 0 ? 'warning' : 'neutral'}>
+              {solicitacoesPendentes.length} pendente{solicitacoesPendentes.length !== 1 ? 's' : ''}
             </Badge>
           </div>
 
-          {dados.pendentes.length === 0 ? (
+          {carregando ? (
+            <div className="flex items-center justify-center px-4 py-8 text-center text-text-muted">
+              <span className="text-sm">Carregando solicitações...</span>
+            </div>
+          ) : erroSolicitacoes ? (
+            <div className="flex flex-col items-center justify-center px-4 py-8 text-center text-text-muted">
+              <AlertTriangle size={32} className="mx-auto mb-2 block text-danger" />
+              <p className="m-0 text-sm font-semibold text-text-strong">Falha na comunicação</p>
+              <span className="mb-3 text-xs">{erroSolicitacoes}</span>
+              <Button size="sm" variant="outline" onClick={carregarDados}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : solicitacoesPendentes.length === 0 ? (
             <div className="px-4 py-8 text-center text-text-muted">
               <CheckCircle2 size={32} className="mx-auto mb-2 block text-success" />
               <p className="m-0 text-sm font-semibold text-text-strong">Fila limpa</p>
@@ -248,7 +254,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {dados.pendentes.slice(0, 4).map((s) => (
+              {solicitacoesPendentes.slice(0, 4).map((s) => (
                 <div
                   key={s.id}
                   className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-alt p-3 transition-all duration-150 hover:border-border-strong hover:bg-surface hover:shadow-xs"
@@ -295,14 +301,14 @@ export default function HomePage() {
             <div className="flex items-center gap-2">
               <ShieldAlert
                 size={18}
-                className={dados.totalAlertas > 0 ? 'text-danger' : 'text-success'}
+                className={totalAlertas > 0 ? 'text-danger' : 'text-success'}
               />
               <h2 className="m-0 font-display text-sm font-semibold text-text sm:text-base">
                 Bloqueios & Regularidade
               </h2>
             </div>
-            {dados.totalAlertas > 0 && (
-              <Badge tone="danger">{dados.totalAlertas} atenção</Badge>
+            {totalAlertas > 0 && (
+              <Badge tone="danger">{totalAlertas} atenção</Badge>
             )}
           </div>
 
@@ -327,9 +333,9 @@ export default function HomePage() {
                     Motoristas com CNH Vencida
                   </div>
                   <div className="mt-0.5 text-xs text-text-muted">
-                    {dados.motoristasIrregulares.length === 0
+                    {totalCnhVencida === 0
                       ? 'Nenhum condutor com restrição de habilitação.'
-                      : `${dados.motoristasIrregulares.length} motorista(s) impedidos de conduzir.`}
+                      : `${totalCnhVencida} motorista(s) impedidos de conduzir.`}
                   </div>
                 </div>
                 <Button
@@ -351,9 +357,9 @@ export default function HomePage() {
                     Veículos em Manutenção
                   </div>
                   <div className="mt-0.5 text-xs text-text-muted">
-                    {dados.veiculosManutencao.length === 0
+                    {totalVeiculosManutencao === 0
                       ? 'Toda a frota operacional ativa no pátio.'
-                      : `${dados.veiculosManutencao.length} veículo(s) retidos para reparo/revisão.`}
+                      : `${totalVeiculosManutencao} veículo(s) retidos para reparo/revisão.`}
                   </div>
                 </div>
                 <Button
@@ -371,15 +377,15 @@ export default function HomePage() {
           <div className="mt-auto border-t border-divider pt-3">
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-text-muted">
-                Deseja consultar os relatórios consolidados?
+                Deseja consultar o cronograma de saídas?
               </span>
               <Button
                 variant="outline"
                 size="sm"
                 className="shrink-0 hover:border-primary hover:bg-primary-soft hover:text-primary active:bg-blue-100"
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/agenda')}
               >
-                Abrir Relatórios
+                Abrir Agenda
               </Button>
             </div>
           </div>
