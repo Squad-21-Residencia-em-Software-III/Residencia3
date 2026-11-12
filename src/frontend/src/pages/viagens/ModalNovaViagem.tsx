@@ -71,6 +71,7 @@ export function ModalNovaViagem({
   const [salvando, setSalvando] = useState(false);
   const [ocupacoes, setOcupacoes] = useState<OcupacaoVeiculoSvo[]>([]);
   const [erroOcupacao, setErroOcupacao] = useState<string | null>(null);
+  const [carregandoOcupacao, setCarregandoOcupacao] = useState(false);
 
   const veiculosFiltrados = veiculosDoTipo(tipoOperacao);
   const motoristasFiltrados = motoristasDoTipo(tipoOperacao);
@@ -92,15 +93,19 @@ export function ModalNovaViagem({
   useEffect(() => {
     if (!isSvo) return;
     let ativo = true;
+    setCarregandoOcupacao(true);
+    setErroOcupacao(null);
     veiculosApi
       .listarOcupacaoSvo()
       .then((dados) => {
         if (!ativo) return;
         setOcupacoes(dados);
-        setErroOcupacao(null);
       })
       .catch((error) => {
         if (ativo) setErroOcupacao(mensagemDeErro(error));
+      })
+      .finally(() => {
+        if (ativo) setCarregandoOcupacao(false);
       });
     return () => {
       ativo = false;
@@ -118,6 +123,11 @@ export function ModalNovaViagem({
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
+
+    if (bloqueioSvo) {
+      setErro(bloqueioSvo);
+      return;
+    }
 
     if (!podeSalvar) {
       setErro('Selecione a solicitação, o veículo e o motorista.');
@@ -225,7 +235,15 @@ export function ModalNovaViagem({
             Não foi possível carregar a ocupação dos veículos: {erroOcupacao}
           </Alert>
         )}
-        {isSvo && ocupacaoDoVeiculo && <OcupacaoVeiculoSvoPainel veiculo={ocupacaoDoVeiculo} />}
+        {isSvo && carregandoOcupacao && (
+          <div className="mt-3.5 flex items-center gap-2 text-xs text-slate-500">
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+            Carregando ocupação dos veículos SVO...
+          </div>
+        )}
+        {isSvo && !carregandoOcupacao && ocupacaoDoVeiculo && (
+          <OcupacaoVeiculoSvoPainel veiculo={ocupacaoDoVeiculo} />
+        )}
 
         <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose}>

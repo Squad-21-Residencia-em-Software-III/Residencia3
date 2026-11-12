@@ -10,6 +10,9 @@ export function motivoBloqueioSvo(veiculo: OcupacaoVeiculoSvo): string | null {
   if (veiculo.status === 'MANUTENCAO') {
     return 'O veículo está em manutenção e não pode receber alocações.';
   }
+  if (veiculo.status === 'EM_USO') {
+    return 'O veículo está em deslocamento e não pode receber novas alocações até a conclusão da ordem.';
+  }
   if (veiculo.vagas_disponiveis <= 0) {
     return `Veículo lotado: ${veiculo.capacidade_utilizada} de ${veiculo.capacidade_maxima} vagas ocupadas. Escolha outro veículo ou aguarde a conclusão de uma ordem em andamento.`;
   }

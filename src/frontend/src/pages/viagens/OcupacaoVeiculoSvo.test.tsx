@@ -35,6 +35,10 @@ describe('motivoBloqueioSvo', () => {
     expect(motivoBloqueioSvo({ ...base, status: 'MANUTENCAO' })).toMatch(/manutenção/i);
   });
 
+  it('bloqueia veículo em deslocamento mesmo com vagas', () => {
+    expect(motivoBloqueioSvo({ ...base, status: 'EM_USO' })).toMatch(/deslocamento/i);
+  });
+
   it('libera quando há vaga e o veículo não está em manutenção', () => {
     expect(motivoBloqueioSvo(base)).toBeNull();
   });
