@@ -1,7 +1,12 @@
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
-import { veiculoModel, type Veiculo, type VeiculoSvoDisponivel } from '../models/veiculoModel';
+import {
+  veiculoModel,
+  type Veiculo,
+  type VeiculoSvoDisponivel,
+  type OcupacaoVeiculoSvo,
+} from '../models/veiculoModel';
 import type { CriarVeiculoInput, AtualizarVeiculoInput } from '../validators/veiculoSchemas';
 
 export const veiculoService = {
@@ -13,6 +18,9 @@ export const veiculoService = {
     return veiculoModel.listarSvoDisponiveis();
   },
 
+  async listarOcupacaoSvo(): Promise<OcupacaoVeiculoSvo[]> {
+    return veiculoModel.listarOcupacaoSvo();
+  },
   async criar(dados: CriarVeiculoInput, autorId: number): Promise<Veiculo> {
     const veiculoExistente = await veiculoModel.buscarPorPlaca(dados.placa);
     if (veiculoExistente) {
