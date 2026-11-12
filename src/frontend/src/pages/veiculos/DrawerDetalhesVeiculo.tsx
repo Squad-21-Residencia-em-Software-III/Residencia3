@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   Fuel,
@@ -6,11 +7,15 @@ import {
   History,
   Pencil,
   Users,
-  Wrench,
 } from 'lucide-react';
 import { Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
 import type { Veiculo } from '../../types/veiculo';
-import { storageService } from '../../services/storageService';
+import type { Manutencao } from '../../types/manutencao';
+import type { Abastecimento } from '../../types/abastecimento';
+import type { Multa } from '../../types/multa';
+import { manutencoesApi } from '../../services/api/manutencoesApi';
+import { abastecimentosApi } from '../../services/api/abastecimentosApi';
+import { multasApi } from '../../services/api/multasApi';
 import { cn } from '../../utils/cn';
 
 interface DrawerDetalhesVeiculoProps {
@@ -40,11 +45,11 @@ function obterBadgeToneStatus(status: string): BadgeTone {
 export function DrawerDetalhesVeiculo({
   veiculo,
   onClose,
-  onAbrirManutencoes,
   onNovoAbastecimento,
   onNovaMulta,
   onEditar,
 }: DrawerDetalhesVeiculoProps) {
+  const navigate = useNavigate();
   // Retém o último estado do veículo para saída suave no fechamento (350ms)
   const [veiculoState, setVeiculoState] = useState<Veiculo | null>(veiculo);
 
@@ -54,15 +59,50 @@ export function DrawerDetalhesVeiculo({
     }
   }, [veiculo]);
 
+  const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
+  const [abastecimentos, setAbastecimentos] = useState<Abastecimento[]>([]);
+  const [multas, setMultas] = useState<Multa[]>([]);
+  const [erroManutencoes, setErroManutencoes] = useState<string | null>(null);
+  const [erroAbastecimentos, setErroAbastecimentos] = useState<string | null>(null);
+  const [erroMultas, setErroMultas] = useState<string | null>(null);
+
+  const carregarDadosHistorico = useCallback(async () => {
+    if (!veiculoState) return;
+    setErroManutencoes(null);
+    setErroAbastecimentos(null);
+    setErroMultas(null);
+
+    const [mRes, aRes, muRes] = await Promise.allSettled([
+      manutencoesApi.listarPorVeiculo(veiculoState.id),
+      abastecimentosApi.listarPorVeiculo(veiculoState.id),
+      multasApi.listar(),
+    ]);
+
+    if (mRes.status === 'fulfilled') {
+      setManutencoes(mRes.value);
+    } else {
+      setErroManutencoes('Falha ao consultar histórico de manutenções.');
+    }
+
+    if (aRes.status === 'fulfilled') {
+      setAbastecimentos(aRes.value);
+    } else {
+      setErroAbastecimentos('Falha ao consultar abastecimentos do veículo.');
+    }
+
+    if (muRes.status === 'fulfilled') {
+      setMultas(muRes.value.filter((m) => m.veiculo_id === veiculoState.id));
+    } else {
+      setErroMultas('Falha ao consultar multas do veículo.');
+    }
+  }, [veiculoState]);
+
+  useEffect(() => {
+    carregarDadosHistorico();
+  }, [carregarDadosHistorico]);
+
   const dadosVeiculo = useMemo(() => {
     if (!veiculoState) return null;
-    const manutencoes = storageService.getManutencoesPorVeiculo(veiculoState.id);
-    const abastecimentos = storageService
-      .getAbastecimentos()
-      .filter((a) => a.veiculo_placa === veiculoState.placa);
-    const multas = storageService
-      .getMultas()
-      .filter((m) => m.veiculo_placa === veiculoState.placa);
 
     const totalGastoManutencao = manutencoes.reduce((acc, m) => acc + Number(m.custo || 0), 0);
     const totalGastoCombustivel = abastecimentos.reduce(
@@ -83,7 +123,7 @@ export function DrawerDetalhesVeiculo({
       ultimasManutencoes,
       ultimosAbastecimentos,
     };
-  }, [veiculoState]);
+  }, [veiculoState, manutencoes, abastecimentos, multas]);
 
   if (!veiculoState) return null;
 
@@ -152,41 +192,29 @@ export function DrawerDetalhesVeiculo({
           <div className="mb-2.5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
             Ações Rápidas do Veículo
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <Button
               variant="outline"
               size="sm"
-              className="justify-center border-slate-200 hover:border-primary hover:bg-blue-50/70 hover:text-primary text-xs"
-              onClick={() => {
-                onClose();
-                onAbrirManutencoes?.(veiculoState);
-              }}
-            >
-              <Wrench size={13} className="mr-1.5 text-primary" /> Manutenções
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="justify-center border-slate-200 hover:border-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 text-xs"
+              className="justify-center"
               onClick={() => {
                 onClose();
                 onNovoAbastecimento?.(veiculoState);
               }}
             >
-              <Fuel size={13} className="mr-1.5 text-emerald-600" /> Abastecer
+              <Fuel size={14} className="mr-1.5 text-primary" /> Registrar Abastecimento
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="justify-center border-slate-200 hover:border-rose-600 hover:bg-rose-50 hover:text-rose-700 text-xs"
+              className="justify-center"
               onClick={() => {
                 onClose();
                 onNovaMulta?.(veiculoState);
               }}
             >
-              <AlertTriangle size={13} className="mr-1.5 text-rose-600" /> Multa
+              <AlertTriangle size={14} className="mr-1.5 text-danger" /> Registrar Multa
             </Button>
           </div>
         </div>
@@ -224,28 +252,40 @@ export function DrawerDetalhesVeiculo({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="text-xs text-text-muted">Gasto em Manutenção</div>
-              <div className="mt-0.5 font-display text-base font-bold text-primary">
-                {dadosVeiculo?.totalGastoManutencao.toLocaleString('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                })}
-              </div>
-              <div className="text-[11px] text-slate-400">
-                {dadosVeiculo?.manutencoes.length ?? 0} ordens registradas
-              </div>
+              {erroManutencoes ? (
+                <div className="mt-0.5 text-xs text-danger font-medium">{erroManutencoes}</div>
+              ) : (
+                <>
+                  <div className="mt-0.5 font-display text-base font-bold text-primary">
+                    {dadosVeiculo?.totalGastoManutencao.toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    })}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {dadosVeiculo?.manutencoes.length ?? 0} ordens registradas
+                  </div>
+                </>
+              )}
             </div>
 
             <div>
               <div className="text-xs text-text-muted">Gasto em Combustível</div>
-              <div className="mt-0.5 font-display text-base font-bold text-emerald-700">
-                {dadosVeiculo?.totalGastoCombustivel.toLocaleString('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                })}
-              </div>
-              <div className="text-[11px] text-slate-400">
-                {dadosVeiculo?.abastecimentos.length ?? 0} abastecimentos
-              </div>
+              {erroAbastecimentos ? (
+                <div className="mt-0.5 text-xs text-danger font-medium">{erroAbastecimentos}</div>
+              ) : (
+                <>
+                  <div className="mt-0.5 font-display text-base font-bold text-emerald-700">
+                    {dadosVeiculo?.totalGastoCombustivel.toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    })}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {dadosVeiculo?.abastecimentos.length ?? 0} abastecimentos
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -256,21 +296,30 @@ export function DrawerDetalhesVeiculo({
             <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
               <History size={13} /> Últimas Manutenções
             </div>
-            {onAbrirManutencoes && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onAbrirManutencoes(veiculoState);
-                }}
-                className="cursor-pointer text-xs font-semibold text-primary hover:underline"
-              >
-                Ver todas ({dadosVeiculo?.manutencoes.length ?? 0})
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                navigate('/manutencoes');
+              }}
+              className="cursor-pointer text-xs font-semibold text-primary hover:underline"
+            >
+              Ver todas na aba de manutenções ({dadosVeiculo?.manutencoes.length ?? 0})
+            </button>
           </div>
 
-          {!dadosVeiculo?.ultimasManutencoes.length ? (
+          {erroManutencoes ? (
+            <div className="rounded-lg border border-danger/30 bg-danger-soft p-3 text-center text-xs text-danger">
+              <p className="m-0 font-medium">{erroManutencoes}</p>
+              <button
+                type="button"
+                onClick={carregarDadosHistorico}
+                className="mt-1 font-semibold underline cursor-pointer"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          ) : !dadosVeiculo?.ultimasManutencoes.length ? (
             <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-text-muted">
               Nenhuma manutenção registrada para este veículo.
             </div>
@@ -328,6 +377,18 @@ export function DrawerDetalhesVeiculo({
         </div>
 
         {/* 5. Alertas & Multas Pendentes (se houver) */}
+        {erroMultas && (
+          <div className="rounded-xl border border-danger/30 bg-danger-soft p-3 text-xs text-danger flex items-center justify-between">
+            <span>{erroMultas}</span>
+            <button
+              type="button"
+              onClick={carregarDadosHistorico}
+              className="font-semibold underline cursor-pointer"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
         {dadosVeiculo && dadosVeiculo.multasPendentes.length > 0 && (
           <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-4">
             <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">

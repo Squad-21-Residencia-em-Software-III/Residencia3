@@ -11,8 +11,8 @@ import {
 
 export const viagemController = {
   async listar(req: Request, res: Response): Promise<void> {
-    const autor = usuarioAutenticado(req);
-    res.json(await viagemService.listar(autor.perfil));
+  const autor = usuarioAutenticado(req);
+  res.json(await viagemService.listar(autor));
   },
 
   async criar(req: Request, res: Response): Promise<void> {

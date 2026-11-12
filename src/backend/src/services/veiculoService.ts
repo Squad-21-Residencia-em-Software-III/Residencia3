@@ -7,7 +7,7 @@ import {
   type VeiculoSvoDisponivel,
   type OcupacaoVeiculoSvo,
 } from '../models/veiculoModel';
-import type { CriarVeiculoInput } from '../validators/veiculoSchemas';
+import type { CriarVeiculoInput, AtualizarVeiculoInput } from '../validators/veiculoSchemas';
 
 export const veiculoService = {
   async listar(): Promise<Veiculo[]> {
@@ -21,7 +21,6 @@ export const veiculoService = {
   async listarOcupacaoSvo(): Promise<OcupacaoVeiculoSvo[]> {
     return veiculoModel.listarOcupacaoSvo();
   },
-
   async criar(dados: CriarVeiculoInput, autorId: number): Promise<Veiculo> {
     const veiculoExistente = await veiculoModel.buscarPorPlaca(dados.placa);
     if (veiculoExistente) {
@@ -41,6 +40,45 @@ export const veiculoService = {
       );
 
       return veiculo;
+    });
+  },
+
+  async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number): Promise<Veiculo> {
+    const veiculo = await veiculoModel.buscarPorId(id);
+    if (!veiculo) {
+      throw new AppError('Veículo não encontrado', 404);
+    }
+
+    const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
+    const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
+
+    if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
+      throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);
+    }
+
+    if (dados.placa && dados.placa !== veiculo.placa) {
+      const comPlaca = await veiculoModel.buscarPorPlaca(dados.placa);
+      if (comPlaca) {
+        throw new AppError('Já existe um veículo cadastrado com essa placa', 409);
+      }
+    }
+
+    return db.transaction(async (trx) => {
+      const atualizado = await veiculoModel.atualizarVeiculo(id, dados, trx);
+      if (!atualizado) {
+        throw new AppError('Erro ao atualizar veículo', 500);
+      }
+
+      await auditoriaModel.registrar(
+        {
+          usuario_id: autorId,
+          acao: `ATUALIZOU_VEICULO id=${id} placa=${atualizado.placa}`,
+          modulo: MODULOS_AUDITORIA.VEICULOS ?? 'VEICULOS',
+        },
+        trx
+      );
+
+      return atualizado;
     });
   },
 };

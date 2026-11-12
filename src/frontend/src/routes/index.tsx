@@ -1,11 +1,12 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
-import { ClipboardCheck, Wrench } from 'lucide-react'
+import { ClipboardCheck, ScrollText, Wrench } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
 import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
+import AuditoriaPage from '../pages/AuditoriaPage'
 import EquipePage from '../pages/EquipePage'
 import ForbiddenPage from '../pages/ForbiddenPage'
 import HomePage from '../pages/HomePage'
@@ -18,9 +19,9 @@ import SobreNosPage from '../pages/SobreNosPage'
 import SolicitacoesPage from '../pages/SolicitacoesPage'
 import VeiculosPage from '../pages/VeiculosPage'
 import ViagensPage from '../pages/ViagensPage'
-import { LABELS_PERFIS } from '../types/usuario'
+import { LABELS_PERFIS, PERFIS } from '../types/usuario'
 import type { Perfil } from '../types/usuario'
-import { RotaProtegida, RotaPublica } from './guards'
+import { RotaPorPerfil, RotaProtegida, RotaPublica } from './guards'
 
 type NavItemComPerfil = NavItem & { perfis?: Perfil[] }
 
@@ -42,6 +43,13 @@ export const navItems: NavItemComPerfil[] = [
 
   // ADMINISTRAÇÃO
   { path: '/equipe', label: 'Equipe', icon: UsersIcon, section: 'Administração' },
+  {
+    path: '/auditoria',
+    label: 'Auditoria',
+    icon: ScrollText,
+    section: 'Administração',
+    perfis: [PERFIS.ADMINISTRADOR],
+  },
 ]
 
 function LayoutRoute() {
@@ -91,6 +99,11 @@ export function AppRoutes() {
           <Route path="/multas" element={<MultasPage />} />
           <Route path="/equipe" element={<EquipePage />} />
           <Route path="/sobre" element={<SobreNosPage />} />
+
+          {/* Só administrador (o backend também bloqueia com 403) */}
+          <Route element={<RotaPorPerfil perfis={[PERFIS.ADMINISTRADOR]} />}>
+            <Route path="/auditoria" element={<AuditoriaPage />} />
+          </Route>
 
           {/* Redirecionamentos de rotas legadas para a nova arquitetura */}
           <Route path="/motoristas" element={<Navigate to="/equipe?aba=motoristas" replace />} />
