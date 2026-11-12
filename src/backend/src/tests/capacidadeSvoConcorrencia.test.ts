@@ -263,11 +263,21 @@ beforeEach(() => {
     motoristas: [{ id: 20, tipo_motorista: 'SVO', status: 'DESIGNADO', validade_cnh: '2099-12-31' }],
     solicitacoes_svo: [
       { id: 7, status: 'EM_ANDAMENTO' },
-      { id: 8, status: 'EM_TRIAGEM' },
+      // Confirmada na triagem (BL27): a ordem já existe e aguarda alocação
+      { id: 8, status: 'CONFIRMADA' },
     ],
     // 2 das 4 vagas já ocupadas
     ordens_svo: [
       { id: 1, solicitacao_id: 7, veiculo_id: 10, motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA' },
+      {
+        id: 2,
+        solicitacao_id: 8,
+        veiculo_id: null,
+        motorista_id: null,
+        equipe_id: null,
+        capacidade_utilizada: 1,
+        status: 'AGUARDANDO_ALOCACAO',
+      },
     ],
     equipes_svo: [],
     viagens_frota: [],
@@ -289,7 +299,7 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     await darVez();
 
     // A edição (trx2) está bloqueada na trava: não leu a ocupação nem gravou nada
-    expect(banco.eventos).toEqual(['trx1:travou veiculo 10', 'trx1:insert ordens_svo', 'trx1:update veiculos', 'trx1:update motoristas', 'trx1:update solicitacoes_svo']);
+    expect(banco.eventos).toEqual(['trx1:travou veiculo 10', 'trx1:update ordens_svo', 'trx1:update veiculos', 'trx1:update motoristas', 'trx1:update solicitacoes_svo']);
     expect(capacidade()).toBe(4);
 
     // 3. A alocação termina; a edição prossegue com o estado atual (4 vagas ocupadas)
@@ -317,9 +327,9 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     const alocacao = novaAlocacao().catch((erro) => erro);
     await darVez();
 
-    // A alocação (trx2) está bloqueada na trava do veículo: nenhuma ordem foi criada
+    // A alocação (trx2) está bloqueada na trava do veículo: a ordem segue aguardando alocação
     expect(banco.eventos).toEqual(['trx1:travou veiculo 10', 'trx1:soma ordens_svo', 'trx1:update veiculos']);
-    expect(banco.tabelas.ordens_svo).toHaveLength(1);
+    expect(banco.tabelas.ordens_svo.find((o) => o.id === 2)).toMatchObject({ status: 'AGUARDANDO_ALOCACAO', veiculo_id: null });
 
     // 3. A edição termina; a alocação vê capacidade 2 com 2 vagas já ocupadas
     liberar();

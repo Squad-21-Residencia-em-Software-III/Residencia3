@@ -7,6 +7,9 @@ export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO
 
 export type StatusSolicitacaoSvo = (typeof STATUS_SOLICITACAO_SVO)[number];
 
+// Ordens de coleta que ainda ocupam a solicitação (BL27)
+export const ORDENS_SVO_ATIVAS = ['AGUARDANDO_ALOCACAO', 'ALOCADA', 'EM_DESLOCAMENTO'];
+
 export interface NovaSolicitacaoSvo {
   registrante_id: number;
   dados_solicitante: string;
@@ -17,6 +20,18 @@ export interface NovaSolicitacaoSvo {
 
 export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
   id: number;
+  confirmado_por?: number | null;
+  confirmado_em?: Date | null;
+}
+
+export interface OrdemSvo {
+  id: number;
+  solicitacao_id: number;
+  status: 'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+  veiculo_id: number | null;
+  motorista_id: number | null;
+  equipe_id: number | null;
+  capacidade_utilizada: number;
 }
 
 export const solicitacaoSvoModel = {
@@ -48,5 +63,39 @@ export const solicitacaoSvoModel = {
 
   async buscarPorId(id: number): Promise<SolicitacaoSvo | undefined> {
     return db('solicitacoes_svo').where({ id }).first();
+  },
+
+  async buscarParaAtualizar(id: number, trx: Knex.Transaction): Promise<SolicitacaoSvo | undefined> {
+    return trx<SolicitacaoSvo>('solicitacoes_svo').where({ id }).forUpdate().first();
+  },
+
+  async buscarOrdemAtiva(solicitacaoId: number, conexao: Knex = db): Promise<OrdemSvo | undefined> {
+    return conexao<OrdemSvo>('ordens_svo')
+      .where({ solicitacao_id: solicitacaoId })
+      .whereIn('status', ORDENS_SVO_ATIVAS)
+      .first();
+  },
+
+  async confirmar(id: number, autorId: number, trx: Knex.Transaction): Promise<SolicitacaoSvo> {
+    const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
+      .where({ id })
+      .update({ status: 'CONFIRMADA', confirmado_por: autorId, confirmado_em: trx.fn.now() })
+      .returning('*');
+    return solicitacao!;
+  },
+
+  // A ordem nasce sem recursos; veículo, motorista e equipe são definidos na alocação (BL28)
+  async gerarOrdem(solicitacaoId: number, trx: Knex.Transaction): Promise<OrdemSvo> {
+    const [ordem] = await trx<OrdemSvo>('ordens_svo')
+      .insert({
+        solicitacao_id: solicitacaoId,
+        status: 'AGUARDANDO_ALOCACAO',
+        veiculo_id: null,
+        motorista_id: null,
+        equipe_id: null,
+        capacidade_utilizada: 1,
+      })
+      .returning('*');
+    return ordem!;
   },
 };
