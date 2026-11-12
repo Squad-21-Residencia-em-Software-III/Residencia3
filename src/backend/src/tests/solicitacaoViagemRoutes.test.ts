@@ -77,6 +77,20 @@ describe('POST /api/solicitacoes-viagem', () => {
     ).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['ausente', undefined],
+    ['vazio', ''],
+    ['só com espaços', '   '],
+  ])('deve retornar 400 quando o destino estiver %s', async (_caso, destino) => {
+    const resposta = await request(app)
+      .post(endpoint)
+      .set('Authorization', 'Bearer token-teste')
+      .send({ ...dadosValidos, destino });
+
+    expect(resposta.status).toBe(400);
+    expect(solicitacaoViagemService.criar).not.toHaveBeenCalled();
+  });
+
   it('deve retornar 400 quando a unidade não for informada', async () => {
     const { unidade_id: _ignorada, ...semUnidade } = dadosValidos;
 

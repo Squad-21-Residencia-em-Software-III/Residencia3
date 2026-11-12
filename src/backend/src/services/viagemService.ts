@@ -35,6 +35,7 @@ const OPERACOES = {
     colunaSaida: 'data_hora_efetiva_saida',
     colunaChegada: 'data_hora_efetiva_chegada',
     tabelaSolicitacao: 'solicitacoes_viagem',
+    colunaDestino: 'destino',
     solicitacaoAtendida: 'AGENDADA',
     solicitacaoConcluida: 'CONCLUIDA',
     solicitacaoReaberta: 'APROVADA',
@@ -46,6 +47,7 @@ const OPERACOES = {
     colunaSaida: 'data_hora_saida',
     colunaChegada: 'data_hora_conclusao',
     tabelaSolicitacao: 'solicitacoes_svo',
+    colunaDestino: 'local_ocorrencia',
     solicitacaoAtendida: 'EM_ANDAMENTO',
     solicitacaoConcluida: 'CONCLUIDA',
     solicitacaoReaberta: 'EM_TRIAGEM',
@@ -408,6 +410,15 @@ export const viagemService = {
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
       if (viagem.status !== operacao.agendada) {
         throw new AppError('Apenas viagens agendadas podem ser iniciadas', 400);
+      }
+
+      // A saída só pode ser registrada com destino definido (BL18), independentemente da interface
+      const solicitacao = await trx(operacao.tabelaSolicitacao)
+        .where({ id: viagem.solicitacao_id })
+        .first(operacao.colunaDestino);
+      const destino = solicitacao?.[operacao.colunaDestino];
+      if (typeof destino !== 'string' || destino.trim() === '') {
+        throw new AppError('Informe o destino antes de registrar a saída do veículo', 400);
       }
 
       // Valida veiculo e quilometragem
