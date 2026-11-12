@@ -39,6 +39,7 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onConfirmada }: Drawe
 
   // Só a resposta da solicitação aberta por último é aplicada
   const ultimaConsulta = useRef(0);
+  const ultimaConfirmacao = useRef(0);
 
   const carregar = useCallback(async (id: number) => {
     const consulta = ++ultimaConsulta.current;
@@ -57,30 +58,45 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onConfirmada }: Drawe
   }, []);
 
   useEffect(() => {
+    ++ultimaConsulta.current;
+    ++ultimaConfirmacao.current;
     setDetalhe(null);
+    setErroCarga(null);
     setErroConfirmacao(null);
     setConfirmadaAgora(false);
     setDialogoAberto(false);
+    setEnviando(false);
     if (solicitacaoId !== null) void carregar(solicitacaoId);
   }, [solicitacaoId, carregar]);
 
   async function confirmar() {
     if (!detalhe || enviando) return;
+
+    const id = detalhe.id;
+    const confirmacao = ++ultimaConfirmacao.current;
     setEnviando(true);
     setErroConfirmacao(null);
+
     try {
-      const { solicitacao, ordem } = await solicitacoesSvoApi.confirmar(detalhe.id);
-      // A ordem exibida é sempre a devolvida pela API, nunca montada na tela
+      const { solicitacao, ordem } = await solicitacoesSvoApi.confirmar(id);
+      if (confirmacao !== ultimaConfirmacao.current) return;
+
+      // A ordem exibida é sempre a devolvida pela API
       setDetalhe({ ...solicitacao, ordem });
       setConfirmadaAgora(true);
       onConfirmada();
     } catch (error) {
+      if (confirmacao !== ultimaConfirmacao.current) return;
+
       setErroConfirmacao(mensagemDeErro(error));
-      // 409: a solicitação mudou (ex.: confirmada por outra pessoa); mostra o estado atual
-      if (error instanceof ApiError && error.status === 409) void carregar(detalhe.id);
+      if (error instanceof ApiError && error.status === 409) {
+        void carregar(id);
+      }
     } finally {
-      setEnviando(false);
-      setDialogoAberto(false);
+      if (confirmacao === ultimaConfirmacao.current) {
+        setEnviando(false);
+        setDialogoAberto(false);
+      }
     }
   }
 

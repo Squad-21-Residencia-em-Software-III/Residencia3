@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import TriagemSvoPage from './TriagemSvoPage';
+import { DrawerTriagemSvo } from './triagemSvo/DrawerTriagemSvo';
 import { solicitacoesSvoApi } from '../services/api/solicitacoesSvoApi';
 import { ApiError } from '../services/api/http';
 import type {
@@ -234,6 +235,58 @@ describe('TriagemSvoPage', () => {
       within(painel).queryByRole('button', { name: 'Confirmar e gerar ordem' }),
     ).not.toBeInTheDocument();
     expect(api.buscarPorId).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignora confirmacao anterior ao trocar de solicitacao', async () => {
+    api.buscarPorId.mockImplementation(async (id) => ({
+      ...solicitacao(id),
+      ordem: null,
+    }));
+
+    let resolver!: (valor: ConfirmacaoSvo) => void;
+    api.confirmar.mockImplementation(
+      () => new Promise<ConfirmacaoSvo>((resolve) => {
+        resolver = resolve;
+      }),
+    );
+
+    const onConfirmada = vi.fn();
+    const onClose = vi.fn();
+
+    const { rerender } = render(
+      <DrawerTriagemSvo solicitacaoId={7} onClose={onClose} onConfirmada={onConfirmada} />,
+    );
+
+    const painel = await screen.findByRole('dialog');
+    expect(await within(painel).findByText('Familiar 7 - (79) 99999-0000')).toBeInTheDocument();
+
+    await userEvent.click(
+      within(painel).getByRole('button', { name: 'Confirmar e gerar ordem' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    expect(api.confirmar).toHaveBeenCalledWith(7);
+
+    rerender(
+      <DrawerTriagemSvo solicitacaoId={8} onClose={onClose} onConfirmada={onConfirmada} />,
+    );
+
+    expect(await within(painel).findByText('Familiar 8 - (79) 99999-0000')).toBeInTheDocument();
+
+    await act(async () => {
+      resolver({
+        solicitacao: solicitacao(7, { status: 'CONFIRMADA' }),
+        ordem: ordem(31, 7),
+      });
+    });
+
+    expect(within(painel).getByText('Familiar 8 - (79) 99999-0000')).toBeInTheDocument();
+    expect(within(painel).queryByText('Ordem #31')).not.toBeInTheDocument();
+    expect(within(painel).queryByText('Solicitação confirmada')).not.toBeInTheDocument();
+    expect(
+      within(painel).getByRole('button', { name: 'Confirmar e gerar ordem' }),
+    ).toBeEnabled();
+    expect(onConfirmada).not.toHaveBeenCalled();
   });
 
   it('solicitação que não está em triagem não pode ser confirmada', async () => {
