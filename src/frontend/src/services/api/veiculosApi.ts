@@ -1,8 +1,10 @@
-import type { NovoVeiculoInput, Veiculo } from '../../types/veiculo';
+import type { NovoVeiculoInput, OcupacaoVeiculoSvo, Veiculo } from '../../types/veiculo';
 import { request } from './http';
 
 export const veiculosApi = {
   listar: () => request<Veiculo[]>('GET', '/veiculos'),
+
+  listarOcupacaoSvo: () => request<OcupacaoVeiculoSvo[]>('GET', '/veiculos/svo/ocupacao'),
 
   criar: (dados: NovoVeiculoInput) => request<Veiculo>('POST', '/veiculos', { body: dados }),
 

@@ -17,3 +17,14 @@ export interface Veiculo {
 }
 
 export type NovoVeiculoInput = Omit<Veiculo, 'id' | 'status'>;
+
+/** Resposta de GET /veiculos/svo/ocupacao: ocupação atual dos veículos SVO (BL30). */
+export interface OcupacaoVeiculoSvo {
+  id: number;
+  placa: string;
+  modelo: string;
+  capacidade_maxima: number;
+  status: StatusVeiculo;
+  capacidade_utilizada: number; // soma das ordens SVO ALOCADA/EM_DESLOCAMENTO
+  vagas_disponiveis: number; // capacidade_maxima - capacidade_utilizada
+}
