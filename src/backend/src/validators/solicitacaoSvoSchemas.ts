@@ -34,5 +34,11 @@ export const listarSolicitacoesSvoQuerySchema = z.object({
     .optional(),
 });
 
+// Estado, autor e data da confirmação são definidos exclusivamente no servidor
+export const confirmarSolicitacaoSvoSchema = z.strictObject(
+  {},
+  { error: 'A confirmação não aceita campos no corpo da requisição' },
+);
+
 export type CriarSolicitacaoSvoInput = z.infer<typeof criarSolicitacaoSvoSchema>;
 export type ListarSolicitacoesSvoInput = z.infer<typeof listarSolicitacoesSvoQuerySchema>;

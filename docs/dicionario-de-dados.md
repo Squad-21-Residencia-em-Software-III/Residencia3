@@ -110,6 +110,7 @@ Pedidos de deslocação da frota administrativa.
 | `motivo_recusa` | Text | NULLABLE | Justificativa gravada na recusa da solicitação (migration 20261104133113). |
 
 ## 10. Tabela: `solicitacoes_svo`
+
 Triagem de pedidos para o Serviço de Verificação de Óbitos.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
@@ -123,6 +124,10 @@ Triagem de pedidos para o Serviço de Verificação de Óbitos.
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'EM_TRIAGEM' | CHECK: `EM_TRIAGEM`, `CONFIRMADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `RECUSADA`, `CANCELADA`. |
 | `motivo_recusa` | Text | NULLABLE | Justificativa quando a solicitação é recusada na triagem (ex.: encaminhamento ao IML). |
 | `criado_em` | Timestamptz | NOT NULL, DEFAULT now() | Data e hora do registo do chamado para ordenação da fila e cálculo de SLA. |
+| `confirmado_por` | Integer | NULLABLE, FOREIGN KEY | Usuário que realizou a última confirmação (RESTRICT). Nulo em dados legados e limpo quando a solicitação volta à triagem. |
+| `confirmado_em` | Timestamptz | NULLABLE | Horário da última confirmação, definido pelo banco. Nulo em dados legados e limpo quando a solicitação volta à triagem. |
+
+Veja o [contrato BL27](bl27-triagem-confirmacao-svo.md) para confirmação e geração automática da ordem.
 
 ## 11. Tabela: `escalas_svo`
 Planeamento de horários das equipas SVO.
@@ -182,7 +187,10 @@ Execução efetiva das deslocações administrativas aprovadas.
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'AGENDADA' | CHECK: `AGENDADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `CANCELADA`. |
 
 ## 15. Tabela: `ordens_svo`
-Alocação e execução de chamadas do Serviço de Verificação de Óbitos.
+Geração, alocação e execução de chamadas do Serviço de Verificação de Óbitos.
+Só pode existir uma ordem ativa (`AGUARDANDO_ALOCACAO`, `ALOCADA` ou
+`EM_DESLOCAMENTO`) por solicitação. Ordens aguardando alocação não possuem
+veículo, motorista ou equipe; alocadas/em deslocamento exigem veículo e motorista.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
 | :--- | :--- | :--- | :--- |
@@ -192,12 +200,12 @@ Alocação e execução de chamadas do Serviço de Verificação de Óbitos.
 | `motorista_id` | Integer | FOREIGN KEY | Condutor do SVO (RESTRICT). |
 | `equipe_id` | Integer | FOREIGN KEY | Profissionais alocados (RESTRICT). |
 | `capacidade_utilizada`| Integer | NOT NULL, DEFAULT 1 | CHECK: `> 0`. |
-| `data_hora_chamado` | Timestamptz | DEFAULT now() | Momento da ativação da equipa (com fuso horário). |
+| `data_hora_chamado` | Timestamptz | DEFAULT now() | Momento de geração da ordem (com fuso horário). |
 | `data_hora_saida` | Timestamptz | NULLABLE | Momento de início do deslocamento (com fuso horário). |
 | `data_hora_conclusao`| Timestamptz | NULLABLE, CHECK: `>= data_hora_saida` | Regresso e término da operação (com fuso horário). |
 | `km_inicial` | Integer | NULLABLE | CHECK: `>= 0`. |
 | `km_final` | Integer | NULLABLE | CHECK: `>= km_inicial`. |
-| `status` | Varchar(30) | NOT NULL, DEFAULT 'ALOCADA' | CHECK: `ALOCADA`, `EM_DESLOCAMENTO`, `CONCLUIDA`, `CANCELADA`. |
+| `status` | Varchar(30) | NOT NULL, DEFAULT 'AGUARDANDO_ALOCACAO' | CHECK: `AGUARDANDO_ALOCACAO`, `ALOCADA`, `EM_DESLOCAMENTO`, `CONCLUIDA`, `CANCELADA`. |
 
 ## 16. Tabela: `unidades`
 Unidades da FSPH disponíveis para encaminhamento e gestão de solicitações (BL15).

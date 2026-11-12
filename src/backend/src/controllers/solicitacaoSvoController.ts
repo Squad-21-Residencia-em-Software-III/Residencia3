@@ -3,6 +3,7 @@ import { usuarioAutenticado } from '../middlewares/autenticar';
 import { solicitacaoSvoService } from '../services/solicitacaoSvoService';
 import { idParamSchema } from '../validators/comuns';
 import {
+  confirmarSolicitacaoSvoSchema,
   criarSolicitacaoSvoSchema,
   listarSolicitacoesSvoQuerySchema,
 } from '../validators/solicitacaoSvoSchemas';
@@ -25,5 +26,13 @@ export const solicitacaoSvoController = {
   async buscarPorId(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
     res.json(await solicitacaoSvoService.buscarPorId(id));
+  },
+
+  // 201 quando a ordem é gerada agora; 200 quando a confirmação já tinha sido feita
+  async confirmar(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    confirmarSolicitacaoSvoSchema.parse(req.body ?? {});
+    const { criada, ...resultado } = await solicitacaoSvoService.confirmar(id, usuarioAutenticado(req));
+    res.status(criada ? 201 : 200).json(resultado);
   },
 };

@@ -280,7 +280,7 @@ describe('Rotas de Solicitações SVO (/api/solicitacoes-svo)', () => {
   });
   describe('GET /api/solicitacoes-svo/:id', () => {
     it('retorna a solicitação', async () => {
-      vi.mocked(solicitacaoSvoService.buscarPorId).mockResolvedValueOnce(solicitacaoRegistrada);
+      vi.mocked(solicitacaoSvoService.buscarPorId).mockResolvedValueOnce({ ...solicitacaoRegistrada, ordem: null });
 
       const resposta = await request(app).get('/api/solicitacoes-svo/10').set('Authorization', token);
 

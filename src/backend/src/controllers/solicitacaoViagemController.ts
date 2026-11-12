@@ -36,6 +36,13 @@ export const solicitacaoViagemController = {
     res.json(await solicitacaoViagemService.listar(analista, filtros));
   },
 
+  async listarMinhas(req: Request, res: Response): Promise<void> {
+    const filtros = listarSolicitacoesViagemSchema.parse(req.query);
+    const solicitante = usuarioAutenticado(req);
+
+    res.json(await solicitacaoViagemService.listarMinhas(solicitante.id, filtros));
+  },
+
   async aprovar(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
     const gestor = usuarioAutenticado(req);

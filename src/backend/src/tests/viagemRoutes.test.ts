@@ -6,6 +6,7 @@ import { app } from '../app';
 import { authService } from '../services/authService';
 import { viagemService } from '../services/viagemService';
 import { PERFIS, type Perfil } from '../constants/perfis';
+import { AppError } from '../errors/AppError';
 
 vi.mock('../services/authService', () => ({
   authService: {
@@ -120,10 +121,10 @@ describe('Rotas de viagens', () => {
     );
   });
 
-  it('POST /api/viagens deve aplicar a capacidade padrão na ordem SVO', async () => {
+  it('POST /api/viagens deve alocar ordem SVO com capacidade padrão e retornar 200', async () => {
     autenticarComo(PERFIS.GESTOR_SVO);
 
-    await request(app)
+    const resposta = await request(app)
       .post('/api/viagens')
       .set('Authorization', token)
       .send({
@@ -133,6 +134,7 @@ describe('Rotas de viagens', () => {
         motorista_id: 3,
       });
 
+    expect(resposta.status).toBe(200);
     expect(viagemService.criar).toHaveBeenCalledWith(
       expect.objectContaining({
         tipo_operacao: 'SVO',
@@ -180,6 +182,31 @@ describe('Rotas de viagens', () => {
       1000,
       expect.anything()
     );
+  });
+
+  // BL17: a quilometragem final é validada na API, não só na interface
+  it.each([{}, { km_final: -1 }, { km_final: 1050.5 }, { km_final: '1050' }, { km_final: null }])(
+    'PATCH /api/viagens/:id/finalizar deve rejeitar km_final inválido: %j',
+    async (corpo) => {
+      const resposta = await request(app).patch('/api/viagens/5/finalizar').set('Authorization', token).send(corpo);
+
+      expect(resposta.status).toBe(400);
+      expect(viagemService.finalizarViagem).not.toHaveBeenCalled();
+    }
+  );
+
+  it('PATCH /api/viagens/:id/finalizar deve devolver o erro de km final menor que o inicial', async () => {
+    vi.mocked(viagemService.finalizarViagem).mockRejectedValueOnce(
+      new AppError('O km final não pode ser menor que o km inicial (1000)', 400)
+    );
+
+    const resposta = await request(app)
+      .patch('/api/viagens/5/finalizar')
+      .set('Authorization', token)
+      .send({ km_final: 999 });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body).toEqual({ erro: 'O km final não pode ser menor que o km inicial (1000)' });
   });
 
   it('PATCH /api/viagens/:id/finalizar deve repassar o tipo informado', async () => {

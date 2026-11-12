@@ -103,15 +103,15 @@ describe('disponibilidadeService.consultar', () => {
   it('deve considerar o fim do dia da saída quando não há data de chegada', async () => {
     mockSolicitacao({
       ...solicitacao,
-      data_saida_desejada: '2026-11-10T08:00:00',
+      data_saida_desejada: '2026-11-10T08:00:00-03:00',
       data_chegada_desejada: null,
     });
 
     const resultado = await disponibilidadeService.consultar(1);
 
     expect(resultado.periodo).toEqual({
-      inicio: new Date('2026-11-10T08:00:00'),
-      fim: new Date('2026-11-11T00:00:00'),
+      inicio: new Date('2026-11-10T08:00:00-03:00'),
+      fim: new Date('2026-11-11T00:00:00-03:00'),
     });
   });
 
@@ -220,7 +220,9 @@ describe('disponibilidadeService.consultar', () => {
       tabela: 'viagens_frota as vf',
       metodo: 'whereRaw',
       argumentos: [
-        expect.stringContaining('COALESCE(sv.data_chegada_desejada'),
+        expect.stringMatching(
+          /COALESCE\(sv\.data_chegada_desejada[\s\S]*AT TIME ZONE 'America\/Sao_Paulo'\) \+ interval '1 day'\)\s*AT TIME ZONE 'America\/Sao_Paulo'/
+        ),
         [new Date('2026-11-10T08:00:00-03:00')],
       ],
     });
@@ -254,13 +256,23 @@ describe('periodoDaSolicitacao', () => {
     });
   });
 
-  it('deve ir até o fim do dia da saída quando não há chegada', () => {
+  it('deve ir até o fim do dia da saída em Brasília quando não há chegada', () => {
     expect(
       periodoDaSolicitacao({
-        data_saida_desejada: '2026-11-10T23:30:00',
+        data_saida_desejada: '2026-11-10T23:30:00-03:00',
         data_chegada_desejada: null,
       }).fim
-    ).toEqual(new Date('2026-11-11T00:00:00'));
+    ).toEqual(new Date('2026-11-11T00:00:00-03:00'));
+  });
+
+  it('deve usar o dia de Brasília mesmo quando a saída já é o dia seguinte em UTC', () => {
+    // 02:30 UTC do dia 11 = 23:30 do dia 10 em Brasília
+    expect(
+      periodoDaSolicitacao({
+        data_saida_desejada: '2026-11-11T02:30:00Z',
+        data_chegada_desejada: null,
+      }).fim
+    ).toEqual(new Date('2026-11-11T03:00:00Z'));
   });
 
   it('deve rejeitar chegada igual à saída', () => {

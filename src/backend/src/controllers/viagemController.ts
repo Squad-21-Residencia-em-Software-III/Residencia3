@@ -20,7 +20,7 @@ export const viagemController = {
     const autor = usuarioAutenticado(req);
 
     const viagem = await viagemService.criar(dados, autor);
-    res.status(201).json(viagem);
+    res.status(dados.tipo_operacao === 'SVO' ? 200 : 201).json(viagem);
   },
 
   async iniciar(req: Request, res: Response): Promise<void> {

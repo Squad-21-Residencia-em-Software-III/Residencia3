@@ -45,6 +45,7 @@ O front-end está **conectado e homologado com o back-end para todos os módulos
 - **Abastecimento**: `POST /api/abastecimentos`, `GET /api/abastecimentos/veiculo/:id` com sanitização Zod `.strict()`.
 - **Manutenções**: `POST /api/manutencoes`, `PUT /api/manutencoes/:id`, `PATCH /api/manutencoes/:id/status`, `DELETE /api/manutencoes/:id`, `GET /api/manutencoes/veiculo/:id` com bloqueio e liberação de pátio sincronizados.
 - **Multas & Infrações**: `GET /api/multas`, `POST /api/multas`, `PUT /api/multas/:id`, `DELETE /api/multas/:id`, `GET /api/documentos/vencimentos` (RN15).
+- **Capacidade SVO (BL30 / SCRUM-108)**: `GET /api/veiculos/svo/ocupacao` alimenta a ocupação (`x/y vagas ocupadas`) e a mensagem de bloqueio (veículo lotado, em manutenção ou em deslocamento) no modal Agendar Viagem, operação SVO. A consulta exibe carregamento e erro, sem habilitar o agendamento SVO antes da integração com as solicitações.
 - **Agenda**: O módulo `/agenda` é o único que permanece com estrutura visual de Gantt consumindo dados simulados (`agendaMock.ts`), aguardando endpoint especializado de consolidação de janelas de ocupação da API.
 
 ---

@@ -10,6 +10,7 @@ interface Estado {
   viagem?: object;
   viagemAtivaDaSolicitacao?: object;
   ordemAtivaDaSolicitacao?: object;
+  ordemPendente?: object;
   veiculo?: Record<string, unknown>;
   motorista?: Record<string, unknown>;
   cnhValida: boolean;
@@ -162,18 +163,12 @@ function responder(
         : estado.viagemAtivaDaSolicitacao;
 
     case 'ordens_svo':
-      if (terminal === 'await') {
-        return estado.ordensDoVeiculo;
+      if (terminal === 'await') return estado.ordensDoVeiculo;
+      if (chamadas.some(([m, args]) => m === 'where' && (args[0] as { status?: string })?.status === 'AGUARDANDO_ALOCACAO')) {
+        return estado.ordemPendente;
       }
-
-      if (temChamada(chamadas, 'forUpdate')) {
-        return estado.viagem;
-      }
-
-      if (temChamada(chamadas, 'whereNot')) {
-        return estado.ordemEmOutroVeiculo;
-      }
-
+      if (temChamada(chamadas, 'forUpdate')) return estado.viagem;
+      if (temChamada(chamadas, 'whereNot')) return estado.ordemEmOutroVeiculo;
       return estado.ordemAtivaDaSolicitacao;
 
     default:
@@ -278,6 +273,7 @@ beforeEach(() => {
     solicitacao: {
       id: 1,
       status: 'APROVADA',
+      destino: 'Itabaiana',
       data_saida_desejada: '2026-11-10T08:00:00',
       data_chegada_desejada: '2026-11-10T17:00:00',
     },
@@ -285,6 +281,7 @@ beforeEach(() => {
     solicitacaoSvo: {
       id: 7,
       status: 'EM_TRIAGEM',
+      local_ocorrencia: 'Rua A, 100',
     },
 
     veiculo: {
@@ -566,32 +563,32 @@ describe('viagemService.criar (SVO)', () => {
   };
 
   beforeEach(() => {
-    ref.estado.veiculo = {
-      ...ref.estado.veiculo,
-      tipo_frota: 'SVO',
-    };
-
-    ref.estado.motorista = {
-      ...ref.estado.motorista,
-      tipo_motorista: 'SVO',
-    };
+    ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota: 'SVO' };
+    ref.estado.motorista = { ...ref.estado.motorista, tipo_motorista: 'SVO' };
+    ref.estado.solicitacaoSvo = { id: 7, status: 'CONFIRMADA' };
+    ref.estado.ordemPendente = { id: 99 };
   });
 
-  it('deve impedir o gestor de frota de criar ordem SVO', async () => {
-    await expect(
-      viagemService.criar(dados, gestorFrota)
-    ).rejects.toMatchObject({ statusCode: 403 });
+  it('deve impedir o gestor de frota de alocar ordem SVO', async () => {
+    await expect(viagemService.criar(dados, gestorFrota)).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it('deve rejeitar solicitação SVO concluída', async () => {
-    ref.estado.solicitacaoSvo = {
-      id: 7,
-      status: 'CONCLUIDA',
-    };
+    ref.estado.solicitacaoSvo = { id: 7, status: 'CONCLUIDA' };
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 409 });
+  });
 
-    await expect(
-      viagemService.criar(dados, gestorSvo)
-    ).rejects.toMatchObject({ statusCode: 400 });
+  it.each(['EM_TRIAGEM', 'EM_ANDAMENTO', 'CANCELADA'])('deve rejeitar alocação de solicitação %s', async (status) => {
+    ref.estado.solicitacaoSvo = { id: 7, status };
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 409 });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(ref.estado.updates).toEqual([]);
+  });
+
+  it('deve rejeitar solicitação confirmada sem ordem pendente', async () => {
+    ref.estado.ordemPendente = undefined;
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 409 });
+    expect(ref.estado.inserts).toEqual([]);
   });
 
   it('deve rejeitar quando a capacidade do veículo é excedida', async () => {
@@ -610,6 +607,22 @@ describe('viagemService.criar (SVO)', () => {
       message:
         'O veículo não tem capacidade suficiente (vagas disponíveis: 1)',
     });
+  });
+
+  it('deve bloquear nova alocação quando as 4 vagas estão ocupadas', async () => {
+    ref.estado.ordensDoVeiculo = [
+      { motorista_id: 20, capacidade_utilizada: 3, status: 'ALOCADA' },
+      { motorista_id: 20, capacidade_utilizada: 1, status: 'ALOCADA' },
+    ];
+
+    await expect(
+      viagemService.criar({ ...dados, capacidade_utilizada: 1 }, gestorSvo)
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'O veículo não tem capacidade suficiente (vagas disponíveis: 0)',
+    });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
   });
 
   it('deve rejeitar veículo alocado a outro motorista', async () => {
@@ -656,23 +669,12 @@ describe('viagemService.criar (SVO)', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('deve criar a ordem alocada com a capacidade informada', async () => {
-    ref.estado.ordensDoVeiculo = [
-      {
-        motorista_id: 20,
-        capacidade_utilizada: 2,
-        status: 'ALOCADA',
-      },
-    ];
+  it('deve alocar a ordem existente com a capacidade informada sem criar outra', async () => {
+    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA' }];
 
-    await expect(
-      viagemService.criar(dados, gestorSvo)
-    ).resolves.toEqual({
-      id: 99,
-      tipo_operacao: 'SVO',
-    });
-
-    expect(ref.estado.inserts).toContainEqual({
+    await expect(viagemService.criar(dados, gestorSvo)).resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(ref.estado.updates).toContainEqual({
       tabela: 'ordens_svo',
       valores: expect.objectContaining({
         status: 'ALOCADA',
@@ -720,6 +722,28 @@ describe('viagemService.iniciarViagem', () => {
         gestorFrota
       )
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it.each([undefined, null, '', '   '])('deve bloquear a saída sem destino (%j)', async (destino) => {
+    ref.estado.solicitacao = { ...ref.estado.solicitacao, destino };
+
+    await expect(viagemService.iniciarViagem('ADMINISTRATIVA', 5, 1000, gestorFrota)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Informe o destino antes de registrar a saída do veículo',
+    });
+    expect(ref.estado.updates).toEqual([]);
+    expect(veiculoModel.atualizarStatus).not.toHaveBeenCalled();
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('deve bloquear a saída de ordem SVO sem local de ocorrência', async () => {
+    ref.estado.viagem = { id: 5, status: 'ALOCADA', veiculo_id: 10, motorista_id: 20 };
+    ref.estado.solicitacaoSvo = { id: 7, status: 'EM_ANDAMENTO', local_ocorrencia: ' ' };
+
+    await expect(viagemService.iniciarViagem('SVO', 5, 1000, gestorSvo)).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    expect(ref.estado.updates).toEqual([]);
   });
 
   it('deve rejeitar km inicial menor que o km atual do veículo', async () => {
@@ -910,15 +934,39 @@ describe('viagemService.finalizarViagem', () => {
     expect(ref.estado.updates).toHaveLength(0);
   });
 
-  it('deve rejeitar km final menor que o km inicial', async () => {
-    await expect(
-      viagemService.finalizarViagem(
-        'ADMINISTRATIVA',
-        5,
-        999,
-        gestorFrota
-      )
-    ).rejects.toMatchObject({ statusCode: 400 });
+  // BL17: a API valida a quilometragem final, sem depender da interface
+  it.each([
+    ['ADMINISTRATIVA', 'EM_ANDAMENTO', () => gestorFrota],
+    ['SVO', 'EM_DESLOCAMENTO', () => gestorSvo],
+  ] as const)('deve rejeitar km final menor que o km inicial (%s) sem gravar nada', async (tipo, status, autor) => {
+    ref.estado.viagem = { ...ref.estado.viagem, status };
+
+    await expect(viagemService.finalizarViagem(tipo, 5, 999, autor())).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'O km final não pode ser menor que o km inicial (1000)',
+    });
+    expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('deve permitir km final igual ao km inicial', async () => {
+    await viagemService.finalizarViagem('ADMINISTRATIVA', 5, 1000, gestorFrota);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'viagens_frota',
+      valores: expect.objectContaining({ status: 'CONCLUIDA', km_final: 1000 }),
+    });
+  });
+
+  it.each([null, undefined])('deve rejeitar a finalização quando o km inicial é %s', async (kmInicial) => {
+    ref.estado.viagem = { ...ref.estado.viagem, km_inicial: kmInicial };
+
+    await expect(viagemService.finalizarViagem('ADMINISTRATIVA', 5, 1050, gestorFrota)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'A viagem não possui km inicial registrado',
+    });
+    expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
   });
 
   it('deve concluir, atualizar o km do veículo e liberar os recursos', async () => {
@@ -1164,7 +1212,7 @@ describe('viagemService.cancelarViagem', () => {
     });
   });
 
-  it('deve devolver a solicitação SVO para triagem ao cancelar a ordem', async () => {
+  it('deve devolver a solicitação SVO para triagem ao cancelar a ordem e limpar a confirmação', async () => {
     ref.estado.viagem = {
       id: 5,
       solicitacao_id: 7,
@@ -1186,7 +1234,77 @@ describe('viagemService.cancelarViagem', () => {
 
     expect(ref.estado.updates).toContainEqual({
       tabela: 'solicitacoes_svo',
-      valores: { status: 'EM_TRIAGEM' },
+      valores: { status: 'EM_TRIAGEM', confirmado_por: null, confirmado_em: null },
+    });
+  });
+
+  it('deve cancelar ordem SVO aguardando alocação e devolver a solicitação à triagem', async () => {
+    ref.estado.viagem = {
+      id: 6,
+      solicitacao_id: 7,
+      status: 'AGUARDANDO_ALOCACAO',
+      veiculo_id: null,
+      motorista_id: null,
+    };
+
+    await viagemService.cancelarViagem('SVO', 6, gestorSvo);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: { status: 'CANCELADA' },
+    });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_svo',
+      valores: { status: 'EM_TRIAGEM', confirmado_por: null, confirmado_em: null },
+    });
+    // Sem veículo nem motorista, nada a liberar
+    expect(ref.estado.updates.some((u) => u.tabela === 'veiculos' || u.tabela === 'motoristas')).toBe(false);
+  });
+
+  it('deve cancelar ordem SVO aguardando alocação junto com a solicitação', async () => {
+    ref.estado.viagem = {
+      id: 6,
+      solicitacao_id: 7,
+      status: 'AGUARDANDO_ALOCACAO',
+      veiculo_id: null,
+      motorista_id: null,
+    };
+
+    await viagemService.cancelarViagem('SVO', 6, gestorSvo, true);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_svo',
+      valores: { status: 'CANCELADA' },
+    });
+  });
+
+  it('não deve cancelar ordem SVO em deslocamento', async () => {
+    ref.estado.viagem = {
+      id: 6,
+      solicitacao_id: 7,
+      status: 'EM_DESLOCAMENTO',
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+
+    await expect(viagemService.cancelarViagem('SVO', 6, gestorSvo)).rejects.toMatchObject({ statusCode: 400 });
+    expect(ref.estado.updates).toEqual([]);
+  });
+
+  it('deve manter a confirmação quando a solicitação SVO também é cancelada', async () => {
+    ref.estado.viagem = {
+      id: 5,
+      solicitacao_id: 7,
+      status: 'ALOCADA',
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+
+    await viagemService.cancelarViagem('SVO', 5, gestorSvo, true);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_svo',
+      valores: { status: 'CANCELADA' },
     });
   });
 });
