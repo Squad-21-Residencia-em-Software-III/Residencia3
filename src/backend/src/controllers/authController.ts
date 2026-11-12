@@ -1,12 +1,17 @@
 import type { Request, Response } from 'express';
 import { usuarioAutenticado } from '../middlewares/autenticar';
 import { authService } from '../services/authService';
-import { alterarSenhaSchema, loginSchema } from '../validators/authSchemas';
+import { alterarSenhaSchema, loginSchema, renovarSessaoSchema } from '../validators/authSchemas';
 
 export const authController = {
   async login(req: Request, res: Response): Promise<void> {
     const credenciais = loginSchema.parse(req.body);
     res.json(await authService.login(credenciais));
+  },
+
+  async renovar(req: Request, res: Response): Promise<void> {
+    const { refreshToken } = renovarSessaoSchema.parse(req.body);
+    res.json(await authService.renovarSessao(refreshToken));
   },
 
   me(req: Request, res: Response): void {
@@ -15,7 +20,7 @@ export const authController = {
 
   async alterarSenha(req: Request, res: Response): Promise<void> {
     const dados = alterarSenhaSchema.parse(req.body);
-    await authService.alterarPropriaSenha(usuarioAutenticado(req).id, dados);
-    res.status(204).send();
+    // Sessões anteriores deixam de valer; a atual recebe tokens novos
+    res.json(await authService.alterarPropriaSenha(usuarioAutenticado(req).id, dados));
   },
 };
