@@ -468,15 +468,18 @@ export const viagemService = {
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
-    const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
-
+      const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
-
       if (viagem.status !== operacao.emAndamento) {
-      throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
-    }
+        throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
+      }
+
+      // A quilometragem final é validada aqui, independentemente da interface (BL17)
+      if (viagem.km_inicial === null || viagem.km_inicial === undefined) {
+        throw new AppError('A viagem não possui km inicial registrado', 409);
+      }
       if (kmFinal < viagem.km_inicial) {
-        throw new AppError('O km final não pode ser menor que o km inicial', 400);
+        throw new AppError(`O km final não pode ser menor que o km inicial (${viagem.km_inicial})`, 400);
       }
 
       // Atualiza a viagem
