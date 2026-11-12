@@ -39,6 +39,18 @@ describe('motivoBloqueioSvo', () => {
     expect(motivoBloqueioSvo({ ...base, status: 'EM_USO' })).toMatch(/deslocamento/i);
   });
 
+  it('mostra alerta quando o veículo está em deslocamento', () => {
+    render(<OcupacaoVeiculoSvoPainel veiculo={{ ...base, status: 'EM_USO' }} />);
+    expect(screen.getByText(/Alocação bloqueada/i)).toBeInTheDocument();
+    expect(screen.getByText(/não pode receber novas alocações/i)).toBeInTheDocument();
+  });
+
+  it('mostra alerta quando o veículo está em manutenção', () => {
+    render(<OcupacaoVeiculoSvoPainel veiculo={{ ...base, status: 'MANUTENCAO' }} />);
+    expect(screen.getByText(/Alocação bloqueada/i)).toBeInTheDocument();
+    expect(screen.getByText(/está em manutenção/i)).toBeInTheDocument();
+  });
+
   it('libera quando há vaga e o veículo não está em manutenção', () => {
     expect(motivoBloqueioSvo(base)).toBeNull();
   });

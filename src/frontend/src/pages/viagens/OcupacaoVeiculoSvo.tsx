@@ -23,7 +23,7 @@ export const rotuloOcupacao = (veiculo: OcupacaoVeiculoSvo) =>
   `${veiculo.capacidade_utilizada}/${veiculo.capacidade_maxima} vagas ocupadas`;
 
 function toneOcupacao(veiculo: OcupacaoVeiculoSvo): BadgeTone {
-  if (veiculo.vagas_disponiveis <= 0) return 'danger';
+  if (motivoBloqueioSvo(veiculo)) return 'danger';
   if (veiculo.capacidade_utilizada > 0) return 'warning';
   return 'success';
 }

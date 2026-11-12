@@ -44,7 +44,9 @@ export function ModalNovaViagem({
   onSalvar,
 }: ModalNovaViagemProps) {
   const veiculosDoTipo = (tipo: TipoOperacaoViagem) =>
-    veiculos.filter((v) => v.tipo_frota === tipo && !VEICULO_BLOQUEADO.includes(v.status));
+    veiculos.filter(
+      (v) => v.tipo_frota === tipo && (tipo === 'SVO' || !VEICULO_BLOQUEADO.includes(v.status)),
+    );
   const motoristasDoTipo = (tipo: TipoOperacaoViagem) =>
     motoristas.filter(
       (m) =>
@@ -82,7 +84,7 @@ export function ModalNovaViagem({
   const podeSalvar = !isSvo && Boolean(solicitacaoId && veiculoId && motoristaId);
 
   const avisoSolicitacao = isSvo
-    ? 'A listagem de solicitações SVO ainda não está disponível na API.'
+    ? 'O agendamento SVO ainda não está integrado à listagem de solicitações nesta tela.'
     : erroSolicitacoes
       ? `Não foi possível carregar as solicitações: ${erroSolicitacoes}`
       : solicitacoesAprovadas.length === 0
@@ -95,6 +97,7 @@ export function ModalNovaViagem({
     let ativo = true;
     setCarregandoOcupacao(true);
     setErroOcupacao(null);
+    setOcupacoes([]);
     veiculosApi
       .listarOcupacaoSvo()
       .then((dados) => {
@@ -102,7 +105,9 @@ export function ModalNovaViagem({
         setOcupacoes(dados);
       })
       .catch((error) => {
-        if (ativo) setErroOcupacao(mensagemDeErro(error));
+        if (!ativo) return;
+        setOcupacoes([]);
+        setErroOcupacao(mensagemDeErro(error));
       })
       .finally(() => {
         if (ativo) setCarregandoOcupacao(false);
@@ -230,7 +235,7 @@ export function ModalNovaViagem({
           </Select>
         </div>
 
-        {isSvo && erroOcupacao && (
+        {isSvo && !carregandoOcupacao && erroOcupacao && (
           <Alert tone="warning" className="mt-3.5">
             Não foi possível carregar a ocupação dos veículos: {erroOcupacao}
           </Alert>
@@ -241,7 +246,7 @@ export function ModalNovaViagem({
             Carregando ocupação dos veículos SVO...
           </div>
         )}
-        {isSvo && !carregandoOcupacao && ocupacaoDoVeiculo && (
+        {isSvo && !carregandoOcupacao && !erroOcupacao && ocupacaoDoVeiculo && (
           <OcupacaoVeiculoSvoPainel veiculo={ocupacaoDoVeiculo} />
         )}
 
