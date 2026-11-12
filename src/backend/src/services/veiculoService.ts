@@ -1,3 +1,4 @@
+import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
@@ -8,6 +9,19 @@ import {
   type OcupacaoVeiculoSvo,
 } from '../models/veiculoModel';
 import type { CriarVeiculoInput, AtualizarVeiculoInput } from '../validators/veiculoSchemas';
+
+// Ordens SVO que ocupam vagas no veículo
+const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
+
+// Soma das vagas ocupadas pelas ordens SVO ativas do veículo
+async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<number> {
+  const [linha] = await trx('ordens_svo')
+    .where({ veiculo_id: veiculoId })
+    .whereIn('status', ORDENS_SVO_ATIVAS)
+    .sum<{ ocupacao: string | number | null }[]>({ ocupacao: 'capacidade_utilizada' });
+
+  return Number(linha?.ocupacao ?? 0);
+}
 
 export const veiculoService = {
   async listar(): Promise<Veiculo[]> {
@@ -44,26 +58,45 @@ export const veiculoService = {
   },
 
   async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number): Promise<Veiculo> {
-    const veiculo = await veiculoModel.buscarPorId(id);
-    if (!veiculo) {
-      throw new AppError('Veículo não encontrado', 404);
-    }
-
-    const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
-    const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
-
-    if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
-      throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);
-    }
-
-    if (dados.placa && dados.placa !== veiculo.placa) {
-      const comPlaca = await veiculoModel.buscarPorPlaca(dados.placa);
-      if (comPlaca) {
-        throw new AppError('Já existe um veículo cadastrado com essa placa', 409);
-      }
-    }
-
     return db.transaction(async (trx) => {
+      // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco,
+      // e edições e alocações SVO do mesmo veículo ficam em fila
+      const veiculo = await veiculoModel.buscarParaAtualizar(id, trx);
+      if (!veiculo) {
+        throw new AppError('Veículo não encontrado', 404);
+      }
+
+      const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
+      const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
+
+      if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
+        throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);
+      }
+
+      if (dados.placa && dados.placa !== veiculo.placa) {
+        const comPlaca = await veiculoModel.buscarPorPlaca(dados.placa, trx);
+        if (comPlaca) {
+          throw new AppError('Já existe um veículo cadastrado com essa placa', 409);
+        }
+      }
+
+      const mudaCapacidade = capacidadeFinal !== veiculo.capacidade_maxima;
+      const mudaFrota = tipoFrotaFinal !== veiculo.tipo_frota;
+
+      if (mudaCapacidade || mudaFrota) {
+        const ocupacao = await ocupacaoSvo(trx, id);
+
+        if (mudaFrota && veiculo.tipo_frota === 'SVO' && ocupacao > 0) {
+          throw new AppError('O veículo possui ordens SVO ativas e não pode sair da frota SVO', 409);
+        }
+        if (mudaCapacidade && capacidadeFinal < ocupacao) {
+          throw new AppError(
+            `A capacidade não pode ser menor que a ocupação atual do veículo (${ocupacao})`,
+            409
+          );
+        }
+      }
+
       const atualizado = await veiculoModel.atualizarVeiculo(id, dados, trx);
       if (!atualizado) {
         throw new AppError('Erro ao atualizar veículo', 500);

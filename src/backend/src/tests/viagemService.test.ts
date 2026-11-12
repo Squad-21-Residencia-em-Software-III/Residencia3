@@ -278,6 +278,7 @@ beforeEach(() => {
     solicitacao: {
       id: 1,
       status: 'APROVADA',
+      destino: 'Itabaiana',
       data_saida_desejada: '2026-11-10T08:00:00',
       data_chegada_desejada: '2026-11-10T17:00:00',
     },
@@ -285,6 +286,7 @@ beforeEach(() => {
     solicitacaoSvo: {
       id: 7,
       status: 'EM_TRIAGEM',
+      local_ocorrencia: 'Rua A, 100',
     },
 
     veiculo: {
@@ -612,6 +614,22 @@ describe('viagemService.criar (SVO)', () => {
     });
   });
 
+  it('deve bloquear nova alocação quando as 4 vagas estão ocupadas', async () => {
+    ref.estado.ordensDoVeiculo = [
+      { motorista_id: 20, capacidade_utilizada: 3, status: 'ALOCADA' },
+      { motorista_id: 20, capacidade_utilizada: 1, status: 'ALOCADA' },
+    ];
+
+    await expect(
+      viagemService.criar({ ...dados, capacidade_utilizada: 1 }, gestorSvo)
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'O veículo não tem capacidade suficiente (vagas disponíveis: 0)',
+    });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
   it('deve rejeitar veículo alocado a outro motorista', async () => {
     ref.estado.ordensDoVeiculo = [
       {
@@ -720,6 +738,28 @@ describe('viagemService.iniciarViagem', () => {
         gestorFrota
       )
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it.each([undefined, null, '', '   '])('deve bloquear a saída sem destino (%j)', async (destino) => {
+    ref.estado.solicitacao = { ...ref.estado.solicitacao, destino };
+
+    await expect(viagemService.iniciarViagem('ADMINISTRATIVA', 5, 1000, gestorFrota)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Informe o destino antes de registrar a saída do veículo',
+    });
+    expect(ref.estado.updates).toEqual([]);
+    expect(veiculoModel.atualizarStatus).not.toHaveBeenCalled();
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('deve bloquear a saída de ordem SVO sem local de ocorrência', async () => {
+    ref.estado.viagem = { id: 5, status: 'ALOCADA', veiculo_id: 10, motorista_id: 20 };
+    ref.estado.solicitacaoSvo = { id: 7, status: 'EM_ANDAMENTO', local_ocorrencia: ' ' };
+
+    await expect(viagemService.iniciarViagem('SVO', 5, 1000, gestorSvo)).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    expect(ref.estado.updates).toEqual([]);
   });
 
   it('deve rejeitar km inicial menor que o km atual do veículo', async () => {

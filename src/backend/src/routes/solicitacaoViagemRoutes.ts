@@ -21,6 +21,12 @@ solicitacaoViagemRoutes.get(
   solicitacaoViagemController.listar
 );
 
+// Lista as solicitações do próprio usuário, com o status da aprovação e do agendamento
+solicitacaoViagemRoutes.get(
+  '/minhas',
+  solicitacaoViagemController.listarMinhas
+);
+
 // Registra uma nova solicitação de viagem
 solicitacaoViagemRoutes.post(
   '/',
