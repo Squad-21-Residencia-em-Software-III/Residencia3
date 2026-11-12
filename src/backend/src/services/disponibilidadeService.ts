@@ -10,9 +10,53 @@ const STATUS_VIAGEM_ATIVA = ['AGENDADA', 'EM_ANDAMENTO'];
 export const STATUS_VEICULO_BLOQUEADO = ['MANUTENCAO'];
 export const STATUS_MOTORISTA_BLOQUEADO = ['INATIVO', 'AFASTADO'];
 
-// Sem data de chegada, a viagem ocupa até o fim do dia da saída
-const FIM_VIAGEM_SQL =
-  "COALESCE(sv.data_chegada_desejada, date_trunc('day', sv.data_saida_desejada) + interval '1 day')";
+// Fuso de referência para "fim do dia", independente do fuso do servidor ou da sessão do banco
+const FUSO_OPERACAO = 'America/Sao_Paulo';
+
+// Sem data de chegada, a viagem ocupa até o fim do dia da saída (meia-noite seguinte em Brasília)
+const FIM_VIAGEM_SQL = `COALESCE(sv.data_chegada_desejada,
+  (date_trunc('day', sv.data_saida_desejada AT TIME ZONE '${FUSO_OPERACAO}') + interval '1 day')
+    AT TIME ZONE '${FUSO_OPERACAO}'
+)`;
+
+// Data (ano, mês, dia) de um instante no horário de Brasília
+function dataEmBrasilia(instante: Date) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: FUSO_OPERACAO,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(instante);
+  const valor = (tipo: string) => partes.find((parte) => parte.type === tipo)?.value ?? '';
+
+  return { ano: valor('year'), mes: valor('month'), dia: valor('day') };
+}
+
+// Diferença (ms) entre o horário de Brasília e o UTC num instante
+function deslocamentoDeBrasilia(instante: Date) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: FUSO_OPERACAO,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+  }).formatToParts(instante);
+  const valor = (tipo: string) => Number(partes.find((parte) => parte.type === tipo)?.value);
+  const comoUtc = Date.UTC(valor('year'), valor('month') - 1, valor('day'), valor('hour'), valor('minute'), valor('second'));
+
+  return comoUtc - Math.floor(instante.getTime() / 1000) * 1000;
+}
+
+// Meia-noite (horário de Brasília) do dia seguinte ao instante
+function fimDoDiaEmBrasilia(instante: Date) {
+  const { ano, mes, dia } = dataEmBrasilia(instante);
+  const meiaNoiteUtc = Date.UTC(Number(ano), Number(mes) - 1, Number(dia) + 1);
+
+  return new Date(meiaNoiteUtc - deslocamentoDeBrasilia(new Date(meiaNoiteUtc)));
+}
 
 interface SolicitacaoComPeriodo {
   data_saida_desejada: Date | string;
@@ -23,17 +67,16 @@ interface SolicitacaoComPeriodo {
 export function periodoDaSolicitacao(solicitacao: SolicitacaoComPeriodo) {
   const inicio = new Date(solicitacao.data_saida_desejada);
 
-  // Mesma regra de FIM_VIAGEM_SQL: sem chegada, vai até o fim do dia da saída
+  if (Number.isNaN(inicio.getTime())) {
+    throw new AppError('Período da solicitação inválido', 400);
+  }
+
+  // Mesma regra de FIM_VIAGEM_SQL: sem chegada, vai até o fim do dia da saída em Brasília
   const fim = solicitacao.data_chegada_desejada
     ? new Date(solicitacao.data_chegada_desejada)
-    : new Date(
-        inicio.getFullYear(),
-        inicio.getMonth(),
-        inicio.getDate() + 1
-      );
+    : fimDoDiaEmBrasilia(inicio);
 
   if (
-    Number.isNaN(inicio.getTime()) ||
     Number.isNaN(fim.getTime()) ||
     fim.getTime() <= inicio.getTime()
   ) {
@@ -48,29 +91,9 @@ export function periodoDaSolicitacao(solicitacao: SolicitacaoComPeriodo) {
 
 // Último dia da viagem (AAAA-MM-DD) no horário de Brasília, usado na validade da CNH
 export function ultimoDiaDaSolicitacao(solicitacao: SolicitacaoComPeriodo): string {
-  const partesData = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(
-    new Date(
-      solicitacao.data_chegada_desejada ??
-        solicitacao.data_saida_desejada
-    )
+  const { ano, mes, dia } = dataEmBrasilia(
+    new Date(solicitacao.data_chegada_desejada ?? solicitacao.data_saida_desejada)
   );
-
-  const ano = partesData.find(
-    (parte) => parte.type === 'year'
-  )?.value;
-
-  const mes = partesData.find(
-    (parte) => parte.type === 'month'
-  )?.value;
-
-  const dia = partesData.find(
-    (parte) => parte.type === 'day'
-  )?.value;
 
   return `${ano}-${mes}-${dia}`;
 }
