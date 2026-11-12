@@ -614,6 +614,22 @@ describe('viagemService.criar (SVO)', () => {
     });
   });
 
+  it('deve bloquear nova alocação quando as 4 vagas estão ocupadas', async () => {
+    ref.estado.ordensDoVeiculo = [
+      { motorista_id: 20, capacidade_utilizada: 3, status: 'ALOCADA' },
+      { motorista_id: 20, capacidade_utilizada: 1, status: 'ALOCADA' },
+    ];
+
+    await expect(
+      viagemService.criar({ ...dados, capacidade_utilizada: 1 }, gestorSvo)
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'O veículo não tem capacidade suficiente (vagas disponíveis: 0)',
+    });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
   it('deve rejeitar veículo alocado a outro motorista', async () => {
     ref.estado.ordensDoVeiculo = [
       {

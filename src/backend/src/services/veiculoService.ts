@@ -1,3 +1,4 @@
+import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
@@ -8,6 +9,19 @@ import {
   type OcupacaoVeiculoSvo,
 } from '../models/veiculoModel';
 import type { CriarVeiculoInput, AtualizarVeiculoInput } from '../validators/veiculoSchemas';
+
+// Ordens SVO que ocupam vagas no veículo
+const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
+
+// Soma das vagas ocupadas pelas ordens SVO ativas do veículo
+async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<number> {
+  const [linha] = await trx('ordens_svo')
+    .where({ veiculo_id: veiculoId })
+    .whereIn('status', ORDENS_SVO_ATIVAS)
+    .sum<{ ocupacao: string | number | null }[]>({ ocupacao: 'capacidade_utilizada' });
+
+  return Number(linha?.ocupacao ?? 0);
+}
 
 export const veiculoService = {
   async listar(): Promise<Veiculo[]> {
@@ -64,6 +78,26 @@ export const veiculoService = {
     }
 
     return db.transaction(async (trx) => {
+      const mudaCapacidade =
+        dados.capacidade_maxima !== undefined && dados.capacidade_maxima !== veiculo.capacidade_maxima;
+      const mudaFrota = dados.tipo_frota !== undefined && dados.tipo_frota !== veiculo.tipo_frota;
+
+      if (mudaCapacidade || mudaFrota) {
+        // Trava o veículo como na alocação SVO, para que uma ordem nova não entre no meio da edição
+        await trx('veiculos').where({ id }).forUpdate().first('id');
+        const ocupacao = await ocupacaoSvo(trx, id);
+
+        if (mudaFrota && veiculo.tipo_frota === 'SVO' && ocupacao > 0) {
+          throw new AppError('O veículo possui ordens SVO ativas e não pode sair da frota SVO', 409);
+        }
+        if (mudaCapacidade && capacidadeFinal < ocupacao) {
+          throw new AppError(
+            `A capacidade não pode ser menor que a ocupação atual do veículo (${ocupacao})`,
+            409
+          );
+        }
+      }
+
       const atualizado = await veiculoModel.atualizarVeiculo(id, dados, trx);
       if (!atualizado) {
         throw new AppError('Erro ao atualizar veículo', 500);
