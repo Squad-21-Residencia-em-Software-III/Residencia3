@@ -54,25 +54,8 @@ beforeEach(() => {
   vi.mocked(model.listar).mockResolvedValue({ dados: [solicitacao], total: 1 });
 });
 
+// Listagem e paginação são cobertas em solicitacaoSvoRoutes.test.ts (BL26)
 describe('BL27 — análise SVO', () => {
-  it('usa paginação padrão e aceita listagem vazia', async () => {
-    vi.mocked(model.listar).mockResolvedValue({ dados: [], total: 0 });
-    const resposta = await request(app).get('/api/solicitacoes-svo').set('Authorization', token);
-    expect(resposta.status).toBe(200);
-    expect(resposta.body).toEqual({
-      dados: [], paginacao: { pagina: 1, limite: 20, total: 0, totalPaginas: 0 },
-    });
-    expect(model.listar).toHaveBeenCalledWith({ pagina: 1, limite: 20 });
-  });
-
-  it('lista solicitações para triagem, com filtro e paginação', async () => {
-    const resposta = await request(app).get('/api/solicitacoes-svo?status=EM_TRIAGEM&pagina=2&limite=10')
-      .set('Authorization', token);
-    expect(resposta.status).toBe(200);
-    expect(resposta.body.paginacao).toEqual({ pagina: 2, limite: 10, total: 1, totalPaginas: 1 });
-    expect(model.listar).toHaveBeenCalledWith({ status: 'EM_TRIAGEM', pagina: 2, limite: 10 });
-  });
-
   it('expõe os dados da ocorrência e a ordem atual para análise', async () => {
     const resposta = await request(app).get('/api/solicitacoes-svo/7').set('Authorization', token);
     expect(resposta.status).toBe(200);
@@ -82,14 +65,6 @@ describe('BL27 — análise SVO', () => {
     const confirmadaResposta = await request(app).get('/api/solicitacoes-svo/7').set('Authorization', token);
     expect(confirmadaResposta.body.ordem.id).toBe(11);
   });
-
-  it.each(['status=INVALIDO', 'pagina=0', 'pagina=1.5', 'limite=0', 'limite=101', 'limite=abc'])(
-    'rejeita filtros inválidos: %s', async (query) => {
-      const resposta = await request(app).get(`/api/solicitacoes-svo?${query}`).set('Authorization', token);
-      expect(resposta.status).toBe(400);
-      expect(model.listar).not.toHaveBeenCalled();
-    },
-  );
 });
 
 describe('BL27 — confirmação e geração automática', () => {

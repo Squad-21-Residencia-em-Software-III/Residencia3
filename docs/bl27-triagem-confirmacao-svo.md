@@ -1,4 +1,4 @@
-﻿# BL27 — Triagem e confirmação SVO
+# BL27 — Triagem e confirmação SVO
 
 A API permite consultar solicitações SVO para análise e confirmar o atendimento,
 gerando a ordem de coleta na mesma transação. Implementa RF20, RF21 e RN09.
@@ -32,11 +32,19 @@ campos adicionais.
 - `POST /api/viagens` com `tipo_operacao: "SVO"` aloca a ordem existente e retorna
   `200`. Exige solicitação confirmada e ordem aguardando alocação; mantém as
   validações de recursos, CNH e capacidade. Viagens administrativas retornam `201`.
-- Ordens aguardando alocação são consultadas pelo detalhe SVO e ficam fora da
-  listagem de viagens.
-- Cancelar uma ordem alocada sem cancelar a solicitação devolve esta à triagem
-  e limpa `confirmado_por`/`confirmado_em`. A confirmação seguinte gera outra
-  ordem, preservando a cancelada no histórico.
+  **Atenção, front:** na alocação SVO o status de sucesso é `200`, não `201`,
+  porque nenhuma ordem nova é criada.
+- Ordens aguardando alocação são consultadas pelo detalhe SVO (campo `ordem`) e
+  ficam fora da listagem de viagens.
+- Em `/api/viagens`, o `inicio_previsto` das ordens SVO é o `data_hora_chamado`,
+  preenchido quando a ordem é gerada, ou seja, no momento da confirmação.
+- `PATCH /api/viagens/:id/cancelar` com `{ "tipo_operacao": "SVO" }` cancela a
+  ordem **aguardando alocação** ou **alocada** (o `id` da ordem vem do detalhe
+  SVO). Sem `cancelar_solicitacao`, a solicitação volta à triagem e
+  `confirmado_por`/`confirmado_em` são limpos; com `cancelar_solicitacao: true`,
+  a solicitação é cancelada e a confirmação fica registrada. A ordem aguardando
+  alocação não tem veículo nem motorista, então não há recursos a liberar. A
+  confirmação seguinte gera outra ordem, preservando a cancelada no histórico.
 - A auditoria usa o módulo `SOLICITACOES_SVO`, o mesmo do registro (BL26).
 
 Erros: `400` para dados inválidos, `401` sem autenticação, `403` sem permissão,
@@ -56,11 +64,15 @@ A confirmação bloqueia a solicitação com `FOR UPDATE`.
 Solicitações legadas em triagem com ordens alocadas/em deslocamento passam a
 `EM_ANDAMENTO`; suas ordens são preservadas, com autor/data de confirmação nulos.
 Duplicatas ativas e ordens alocadas sem recursos fazem a migration falhar.
-O rollback é bloqueado enquanto existirem solicitações `CONFIRMADA` ou ordens
-`AGUARDANDO_ALOCACAO`.
+O rollback é bloqueado enquanto existirem ordens `AGUARDANDO_ALOCACAO`. A
+constraint de status das solicitações (com `CONFIRMADA` e `RECUSADA`) pertence à
+migration 20261111140211 e não é alterada no rollback; as colunas
+`confirmado_por`/`confirmado_em` são removidas.
 
 ## Testes
 
 Em `src/backend`: `npm run typecheck`, `npm test` e `npm run build`.
 Os testes cobrem consulta, confirmação, repetição, estados incompatíveis,
-validação de entrada, permissões e alocação sem geração de outra ordem.
+validação de entrada, permissões, alocação sem geração de outra ordem e
+cancelamento da ordem aguardando alocação. Listagem e paginação ficam em
+`solicitacaoSvoRoutes.test.ts` (BL26).

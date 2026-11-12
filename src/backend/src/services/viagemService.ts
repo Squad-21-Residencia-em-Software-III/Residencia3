@@ -510,14 +510,25 @@ export const viagemService = {
 
     return db.transaction(async (trx) => {
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
-      if (viagem.status !== operacao.agendada) {
-        throw new AppError('Apenas viagens agendadas podem ser canceladas', 400);
+      // Ordem SVO confirmada e ainda sem recursos (BL27) também pode ser cancelada,
+      // senão a solicitação ficaria presa em CONFIRMADA
+      const aguardandoAlocacao = tipo === 'SVO' && viagem.status === 'AGUARDANDO_ALOCACAO';
+      if (viagem.status !== operacao.agendada && !aguardandoAlocacao) {
+        throw new AppError(
+          tipo === 'SVO'
+            ? 'Apenas ordens aguardando alocação ou alocadas podem ser canceladas'
+            : 'Apenas viagens agendadas podem ser canceladas',
+          400
+        );
       }
 
       await trx(operacao.tabela).where({ id: viagemId }).update({ status: 'CANCELADA' });
 
-      // Libera veículo e motorista, se não houver outra viagem ativa
-      await sincronizarStatus(trx, viagem.veiculo_id, viagem.motorista_id);
+      // Libera veículo e motorista, se não houver outra viagem ativa.
+      // A ordem aguardando alocação não tem recursos a liberar.
+      if (!aguardandoAlocacao) {
+        await sincronizarStatus(trx, viagem.veiculo_id, viagem.motorista_id);
+      }
       await atualizarSolicitacao(
         trx,
         tipo,

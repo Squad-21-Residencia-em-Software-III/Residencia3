@@ -1214,6 +1214,59 @@ describe('viagemService.cancelarViagem', () => {
     });
   });
 
+  it('deve cancelar ordem SVO aguardando alocação e devolver a solicitação à triagem', async () => {
+    ref.estado.viagem = {
+      id: 6,
+      solicitacao_id: 7,
+      status: 'AGUARDANDO_ALOCACAO',
+      veiculo_id: null,
+      motorista_id: null,
+    };
+
+    await viagemService.cancelarViagem('SVO', 6, gestorSvo);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: { status: 'CANCELADA' },
+    });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_svo',
+      valores: { status: 'EM_TRIAGEM', confirmado_por: null, confirmado_em: null },
+    });
+    // Sem veículo nem motorista, nada a liberar
+    expect(ref.estado.updates.some((u) => u.tabela === 'veiculos' || u.tabela === 'motoristas')).toBe(false);
+  });
+
+  it('deve cancelar ordem SVO aguardando alocação junto com a solicitação', async () => {
+    ref.estado.viagem = {
+      id: 6,
+      solicitacao_id: 7,
+      status: 'AGUARDANDO_ALOCACAO',
+      veiculo_id: null,
+      motorista_id: null,
+    };
+
+    await viagemService.cancelarViagem('SVO', 6, gestorSvo, true);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_svo',
+      valores: { status: 'CANCELADA' },
+    });
+  });
+
+  it('não deve cancelar ordem SVO em deslocamento', async () => {
+    ref.estado.viagem = {
+      id: 6,
+      solicitacao_id: 7,
+      status: 'EM_DESLOCAMENTO',
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+
+    await expect(viagemService.cancelarViagem('SVO', 6, gestorSvo)).rejects.toMatchObject({ statusCode: 400 });
+    expect(ref.estado.updates).toEqual([]);
+  });
+
   it('deve manter a confirmação quando a solicitação SVO também é cancelada', async () => {
     ref.estado.viagem = {
       id: 5,
