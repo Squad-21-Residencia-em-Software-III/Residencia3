@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import type { ListarSolicitacoesSvoInput } from '../validators/solicitacaoSvoSchemas';
 
 // Espelha a constraint chk_solicitacoes_svo_status
 export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO', 'CONCLUIDA', 'RECUSADA', 'CANCELADA'] as const;
@@ -25,12 +26,24 @@ export const solicitacaoSvoModel = {
     return solicitacao;
   },
 
-  async listar(status?: StatusSolicitacaoSvo): Promise<SolicitacaoSvo[]> {
-    const consulta = db('solicitacoes_svo').select('*').orderBy('id', 'desc');
-    if (status) {
-      consulta.where({ status });
+  async listar(filtros: ListarSolicitacoesSvoInput): Promise<{ dados: SolicitacaoSvo[]; total: number }> {
+    const consulta = db<SolicitacaoSvo>('solicitacoes_svo');
+
+    if (filtros.status) {
+      consulta.where({ status: filtros.status });
     }
-    return consulta;
+
+    const [dados, contagem] = await Promise.all([
+      consulta
+        .clone()
+        .select('*')
+        .orderBy('id', 'desc')
+        .limit(filtros.limite)
+        .offset((filtros.pagina - 1) * filtros.limite),
+      consulta.clone().count<{ total: string }[]>({ total: '*' }),
+    ]);
+
+    return { dados, total: Number(contagem[0]?.total ?? 0) };
   },
 
   async buscarPorId(id: number): Promise<SolicitacaoSvo | undefined> {

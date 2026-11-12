@@ -4,9 +4,10 @@ import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import {
   solicitacaoSvoModel,
   type SolicitacaoSvo,
-  type StatusSolicitacaoSvo,
+
 } from '../models/solicitacaoSvoModel';
-import type { CriarSolicitacaoSvoInput } from '../validators/solicitacaoSvoSchemas';
+import type { CriarSolicitacaoSvoInput, ListarSolicitacoesSvoInput } from '../validators/solicitacaoSvoSchemas';
+import type { ListaPaginada } from './usuarioService';
 
 export const solicitacaoSvoService = {
   // Toda solicitação nasce em triagem, registrada pelo usuário autenticado
@@ -36,8 +37,18 @@ export const solicitacaoSvoService = {
     });
   },
 
-  async listar(status?: StatusSolicitacaoSvo): Promise<SolicitacaoSvo[]> {
-    return solicitacaoSvoModel.listar(status);
+  async listar(filtros: ListarSolicitacoesSvoInput): Promise<ListaPaginada<SolicitacaoSvo>> {
+    const { dados, total } = await solicitacaoSvoModel.listar(filtros);
+
+    return {
+      dados,
+      paginacao: {
+        pagina: filtros.pagina,
+        limite: filtros.limite,
+        total,
+        totalPaginas: Math.ceil(total / filtros.limite),
+      },
+    };
   },
 
   async buscarPorId(id: number): Promise<SolicitacaoSvo> {

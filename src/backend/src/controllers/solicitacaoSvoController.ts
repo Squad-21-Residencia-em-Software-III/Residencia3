@@ -18,8 +18,8 @@ export const solicitacaoSvoController = {
   },
 
   async listar(req: Request, res: Response): Promise<void> {
-    const { status } = listarSolicitacoesSvoQuerySchema.parse(req.query);
-    res.json(await solicitacaoSvoService.listar(status));
+    const filtros = listarSolicitacoesSvoQuerySchema.parse(req.query);
+    res.json(await solicitacaoSvoService.listar(filtros));
   },
 
   async buscarPorId(req: Request, res: Response): Promise<void> {

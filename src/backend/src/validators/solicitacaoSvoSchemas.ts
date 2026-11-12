@@ -25,6 +25,8 @@ export const criarSolicitacaoSvoSchema = z.strictObject(
 );
 
 export const listarSolicitacoesSvoQuerySchema = z.object({
+  pagina: z.coerce.number().int().min(1).default(1),
+  limite: z.coerce.number().int().min(1).max(100).default(20),
   status: z
     .enum(STATUS_SOLICITACAO_SVO, {
       error: `Status inválido. Aceitos: ${STATUS_SOLICITACAO_SVO.join(', ')}`,
@@ -33,3 +35,4 @@ export const listarSolicitacoesSvoQuerySchema = z.object({
 });
 
 export type CriarSolicitacaoSvoInput = z.infer<typeof criarSolicitacaoSvoSchema>;
+export type ListarSolicitacoesSvoInput = z.infer<typeof listarSolicitacoesSvoQuerySchema>;

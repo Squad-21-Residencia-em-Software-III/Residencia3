@@ -177,52 +177,107 @@ describe('Rotas de Solicitações SVO (/api/solicitacoes-svo)', () => {
   });
 
   describe('GET /api/solicitacoes-svo', () => {
-    it('lista as solicitações', async () => {
-      vi.mocked(solicitacaoSvoService.listar).mockResolvedValueOnce([solicitacaoRegistrada]);
+    it('retorna a primeira pagina com limite padrao de 20', async () => {
+      const resultado = {
+        dados: [solicitacaoRegistrada],
+        paginacao: { pagina: 1, limite: 20, total: 1, totalPaginas: 1 },
+      };
 
-      const resposta = await request(app).get('/api/solicitacoes-svo').set('Authorization', token);
-
-      expect(resposta.status).toBe(200);
-      expect(resposta.body).toHaveLength(1);
-      expect(solicitacaoSvoService.listar).toHaveBeenCalledWith(undefined);
-    });
-
-    it('filtra pela fila de triagem', async () => {
-      vi.mocked(solicitacaoSvoService.listar).mockResolvedValueOnce([solicitacaoRegistrada]);
+      vi.mocked(solicitacaoSvoService.listar).mockResolvedValueOnce(resultado);
 
       const resposta = await request(app)
-        .get('/api/solicitacoes-svo?status=EM_TRIAGEM')
+        .get('/api/solicitacoes-svo')
         .set('Authorization', token);
 
       expect(resposta.status).toBe(200);
-      expect(solicitacaoSvoService.listar).toHaveBeenCalledWith('EM_TRIAGEM');
+      expect(resposta.body).toEqual(resultado);
+      expect(solicitacaoSvoService.listar).toHaveBeenCalledWith({
+        pagina: 1,
+        limite: 20,
+      });
+    });
+
+    it('combina filtro por status e paginacao', async () => {
+      vi.mocked(solicitacaoSvoService.listar).mockResolvedValueOnce({
+        dados: [solicitacaoRegistrada],
+        paginacao: { pagina: 2, limite: 10, total: 15, totalPaginas: 2 },
+      });
+
+      const resposta = await request(app)
+        .get('/api/solicitacoes-svo?status=EM_TRIAGEM&pagina=2&limite=10')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.paginacao).toEqual({
+        pagina: 2,
+        limite: 10,
+        total: 15,
+        totalPaginas: 2,
+      });
+
+      expect(solicitacaoSvoService.listar).toHaveBeenCalledWith({
+        status: 'EM_TRIAGEM',
+        pagina: 2,
+        limite: 10,
+      });
     });
 
     it.each(['CONFIRMADA', 'RECUSADA'] as const)(
       'aceita o status %s no filtro',
       async (status) => {
-        vi.mocked(solicitacaoSvoService.listar).mockResolvedValueOnce([
-          { ...solicitacaoRegistrada, status },
-        ]);
+        vi.mocked(solicitacaoSvoService.listar).mockResolvedValueOnce({
+          dados: [{ ...solicitacaoRegistrada, status }],
+          paginacao: { pagina: 1, limite: 20, total: 1, totalPaginas: 1 },
+        });
 
         const resposta = await request(app)
           .get(`/api/solicitacoes-svo?status=${status}`)
           .set('Authorization', token);
 
         expect(resposta.status).toBe(200);
-        expect(solicitacaoSvoService.listar).toHaveBeenCalledWith(status);
+        expect(solicitacaoSvoService.listar).toHaveBeenCalledWith({
+          status,
+          pagina: 1,
+          limite: 20,
+        });
       },
     );
-    it('rejeita status inválido no filtro', async () => {
+
+    it('aceita o limite maximo de 100 registros', async () => {
+      vi.mocked(solicitacaoSvoService.listar).mockResolvedValueOnce({
+        dados: [],
+        paginacao: { pagina: 1, limite: 100, total: 0, totalPaginas: 0 },
+      });
+
       const resposta = await request(app)
-        .get('/api/solicitacoes-svo?status=QUALQUER')
+        .get('/api/solicitacoes-svo?limite=100')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(200);
+      expect(solicitacaoSvoService.listar).toHaveBeenCalledWith({
+        pagina: 1,
+        limite: 100,
+      });
+    });
+
+    it.each([
+      'status=INVALIDO',
+      'pagina=0',
+      'pagina=-1',
+      'pagina=1.5',
+      'pagina=abc',
+      'limite=0',
+      'limite=101',
+      'limite=abc',
+    ])('rejeita filtro invalido: %s', async (filtro) => {
+      const resposta = await request(app)
+        .get(`/api/solicitacoes-svo?${filtro}`)
         .set('Authorization', token);
 
       expect(resposta.status).toBe(400);
       expect(solicitacaoSvoService.listar).not.toHaveBeenCalled();
     });
   });
-
   describe('GET /api/solicitacoes-svo/:id', () => {
     it('retorna a solicitação', async () => {
       vi.mocked(solicitacaoSvoService.buscarPorId).mockResolvedValueOnce(solicitacaoRegistrada);
