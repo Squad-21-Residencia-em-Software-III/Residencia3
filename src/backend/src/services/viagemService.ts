@@ -25,8 +25,8 @@ type CriarOrdemSvoInput = Extract<CriarViagemInput, { tipo_operacao: 'SVO' }>;
 
 // Tabela e status equivalentes de cada tipo de operação.
 // solicitacao*: status que a solicitação recebe em cada etapa (null = não muda).
-// solicitacoes_viagem só tem status de análise, então segue APROVADA durante a viagem
-// e volta a poder ser agendada quando a viagem é cancelada.
+// A solicitação administrativa fica AGENDADA durante a viagem, CONCLUIDA ao final
+// e volta a APROVADA (pode ser agendada de novo) quando a viagem é cancelada.
 const OPERACOES = {
   ADMINISTRATIVA: {
     tabela: 'viagens_frota',
