@@ -43,9 +43,12 @@ POSTGRES_DB=frotas_svo
 JWT_SECRET=um_segredo_longo_e_aleatorio
 JWT_EXPIRES_IN=2h
 JWT_REFRESH_EXPIRES_IN=12h
+CORS_ORIGIN=http://localhost:5173
+TRUST_PROXY=0
+COOKIE_SECURE=false
 ```
 
-O `JWT_SECRET` assina os tokens de login e é **obrigatório**. A API não sobe sem ele, nem com um valor fraco: são exigidos pelo menos 32 caracteres, e os valores de exemplo deste guia são recusados. `JWT_EXPIRES_IN` (padrão 2h, máximo 8h) define a validade do token de acesso e `JWT_REFRESH_EXPIRES_IN` (padrão 12h, máximo 24h) define a duração máxima da sessão. A política completa está em [seguranca-sessoes.md](seguranca-sessoes.md). Para gerar um valor aleatório:
+O `JWT_SECRET` assina os tokens de login e é **obrigatório**. A API não sobe sem ele, nem com um valor fraco: são exigidos pelo menos 32 caracteres, e os valores de exemplo deste guia são recusados. `JWT_EXPIRES_IN` (padrão 2h, máximo 8h) define a validade do token de acesso e `JWT_REFRESH_EXPIRES_IN` (padrão 12h, máximo 24h) define a duração máxima da sessão. O refresh token é entregue em cookie `HttpOnly`. `CORS_ORIGIN` lista as origens do frontend autorizadas (nunca `*`), `TRUST_PROXY` informa quantos proxies reversos ficam à frente da API e `COOKIE_SECURE` exige HTTPS para o cookie (obrigatório em produção). A política completa está em [seguranca-sessoes.md](seguranca-sessoes.md). Para gerar um valor aleatório:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
