@@ -4,5 +4,13 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Ignorar arquivos e diretórios de backup do banco de dados
+backups/
+*.backup.enc
+*.backup.meta.json
+*.sql
+*.sql.gz
+*.dump
+
 # Protótipo Figma
 docs/figma-prototipo/

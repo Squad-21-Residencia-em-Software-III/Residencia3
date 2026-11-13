@@ -3,6 +3,15 @@ import type { Knex } from 'knex';
 import { db } from '../config/database';
 import type { TipoOperacao } from '../validators/viagemSchemas';
 
+export const LIMITE_MAXIMO_VIAGENS = 200;
+
+function normalizarLimite(limite?: number): number {
+  if (!limite || !Number.isInteger(limite) || limite <= 0) {
+    return LIMITE_MAXIMO_VIAGENS;
+  }
+  return Math.min(limite, LIMITE_MAXIMO_VIAGENS);
+}
+
 export type StatusViagem =
   | 'AGENDADA'
   | 'EM_ANDAMENTO'
@@ -101,7 +110,8 @@ const VIAGENS_UNIFICADAS_SQL = `
 export const viagemModel = {
   async listar(
     tipos: TipoOperacao[],
-    usuarioMotoristaId?: number
+    usuarioMotoristaId?: number,
+    limite = LIMITE_MAXIMO_VIAGENS
   ): Promise<ViagemDetalhada[]> {
     const consulta = db
       .select(
@@ -138,9 +148,9 @@ export const viagemModel = {
       );
     }
 
-    return consulta.orderByRaw(
-      'inicio_previsto DESC NULLS LAST, id DESC'
-    );
+    return consulta
+      .orderByRaw('inicio_previsto DESC NULLS LAST, id DESC')
+      .limit(normalizarLimite(limite));
   },
 
   async buscarPorId(
