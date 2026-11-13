@@ -2,12 +2,17 @@ import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Modal, Select } from '../../components/ui';
 import { mensagemDeErro } from '../../services/api/http';
+import { equipesSvoApi } from '../../services/api/equipesSvoApi';
+import { solicitacoesSvoApi } from '../../services/api/solicitacoesSvoApi';
 import { veiculosApi } from '../../services/api/veiculosApi';
+import type { EquipeSvo } from '../../types/equipeSvo';
+import type { SolicitacaoSvo } from '../../types/solicitacaoSvo';
 import type { Motorista, StatusMotorista } from '../../types/motorista';
 import type { OcupacaoVeiculoSvo, StatusVeiculo, Veiculo } from '../../types/veiculo';
 import type { SolicitacaoViagem } from '../../types/solicitacao';
 import type { NovaViagemInput, TipoOperacaoViagem } from '../../types/viagem';
 import { motivoBloqueioSvo, OcupacaoVeiculoSvoPainel, rotuloOcupacao } from './OcupacaoVeiculoSvo';
+import { SeletorEquipeSvo } from './SeletorEquipeSvo';
 
 interface ModalNovaViagemProps {
   solicitacoesAprovadas: SolicitacaoViagem[];
@@ -74,6 +79,15 @@ export function ModalNovaViagem({
   const [ocupacoes, setOcupacoes] = useState<OcupacaoVeiculoSvo[]>([]);
   const [erroOcupacao, setErroOcupacao] = useState<string | null>(null);
   const [carregandoOcupacao, setCarregandoOcupacao] = useState(false);
+  // Alocação SVO (BL29): solicitações confirmadas aguardando alocação e equipes
+  const [solicitacoesSvo, setSolicitacoesSvo] = useState<SolicitacaoSvo[]>([]);
+  const [solicitacaoSvoId, setSolicitacaoSvoId] = useState('');
+  const [erroSolicitacoesSvo, setErroSolicitacoesSvo] = useState<string | null>(null);
+  const [carregandoSolicitacoesSvo, setCarregandoSolicitacoesSvo] = useState(false);
+  const [equipes, setEquipes] = useState<EquipeSvo[]>([]);
+  const [equipeId, setEquipeId] = useState('');
+  const [erroEquipes, setErroEquipes] = useState<string | null>(null);
+  const [carregandoEquipes, setCarregandoEquipes] = useState(false);
 
   const veiculosFiltrados = veiculosDoTipo(tipoOperacao);
   const motoristasFiltrados = motoristasDoTipo(tipoOperacao);
@@ -81,10 +95,16 @@ export function ModalNovaViagem({
   const ocupacaoDoVeiculo = ocupacoes.find((o) => String(o.id) === veiculoId);
   const ocupacaoPorId = (id: number) => ocupacoes.find((o) => o.id === id);
   const bloqueioSvo = isSvo && ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
-  const podeSalvar = !isSvo && Boolean(solicitacaoId && veiculoId && motoristaId);
+  const podeSalvar = isSvo
+    ? Boolean(solicitacaoSvoId && veiculoId && motoristaId)
+    : Boolean(solicitacaoId && veiculoId && motoristaId);
 
   const avisoSolicitacao = isSvo
-    ? 'O agendamento SVO ainda não está integrado à listagem de solicitações nesta tela.'
+    ? erroSolicitacoesSvo
+      ? `Não foi possível carregar as solicitações SVO: ${erroSolicitacoesSvo}`
+      : !carregandoSolicitacoesSvo && solicitacoesSvo.length === 0
+        ? 'Não há solicitações SVO confirmadas aguardando alocação.'
+        : null
     : erroSolicitacoes
       ? `Não foi possível carregar as solicitações: ${erroSolicitacoes}`
       : solicitacoesAprovadas.length === 0
@@ -117,6 +137,53 @@ export function ModalNovaViagem({
     };
   }, [isSvo]);
 
+  // Solicitações SVO confirmadas (têm ordem aguardando alocação) e equipes: carregadas ao escolher SVO.
+  // A equipe é opcional: se a lista falhar, a alocação continua possível sem equipe.
+  useEffect(() => {
+    if (!isSvo) return;
+    let ativo = true;
+    setCarregandoSolicitacoesSvo(true);
+    setErroSolicitacoesSvo(null);
+    setCarregandoEquipes(true);
+    setErroEquipes(null);
+    setEquipeId('');
+
+    solicitacoesSvoApi
+      .listar({ status: 'CONFIRMADA', limite: 100 })
+      .then((resposta) => {
+        if (!ativo) return;
+        setSolicitacoesSvo(resposta.dados);
+        setSolicitacaoSvoId(resposta.dados[0] ? String(resposta.dados[0].id) : '');
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        setSolicitacoesSvo([]);
+        setSolicitacaoSvoId('');
+        setErroSolicitacoesSvo(mensagemDeErro(error));
+      })
+      .finally(() => {
+        if (ativo) setCarregandoSolicitacoesSvo(false);
+      });
+
+    equipesSvoApi
+      .listar()
+      .then((dados) => {
+        if (ativo) setEquipes(dados);
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        setEquipes([]);
+        setErroEquipes(mensagemDeErro(error));
+      })
+      .finally(() => {
+        if (ativo) setCarregandoEquipes(false);
+      });
+
+    return () => {
+      ativo = false;
+    };
+  }, [isSvo]);
+
   const handleMudarTipo = (novoTipo: TipoOperacaoViagem) => {
     setTipoOperacao(novoTipo);
     const veiculo = veiculosDoTipo(novoTipo)[0];
@@ -135,7 +202,11 @@ export function ModalNovaViagem({
     }
 
     if (!podeSalvar) {
-      setErro('Selecione a solicitação, o veículo e o motorista.');
+      setErro(
+        isSvo
+          ? 'Selecione a solicitação SVO, o veículo e o motorista.'
+          : 'Selecione a solicitação, o veículo e o motorista.',
+      );
       return;
     }
 
@@ -143,9 +214,10 @@ export function ModalNovaViagem({
     try {
       await onSalvar({
         tipo_operacao: tipoOperacao,
-        solicitacao_id: Number(solicitacaoId),
+        solicitacao_id: Number(isSvo ? solicitacaoSvoId : solicitacaoId),
         veiculo_id: Number(veiculoId),
         motorista_id: Number(motoristaId),
+        ...(isSvo && equipeId ? { equipe_id: Number(equipeId) } : {}),
       });
       onClose();
     } catch (error) {
@@ -182,6 +254,27 @@ export function ModalNovaViagem({
           <Alert tone="warning" className="mb-3.5">
             {avisoSolicitacao}
           </Alert>
+        ) : isSvo ? (
+          carregandoSolicitacoesSvo ? (
+            <div className="mb-3.5 flex items-center gap-2 text-xs text-slate-500">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+              Carregando solicitações SVO...
+            </div>
+          ) : (
+            <div className="mb-3.5">
+              <Select
+                label="Solicitação SVO Vinculada *"
+                value={solicitacaoSvoId}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => setSolicitacaoSvoId(e.target.value)}
+              >
+                {solicitacoesSvo.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    #{s.id} — {s.local_ocorrencia}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )
         ) : (
           <div className="mb-3.5">
             <Select
@@ -248,6 +341,16 @@ export function ModalNovaViagem({
         )}
         {isSvo && !carregandoOcupacao && !erroOcupacao && ocupacaoDoVeiculo && (
           <OcupacaoVeiculoSvoPainel veiculo={ocupacaoDoVeiculo} />
+        )}
+
+        {isSvo && (
+          <SeletorEquipeSvo
+            equipes={equipes}
+            carregando={carregandoEquipes}
+            erro={erroEquipes}
+            valor={equipeId}
+            onChange={setEquipeId}
+          />
         )}
 
         <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
