@@ -10,9 +10,11 @@ export interface UsuarioComSenha {
   tipo_usuario: string;
   perfil: Perfil;
   ativo: boolean;
+  // Incrementada ao alterar ou redefinir a senha; tokens com versão anterior são recusados
+  versao_sessao: number;
 }
 
-export type Usuario = Omit<UsuarioComSenha, 'senha'>;
+export type Usuario = Omit<UsuarioComSenha, 'senha' | 'versao_sessao'>;
 
 export interface NovoUsuario {
   nome: string;
@@ -23,7 +25,7 @@ export interface NovoUsuario {
   ativo?: boolean;
 }
 
-export type AlteracoesUsuario = Partial<Omit<UsuarioComSenha, 'id'>>;
+export type AlteracoesUsuario = Partial<Omit<UsuarioComSenha, 'id' | 'versao_sessao'>>;
 
 export interface FiltrosUsuarios {
   pagina: number;
@@ -86,6 +88,17 @@ export const usuarioModel = {
   async criar(dados: NovoUsuario, conn: Knex = db): Promise<Usuario> {
     const [criado] = await conn<UsuarioComSenha>(TABELA).insert(dados).returning(COLUNAS_PUBLICAS);
     return criado as Usuario;
+  },
+
+  // Incremento atômico no banco (sem ler e depois gravar): alterações simultâneas geram
+  // versões distintas e a última prevalece
+  async incrementarVersaoSessao(id: number, conn: Knex = db): Promise<number> {
+    const [linha] = await conn(TABELA)
+      .where({ id })
+      .update({ versao_sessao: conn.raw('versao_sessao + 1') })
+      .returning('versao_sessao');
+    if (!linha) throw new Error('Usuário não encontrado ao incrementar a versão da sessão');
+    return Number((linha as { versao_sessao: number }).versao_sessao);
   },
 
   async atualizar(id: number, alteracoes: AlteracoesUsuario, conn: Knex = db): Promise<Usuario | undefined> {

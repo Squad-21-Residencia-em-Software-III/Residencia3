@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { db } from '../config/database';
 import { env } from '../config/env';
@@ -20,21 +19,28 @@ interface PayloadToken {
   sub: string;
   typ: TipoToken;
   perfil: Perfil;
-  // Impressão digital da senha: muda quando a senha é alterada ou redefinida
-  sh: string;
+  // Versão da sessão do usuário (usuarios.versao_sessao): muda ao alterar ou redefinir a senha
+  sv: number;
   // Fim absoluto da sessão (segundos); a renovação não o estende
   sessao_exp: number;
   iat: number;
   exp: number;
 }
 
+// Corpo JSON devolvido ao cliente: o refresh token nunca vai no corpo, só no cookie HttpOnly
 export interface ResultadoLogin {
   token: string;
   tipo: 'Bearer';
   expiraEm: string;
-  refreshToken: string;
-  refreshExpiraEm: string;
+  sessaoExpiraEm: string;
   usuario: Usuario;
+}
+
+export interface SessaoEmitida {
+  resposta: ResultadoLogin;
+  refreshToken: string;
+  // Fim absoluto da sessão, em segundos (define o Max-Age do cookie)
+  sessaoExp: number;
 }
 
 const CREDENCIAIS_INVALIDAS = 'E-mail ou senha inválidos';
@@ -51,21 +57,16 @@ async function registrarTentativaRecusada(usuarioId: number | null, acao: string
   }
 }
 
-function impressaoDaSenha(usuarioId: number, hashSenha: string): string {
-  return createHmac('sha256', env.jwtSecret).update(`${usuarioId}:${hashSenha}`).digest('base64url');
-}
-
-function mesmaImpressao(a: string, b: string): boolean {
-  const bufferA = Buffer.from(a);
-  const bufferB = Buffer.from(b);
-  return bufferA.length === bufferB.length && timingSafeEqual(bufferA, bufferB);
-}
-
 const agoraEmSegundos = () => Math.floor(Date.now() / 1000);
+
+function semDadosSensiveis(usuario: UsuarioComSenha): Usuario {
+  const { senha: _hash, versao_sessao: _versao, ...usuarioPublico } = usuario;
+  return usuarioPublico;
+}
 
 function assinar(usuario: UsuarioComSenha, typ: TipoToken, expiraEm: number, sessaoExp: number): string {
   return jwt.sign(
-    { typ, perfil: usuario.perfil, sh: impressaoDaSenha(usuario.id, usuario.senha), sessao_exp: sessaoExp },
+    { typ, perfil: usuario.perfil, sv: usuario.versao_sessao, sessao_exp: sessaoExp },
     env.jwtSecret,
     {
       algorithm: JWT_ALGORITMO,
@@ -78,19 +79,21 @@ function assinar(usuario: UsuarioComSenha, typ: TipoToken, expiraEm: number, ses
 }
 
 // Emite o par de tokens. Na renovação, mantém o fim absoluto da sessão original.
-function emitirSessao(usuario: UsuarioComSenha, sessaoExp?: number): ResultadoLogin {
+function emitirSessao(usuario: UsuarioComSenha, sessaoExp?: number): SessaoEmitida {
   const agora = agoraEmSegundos();
   const fimDaSessao = sessaoExp ?? agora + env.jwtRefreshExpiraEmSegundos;
   const restante = fimDaSessao - agora;
-  const { senha: _hash, ...usuarioPublico } = usuario;
 
   return {
-    token: assinar(usuario, 'access', Math.min(env.jwtExpiraEmSegundos, restante), fimDaSessao),
-    tipo: 'Bearer',
-    expiraEm: env.jwtExpiresIn,
+    resposta: {
+      token: assinar(usuario, 'access', Math.min(env.jwtExpiraEmSegundos, restante), fimDaSessao),
+      tipo: 'Bearer',
+      expiraEm: env.jwtExpiresIn,
+      sessaoExpiraEm: new Date(fimDaSessao * 1000).toISOString(),
+      usuario: semDadosSensiveis(usuario),
+    },
     refreshToken: assinar(usuario, 'refresh', restante, fimDaSessao),
-    refreshExpiraEm: new Date(fimDaSessao * 1000).toISOString(),
-    usuario: usuarioPublico,
+    sessaoExp: fimDaSessao,
   };
 }
 
@@ -101,7 +104,9 @@ function payloadValido(payload: unknown, typ: TipoToken): payload is PayloadToke
     p.typ === typ &&
     typeof p.sub === 'string' &&
     /^[1-9]\d*$/.test(p.sub) &&
-    typeof p.sh === 'string' &&
+    typeof p.sv === 'number' &&
+    Number.isInteger(p.sv) &&
+    p.sv >= 1 &&
     typeof p.iat === 'number' &&
     typeof p.exp === 'number' &&
     typeof p.sessao_exp === 'number' &&
@@ -129,10 +134,11 @@ function verificar(token: string, typ: TipoToken): PayloadToken {
   return payload;
 }
 
-// Confere no banco que o usuário existe, continua ativo e não trocou a senha desde a emissão
+// Confere no banco que o usuário existe, continua ativo e que a versão da sessão não mudou
+// desde a emissão (ela é incrementada ao alterar ou redefinir a senha)
 async function usuarioDaSessao(payload: PayloadToken): Promise<UsuarioComSenha> {
   const usuario = await usuarioModel.buscarPorIdComSenha(Number(payload.sub));
-  if (!usuario || !mesmaImpressao(payload.sh, impressaoDaSenha(usuario.id, usuario.senha))) {
+  if (!usuario || usuario.versao_sessao !== payload.sv) {
     throw new AppError(TOKEN_INVALIDO, 401);
   }
   if (!usuario.ativo) {
@@ -142,7 +148,7 @@ async function usuarioDaSessao(payload: PayloadToken): Promise<UsuarioComSenha> 
 }
 
 export const authService = {
-  async login({ email, senha }: LoginInput): Promise<ResultadoLogin> {
+  async login({ email, senha }: LoginInput): Promise<SessaoEmitida> {
     const usuario = await usuarioModel.buscarPorEmailComSenha(email);
     const senhaConfere = await senhaService.comparar(senha, usuario?.senha ?? HASH_FICTICIO);
 
@@ -172,13 +178,11 @@ export const authService = {
 
   // Usuário e perfil vêm sempre do banco, nunca do payload do token
   async usuarioDoToken(token: string): Promise<Usuario> {
-    const usuario = await usuarioDaSessao(verificar(token, 'access'));
-    const { senha: _hash, ...usuarioPublico } = usuario;
-    return usuarioPublico;
+    return semDadosSensiveis(await usuarioDaSessao(verificar(token, 'access')));
   },
 
   // Emite um novo par de tokens sem estender o fim da sessão aberta no login
-  async renovarSessao(refreshToken: string): Promise<ResultadoLogin> {
+  async renovarSessao(refreshToken: string): Promise<SessaoEmitida> {
     const payload = verificar(refreshToken, 'refresh');
     // A tolerância de relógio do verify não pode prolongar uma sessão já encerrada
     if (payload.sessao_exp <= agoraEmSegundos()) {
@@ -188,8 +192,9 @@ export const authService = {
     return emitirSessao(usuario, payload.sessao_exp);
   },
 
-  // A troca de senha invalida as sessões anteriores; a sessão atual recebe tokens novos
-  async alterarPropriaSenha(usuarioId: number, { senhaAtual, novaSenha }: AlterarSenhaInput): Promise<ResultadoLogin> {
+  // A troca de senha incrementa versao_sessao, invalidando as sessões anteriores; a sessão
+  // atual recebe tokens novos com a versão atualizada
+  async alterarPropriaSenha(usuarioId: number, { senhaAtual, novaSenha }: AlterarSenhaInput): Promise<SessaoEmitida> {
     const usuario = await usuarioModel.buscarPorIdComSenha(usuarioId);
     if (!usuario || !(await senhaService.comparar(senhaAtual, usuario.senha))) {
       await registrarTentativaRecusada(usuarioId, 'ALTERACAO_SENHA_RECUSADA motivo=SENHA_ATUAL_INCORRETA');
@@ -197,14 +202,16 @@ export const authService = {
     }
 
     const hash = await senhaService.gerarHash(novaSenha);
-    await db.transaction(async (trx) => {
+    const versaoSessao = await db.transaction(async (trx) => {
       await usuarioModel.atualizar(usuarioId, { senha: hash }, trx);
+      const versao = await usuarioModel.incrementarVersaoSessao(usuarioId, trx);
       await auditoriaModel.registrar(
         { usuario_id: usuarioId, acao: 'ALTEROU_PROPRIA_SENHA', modulo: MODULOS_AUDITORIA.AUTENTICACAO },
         trx,
       );
+      return versao;
     });
 
-    return emitirSessao({ ...usuario, senha: hash });
+    return emitirSessao({ ...usuario, senha: hash, versao_sessao: versaoSessao });
   },
 };
