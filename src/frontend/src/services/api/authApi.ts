@@ -1,12 +1,10 @@
 import type { Usuario } from '../../types/usuario'
-import { request, tokenStorage } from './http'
+import { request } from './http'
 
 export interface ResultadoLogin {
   token: string
   tipo: 'Bearer'
   expiraEm: string
-  refreshToken: string
-  refreshExpiraEm: string
   usuario: Usuario
 }
 
@@ -16,10 +14,6 @@ export const authApi = {
 
   me: () => request<Usuario>('GET', '/auth/me'),
 
-  /** A troca invalida as outras sessões; a atual recebe tokens novos, salvos aqui. */
-  alterarSenha: async (senhaAtual: string, novaSenha: string) => {
-    const sessao = await request<ResultadoLogin>('PATCH', '/auth/senha', { body: { senhaAtual, novaSenha } })
-    tokenStorage.set(sessao.token, sessao.refreshToken)
-    return sessao
-  },
+  alterarSenha: (senhaAtual: string, novaSenha: string) =>
+    request<void>('PATCH', '/auth/senha', { body: { senhaAtual, novaSenha } }),
 }
