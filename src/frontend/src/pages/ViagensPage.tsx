@@ -36,6 +36,7 @@ import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
 import { ModalFinalizarViagem } from './viagens/ModalFinalizarViagem';
 import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
+import { usePermissao } from '../utils/permissoes';
 
 type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
 type FiltroOperacaoViagem = 'TODAS' | 'ADMINISTRATIVA' | 'SVO';
@@ -81,6 +82,11 @@ function limitarTexto(texto: string | null, maximo = 28): string {
 
 export default function ViagensPage() {
   const location = useLocation();
+  const { pode } = usePermissao();
+  const podeAgendar = pode('viagens.agendar');
+  const podeCancelar = pode('viagens.cancelar');
+  // Motoristas registram saída e retorno das próprias viagens (a API só lista as deles)
+  const podeExecutar = pode('viagens.executar');
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -95,10 +101,10 @@ export default function ViagensPage() {
   const [dadosNovaViagem, setDadosNovaViagem] = useState<DadosNovaViagem | null>(null);
 
   useEffect(() => {
-    if (location.state?.solicitacaoId) {
+    if (location.state?.solicitacaoId && podeAgendar) {
       setModalNovaAberto(true);
     }
-  }, [location.state]);
+  }, [location.state, podeAgendar]);
   const [viagemDetalhes, setViagemDetalhes] = useState<Viagem | null>(null);
   const [viagemIniciar, setViagemIniciar] = useState<Viagem | null>(null);
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
@@ -316,8 +322,8 @@ export default function ViagensPage() {
         <TableToolbar
           title="Registro de Viagens"
           subtitle={`${filtradas.length} de ${viagens.length} viagens registradas`}
-          newLabel="Nova Viagem"
-          onNew={() => setModalNovaAberto(true)}
+          newLabel={podeAgendar ? 'Nova Viagem' : undefined}
+          onNew={podeAgendar ? () => setModalNovaAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
           isFilterActive={
             filtroStatus !== 'TODOS' ||
@@ -578,31 +584,35 @@ export default function ViagensPage() {
                         <div className="inline-flex items-center justify-end gap-2">
                           {v.status === 'AGENDADA' && (
                             <>
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setViagemIniciar(v);
-                                }}
-                                title="Registrar saída da viagem"
-                              >
-                                <Play size={13} className="mr-1" /> Iniciar
-                              </Button>
-                              <Button
-                                variant="danger-outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setViagemCancelar(v);
-                                }}
-                                title="Cancelar viagem e liberar veículo e motorista"
-                              >
-                                Cancelar
-                              </Button>
+                              {podeExecutar && (
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViagemIniciar(v);
+                                  }}
+                                  title="Registrar saída da viagem"
+                                >
+                                  <Play size={13} className="mr-1" /> Iniciar
+                                </Button>
+                              )}
+                              {podeCancelar && (
+                                <Button
+                                  variant="danger-outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViagemCancelar(v);
+                                  }}
+                                  title="Cancelar viagem e liberar veículo e motorista"
+                                >
+                                  Cancelar
+                                </Button>
+                              )}
                             </>
                           )}
-                          {v.status === 'EM_ANDAMENTO' && (
+                          {v.status === 'EM_ANDAMENTO' && podeExecutar && (
                             <Button
                               variant="primary"
                               size="sm"
@@ -656,18 +666,30 @@ export default function ViagensPage() {
       <DrawerDetalhesViagem
         viagem={viagemDetalhes}
         onClose={() => setViagemDetalhes(null)}
-        onIniciar={(v) => {
-          setViagemDetalhes(null);
-          setViagemIniciar(v);
-        }}
-        onFinalizar={(v) => {
-          setViagemDetalhes(null);
-          setViagemFinalizar(v);
-        }}
-        onCancelar={(v) => {
-          setViagemDetalhes(null);
-          setViagemCancelar(v);
-        }}
+        onIniciar={
+          podeExecutar
+            ? (v) => {
+                setViagemDetalhes(null);
+                setViagemIniciar(v);
+              }
+            : undefined
+        }
+        onFinalizar={
+          podeExecutar
+            ? (v) => {
+                setViagemDetalhes(null);
+                setViagemFinalizar(v);
+              }
+            : undefined
+        }
+        onCancelar={
+          podeCancelar
+            ? (v) => {
+                setViagemDetalhes(null);
+                setViagemCancelar(v);
+              }
+            : undefined
+        }
       />
 
       {viagemIniciar && (

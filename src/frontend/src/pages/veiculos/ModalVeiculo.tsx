@@ -8,12 +8,21 @@ interface ModalVeiculoProps {
   onClose: () => void;
   onSalvar: (veiculo: NovoVeiculoInput) => Promise<void>;
   veiculoParaEditar?: Veiculo | null;
+  /** Fixa a frota (ex.: o Gestor SVO só cadastra veículos da frota SVO). */
+  apenasFrota?: TipoFrota;
 }
 
-export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeiculoProps) {
+export function ModalVeiculo({
+  onClose,
+  onSalvar,
+  veiculoParaEditar,
+  apenasFrota,
+}: ModalVeiculoProps) {
   const [placa, setPlaca] = useState(veiculoParaEditar?.placa ?? '');
   const [modelo, setModelo] = useState(veiculoParaEditar?.modelo ?? '');
-  const [tipoFrota, setTipoFrota] = useState<TipoFrota>(veiculoParaEditar?.tipo_frota ?? 'ADMINISTRATIVA');
+  const [tipoFrota, setTipoFrota] = useState<TipoFrota>(
+    veiculoParaEditar?.tipo_frota ?? apenasFrota ?? 'ADMINISTRATIVA',
+  );
   const [capacidade, setCapacidade] = useState(String(veiculoParaEditar?.capacidade_maxima ?? '4'));
   const [kmAtual, setKmAtual] = useState(String(veiculoParaEditar?.km_atual ?? '0'));
   const [erro, setErro] = useState('');
@@ -109,6 +118,8 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
             onChange={(e: ChangeEvent<HTMLSelectElement>) =>
               setTipoFrota(e.target.value as TipoFrota)
             }
+            disabled={Boolean(apenasFrota)}
+            title={apenasFrota ? 'Seu perfil só gerencia veículos desta frota' : undefined}
           >
             <option value="ADMINISTRATIVA">Administrativa</option>
             <option value="SVO">SVO</option>

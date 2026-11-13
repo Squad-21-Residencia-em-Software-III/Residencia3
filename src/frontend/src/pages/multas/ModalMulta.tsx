@@ -14,6 +14,8 @@ interface ModalMultaProps {
   onClose: () => void;
   onSalvar: (multa: NovaMultaInput) => Promise<void> | void;
   veiculoIdInicial?: string;
+  /** Restringe os veículos selecionáveis (ex.: Gestor SVO só registra multa de veículo SVO). */
+  filtrarVeiculo?: (veiculo: Veiculo) => boolean;
 }
 
 /** Data/hora local no formato do input datetime-local (AAAA-MM-DDTHH:mm). */
@@ -23,7 +25,13 @@ function agoraLocal(): string {
   return d.toISOString().slice(0, 16);
 }
 
-export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: ModalMultaProps) {
+export function ModalMulta({
+  multa,
+  onClose,
+  onSalvar,
+  veiculoIdInicial,
+  filtrarVeiculo,
+}: ModalMultaProps) {
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [motoristas, setMotoristas] = useState<Motorista[]>([]);
   const agora = useMemo(agoraLocal, []);
@@ -135,7 +143,7 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setVeiculoId(e.target.value)}
           >
             <option value="">Selecione o veículo</option>
-            {veiculos.map((v) => (
+            {(filtrarVeiculo ? veiculos.filter(filtrarVeiculo) : veiculos).map((v) => (
               <option key={v.id} value={v.id}>
                 {v.placa} — {v.modelo}
               </option>

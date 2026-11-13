@@ -17,6 +17,7 @@ import { manutencoesApi } from '../../services/api/manutencoesApi';
 import { abastecimentosApi } from '../../services/api/abastecimentosApi';
 import { multasApi } from '../../services/api/multasApi';
 import { cn } from '../../utils/cn';
+import { usePermissao } from '../../utils/permissoes';
 
 interface DrawerDetalhesVeiculoProps {
   veiculo: Veiculo | null;
@@ -50,6 +51,11 @@ export function DrawerDetalhesVeiculo({
   onEditar,
 }: DrawerDetalhesVeiculoProps) {
   const navigate = useNavigate();
+  const { pode } = usePermissao();
+  // Cada histórico só é consultado por quem tem acesso a ele (a API responde 403 aos demais)
+  const veManutencoes = pode('manutencoes.acessar');
+  const veAbastecimentos = pode('abastecimentos.acessar');
+  const veMultas = pode('multas.acessar');
   // Retém o último estado do veículo para saída suave no fechamento (350ms)
   const [veiculoState, setVeiculoState] = useState<Veiculo | null>(veiculo);
 
@@ -73,9 +79,9 @@ export function DrawerDetalhesVeiculo({
     setErroMultas(null);
 
     const [mRes, aRes, muRes] = await Promise.allSettled([
-      manutencoesApi.listarPorVeiculo(veiculoState.id),
-      abastecimentosApi.listarPorVeiculo(veiculoState.id),
-      multasApi.listar(),
+      veManutencoes ? manutencoesApi.listarPorVeiculo(veiculoState.id) : Promise.resolve([]),
+      veAbastecimentos ? abastecimentosApi.listarPorVeiculo(veiculoState.id) : Promise.resolve([]),
+      veMultas ? multasApi.listar() : Promise.resolve([]),
     ]);
 
     if (mRes.status === 'fulfilled') {
@@ -95,7 +101,7 @@ export function DrawerDetalhesVeiculo({
     } else {
       setErroMultas('Falha ao consultar multas do veículo.');
     }
-  }, [veiculoState]);
+  }, [veiculoState, veManutencoes, veAbastecimentos, veMultas]);
 
   useEffect(() => {
     carregarDadosHistorico();
@@ -187,37 +193,43 @@ export function DrawerDetalhesVeiculo({
       }
     >
       <div className="flex flex-col gap-6">
-        {/* 1. Barra de Ações Rápidas (Acesso Direto FMS) */}
-        <div>
-          <div className="mb-2.5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-            Ações Rápidas do Veículo
-          </div>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="justify-center"
-              onClick={() => {
-                onClose();
-                onNovoAbastecimento?.(veiculoState);
-              }}
-            >
-              <Fuel size={14} className="mr-1.5 text-primary" /> Registrar Abastecimento
-            </Button>
+        {/* 1. Barra de Ações Rápidas (só as que o perfil pode usar neste veículo) */}
+        {(onNovoAbastecimento || onNovaMulta) && (
+          <div>
+            <div className="mb-2.5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+              Ações Rápidas do Veículo
+            </div>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {onNovoAbastecimento && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="justify-center"
+                  onClick={() => {
+                    onClose();
+                    onNovoAbastecimento?.(veiculoState);
+                  }}
+                >
+                  <Fuel size={14} className="mr-1.5 text-primary" /> Registrar Abastecimento
+                </Button>
+              )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="justify-center"
-              onClick={() => {
-                onClose();
-                onNovaMulta?.(veiculoState);
-              }}
-            >
-              <AlertTriangle size={14} className="mr-1.5 text-danger" /> Registrar Multa
-            </Button>
+              {onNovaMulta && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="justify-center"
+                  onClick={() => {
+                    onClose();
+                    onNovaMulta?.(veiculoState);
+                  }}
+                >
+                  <AlertTriangle size={14} className="mr-1.5 text-danger" /> Registrar Multa
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 2. Cartões de Resumo Técnico & Quilometragem */}
         <div className="grid grid-cols-2 gap-3">
@@ -245,136 +257,144 @@ export function DrawerDetalhesVeiculo({
         </div>
 
         {/* 3. Indicadores de Custo Acumulado */}
-        <div className="rounded-xl border border-border bg-surface p-4 shadow-2xs">
-          <div className="mb-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-            Investimento no Veículo
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-xs text-text-muted">Gasto em Manutenção</div>
-              {erroManutencoes ? (
-                <div className="mt-0.5 text-xs text-danger font-medium">{erroManutencoes}</div>
-              ) : (
-                <>
-                  <div className="mt-0.5 font-display text-base font-bold text-primary">
-                    {dadosVeiculo?.totalGastoManutencao.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })}
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    {dadosVeiculo?.manutencoes.length ?? 0} ordens registradas
-                  </div>
-                </>
-              )}
+        {(veManutencoes || veAbastecimentos) && (
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-2xs">
+            <div className="mb-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+              Investimento no Veículo
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              {veManutencoes && (
+                <div>
+                  <div className="text-xs text-text-muted">Gasto em Manutenção</div>
+                  {erroManutencoes ? (
+                    <div className="mt-0.5 text-xs text-danger font-medium">{erroManutencoes}</div>
+                  ) : (
+                    <>
+                      <div className="mt-0.5 font-display text-base font-bold text-primary">
+                        {dadosVeiculo?.totalGastoManutencao.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {dadosVeiculo?.manutencoes.length ?? 0} ordens registradas
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
-            <div>
-              <div className="text-xs text-text-muted">Gasto em Combustível</div>
-              {erroAbastecimentos ? (
-                <div className="mt-0.5 text-xs text-danger font-medium">{erroAbastecimentos}</div>
-              ) : (
-                <>
-                  <div className="mt-0.5 font-display text-base font-bold text-emerald-700">
-                    {dadosVeiculo?.totalGastoCombustivel.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })}
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    {dadosVeiculo?.abastecimentos.length ?? 0} abastecimentos
-                  </div>
-                </>
+              {veAbastecimentos && (
+                <div>
+                  <div className="text-xs text-text-muted">Gasto em Combustível</div>
+                  {erroAbastecimentos ? (
+                    <div className="mt-0.5 text-xs text-danger font-medium">{erroAbastecimentos}</div>
+                  ) : (
+                    <>
+                      <div className="mt-0.5 font-display text-base font-bold text-emerald-700">
+                        {dadosVeiculo?.totalGastoCombustivel.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {dadosVeiculo?.abastecimentos.length ?? 0} abastecimentos
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </div>
-        </div>
+        )}
 
         {/* 4. Histórico Recente de Manutenções */}
-        <div>
-          <div className="mb-2.5 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-              <History size={13} /> Últimas Manutenções
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                navigate('/manutencoes');
-              }}
-              className="cursor-pointer text-xs font-semibold text-primary hover:underline"
-            >
-              Ver todas na aba de manutenções ({dadosVeiculo?.manutencoes.length ?? 0})
-            </button>
-          </div>
-
-          {erroManutencoes ? (
-            <div className="rounded-lg border border-danger/30 bg-danger-soft p-3 text-center text-xs text-danger">
-              <p className="m-0 font-medium">{erroManutencoes}</p>
+        {veManutencoes && (
+          <div>
+            <div className="mb-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+                <History size={13} /> Últimas Manutenções
+              </div>
               <button
                 type="button"
-                onClick={carregarDadosHistorico}
-                className="mt-1 font-semibold underline cursor-pointer"
+                onClick={() => {
+                  onClose();
+                  navigate('/manutencoes');
+                }}
+                className="cursor-pointer text-xs font-semibold text-primary hover:underline"
               >
-                Tentar novamente
+                Ver todas na aba de manutenções ({dadosVeiculo?.manutencoes.length ?? 0})
               </button>
             </div>
-          ) : !dadosVeiculo?.ultimasManutencoes.length ? (
-            <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-text-muted">
-              Nenhuma manutenção registrada para este veículo.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {dadosVeiculo.ultimasManutencoes.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-alt p-3"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900">
-                        {m.tipo_manutencao === 'PREVENTIVA' ? 'Preventiva' : 'Corretiva'}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {new Date(m.data_manutencao).toLocaleDateString('pt-BR', {
-                          timeZone: 'UTC',
-                        })}
-                      </span>
-                    </div>
-                    <div className="truncate text-xs text-slate-600" title={m.descricao}>
-                      {m.descricao}
-                    </div>
-                  </div>
 
-                  <div className="text-right shrink-0">
-                    <div className="text-xs font-bold text-slate-900">
-                      {Number(m.custo).toLocaleString('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      })}
+            {erroManutencoes ? (
+              <div className="rounded-lg border border-danger/30 bg-danger-soft p-3 text-center text-xs text-danger">
+                <p className="m-0 font-medium">{erroManutencoes}</p>
+                <button
+                  type="button"
+                  onClick={carregarDadosHistorico}
+                  className="mt-1 font-semibold underline cursor-pointer"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            ) : !dadosVeiculo?.ultimasManutencoes.length ? (
+              <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-text-muted">
+                Nenhuma manutenção registrada para este veículo.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {dadosVeiculo.ultimasManutencoes.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-alt p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900">
+                          {m.tipo_manutencao === 'PREVENTIVA' ? 'Preventiva' : 'Corretiva'}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(m.data_manutencao).toLocaleDateString('pt-BR', {
+                            timeZone: 'UTC',
+                          })}
+                        </span>
+                      </div>
+                      <div className="truncate text-xs text-slate-600" title={m.descricao}>
+                        {m.descricao}
+                      </div>
                     </div>
-                    <span
-                      className={cn(
-                        'text-[10px] font-semibold',
-                        m.status === 'CONCLUIDA'
-                          ? 'text-emerald-700'
+
+                    <div className="text-right shrink-0">
+                      <div className="text-xs font-bold text-slate-900">
+                        {Number(m.custo).toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </div>
+                      <span
+                        className={cn(
+                          'text-[10px] font-semibold',
+                          m.status === 'CONCLUIDA'
+                            ? 'text-emerald-700'
+                            : m.status === 'EM_ANDAMENTO'
+                              ? 'text-blue-700'
+                              : 'text-amber-700',
+                        )}
+                      >
+                        {m.status === 'CONCLUIDA'
+                          ? 'Concluída'
                           : m.status === 'EM_ANDAMENTO'
-                            ? 'text-blue-700'
-                            : 'text-amber-700',
-                      )}
-                    >
-                      {m.status === 'CONCLUIDA'
-                        ? 'Concluída'
-                        : m.status === 'EM_ANDAMENTO'
-                          ? 'Em Oficina'
-                          : 'Agendada'}
-                    </span>
+                            ? 'Em Oficina'
+                            : 'Agendada'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 5. Alertas & Multas Pendentes (se houver) */}
         {erroMultas && (
