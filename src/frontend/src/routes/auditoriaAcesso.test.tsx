@@ -46,7 +46,7 @@ describe('Acesso à tela de Auditoria', () => {
     logarComo(perfil);
     abrir('/sobre');
 
-    expect(screen.getAllByRole('link', { name: /Equipe/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: /Início/ }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('link', { name: /Auditoria/ })).not.toBeInTheDocument();
   });
 

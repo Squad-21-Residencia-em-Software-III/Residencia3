@@ -22,6 +22,7 @@ import { motoristasApi } from '../services/api/motoristasApi';
 import { documentosApi, type DocumentoComAlerta } from '../services/api/documentosApi';
 import { mensagemDeErro } from '../services/api/http';
 import { ModalMulta } from './multas/ModalMulta';
+import { usePermissao } from '../utils/permissoes';
 
 function formatarDataHora(iso: string): string {
   try {
@@ -42,6 +43,10 @@ function brl(valor: number): string {
 
 export default function MultasPage() {
   const [multas, setMultas] = useState<Multa[]>([]);
+  const { pode, podeNaFrota } = usePermissao();
+  const podeRegistrar = pode('multas.gerenciar');
+  // Gestor SVO: só altera multas de veículos da frota SVO
+  const podeGerenciar = (m: Multa) => podeNaFrota('multas.gerenciar', m.veiculo_tipo_frota);
   const [documentosAlerta, setDocumentosAlerta] = useState<DocumentoComAlerta[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -103,6 +108,7 @@ export default function MultasPage() {
           ...m,
           veiculo_placa: v?.placa,
           veiculo_modelo: v?.modelo,
+          veiculo_tipo_frota: v?.tipo_frota,
           motorista_nome: mot?.nome,
         };
       });
@@ -242,8 +248,8 @@ export default function MultasPage() {
               ? 'Carregando autuações...'
               : `${filtradas.length} ${filtradas.length === 1 ? 'registro' : 'registros'}`
           }
-          newLabel="Registrar multa"
-          onNew={abrirNova}
+          newLabel={podeRegistrar ? 'Registrar multa' : undefined}
+          onNew={podeRegistrar ? abrirNova : undefined}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
           isFilterActive={temFiltro || filtrosAbertosMobile}
         />
@@ -389,22 +395,28 @@ export default function MultasPage() {
                   </td>
                   <td>
                     <div className="flex items-center justify-start gap-1.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        title="Editar multa"
-                        onClick={() => abrirEdicao(m)}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        variant="danger-outline"
-                        size="sm"
-                        title="Excluir multa"
-                        onClick={() => setMultaExcluir(m)}
-                      >
-                        Excluir
-                      </Button>
+                      {podeGerenciar(m) ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            title="Editar multa"
+                            onClick={() => abrirEdicao(m)}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="danger-outline"
+                            size="sm"
+                            title="Excluir multa"
+                            onClick={() => setMultaExcluir(m)}
+                          >
+                            Excluir
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -419,6 +431,7 @@ export default function MultasPage() {
       {modalAberto && (
         <ModalMulta
           multa={multaEditando}
+          filtrarVeiculo={(v) => podeNaFrota('multas.gerenciar', v.tipo_frota)}
           onClose={() => setModalAberto(false)}
           onSalvar={handleSalvar}
         />

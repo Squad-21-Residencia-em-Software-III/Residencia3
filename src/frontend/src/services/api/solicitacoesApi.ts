@@ -14,13 +14,14 @@ interface ListaSolicitacoes {
 // Limite máximo aceito pelo backend por página.
 const LIMITE_POR_PAGINA = 100
 
-const listar = async (status?: StatusSolicitacao) => {
+/** Percorre todas as páginas de uma listagem de solicitações. */
+const listarTodasAsPaginas = async (caminho: string, status?: StatusSolicitacao) => {
   const solicitacoes: SolicitacaoViagem[] = []
   let pagina = 1
   let totalPaginas = 1
 
   do {
-    const resposta = await request<ListaSolicitacoes>('GET', '/solicitacoes-viagem', {
+    const resposta = await request<ListaSolicitacoes>('GET', caminho, {
       query: { status, pagina, limite: LIMITE_POR_PAGINA },
     })
     solicitacoes.push(...resposta.dados)
@@ -31,8 +32,14 @@ const listar = async (status?: StatusSolicitacao) => {
   return solicitacoes
 }
 
+/** Solicitações encaminhadas ao usuário (gestores). */
+const listar = (status?: StatusSolicitacao) => listarTodasAsPaginas('/solicitacoes-viagem', status)
+
 export const solicitacoesApi = {
   listar,
+  /** Só as solicitações do próprio usuário (qualquer perfil). */
+  listarMinhas: (status?: StatusSolicitacao) =>
+    listarTodasAsPaginas('/solicitacoes-viagem/minhas', status),
   listarAprovadas: () => listar('APROVADA'),
   criar: (dados: NovaSolicitacaoApiInput) =>
     request<SolicitacaoViagem>('POST', '/solicitacoes-viagem', { body: dados }),

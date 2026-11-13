@@ -29,6 +29,7 @@ import { manutencoesApi } from '../services/api/manutencoesApi';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { mensagemDeErro } from '../services/api/http';
 import type { Veiculo } from '../types/veiculo';
+import { usePermissao } from '../utils/permissoes';
 import type {
   Manutencao,
   NovaManutencaoInput,
@@ -50,6 +51,12 @@ const TIPO_MAP: Record<TipoManutencao, { label: string; tone: BadgeTone }> = {
 export default function ManutencoesPage() {
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
+  const { pode, podeNaFrota } = usePermissao();
+  const podeRegistrar = pode('manutencoes.gerenciar');
+  // Gestor SVO: só altera manutenções de veículos da frota SVO
+  const veiculosEditaveis = veiculos.filter((v) => podeNaFrota('manutencoes.gerenciar', v.tipo_frota));
+  const podeGerenciar = (m: Manutencao) =>
+    podeNaFrota('manutencoes.gerenciar', veiculos.find((v) => v.id === m.veiculo_id)?.tipo_frota);
   const [carregando, setCarregando] = useState(true);
 
   // Filtros
@@ -347,8 +354,8 @@ export default function ManutencoesPage() {
               ? 'Carregando registros...'
               : `${filtradas.length} manutenç${filtradas.length === 1 ? 'ão registrada' : 'ões registradas'}`
           }
-          newLabel="Nova Manutenção"
-          onNew={() => setModalAberto(true)}
+          newLabel={podeRegistrar ? 'Nova Manutenção' : undefined}
+          onNew={podeRegistrar ? () => setModalAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
           isFilterActive={
             filtroVeiculo !== 'TODOS' ||
@@ -515,7 +522,7 @@ export default function ManutencoesPage() {
                   </td>
                   <td>
                     <div className="flex items-center justify-start gap-1.5">
-                      {m.status === 'AGENDADA' && (
+                      {m.status === 'AGENDADA' && podeGerenciar(m) && (
                         <Button
                           variant="primary"
                           size="sm"
@@ -525,7 +532,7 @@ export default function ManutencoesPage() {
                           Iniciar
                         </Button>
                       )}
-                      {m.status === 'EM_ANDAMENTO' && (
+                      {m.status === 'EM_ANDAMENTO' && podeGerenciar(m) && (
                         <Button
                           variant="primary"
                           size="sm"
@@ -535,22 +542,28 @@ export default function ManutencoesPage() {
                           Concluir
                         </Button>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleAbrirEdicao(m)}
-                        title="Editar registro de manutenção"
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        variant="danger-outline"
-                        size="sm"
-                        onClick={() => setManutencaoExcluir(m)}
-                        title="Excluir manutenção"
-                      >
-                        Excluir
-                      </Button>
+                      {podeGerenciar(m) ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAbrirEdicao(m)}
+                            title="Editar registro de manutenção"
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="danger-outline"
+                            size="sm"
+                            onClick={() => setManutencaoExcluir(m)}
+                            title="Excluir manutenção"
+                          >
+                            Excluir
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -579,7 +592,7 @@ export default function ManutencoesPage() {
                 required
               >
                 <option value="">Selecione a viatura</option>
-                {veiculos.map((v) => (
+                {veiculosEditaveis.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.placa} — {v.modelo}
                   </option>

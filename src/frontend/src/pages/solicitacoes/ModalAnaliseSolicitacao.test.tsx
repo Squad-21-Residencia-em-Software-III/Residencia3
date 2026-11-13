@@ -6,12 +6,6 @@ import { solicitacoesApi } from '../../services/api/solicitacoesApi'
 import type { DisponibilidadeSolicitacao, SolicitacaoViagem } from '../../types/solicitacao'
 import { ModalAnaliseSolicitacao } from './ModalAnaliseSolicitacao'
 
-const mockTemPerfil = vi.fn()
-
-vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ temPerfil: mockTemPerfil }),
-}))
-
 vi.mock('../../services/api/solicitacoesApi', () => ({
   solicitacoesApi: { consultarDisponibilidade: vi.fn() },
 }))
@@ -39,10 +33,11 @@ const disponibilidadeComVeiculos: DisponibilidadeSolicitacao = {
   motoristas_disponiveis: [{ id: 10 }],
 }
 
-function renderizarModal() {
+function renderizarModal(podeDecidir = true) {
   return render(
     <ModalAnaliseSolicitacao
       solicitacao={solicitacao}
+      podeDecidir={podeDecidir}
       onClose={vi.fn()}
       onAprovar={vi.fn().mockResolvedValue(undefined)}
       onRecusar={vi.fn().mockResolvedValue(undefined)}
@@ -53,7 +48,6 @@ function renderizarModal() {
 describe('ModalAnaliseSolicitacao - disponibilidade de veículos', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockTemPerfil.mockReturnValue(true)
   })
 
   it('lista os veículos disponíveis no período com modelo e capacidade', async () => {
@@ -125,13 +119,13 @@ describe('ModalAnaliseSolicitacao - disponibilidade de veículos', () => {
     expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument()
   })
 
-  it('não consulta nem exibe o bloco para quem não é Gestor de Frota', () => {
-    mockTemPerfil.mockReturnValue(false)
-
-    renderizarModal()
+  it('para quem não decide (ex.: Gestor SVO) é só consulta: sem disponibilidade nem Aprovar/Recusar', () => {
+    renderizarModal(false)
 
     expect(consultarDisponibilidade).not.toHaveBeenCalled()
     expect(screen.queryByText('Veículos disponíveis no período')).not.toBeInTheDocument()
     expect(screen.queryByText(/Consultando disponibilidade/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Aprovar/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Recusar/ })).not.toBeInTheDocument()
   })
 })
