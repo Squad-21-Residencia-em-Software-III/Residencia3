@@ -1,6 +1,15 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
+export const LIMITE_MAXIMO_MANUTENCOES = 200;
+
+function normalizarLimite(limite?: number): number {
+  if (!limite || !Number.isInteger(limite) || limite <= 0) {
+    return LIMITE_MAXIMO_MANUTENCOES;
+  }
+  return Math.min(limite, LIMITE_MAXIMO_MANUTENCOES);
+}
+
 export type TipoManutencao = 'PREVENTIVA' | 'CORRETIVA';
 export type StatusManutencao = 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA';
 
@@ -48,7 +57,8 @@ export const manutencaoModel = {
   },
 
   async listarPorVeiculo(
-    veiculoId: number
+    veiculoId: number,
+    limite = LIMITE_MAXIMO_MANUTENCOES
   ): Promise<ManutencaoDetalhada[]> {
     const registros = await db('manutencoes')
       .leftJoin('fornecedores', 'manutencoes.fornecedor_id', 'fornecedores.id')
@@ -61,7 +71,8 @@ export const manutencaoModel = {
         'fornecedores.nome as fornecedor_nome'
       )
       .orderBy('manutencoes.data_manutencao', 'desc')
-      .orderBy('manutencoes.id', 'desc');
+      .orderBy('manutencoes.id', 'desc')
+      .limit(normalizarLimite(limite));
 
     return registros.map(normalizar);
   },

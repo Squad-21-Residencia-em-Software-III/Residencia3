@@ -69,6 +69,31 @@ function resolverCredenciais(env = process.env, argv = process.argv) {
 }
 
 /**
+ * Resolve o dimensionamento explicito do pool de conexoes e os tempos maximos
+ * de espera para aquisicao, criacao, ociosidade e liberacao (Tarn.js / Knex).
+ */
+function resolverPool(env = process.env) {
+  const minInformado = Number(env.POSTGRES_POOL_MIN);
+  const maxInformado = Number(env.POSTGRES_POOL_MAX);
+
+  const min = Number.isInteger(minInformado) && minInformado >= 0 ? minInformado : 2;
+  const maxBase = Number.isInteger(maxInformado) && maxInformado > 0 ? maxInformado : 10;
+  const max = Math.max(min, maxBase);
+
+  return {
+    min,
+    max,
+    acquireTimeoutMillis: Number(env.POSTGRES_POOL_ACQUIRE_TIMEOUT_MS) || 10000,
+    createTimeoutMillis: Number(env.POSTGRES_POOL_CREATE_TIMEOUT_MS) || 10000,
+    destroyTimeoutMillis: Number(env.POSTGRES_POOL_DESTROY_TIMEOUT_MS) || 5000,
+    idleTimeoutMillis: Number(env.POSTGRES_POOL_IDLE_TIMEOUT_MS) || 30000,
+    reapIntervalMillis: Number(env.POSTGRES_POOL_REAP_INTERVAL_MS) || 1000,
+    createRetryIntervalMillis: Number(env.POSTGRES_POOL_CREATE_RETRY_INTERVAL_MS) || 200,
+    propagateCreateError: false,
+  };
+}
+
+/**
  * Monta a configuração completa do Knex a partir do ambiente informado.
  * @param {NodeJS.ProcessEnv} [env]
  * @param {string[]} [argv]
@@ -76,6 +101,7 @@ function resolverCredenciais(env = process.env, argv = process.argv) {
  */
 function criarConfigKnex(env = process.env, argv = process.argv) {
   const credenciais = resolverCredenciais(env, argv);
+  const pool = resolverPool(env);
 
   return {
     client: 'pg',
@@ -86,7 +112,9 @@ function criarConfigKnex(env = process.env, argv = process.argv) {
       password: credenciais.password,
       database: env.POSTGRES_DB,
       ssl: resolverSsl(env),
+      connectionTimeoutMillis: pool.createTimeoutMillis,
     },
+    pool,
     migrations: {
       directory: path.resolve(__dirname, 'database/migrations'),
       tableName: 'knex_migrations',
@@ -103,6 +131,7 @@ Object.defineProperties(config, {
   resolverSsl: { value: resolverSsl, enumerable: false },
   ehContextoMigration: { value: ehContextoMigration, enumerable: false },
   resolverCredenciais: { value: resolverCredenciais, enumerable: false },
+  resolverPool: { value: resolverPool, enumerable: false },
   criarConfigKnex: { value: criarConfigKnex, enumerable: false },
 });
 

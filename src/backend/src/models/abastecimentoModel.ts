@@ -2,6 +2,15 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
+export const LIMITE_MAXIMO_ABASTECIMENTOS = 200;
+
+function normalizarLimite(limite?: number): number {
+  if (!limite || !Number.isInteger(limite) || limite <= 0) {
+    return LIMITE_MAXIMO_ABASTECIMENTOS;
+  }
+  return Math.min(limite, LIMITE_MAXIMO_ABASTECIMENTOS);
+}
+
 export interface NovoAbastecimento {
   veiculo_id: number;
   motorista_id: number;
@@ -50,11 +59,14 @@ export const abastecimentoModel = {
   },
 
   async listarPorVeiculo(
-    veiculoId: number
+    veiculoId: number,
+    limite = LIMITE_MAXIMO_ABASTECIMENTOS
   ): Promise<AbastecimentoComPreco[]> {
     const abastecimentos: Abastecimento[] = await db('abastecimentos')
       .where({ veiculo_id: veiculoId })
-      .orderBy('data_abastecimento', 'desc');
+      .orderBy('data_abastecimento', 'desc')
+      .orderBy('id', 'desc')
+      .limit(normalizarLimite(limite));
 
     return abastecimentos.map(calcularPrecoPorLitro);
   },
