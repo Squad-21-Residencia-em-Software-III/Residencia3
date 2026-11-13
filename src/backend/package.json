@@ -14,7 +14,8 @@
     "migrate:status": "knex migrate:status",
     "migrate:make": "knex migrate:make",
     "seed": "knex seed:run",
-    "seed:make": "knex seed:make"
+    "seed:make": "knex seed:make",
+    "db:provisionar-app-user": "node scripts/provisionar-usuario-app.cjs"
   },
   "keywords": [],
   "author": "",
