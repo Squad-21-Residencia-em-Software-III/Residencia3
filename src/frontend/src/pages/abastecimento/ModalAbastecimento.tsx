@@ -13,12 +13,15 @@ interface ModalAbastecimentoProps {
   onClose: () => void;
   onSalvar: (abastecimento: NovoAbastecimentoInput) => Promise<void> | void;
   veiculoIdInicial?: string;
+  /** Restringe os veículos selecionáveis (ex.: Gestor SVO só abastece veículo SVO). */
+  filtrarVeiculo?: (veiculo: Veiculo) => boolean;
 }
 
 export function ModalAbastecimento({
   onClose,
   onSalvar,
   veiculoIdInicial,
+  filtrarVeiculo,
 }: ModalAbastecimentoProps) {
   const { usuario } = useAuth();
   const isMotorista =
@@ -182,7 +185,7 @@ export function ModalAbastecimento({
             required
           >
             <option value="">Selecione o veículo</option>
-            {veiculos.map((v) => (
+            {(filtrarVeiculo ? veiculos.filter(filtrarVeiculo) : veiculos).map((v) => (
               <option key={v.id} value={v.id}>
                 {v.placa} — {v.modelo}
               </option>
