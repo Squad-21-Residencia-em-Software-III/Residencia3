@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import knexConfig = require('../../knexfile');
 
-const { resolverSsl, resolverCredenciais, criarConfigKnex } = knexConfig as typeof knexConfig & {
+const { resolverSsl, resolverCredenciais, resolverPool, criarConfigKnex } = knexConfig as typeof knexConfig & {
   resolverSsl: (env: NodeJS.ProcessEnv) => false | { rejectUnauthorized: true; ca?: string };
   resolverCredenciais: (
     env: NodeJS.ProcessEnv,
     argv?: string[]
   ) => { user?: string; password?: string };
+  resolverPool: (env: NodeJS.ProcessEnv) => {
+    min: number;
+    max: number;
+    acquireTimeoutMillis: number;
+    createTimeoutMillis: number;
+    destroyTimeoutMillis: number;
+    idleTimeoutMillis: number;
+    reapIntervalMillis: number;
+    createRetryIntervalMillis: number;
+    propagateCreateError: boolean;
+  };
   criarConfigKnex: (env: NodeJS.ProcessEnv, argv?: string[]) => typeof knexConfig;
 };
 
@@ -92,6 +103,52 @@ describe('Configuração de segurança do PostgreSQL (knexfile)', () => {
         password: 'senha_migration_owner',
         ssl: { rejectUnauthorized: true },
       });
+    });
+  });
+
+  describe('Dimensionamento do pool de conexões e timeouts (resolverPool)', () => {
+    it('deve aplicar limites explícitos e tempos de espera padrão no pool', () => {
+      const pool = resolverPool({});
+
+      expect(pool).toEqual({
+        min: 2,
+        max: 10,
+        acquireTimeoutMillis: 10000,
+        createTimeoutMillis: 10000,
+        destroyTimeoutMillis: 5000,
+        idleTimeoutMillis: 30000,
+        reapIntervalMillis: 1000,
+        createRetryIntervalMillis: 200,
+        propagateCreateError: false,
+      });
+    });
+
+    it('deve respeitar variáveis de ambiente customizadas e garantir que max >= min', () => {
+      const poolCustomizado = resolverPool({
+        POSTGRES_POOL_MIN: '4',
+        POSTGRES_POOL_MAX: '15',
+        POSTGRES_POOL_ACQUIRE_TIMEOUT_MS: '8000',
+        POSTGRES_POOL_CREATE_TIMEOUT_MS: '6000',
+        POSTGRES_POOL_DESTROY_TIMEOUT_MS: '3000',
+        POSTGRES_POOL_IDLE_TIMEOUT_MS: '20000',
+      });
+
+      expect(poolCustomizado).toMatchObject({
+        min: 4,
+        max: 15,
+        acquireTimeoutMillis: 8000,
+        createTimeoutMillis: 6000,
+        destroyTimeoutMillis: 3000,
+        idleTimeoutMillis: 20000,
+      });
+
+      const poolAjustado = resolverPool({
+        POSTGRES_POOL_MIN: '8',
+        POSTGRES_POOL_MAX: '3',
+      });
+
+      expect(poolAjustado.min).toBe(8);
+      expect(poolAjustado.max).toBe(8);
     });
   });
 });

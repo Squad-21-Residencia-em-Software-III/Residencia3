@@ -1,6 +1,15 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 
+export const LIMITE_MAXIMO_MULTAS = 200;
+
+function normalizarLimite(limite?: number): number {
+  if (!limite || !Number.isInteger(limite) || limite <= 0) {
+    return LIMITE_MAXIMO_MULTAS;
+  }
+  return Math.min(limite, LIMITE_MAXIMO_MULTAS);
+}
+
 // Espelha a constraint chk_multas_status_pagamento
 export const STATUS_PAGAMENTO_MULTA = ['PENDENTE', 'PAGO', 'CANCELADO'] as const;
 
@@ -68,10 +77,12 @@ export const multaModel = {
     return rows > 0;
   },
 
-  async listar(): Promise<Multa[]> {
+  async listar(limite = LIMITE_MAXIMO_MULTAS): Promise<Multa[]> {
     const multas: Multa[] = await db('multas')
       .select('*')
-      .orderBy('data_infracao', 'desc');
+      .orderBy('data_infracao', 'desc')
+      .orderBy('id', 'desc')
+      .limit(normalizarLimite(limite));
 
     return multas.map(normalizar);
   },
