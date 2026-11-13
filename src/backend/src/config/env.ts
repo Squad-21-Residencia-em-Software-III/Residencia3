@@ -21,6 +21,10 @@ const MAXIMO_REFRESH_SEGUNDOS = 24 * 60 * 60;
 
 const UNIDADES: Record<string, number> = { s: 1, m: 60, h: 60 * 60, d: 24 * 60 * 60 };
 
+// Origem do frontend no desenvolvimento local (Vite)
+const CORS_ORIGIN_PADRAO_DEV = 'http://localhost:5173';
+const MAXIMO_SALTOS_PROXY = 10;
+
 function obrigatoria(origem: Origem, nome: string): string {
   const valor = origem[nome];
   if (!valor) {
@@ -56,7 +60,49 @@ export function duracaoEmSegundos(nome: string, valor: string, maximo: number): 
   return segundos;
 }
 
+// Lista de origens (esquema://host[:porta]) autorizadas a chamar a API com credenciais.
+// O curinga "*" é proibido: com cookies, a origem precisa ser explícita.
+function origensCors(valor: string | undefined, producao: boolean): string[] {
+  if (valor === undefined) return producao ? [] : [CORS_ORIGIN_PADRAO_DEV];
+  const itens = valor.split(',').map((item) => item.trim()).filter(Boolean);
+  for (const item of itens) {
+    let url: URL | undefined;
+    try {
+      url = new URL(item);
+    } catch {
+      url = undefined;
+    }
+    if (!url || !['http:', 'https:'].includes(url.protocol) || url.origin !== item) {
+      throw new Error('CORS_ORIGIN deve conter apenas origens no formato https://dominio[:porta], separadas por vírgula');
+    }
+  }
+  return itens;
+}
+
+// Quantidade de proxies reversos à frente da API (Render, Vercel), usada para obter o IP real
+function saltosDeProxy(valor: string | undefined): number {
+  if (valor === undefined || valor === '') return 0;
+  if (!/^\d+$/.test(valor) || Number(valor) > MAXIMO_SALTOS_PROXY) {
+    throw new Error(`TRUST_PROXY deve ser um número inteiro de 0 a ${MAXIMO_SALTOS_PROXY}`);
+  }
+  return Number(valor);
+}
+
+// Cookies de sessão exigem HTTPS em produção; COOKIE_SECURE=false só é aceito fora dela
+function cookieSeguro(valor: string | undefined, producao: boolean): boolean {
+  if (valor === undefined || valor === '') return producao;
+  if (valor !== 'true' && valor !== 'false') {
+    throw new Error('COOKIE_SECURE deve ser true ou false');
+  }
+  if (producao && valor === 'false') {
+    throw new Error('COOKIE_SECURE não pode ser false em produção');
+  }
+  return valor === 'true';
+}
+
 export function carregarEnv(origem: Origem = process.env) {
+  const nodeEnv = origem.NODE_ENV ?? 'development';
+  const producao = nodeEnv === 'production';
   const jwtExpiresIn = origem.JWT_EXPIRES_IN ?? '2h';
   const jwtRefreshExpiresIn = origem.JWT_REFRESH_EXPIRES_IN ?? '12h';
   const jwtExpiraEmSegundos = duracaoEmSegundos('JWT_EXPIRES_IN', jwtExpiresIn, MAXIMO_ACCESS_SEGUNDOS);
@@ -70,13 +116,16 @@ export function carregarEnv(origem: Origem = process.env) {
   }
 
   return {
-    nodeEnv: origem.NODE_ENV ?? 'development',
+    nodeEnv,
     port: Number(origem.PORT) || 3000,
     jwtSecret: validarSegredo(obrigatoria(origem, 'JWT_SECRET')),
     jwtExpiresIn,
     jwtExpiraEmSegundos,
     jwtRefreshExpiresIn,
     jwtRefreshExpiraEmSegundos,
+    corsOrigens: origensCors(origem.CORS_ORIGIN, producao),
+    trustProxy: saltosDeProxy(origem.TRUST_PROXY),
+    cookieSecure: cookieSeguro(origem.COOKIE_SECURE, producao),
   };
 }
 

@@ -58,3 +58,41 @@ describe('Configuração do JWT (env)', () => {
     });
   });
 });
+
+describe('Configuração de CORS, proxy e cookie (env)', () => {
+  it('usa a origem do Vite no desenvolvimento e nenhuma origem cruzada em produção', () => {
+    expect(carregar().corsOrigens).toEqual(['http://localhost:5173']);
+    expect(carregar({ NODE_ENV: 'production' }).corsOrigens).toEqual([]);
+  });
+
+  it('aceita uma lista explícita de origens', () => {
+    expect(carregar({ CORS_ORIGIN: 'https://fsph-web.vercel.app, http://localhost:5173' }).corsOrigens).toEqual([
+      'https://fsph-web.vercel.app',
+      'http://localhost:5173',
+    ]);
+  });
+
+  it.each(['*', 'fsph-web.vercel.app', 'https://fsph-web.vercel.app/', 'https://fsph-web.vercel.app/api', 'ftp://x.com'])(
+    'rejeita CORS_ORIGIN inválido: %s',
+    (valor) => {
+      expect(() => carregar({ CORS_ORIGIN: valor })).toThrow('CORS_ORIGIN');
+    }
+  );
+
+  it('lê TRUST_PROXY como número de saltos', () => {
+    expect(carregar().trustProxy).toBe(0);
+    expect(carregar({ TRUST_PROXY: '1' }).trustProxy).toBe(1);
+  });
+
+  it.each(['true', '-1', '1.5', '99'])('rejeita TRUST_PROXY inválido: %s', (valor) => {
+    expect(() => carregar({ TRUST_PROXY: valor })).toThrow('TRUST_PROXY');
+  });
+
+  it('exige cookie Secure em produção', () => {
+    expect(carregar({ NODE_ENV: 'production' }).cookieSecure).toBe(true);
+    expect(carregar().cookieSecure).toBe(false);
+    expect(carregar({ COOKIE_SECURE: 'true' }).cookieSecure).toBe(true);
+    expect(() => carregar({ NODE_ENV: 'production', COOKIE_SECURE: 'false' })).toThrow('COOKIE_SECURE');
+    expect(() => carregar({ COOKIE_SECURE: 'sim' })).toThrow('COOKIE_SECURE');
+  });
+});

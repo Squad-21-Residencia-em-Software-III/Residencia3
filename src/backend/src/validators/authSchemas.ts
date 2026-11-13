@@ -16,9 +16,5 @@ export const alterarSenhaSchema = z
     path: ['novaSenha'],
   });
 
-export const renovarSessaoSchema = z.strictObject({
-  refreshToken: z.string({ error: 'O refresh token é obrigatório' }).min(1, 'O refresh token é obrigatório'),
-});
-
 export type LoginInput = z.infer<typeof loginSchema>;
 export type AlterarSenhaInput = z.infer<typeof alterarSenhaSchema>;
