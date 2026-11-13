@@ -23,6 +23,7 @@ Armazena os utilizadores com acesso ao sistema e as respetivas credenciais e per
 | `tipo_usuario` | Varchar(50) | NOT NULL | Categoria base (Validação: se o perfil for MOTORISTA_*, o tipo é 'MOTORISTA'). |
 | `perfil` | Varchar(50) | NOT NULL | CHECK: `ADMINISTRADOR`, `SOLICITANTE`, `GESTOR_FROTA`, `GESTOR_SVO`, `MOTORISTA_FROTA`, `MOTORISTA_SVO`. |
 | `ativo` | Boolean | NOT NULL, DEFAULT true | Indica se a conta tem permissão de acesso. |
+| `versao_sessao` | Integer | NOT NULL, DEFAULT 1 | Versão da sessão ativa (CHECK: `>= 1`), incrementada na troca ou redefinição de senha para invalidar tokens anteriores. |
 
 ## 3. Tabela: `veiculos`
 Registo dos veículos pertencentes à frota geral e ao Serviço de Verificação de Óbitos (SVO).
