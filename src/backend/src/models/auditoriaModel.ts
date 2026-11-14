@@ -22,6 +22,7 @@ export const MODULOS_AUDITORIA = {
   MULTAS: 'MULTAS',
   VIAGENS: 'VIAGENS',
   UNIDADES: 'UNIDADES',
+  RELATORIOS: 'RELATORIOS',
 } as const;
 
 export type ModuloAuditoria =
