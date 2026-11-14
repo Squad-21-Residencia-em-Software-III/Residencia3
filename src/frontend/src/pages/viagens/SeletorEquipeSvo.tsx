@@ -3,6 +3,7 @@ import { Alert, Select } from '../../components/ui';
 import type { EquipeSvo } from '../../types/equipeSvo';
 
 interface SeletorEquipeSvoProps {
+  /** Somente equipes disponíveis no período, como a API devolve. */
   equipes: EquipeSvo[];
   carregando: boolean;
   erro: string | null;
@@ -14,7 +15,8 @@ interface SeletorEquipeSvoProps {
 /**
  * Escolha da equipe do SVO na alocação da ordem (BL29).
  * A equipe é opcional no backend: sem equipe, a ordem é alocada só com veículo e motorista.
- * Equipes indisponíveis aparecem desabilitadas para o gestor entender o motivo.
+ * A opção "Sem equipe definida" fica sempre acessível, inclusive quando a consulta falha
+ * ou quando nenhuma equipe está disponível.
  */
 export function SeletorEquipeSvo({ equipes, carregando, erro, valor, onChange }: SeletorEquipeSvoProps) {
   if (carregando) {
@@ -29,12 +31,10 @@ export function SeletorEquipeSvo({ equipes, carregando, erro, valor, onChange }:
   if (erro) {
     return (
       <Alert tone="warning" className="mt-3.5">
-        Não foi possível carregar as equipes: {erro}. Você ainda pode alocar a ordem sem equipe.
+        Não foi possível carregar as equipes disponíveis: {erro}. Você ainda pode alocar a ordem sem equipe.
       </Alert>
     );
   }
-
-  const disponiveis = equipes.filter((e) => e.disponivel).length;
 
   return (
     <div className="mt-3.5">
@@ -45,20 +45,17 @@ export function SeletorEquipeSvo({ equipes, carregando, erro, valor, onChange }:
       >
         <option value="">Sem equipe definida</option>
         {equipes.map((equipe) => (
-          <option key={equipe.id} value={equipe.id} disabled={!equipe.disponivel}>
+          <option key={equipe.id} value={equipe.id}>
             {equipe.nome_equipe}
-            {equipe.disponivel ? '' : ' — indisponível'}
           </option>
         ))}
       </Select>
       {equipes.length === 0 ? (
-        <p className="-mt-2 text-xs text-slate-500">Nenhuma equipe cadastrada.</p>
-      ) : disponiveis === 0 ? (
         <Alert tone="warning" className="mt-1">
-          Nenhuma equipe disponível no momento. A ordem pode ser alocada sem equipe.
+          Nenhuma equipe disponível no período. A ordem pode ser alocada sem equipe.
         </Alert>
       ) : (
-        <p className="-mt-2 text-xs text-slate-500">{disponiveis} equipe(s) disponível(is).</p>
+        <p className="-mt-2 text-xs text-slate-500">{equipes.length} equipe(s) disponível(is).</p>
       )}
     </div>
   );
