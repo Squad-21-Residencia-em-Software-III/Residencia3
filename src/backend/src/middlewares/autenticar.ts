@@ -4,8 +4,10 @@ import type { Usuario } from '../models/usuarioModel';
 import { authService } from '../services/authService';
 
 export async function autenticar(req: Request, _res: Response, next: NextFunction): Promise<void> {
-  const [esquema, token] = req.headers.authorization?.split(' ') ?? [];
-  if (esquema !== 'Bearer' || !token) {
+  // Formato exato "Bearer <token>"; o token é validado no authService e nunca registrado em log
+  const partes = req.headers.authorization?.trim().split(' ') ?? [];
+  const [esquema, token] = partes;
+  if (partes.length !== 2 || esquema?.toLowerCase() !== 'bearer' || !token) {
     throw new AppError('Token de autenticação não informado', 401);
   }
 
