@@ -115,6 +115,8 @@ export const usuarioService = {
 
     await db.transaction(async (trx) => {
       await usuarioModel.atualizar(id, { senha: hash }, trx);
+      // Derruba todas as sessões do usuário (access e refresh emitidos antes da redefinição)
+      await usuarioModel.incrementarVersaoSessao(id, trx);
       await auditoriaModel.registrar(
         { usuario_id: autorId, acao: `REDEFINIU_SENHA id=${id}`, modulo: MODULOS_AUDITORIA.USUARIOS },
         trx,
