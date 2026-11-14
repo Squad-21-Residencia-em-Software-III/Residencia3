@@ -41,4 +41,5 @@ export interface NovaViagemInput {
   tipo_operacao: TipoOperacaoViagem;
   veiculo_id: number;
   motorista_id: number;
+  equipe_id?: number | null; // somente operação SVO (ordens_svo.equipe_id); opcional no backend
 }
