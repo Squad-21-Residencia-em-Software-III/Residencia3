@@ -42,7 +42,7 @@ export interface ViagemDetalhada {
 
 // Viagens administrativas e ordens SVO no mesmo formato.
 // Os status das ordens SVO são convertidos para os equivalentes de viagem.
-const VIAGENS_UNIFICADAS_SQL = `
+export const VIAGENS_UNIFICADAS_SQL = `
   SELECT
     vf.id,
     vf.solicitacao_id,

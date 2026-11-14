@@ -73,7 +73,7 @@ async function atualizarSolicitacao(
 const ORDENS_SVO_ALOCADAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
 
 // Tipos de operação que cada perfil pode consultar e gerenciar
-const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacao[]>> = {
+export const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacao[]>> = {
   [PERFIS.ADMINISTRADOR]: ['ADMINISTRATIVA', 'SVO'],
   [PERFIS.GESTOR_FROTA]: ['ADMINISTRATIVA'],
   [PERFIS.GESTOR_SVO]: ['SVO'],
