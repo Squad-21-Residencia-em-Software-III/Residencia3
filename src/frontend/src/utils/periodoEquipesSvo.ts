@@ -1,9 +1,14 @@
 import type { PeriodoEquipesSvo } from '../types/equipeSvo';
 
 /**
- * A ordem SVO é atendida no mesmo dia e não tem período próprio. A disponibilidade das
- * equipes é consultada de agora até agora + esta duração estimada da coleta.
- * Valor provisório: confirmar com a equipe de backend (PR #116 / SCRUM-105).
+ * DECISÃO PENDENTE (SCRUM-145, revisão do PR #117): não existe regra aprovada para o período da
+ * consulta de disponibilidade de equipes. O backend (PR #116) só exige `inicio` e `fim`; considera
+ * disponível a equipe cuja escala cobre o período inteiro e que não tem ordem ativa. A ordem SVO
+ * não tem período próprio e a duração de uma coleta não está definida na documentação.
+ *
+ * Enquanto o time (responsáveis pelo PR #116 e pela SCRUM-105) não definir o critério, o valor
+ * abaixo é apenas uma estimativa provisória e NÃO deve ser tratado como regra de negócio.
+ * Quando houver decisão, a mudança fica concentrada neste arquivo.
  */
 export const DURACAO_ESTIMADA_COLETA_MINUTOS = 60;
 

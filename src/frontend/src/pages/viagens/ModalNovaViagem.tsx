@@ -40,13 +40,14 @@ const LABEL_OCUPADO: Partial<Record<StatusVeiculo | StatusMotorista, string>> = 
 };
 
 // Mesmas permissões do backend (viagemService): o tipo de operação que cada perfil pode agendar.
-// Perfis fora da tabela veem os dois tipos; o backend continua validando o acesso.
+// Perfil fora da tabela (ou sem usuário) não tem nenhuma operação liberada.
+// Ao integrar a matriz central de permissões (PR #115), migrar esta tabela para ela: hoje a
+// permissão `viagens.agendar` da matriz exclui o Gestor SVO, que o backend autoriza a alocar SVO.
 const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacaoViagem[]>> = {
   ADMINISTRADOR: ['ADMINISTRATIVA', 'SVO'],
   GESTOR_FROTA: ['ADMINISTRATIVA'],
   GESTOR_SVO: ['SVO'],
 };
-const TODOS_OS_TIPOS: TipoOperacaoViagem[] = ['ADMINISTRATIVA', 'SVO'];
 
 const sufixoStatus = (status: StatusVeiculo | StatusMotorista) =>
   LABEL_OCUPADO[status] ? ` — ${LABEL_OCUPADO[status]}` : '';
@@ -61,8 +62,10 @@ export function ModalNovaViagem({
   onSalvar,
 }: ModalNovaViagemProps) {
   const { usuario } = useAuth();
-  const tiposPermitidos = (usuario && TIPOS_POR_PERFIL[usuario.perfil]) || TODOS_OS_TIPOS;
-  const tipoInicial = tiposPermitidos[0];
+  const tiposPermitidos = (usuario && TIPOS_POR_PERFIL[usuario.perfil]) ?? [];
+  const autorizado = tiposPermitidos.length > 0;
+  // Sem permissão nada é exibido nem consultado; o tipo inicial é só um valor de reserva
+  const tipoInicial: TipoOperacaoViagem = tiposPermitidos[0] ?? 'ADMINISTRATIVA';
 
   const veiculosDoTipo = (tipo: TipoOperacaoViagem) =>
     veiculos.filter(
@@ -260,6 +263,14 @@ export function ModalNovaViagem({
       setSalvando(false);
     }
   };
+
+  if (!autorizado) {
+    return (
+      <Modal title="Agendar Viagem" onClose={onClose}>
+        <Alert tone="warning">Seu perfil não tem permissão para agendar viagens.</Alert>
+      </Modal>
+    );
+  }
 
   return (
     <Modal title="Agendar Viagem" onClose={onClose}>

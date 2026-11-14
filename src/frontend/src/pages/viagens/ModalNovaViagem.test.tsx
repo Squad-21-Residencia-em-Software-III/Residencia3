@@ -12,10 +12,10 @@ import type { Perfil } from '../../types/usuario';
 import type { Veiculo } from '../../types/veiculo';
 import { ModalNovaViagem } from './ModalNovaViagem';
 
-const auth = vi.hoisted(() => ({ perfil: 'GESTOR_SVO' as string }));
+const auth = vi.hoisted(() => ({ perfil: 'GESTOR_SVO' as string | null }));
 
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ usuario: { id: 4, perfil: auth.perfil } }),
+  useAuth: () => ({ usuario: auth.perfil ? { id: 4, perfil: auth.perfil } : null }),
 }));
 vi.mock('../../services/api/solicitacoesSvoApi', () => ({
   solicitacoesSvoApi: { listarTodas: vi.fn() },
@@ -67,7 +67,7 @@ const disponibilidade = (equipes: DisponibilidadeEquipesSvo['equipes']): Disponi
   equipes,
 });
 
-function renderizar(perfil: Perfil = 'GESTOR_SVO') {
+function renderizar(perfil: Perfil | null = 'GESTOR_SVO') {
   auth.perfil = perfil;
   const onSalvar = vi.fn().mockResolvedValue(undefined);
   const onClose = vi.fn();
@@ -234,6 +234,23 @@ describe('ModalNovaViagem (tipos de operação por perfil)', () => {
     expect(solicitacoesApi.listarTodas).not.toHaveBeenCalled();
     expect(equipesApi.listarDisponiveis).not.toHaveBeenCalled();
   });
+
+  it.each<Perfil | null>(['MOTORISTA_FROTA', 'MOTORISTA_SVO', 'SOLICITANTE', null])(
+    'perfil %s não tem nenhuma operação liberada: só aviso, sem formulário nem consultas',
+    (perfil) => {
+      renderizar(perfil);
+
+      expect(screen.getByText(/Seu perfil não tem permissão para agendar viagens/)).toBeInTheDocument();
+      expect(screen.queryByLabelText('Tipo de Operação *')).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /Frota Administrativa/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /Serviço de Verificação de Óbito/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Agendar Viagem' })).not.toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Fechar' })).toHaveLength(1); // X do próprio modal
+      expect(solicitacoesApi.listarTodas).not.toHaveBeenCalled();
+      expect(equipesApi.listarDisponiveis).not.toHaveBeenCalled();
+      expect(ocupacaoApi.listarOcupacaoSvo).not.toHaveBeenCalled();
+    },
+  );
 
   it('Administrador vê as duas operações', () => {
     renderizar('ADMINISTRADOR');

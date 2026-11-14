@@ -7,8 +7,9 @@ import type {
 } from '../../types/solicitacaoSvo';
 import { request } from './http';
 
-// Trava de segurança contra paginação sem fim (5.000 solicitações por status)
+// Trava de segurança contra paginação sem fim: acima disso a listagem falha de forma explícita
 const MAX_PAGINAS = 50;
+const POR_PAGINA = 100;
 
 interface FiltrosSolicitacoesSvo {
   pagina?: number;
@@ -24,15 +25,22 @@ export const solicitacoesSvoApi = {
       query: { pagina, limite, status },
     }),
 
-  /** Todas as solicitações com o status informado, percorrendo as páginas (até 100 por página). */
+  /**
+   * Todas as solicitações com o status informado, percorrendo as páginas. Se passar do limite de
+   * páginas, falha com erro explícito em vez de devolver uma lista incompleta sem avisar.
+   */
   listarTodas: async (status: StatusSolicitacaoSvo): Promise<SolicitacaoSvo[]> => {
     const todas: SolicitacaoSvo[] = [];
-    for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
-      const resposta = await solicitacoesSvoApi.listar({ pagina, limite: 100, status });
+    for (let pagina = 1; ; pagina++) {
+      const resposta = await solicitacoesSvoApi.listar({ pagina, limite: POR_PAGINA, status });
       todas.push(...resposta.dados);
-      if (pagina >= resposta.paginacao.totalPaginas) break;
+      if (pagina >= resposta.paginacao.totalPaginas) return todas;
+      if (pagina >= MAX_PAGINAS) {
+        throw new Error(
+          `Há mais de ${MAX_PAGINAS * POR_PAGINA} solicitações SVO ${status.toLowerCase()}s; a lista foi interrompida para não ficar incompleta.`,
+        );
+      }
     }
-    return todas;
   },
 
   /** Dados da solicitação e a ordem de coleta ativa, se houver. */

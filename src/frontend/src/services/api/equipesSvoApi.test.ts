@@ -66,4 +66,11 @@ describe('solicitacoesSvoApi.listarTodas', () => {
     expect(segunda.searchParams.get('limite')).toBe('100');
     expect(segunda.searchParams.get('status')).toBe('CONFIRMADA');
   });
+
+  it('falha de forma explícita ao atingir o limite de páginas, sem devolver lista incompleta', async () => {
+    fetchMock.mockResolvedValue(pagina([1], 1, 51));
+
+    await expect(solicitacoesSvoApi.listarTodas('CONFIRMADA')).rejects.toThrow(/mais de 5000 solicitações SVO/);
+    expect(fetchMock).toHaveBeenCalledTimes(50);
+  });
 });
