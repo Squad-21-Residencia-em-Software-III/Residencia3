@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider, useAuth } from './AuthContext'
 import { authApi } from '../services/api/authApi'
 import { tokenStorage } from '../services/api/http'
+import { storageService } from '../services/storageService'
 import { PERFIS } from '../types/usuario'
 
 vi.mock('../services/api/authApi', () => ({
@@ -116,11 +117,13 @@ describe('AuthContext: cold start via silent refresh e logout', () => {
       expect(screen.getByText('Gestor Teste')).toBeInTheDocument()
     })
 
+    const limparAgendaSpy = vi.spyOn(storageService, 'clear')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Sair' }))
 
     expect(screen.getByText('Deslogado')).toBeInTheDocument()
     expect(tokenStorage.get()).toBeNull()
+    expect(limparAgendaSpy).toHaveBeenCalledTimes(1)
     expect(authApi.logout).toHaveBeenCalledTimes(1)
     expect(postMessageSpy).toHaveBeenCalledWith({ tipo: 'LOGOUT' })
 
@@ -158,12 +161,15 @@ describe('AuthContext: cold start via silent refresh e logout', () => {
       expect(screen.getByText('Gestor Teste')).toBeInTheDocument()
     })
 
+    const limparAgendaSpy = vi.spyOn(storageService, 'clear')
+
     act(() => {
       listenerRegistrado?.({ data: { tipo: 'LOGOUT' } } as MessageEvent<{ tipo?: string }>)
     })
 
     expect(screen.getByText('Deslogado')).toBeInTheDocument()
     expect(tokenStorage.get()).toBeNull()
+    expect(limparAgendaSpy).toHaveBeenCalledTimes(1)
 
     vi.unstubAllGlobals()
   })

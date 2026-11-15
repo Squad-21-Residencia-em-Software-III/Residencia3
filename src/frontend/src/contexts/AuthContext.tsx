@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 import { authApi } from '../services/api/authApi'
 import { EVENTO_SESSAO_EXPIRADA, tokenStorage } from '../services/api/http'
+import { storageService } from '../services/storageService'
 import type { Perfil, Usuario } from '../types/usuario'
 
 const CANAL_AUTENTICACAO = 'fsph_auth'
@@ -54,15 +55,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const limparEstadoLocal = useCallback(() => {
+    tokenStorage.clear()
+    storageService.clear()
+    setUsuario(null)
+  }, [])
+
   // Token expirado/invalidado em qualquer chamada: limpa memória e volta para o login.
   useEffect(() => {
-    const aoExpirar = () => {
-      tokenStorage.clear()
-      setUsuario(null)
-    }
-    window.addEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar)
-    return () => window.removeEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar)
-  }, [])
+    window.addEventListener(EVENTO_SESSAO_EXPIRADA, limparEstadoLocal)
+    return () => window.removeEventListener(EVENTO_SESSAO_EXPIRADA, limparEstadoLocal)
+  }, [limparEstadoLocal])
 
   // Sincronização multi-aba: ao deslogar em uma aba, todas as demais encerram a sessão local.
   useEffect(() => {
@@ -72,8 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const aoReceberMensagem = (evento: MessageEvent<{ tipo?: string }>) => {
       if (evento.data?.tipo === 'LOGOUT') {
-        tokenStorage.clear()
-        setUsuario(null)
+        limparEstadoLocal()
       }
     }
 
@@ -83,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canal.close()
       if (canalRef.current === canal) canalRef.current = null
     }
-  }, [])
+  }, [limparEstadoLocal])
 
   const login = useCallback(async (email: string, senha: string) => {
     const resultado = await authApi.login(email, senha)
@@ -92,11 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
-    tokenStorage.clear()
-    setUsuario(null)
+    limparEstadoLocal()
     void authApi.logout().catch(() => {})
     canalRef.current?.postMessage({ tipo: 'LOGOUT' })
-  }, [])
+  }, [limparEstadoLocal])
 
   const value = useMemo<AuthContextValue>(
     () => ({
