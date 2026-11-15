@@ -130,7 +130,38 @@ describe('gerarXlsx', () => {
 
     expect(planilha).not.toContain('r="B3"');
     expect(planilha).toContain('state="frozen"');
-    expect(planilha).toContain('<autoFilter ref="A1:E1"/>');
+  });
+
+  it('aplica o filtro ao cabeçalho e a todas as linhas de dados', () => {
+    const planilha = arquivos['xl/worksheets/sheet1.xml'] as string;
+
+    // cabeçalho + 2 linhas de dados = linhas 1 a 3
+    expect(planilha).toContain('<autoFilter ref="A1:E3"/>');
+    expect(arquivos['xl/workbook.xml']).toContain('$A$1:$E$3</definedName>');
+  });
+
+  it('ajusta o intervalo do filtro à quantidade de linhas exportadas', () => {
+    const comLinhas = (quantidade: number) =>
+      lerZip(
+        gerarXlsx({
+          ...tabela,
+          linhas: Array.from({ length: quantidade }, (_, i) => ({ id: i, data: null, saida: null, posto: 'x', valor: 1 })),
+        }),
+      );
+
+    const umaLinha = comLinhas(1);
+    const muitas = comLinhas(500);
+
+    expect(umaLinha['xl/worksheets/sheet1.xml']).toContain('<autoFilter ref="A1:E2"/>');
+    expect(muitas['xl/worksheets/sheet1.xml']).toContain('<autoFilter ref="A1:E501"/>');
+    expect(muitas['xl/workbook.xml']).toContain('$A$1:$E$501</definedName>');
+  });
+
+  it('mantém o filtro apenas no cabeçalho quando o relatório está vazio', () => {
+    const vazio = lerZip(gerarXlsx({ ...tabela, linhas: [] }));
+
+    expect(vazio['xl/worksheets/sheet1.xml']).toContain('<autoFilter ref="A1:E1"/>');
+    expect(vazio['xl/workbook.xml']).toContain('$A$1:$E$1</definedName>');
   });
 
   it('remove caracteres inválidos em XML e ajusta o nome da aba', () => {

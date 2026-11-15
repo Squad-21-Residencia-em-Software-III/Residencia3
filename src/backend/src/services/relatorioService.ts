@@ -39,6 +39,9 @@ export interface ArquivoExportado {
 // RF18/RN20: relatórios gerenciais são do Gestor de Frota e do Administrador
 const PERFIS_COM_ACESSO: Perfil[] = [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA];
 
+// Frotas que o perfil enxerga (mesmo vocabulário de tipo_frota); perfil sem escopo não recebe nada
+const frotasDoPerfil = (autor: Autor) => TIPOS_POR_PERFIL[autor.perfil] ?? [];
+
 const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
   viagens: {
     titulo: 'Viagens',
@@ -63,13 +66,13 @@ const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
       { chave: 'km_final', titulo: 'Km final', tipo: 'inteiro' },
     ],
     // Mesmo escopo por perfil das demais operações de viagem
-    buscar: (periodo, autor, limite) =>
-      relatorioModel.viagens(TIPOS_POR_PERFIL[autor.perfil] ?? [], periodo, limite),
+    buscar: (periodo, autor, limite) => relatorioModel.viagens(frotasDoPerfil(autor), periodo, limite),
   },
 
   abastecimentos: {
     titulo: 'Abastecimentos',
-    descricao: 'Abastecimentos da frota no período, com litros, valor total e preço por litro.',
+    descricao:
+      'Abastecimentos no período, com litros, valor total e preço por litro. O Gestor de Frota recebe apenas os da frota administrativa.',
     colunas: [
       { chave: 'id', titulo: 'ID', tipo: 'inteiro' },
       { chave: 'data_abastecimento', titulo: 'Data', tipo: 'data' },
@@ -83,12 +86,13 @@ const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
       { chave: 'valor_total', titulo: 'Valor total (R$)', tipo: 'decimal' },
       { chave: 'preco_por_litro', titulo: 'Preço por litro (R$)', tipo: 'decimal' },
     ],
-    buscar: (periodo, _autor, limite) => relatorioModel.abastecimentos(periodo, limite),
+    buscar: (periodo, autor, limite) => relatorioModel.abastecimentos(periodo, limite, frotasDoPerfil(autor)),
   },
 
   manutencoes: {
     titulo: 'Manutenções',
-    descricao: 'Manutenções preventivas e corretivas no período, com fornecedor e custo.',
+    descricao:
+      'Manutenções preventivas e corretivas no período, com fornecedor e custo. O Gestor de Frota recebe apenas as da frota administrativa.',
     colunas: [
       { chave: 'id', titulo: 'ID', tipo: 'inteiro' },
       { chave: 'data_manutencao', titulo: 'Data', tipo: 'data' },
@@ -100,12 +104,13 @@ const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
       { chave: 'custo', titulo: 'Custo (R$)', tipo: 'decimal' },
       { chave: 'status', titulo: 'Status', tipo: 'texto' },
     ],
-    buscar: (periodo, _autor, limite) => relatorioModel.manutencoes(periodo, limite),
+    buscar: (periodo, autor, limite) => relatorioModel.manutencoes(periodo, limite, frotasDoPerfil(autor)),
   },
 
   multas: {
     titulo: 'Multas',
-    descricao: 'Multas de trânsito com data da infração no período, valor, pontos e situação do pagamento.',
+    descricao:
+      'Multas de trânsito com data da infração no período, valor, pontos e situação do pagamento. O Gestor de Frota recebe apenas as da frota administrativa.',
     colunas: [
       { chave: 'id', titulo: 'ID', tipo: 'inteiro' },
       { chave: 'data_infracao', titulo: 'Data da infração', tipo: 'data_hora' },
@@ -120,7 +125,7 @@ const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
       { chave: 'data_vencimento', titulo: 'Vencimento', tipo: 'data' },
       { chave: 'status_pagamento', titulo: 'Pagamento', tipo: 'texto' },
     ],
-    buscar: (periodo, _autor, limite) => relatorioModel.multas(periodo, limite),
+    buscar: (periodo, autor, limite) => relatorioModel.multas(periodo, limite, frotasDoPerfil(autor)),
   },
 };
 

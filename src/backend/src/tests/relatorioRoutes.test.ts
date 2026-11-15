@@ -163,6 +163,7 @@ describe('GET /api/relatorios/:tipo/exportar — arquivos (RN20)', () => {
     expect(relatorioModel.abastecimentos).toHaveBeenCalledWith(
       { inicio: '2026-11-01', fim: '2026-11-13' },
       LIMITE_LINHAS_EXPORTACAO + 1,
+      ['ADMINISTRATIVA'],
     );
   });
 
@@ -224,6 +225,48 @@ describe('GET /api/relatorios/:tipo/exportar — arquivos (RN20)', () => {
 
     expect(resposta.status).toBe(422);
     expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/relatorios/:tipo/exportar — isolamento por tipo de frota', () => {
+  const relatorios = [
+    ['abastecimentos', relatorioModel.abastecimentos],
+    ['manutencoes', relatorioModel.manutencoes],
+    ['multas', relatorioModel.multas],
+  ] as const;
+
+  it.each(relatorios)('limita %s à frota administrativa para o Gestor de Frota', async (tipo, consulta) => {
+    const resposta = await request(app)
+      .get(`/api/relatorios/${tipo}/exportar?formato=csv`)
+      .set('Authorization', token);
+
+    expect(resposta.status).toBe(200);
+    expect(consulta).toHaveBeenCalledWith({}, LIMITE_LINHAS_EXPORTACAO + 1, ['ADMINISTRATIVA']);
+  });
+
+  it.each(relatorios)('mantém %s com as duas frotas para o Administrador', async (tipo, consulta) => {
+    autenticarComo(PERFIS.ADMINISTRADOR);
+
+    const resposta = await request(app)
+      .get(`/api/relatorios/${tipo}/exportar?formato=csv`)
+      .set('Authorization', token);
+
+    expect(resposta.status).toBe(200);
+    expect(consulta).toHaveBeenCalledWith({}, LIMITE_LINHAS_EXPORTACAO + 1, ['ADMINISTRATIVA', 'SVO']);
+  });
+
+  it.each(relatorios)('combina o escopo de frota com o filtro de período em %s', async (tipo, consulta) => {
+    await request(app)
+      .get(`/api/relatorios/${tipo}/exportar?formato=xlsx&inicio=2026-11-01&fim=2026-11-30`)
+      .set('Authorization', token)
+      .buffer(true)
+      .parse(comoBuffer);
+
+    expect(consulta).toHaveBeenCalledWith(
+      { inicio: '2026-11-01', fim: '2026-11-30' },
+      LIMITE_LINHAS_EXPORTACAO + 1,
+      ['ADMINISTRATIVA'],
+    );
   });
 });
 

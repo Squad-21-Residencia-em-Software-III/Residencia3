@@ -71,8 +71,16 @@ function larguraDaColuna(coluna: ColunaTabela, linhas: Record<string, unknown>[]
   return Math.min(Math.max(maior + 2, LARGURA_MINIMA), LARGURA_MAXIMA);
 }
 
+// Intervalo do filtro: cabeçalho mais todas as linhas de dados (só o cabeçalho quando não há registros)
+function intervaloDoFiltro(tabela: TabelaExportavel): { ultimaColuna: string; ultimaLinha: number } {
+  return {
+    ultimaColuna: letraDaColuna(Math.max(tabela.colunas.length - 1, 0)),
+    ultimaLinha: tabela.linhas.length + 1,
+  };
+}
+
 function planilhaXml(tabela: TabelaExportavel): string {
-  const ultimaColuna = letraDaColuna(Math.max(tabela.colunas.length - 1, 0));
+  const { ultimaColuna, ultimaLinha } = intervaloDoFiltro(tabela);
 
   const colunasXml = tabela.colunas
     .map((coluna, i) => `<col min="${i + 1}" max="${i + 1}" width="${larguraDaColuna(coluna, tabela.linhas)}" customWidth="1"/>`)
@@ -98,7 +106,7 @@ function planilhaXml(tabela: TabelaExportavel): string {
     '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
     `<cols>${colunasXml}</cols>` +
     `<sheetData><row r="1">${cabecalho}</row>${linhasXml}</sheetData>` +
-    `<autoFilter ref="A1:${ultimaColuna}1"/>` +
+    `<autoFilter ref="A1:${ultimaColuna}${ultimaLinha}"/>` +
     '</worksheet>'
   );
 }
@@ -149,13 +157,13 @@ const ESTILOS =
 
 function pastaDeTrabalhoXml(tabela: TabelaExportavel): string {
   const aba = escaparXml(nomeDaAba(tabela.titulo));
-  const ultimaColuna = letraDaColuna(Math.max(tabela.colunas.length - 1, 0));
+  const { ultimaColuna, ultimaLinha } = intervaloDoFiltro(tabela);
 
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
     `<sheets><sheet name="${aba}" sheetId="1" r:id="rId1"/></sheets>` +
-    `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${aba}'!$A$1:$${ultimaColuna}$1</definedName></definedNames>` +
+    `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${aba}'!$A$1:$${ultimaColuna}$${ultimaLinha}</definedName></definedNames>` +
     '</workbook>'
   );
 }
