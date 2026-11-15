@@ -9,6 +9,7 @@ vi.mock('../models/usuarioModel', () => ({
     buscarPorEmailComSenha: vi.fn(),
     buscarPorIdComSenha: vi.fn(),
     atualizar: vi.fn(),
+    incrementarVersaoSessao: vi.fn(async () => 2),
   },
 }));
 
@@ -39,6 +40,7 @@ const usuario = (ativo = true) =>
     perfil: 'GESTOR_FROTA',
     tipo_usuario: 'GESTOR_FROTA',
     ativo,
+    versao_sessao: 1,
   }) as unknown as UsuarioComSenha;
 
 const credenciais = { email: 'gestor@exemplo.com', senha: 'Senha123' };
@@ -64,7 +66,7 @@ describe('Auditoria de autenticação (RN18)', () => {
 
       const resultado = await authService.login(credenciais);
 
-      expect(resultado.token).toBeTruthy();
+      expect(resultado.resposta.token).toBeTruthy();
       expect(auditoriaModel.registrar).toHaveBeenCalledWith({
         usuario_id: 7,
         acao: 'LOGIN',
@@ -158,6 +160,7 @@ describe('Auditoria de autenticação (RN18)', () => {
       await authService.alterarPropriaSenha(7, dados);
 
       expect(usuarioModel.atualizar).toHaveBeenCalledWith(7, { senha: 'novo-hash' }, 'trx');
+      expect(usuarioModel.incrementarVersaoSessao).toHaveBeenCalledWith(7, 'trx');
       expect(auditoriaModel.registrar).toHaveBeenCalledWith(
         { usuario_id: 7, acao: 'ALTEROU_PROPRIA_SENHA', modulo: 'AUTENTICACAO' },
         'trx',
