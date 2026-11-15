@@ -21,6 +21,7 @@ const mockUsuario = {
   nome: 'Gestor Teste',
   email: 'gestor@fsph.se.gov.br',
   perfil: PERFIS.GESTOR_FROTA,
+  tipo_usuario: 'GESTOR_FROTA' as const,
   ativo: true,
 }
 
