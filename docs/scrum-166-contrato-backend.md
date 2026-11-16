@@ -1,6 +1,6 @@
 # SCRUM-166: o que o backend e o banco precisam entregar para o front
 
-Este documento acompanha o PR do front das subtarefas **SCRUM-170, 171, 172, 173 e 174**. O front já está pronto. Cada parte que depende do backend está desligada em [`src/frontend/src/config/recursosBackend.ts`](../src/frontend/src/config/recursosBackend.ts).
+Este documento acompanha o PR do front das subtarefas **SCRUM-170, 171, 172, 173 e 174**. A integração do front ainda depende das entregas indicadas abaixo. As partes que ainda dependem do backend estão desligadas em [`src/frontend/src/config/recursosBackend.ts`](../src/frontend/src/config/recursosBackend.ts).
 
 **Como ligar:** quando o PR do back de um item for aprovado, basta mudar o valor correspondente para `true`. Com o item desligado, a tela usa só a API atual e não envia campos que o servidor ignoraria.
 
@@ -22,7 +22,7 @@ Matriz de acesso usada em todo o documento (HU SCRUM-166):
 
 **Interruptor:** `recusaSvo`. **Serviço do front:** `solicitacoesSvoApi.recusar`.
 
-**Hoje:** só existe `PATCH /solicitacoes-svo/:id/confirmar`. A coluna `solicitacoes_svo.motivo_recusa` (TEXT) já existe (migration `20261111140211`), então **não precisa de migration**.
+**Hoje:** `PATCH /solicitacoes-svo/:id/recusar` está implementado na develop e a recusa foi habilitada no front. A coluna `solicitacoes_svo.motivo_recusa` (TEXT) já existe (migration `20261111140211`), então **não precisa de migration**.
 
 **O que o front chama:**
 
@@ -59,7 +59,7 @@ GET /api/viagens/minhas
 
 **Regras esperadas:**
 - Devolve só as viagens **ADMINISTRATIVA** cujas solicitações têm `solicitacoes_viagem.solicitante_id = id do JWT`. O filtro é feito no SQL, nunca depois de buscar tudo.
-- **Formato:** o mesmo de `GET /viagens` (`Viagem[]`, com `tipo_operacao: 'ADMINISTRATIVA'`). Se o DTO for reduzido, manter pelo menos os campos que a tabela usa: `id`, `tipo_operacao`, `origem`, `destino`, `inicio_previsto`, `data_hora_efetiva_saida`, `data_hora_efetiva_chegada`, `veiculo_modelo`, `veiculo_placa`, `motorista_nome`, `km_inicial`, `km_final`, `status`.
+- **Formato:** o mesmo de `GET /viagens` (`Viagem[]`, com `tipo_operacao: 'ADMINISTRATIVA'`). Se o DTO for reduzido, manter pelo menos os campos que a tabela usa: `id`, `tipo_operacao`, `origem`, `destino`, `inicio_previsto`, `data_hora_efetiva_saida`, `data_hora_efetiva_chegada`, `veiculo_modelo`, `veiculo_placa`, `status`; os campos devem ser limitados aos dados operacionais autorizados. Não exigir nome do motorista nem quilometragem.
 - **Ações:** nessa visão o front não mostra iniciar, finalizar nem cancelar. Mesmo assim, o back deve barrar essas ações do GESTOR_SVO em viagens administrativas (o `garantirAcesso` atual já faz isso).
 - **Detalhe por ID:** consultar diretamente uma viagem de outra pessoa deve devolver 403 ou 404 (sem IDOR/BOLA).
 - **Pedidos:** o GESTOR_SVO continua usando `GET /solicitacoes-viagem/minhas`, que o front já usa no PR #115.
@@ -76,7 +76,7 @@ Esta parte **não tem interruptor**: o front já se comporta assim. Falta o back
 - Os botões de cadastrar e editar só aparecem na frota do próprio perfil (o Administrador vê nas duas).
 
 **O que o back precisa garantir:**
-- **Listagem:** em `GET /veiculos`, devolver ao GESTOR_SVO os veículos **ADMINISTRATIVA** só com DTO mínimo: `id`, `placa`, `modelo`, `tipo_frota`, `status`, `capacidade_maxima`. Sem `km_atual` nem dados de custo. A mesma regra vale para o GESTOR_FROTA vendo veículos SVO, se a equipe confirmar.
+- **Listagem:** em `GET /veiculos`, devolver ao GESTOR_SVO os veículos **ADMINISTRATIVA** só com DTO mínimo: `id`, `placa`, `modelo`, `tipo_frota`, `status`, `capacidade_maxima`. Sem `km_atual` nem dados de custo. O Gestor de Frota não deve ter aba de gestão SVO.
 - **Históricos:** endpoints de histórico, manutenção, abastecimento e multa de veículo da outra frota devolvem 403.
 - **Escrita:** em `POST` e `PUT /veiculos`, o GESTOR_SVO só grava `tipo_frota = 'SVO'` e o GESTOR_FROTA só `'ADMINISTRATIVA'`.
 - **Troca de frota:** no `PUT`, validar o tipo do registro já existente. Mudar `tipo_frota` para contornar a permissão deve dar 403.
@@ -116,7 +116,7 @@ Há dois interruptores: `ordensPendentesSvo` (listagem) e `agendamentoTemporalSv
 
 **Hoje:**
 - `GET /viagens` exclui as ordens `AGUARDANDO_ALOCACAO` (`viagemModel`: `WHERE o.status <> 'AGUARDANDO_ALOCACAO'`).
-- Por isso o front monta a lista de pendentes a partir de `GET /solicitacoes-svo?status=CONFIRMADA`. Cada solicitação confirmada tem uma ordem aguardando alocação, mas nessa listagem o id da ordem não vem.
+- Enquanto a SCRUM-182 não estiver integrada, o front consulta as solicitações confirmadas e verifica a ordem ativa em cada detalhe. Apenas ordens AGUARDANDO_ALOCACAO aparecem, com seu id real. Para limitar a carga, mais de 100 solicitações confirmadas geram uma mensagem de dependência da SCRUM-182; falhas de consulta não produzem uma lista parcial.
 
 **O que o front chama:**
 
@@ -163,7 +163,7 @@ GET /api/viagens/ordens-svo/pendentes?pagina=1&limite=100
 }
 ```
 
-`equipe_id` (opcional) entra quando o PR #117 for integrado ao modal novo.
+`equipe_id` é opcional no modal de coleta e usa a consulta de disponibilidade de equipes integrada pelo PR #117.
 
 **Respostas esperadas:**
 
@@ -195,7 +195,7 @@ O front desta entrega **não depende** da 183. Ela só muda o status que a lista
 
 ## 6. Já resolvido em PR aberto
 
-- **SCRUM-177**, recusa administrativa obrigatória (PR #122): o contrato bate com o front (`motivo` de 1 a 200 caracteres; GESTOR_SVO sem análise). O front já valida o mesmo limite.
+- **SCRUM-177**, recusa administrativa obrigatória (PR #122, integrado): o contrato bate com o front (`motivo` de 1 a 200 caracteres; GESTOR_SVO sem análise). O front já valida o mesmo limite.
 
 ## 7. Checklist para ligar cada interruptor
 

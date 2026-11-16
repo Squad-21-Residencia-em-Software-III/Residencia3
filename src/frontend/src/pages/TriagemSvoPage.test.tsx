@@ -77,10 +77,11 @@ describe('TriagemSvoPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     sessao.perfil = 'GESTOR_SVO';
+    RECURSOS_BACKEND.recusaSvo = false;
   });
 
   afterEach(() => {
-    RECURSOS_BACKEND.recusaSvo = false;
+    RECURSOS_BACKEND.recusaSvo = true;
   });
 
   it('lista as solicitações em triagem por padrão', async () => {
