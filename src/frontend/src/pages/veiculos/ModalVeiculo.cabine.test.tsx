@@ -90,4 +90,19 @@ describe('ModalVeiculo: duas capacidades SVO (SCRUM-173)', () => {
     await waitFor(() => expect(onSalvar).toHaveBeenCalled());
     expect(onSalvar.mock.calls[0][0]).toMatchObject({ capacidade_maxima: 4, lotacao_cabine: 3 });
   });
+
+  it('exige cabine ao converter veículo administrativo para SVO', async () => {
+    const onSalvar = vi.fn().mockResolvedValue(undefined);
+    render(<ModalVeiculo onClose={vi.fn()} onSalvar={onSalvar} veiculoParaEditar={{
+      id: 1, placa: 'ABC1D23', modelo: 'Van', tipo_frota: 'ADMINISTRATIVA', capacidade_maxima: 4,
+      lotacao_cabine: null, km_atual: 0, status: 'DISPONIVEL',
+    }} />);
+    fireEvent.change(screen.getByLabelText(/Tipo de Frota/), { target: { value: 'SVO' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar Alterações/i }));
+    expect(onSalvar).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Informe a lotação da cabine/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Lotação da cabine/), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar Alterações/i }));
+    await waitFor(() => expect(onSalvar).toHaveBeenCalledWith(expect.objectContaining({ tipo_frota: 'SVO', lotacao_cabine: 2 })));
+  });
 });

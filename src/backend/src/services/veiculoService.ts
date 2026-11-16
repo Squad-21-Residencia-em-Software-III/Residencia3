@@ -74,6 +74,13 @@ export const veiculoService = {
       const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
       const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
 
+      if (veiculo.tipo_frota !== 'SVO' && tipoFrotaFinal === 'SVO') {
+        const cabineFinal = dados.lotacao_cabine ?? veiculo.lotacao_cabine;
+        if (!Number.isInteger(cabineFinal) || cabineFinal == null || cabineFinal < 1) {
+          throw new AppError('Informe a lotação da cabine ao converter o veículo para SVO', 400);
+        }
+      }
+
       if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
         throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);
       }

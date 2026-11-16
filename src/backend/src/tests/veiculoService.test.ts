@@ -143,6 +143,25 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
     expect(veiculoModel.atualizarVeiculo).toHaveBeenCalledWith(10, { capacidade_maxima: 2 }, mockTrx);
   });
 
+  it('rejeita conversão administrativa para SVO sem cabine conhecida', async () => {
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, tipo_frota: 'ADMINISTRATIVA', lotacao_cabine: null } as any);
+    await expect(veiculoService.atualizar(10, { tipo_frota: 'SVO' }, 1)).rejects.toMatchObject({ statusCode: 400 });
+    expect(veiculoModel.atualizarVeiculo).not.toHaveBeenCalled();
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('permite conversão administrativa para SVO com cabine válida e audita', async () => {
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, tipo_frota: 'ADMINISTRATIVA', lotacao_cabine: null } as any);
+    await veiculoService.atualizar(10, { tipo_frota: 'SVO', lotacao_cabine: 3 }, 1);
+    expect(veiculoModel.atualizarVeiculo).toHaveBeenCalledWith(10, { tipo_frota: 'SVO', lotacao_cabine: 3 }, mockTrx);
+    expect(auditoriaModel.registrar).toHaveBeenCalledOnce();
+  });
+
+  it('aceita cabine válida já registrada ao converter para SVO', async () => {
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, tipo_frota: 'ADMINISTRATIVA', lotacao_cabine: 2 } as any);
+    await expect(veiculoService.atualizar(10, { tipo_frota: 'SVO' }, 1)).resolves.toBeDefined();
+  });
+
   it('deve impedir que o veículo saia da frota SVO com ordens ativas', async () => {
     estado.ocupacao = 1;
 
