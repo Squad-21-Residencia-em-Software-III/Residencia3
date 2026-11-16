@@ -80,6 +80,8 @@ Valores recusados na inicialização:
 
 ## Rate limit
 
+Os limites gerais por tipo de operação (leitura, escrita e consultas pesadas), a concorrência e os tempos limite estão em [limites-e-timeouts.md](limites-e-timeouts.md). Abaixo, a relação com o proxy.
+
 Os limites de login (10 falhas a cada 15 minutos) e de renovação de sessão (20 falhas a cada 15 minutos) são contados por `req.ip`, que depende do `TRUST_PROXY`.
 
 As validações do `express-rate-limit` ficam ativas e registram no log:
