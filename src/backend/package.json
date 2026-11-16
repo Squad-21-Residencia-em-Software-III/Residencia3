@@ -14,7 +14,11 @@
     "migrate:status": "knex migrate:status",
     "migrate:make": "knex migrate:make",
     "seed": "knex seed:run",
-    "seed:make": "knex seed:make"
+    "seed:make": "knex seed:make",
+    "db:provisionar-app-user": "node scripts/provisionar-usuario-app.cjs",
+    "db:backup": "node scripts/backup-db.cjs",
+    "db:restore:validar": "node scripts/restaurar-backup-db.cjs",
+    "db:avaliar-consultas": "node scripts/avaliar-consultas-db.cjs"
   },
   "keywords": [],
   "author": "",
@@ -22,16 +26,19 @@
   "type": "commonjs",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.7",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "knex": "^3.3.0",
     "pg": "^8.23.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",

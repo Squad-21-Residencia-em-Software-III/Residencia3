@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { ClipboardCheck, ClipboardList, ScrollText, Wrench } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
@@ -20,51 +21,65 @@ import SolicitacoesPage from '../pages/SolicitacoesPage'
 import TriagemSvoPage from '../pages/TriagemSvoPage'
 import VeiculosPage from '../pages/VeiculosPage'
 import ViagensPage from '../pages/ViagensPage'
-import { LABELS_PERFIS, PERFIS } from '../types/usuario'
-import type { Perfil } from '../types/usuario'
-import { RotaPorPerfil, RotaProtegida, RotaPublica } from './guards'
+import { LABELS_PERFIS } from '../types/usuario'
+import { usePermissao } from '../utils/permissoes'
+import type { Permissao } from '../utils/permissoes'
+import { RotaComPermissao, RotaProtegida, RotaPublica } from './guards'
 
-type NavItemComPerfil = NavItem & { perfis?: Perfil[] }
+type NavItemComPermissao = NavItem & { permissao?: Permissao }
 
-/** `perfis` ausente = qualquer usuário logado pode ver. */
-export const navItems: NavItemComPerfil[] = [
+/** `permissao` ausente = qualquer usuário logado pode ver (ver utils/permissoes). */
+export const navItems: NavItemComPermissao[] = [
   // VISÃO GERAL
   { path: '/inicio', label: 'Início', icon: HomeIcon, section: 'Visão Geral' },
 
   // OPERAÇÃO
-  { path: '/solicitacoes', label: 'Solicitações', icon: ClipboardCheck, section: 'Operação' },
+  {
+    path: '/solicitacoes',
+    label: 'Solicitações',
+    icon: ClipboardCheck,
+    section: 'Operação',
+    permissao: 'solicitacoes.acessar',
+  },
   {
     path: '/triagem-svo',
     label: 'Triagem SVO',
     icon: ClipboardList,
     section: 'Operação',
-    perfis: [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO],
+    permissao: 'triagemSvo.acessar',
   },
-  { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação' },
-  { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação' },
+  { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação', permissao: 'viagens.acessar' },
+  { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação', permissao: 'agenda.acessar' },
 
   // FROTA
-  { path: '/veiculos', label: 'Veículos', icon: TruckIcon, section: 'Frota' },
-  { path: '/abastecimento', label: 'Abastecimento', icon: FuelIcon, section: 'Frota' },
-  { path: '/manutencoes', label: 'Manutenções', icon: Wrench, section: 'Frota' },
-  { path: '/multas', label: 'Infrações', icon: AlertIcon, section: 'Frota' },
+  { path: '/veiculos', label: 'Veículos', icon: TruckIcon, section: 'Frota', permissao: 'veiculos.acessar' },
+  {
+    path: '/abastecimento',
+    label: 'Abastecimento',
+    icon: FuelIcon,
+    section: 'Frota',
+    permissao: 'abastecimentos.acessar',
+  },
+  { path: '/manutencoes', label: 'Manutenções', icon: Wrench, section: 'Frota', permissao: 'manutencoes.acessar' },
+  { path: '/multas', label: 'Infrações', icon: AlertIcon, section: 'Frota', permissao: 'multas.acessar' },
 
   // ADMINISTRAÇÃO
-  { path: '/equipe', label: 'Equipe', icon: UsersIcon, section: 'Administração' },
+  { path: '/equipe', label: 'Equipe', icon: UsersIcon, section: 'Administração', permissao: 'equipe.acessar' },
   {
     path: '/auditoria',
     label: 'Auditoria',
     icon: ScrollText,
     section: 'Administração',
-    perfis: [PERFIS.ADMINISTRADOR],
+    permissao: 'auditoria.acessar',
   },
 ]
 
 function LayoutRoute() {
   const { pathname } = useLocation()
-  const { usuario, logout, temPerfil } = useAuth()
+  const { usuario, logout } = useAuth()
+  const { pode } = usePermissao()
 
-  const itensVisiveis = navItems.filter((item) => !item.perfis || temPerfil(...item.perfis))
+  const itensVisiveis = navItems.filter((item) => !item.permissao || pode(item.permissao))
   const title = pathname.startsWith('/sobre')
     ? 'Sobre Nós'
     : itensVisiveis.find((item) => pathname.startsWith(item.path))?.label ?? 'FSPH'
@@ -80,6 +95,18 @@ function LayoutRoute() {
     </AppLayout>
   )
 }
+
+const ROTAS_COM_PERMISSAO: { path: string; permissao: Permissao; elemento: ReactElement }[] = [
+  { path: '/solicitacoes', permissao: 'solicitacoes.acessar', elemento: <SolicitacoesPage /> },
+  { path: '/triagem-svo', permissao: 'triagemSvo.acessar', elemento: <TriagemSvoPage /> },
+  { path: '/viagens', permissao: 'viagens.acessar', elemento: <ViagensPage /> },
+  { path: '/agenda', permissao: 'agenda.acessar', elemento: <AgendaPage /> },
+  { path: '/abastecimento', permissao: 'abastecimentos.acessar', elemento: <AbastecimentoPage /> },
+  { path: '/manutencoes', permissao: 'manutencoes.acessar', elemento: <ManutencoesPage /> },
+  { path: '/multas', permissao: 'multas.acessar', elemento: <MultasPage /> },
+  { path: '/equipe', permissao: 'equipe.acessar', elemento: <EquipePage /> },
+  { path: '/auditoria', permissao: 'auditoria.acessar', elemento: <AuditoriaPage /> },
+]
 
 export function AppRoutes() {
   return (
@@ -98,25 +125,15 @@ export function AppRoutes() {
           <Route index element={<Navigate to="/inicio" replace />} />
           <Route path="/inicio" element={<HomePage />} />
           <Route path="/dashboard" element={<Navigate to="/inicio" replace />} />
-          <Route path="/solicitacoes" element={<SolicitacoesPage />} />
-          <Route path="/viagens" element={<ViagensPage />} />
-          <Route path="/agenda" element={<AgendaPage />} />
-          <Route path="/veiculos" element={<VeiculosPage />} />
-          <Route path="/manutencoes" element={<ManutencoesPage />} />
-          <Route path="/abastecimento" element={<AbastecimentoPage />} />
-          <Route path="/multas" element={<MultasPage />} />
-          <Route path="/equipe" element={<EquipePage />} />
           <Route path="/sobre" element={<SobreNosPage />} />
+          <Route path="/veiculos" element={<VeiculosPage />} />
 
-          {/* Triagem SVO: os mesmos perfis aceitos pela API (BL27) */}
-          <Route element={<RotaPorPerfil perfis={[PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO]} />}>
-            <Route path="/triagem-svo" element={<TriagemSvoPage />} />
-          </Route>
-
-          {/* Só administrador (o backend também bloqueia com 403) */}
-          <Route element={<RotaPorPerfil perfis={[PERFIS.ADMINISTRADOR]} />}>
-            <Route path="/auditoria" element={<AuditoriaPage />} />
-          </Route>
+          {/* Cada tela exige a permissão do seu perfil (utils/permissoes); o backend também bloqueia com 403 */}
+          {ROTAS_COM_PERMISSAO.map(({ path, permissao, elemento }) => (
+            <Route key={path} element={<RotaComPermissao permissao={permissao} />}>
+              <Route path={path} element={elemento} />
+            </Route>
+          ))}
 
           {/* Redirecionamentos de rotas legadas para a nova arquitetura */}
           <Route path="/motoristas" element={<Navigate to="/equipe?aba=motoristas" replace />} />

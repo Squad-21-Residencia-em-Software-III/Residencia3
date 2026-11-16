@@ -1,5 +1,14 @@
 import { db } from '../config/database';
 
+export const LIMITE_MAXIMO_DOCUMENTOS = 200;
+
+function normalizarLimite(limite?: number): number {
+  if (!limite || !Number.isInteger(limite) || limite <= 0) {
+    return LIMITE_MAXIMO_DOCUMENTOS;
+  }
+  return Math.min(limite, LIMITE_MAXIMO_DOCUMENTOS);
+}
+
 export interface DocumentoComVencimento {
   // Chave única entre as origens (ex.: VEICULO-3, MOTORISTA-3)
   id: string;
@@ -14,12 +23,15 @@ export interface DocumentoComVencimento {
 }
 
 export const documentoModel = {
-  async listarVencimentos(): Promise<DocumentoComVencimento[]> {
+  async listarVencimentos(
+    limite = LIMITE_MAXIMO_DOCUMENTOS
+  ): Promise<DocumentoComVencimento[]> {
     // A data é formatada no SQL porque o pg converte DATE em Date com fuso,
     // o que serializa como ISO e pode deslocar o dia no front
     const resultado = await db.raw<{
       rows: DocumentoComVencimento[];
-    }>(`
+    }>(
+      `
       SELECT
         documentos.origem || '-' || documentos.documento_id AS id,
         documentos.documento_id,
@@ -52,7 +64,10 @@ export const documentoModel = {
         FROM motoristas m
       ) AS documentos
       ORDER BY documentos.data_vencimento ASC, id ASC
-    `);
+      LIMIT ?
+    `,
+      [normalizarLimite(limite)]
+    );
 
     return resultado.rows;
   },

@@ -7,7 +7,11 @@ import {
   type OrdemSvo,
   type SolicitacaoSvo,
 } from '../models/solicitacaoSvoModel';
-import type { CriarSolicitacaoSvoInput, ListarSolicitacoesSvoInput } from '../validators/solicitacaoSvoSchemas';
+import {
+  TAMANHO_MAXIMO_MOTIVO_RECUSA_SVO,
+  type CriarSolicitacaoSvoInput,
+  type ListarSolicitacoesSvoInput,
+} from '../validators/solicitacaoSvoSchemas';
 import type { ListaPaginada } from './usuarioService';
 
 type Autor = { id: number; perfil: Perfil };
@@ -21,10 +25,31 @@ interface ConfirmacaoSvo {
   criada: boolean;
 }
 
+interface RecusaSvo {
+  solicitacao: SolicitacaoSvo;
+}
+
 function garantirAcessoTriagem(autor: Autor): void {
   if (autor.perfil !== PERFIS.GESTOR_SVO && autor.perfil !== PERFIS.ADMINISTRADOR) {
     throw new AppError('Você não tem permissão para analisar solicitações SVO', 403);
   }
+}
+
+function normalizarMotivoRecusa(motivo: string): string {
+  if (typeof motivo !== 'string') {
+    throw new AppError('O motivo da recusa é obrigatório', 400);
+  }
+  const limpo = motivo.trim();
+  if (limpo.length === 0) {
+    throw new AppError('O motivo da recusa é obrigatório', 400);
+  }
+  if (limpo.length > TAMANHO_MAXIMO_MOTIVO_RECUSA_SVO) {
+    throw new AppError(
+      `O motivo da recusa deve ter no máximo ${TAMANHO_MAXIMO_MOTIVO_RECUSA_SVO} caracteres`,
+      400,
+    );
+  }
+  return limpo;
 }
 
 export const solicitacaoSvoService = {
@@ -115,6 +140,45 @@ export const solicitacaoSvoService = {
         trx,
       );
       return { solicitacao: confirmada, ordem, criada: true };
+    });
+  },
+
+  // Recusa a solicitação em triagem exigindo justificativa, sem gerar nem cancelar ordens
+  async recusar(id: number, motivoRecusa: string, autor: Autor): Promise<RecusaSvo> {
+    garantirAcessoTriagem(autor);
+    const motivoSanitizado = normalizarMotivoRecusa(motivoRecusa);
+
+    return db.transaction(async (trx) => {
+      const solicitacao = await solicitacaoSvoModel.buscarParaAtualizar(id, trx);
+      if (!solicitacao) {
+        throw new AppError('Solicitação SVO não encontrada', 404);
+      }
+      if (solicitacao.status === 'RECUSADA') {
+        throw new AppError('Solicitação SVO já foi recusada', 409);
+      }
+      if (solicitacao.status !== 'EM_TRIAGEM') {
+        throw new AppError('Somente solicitações em triagem podem ser recusadas', 409);
+      }
+
+      const ordemExistente = await solicitacaoSvoModel.buscarOrdemAtiva(id, trx);
+      if (ordemExistente) {
+        throw new AppError('A solicitação em triagem já possui uma ordem ativa', 409);
+      }
+
+      const recusada = await solicitacaoSvoModel.recusar(id, motivoSanitizado, trx);
+      const resumoMotivo =
+        motivoSanitizado.length > 180 ? `${motivoSanitizado.slice(0, 177)}...` : motivoSanitizado;
+
+      await auditoriaModel.registrar(
+        {
+          usuario_id: autor.id,
+          acao: `RECUSOU_SOLICITACAO_SVO id=${id} motivo="${resumoMotivo}"`,
+          modulo: MODULOS_AUDITORIA.SOLICITACOES_SVO,
+        },
+        trx,
+      );
+
+      return { solicitacao: recusada };
     });
   },
 };

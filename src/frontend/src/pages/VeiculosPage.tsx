@@ -9,6 +9,7 @@ import {
   Pagination,
   PlacaMercosul,
   SearchInput,
+  SeletorOperacao,
   Table,
   TableFilterCollapse,
   TableToolbar,
@@ -21,11 +22,14 @@ import { mensagemDeErro } from '../services/api/http';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { abastecimentosApi } from '../services/api/abastecimentosApi';
 import { multasApi } from '../services/api/multasApi';
-import { cn } from '../utils/cn';
+import { recursoAtivo } from '../config/recursosBackend';
+import { useAbaOperacao } from '../utils/abaOperacao';
 import { ModalVeiculo } from './veiculos/ModalVeiculo';
 import { DrawerDetalhesVeiculo } from './veiculos/DrawerDetalhesVeiculo';
 import { ModalAbastecimento } from './abastecimento/ModalAbastecimento';
 import { ModalMulta } from './multas/ModalMulta';
+import { VeiculosDisponiveis } from './veiculos/VeiculosDisponiveis';
+import { usePermissao } from '../utils/permissoes';
 
 const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
   DISPONIVEL: { label: 'Disponível', tone: 'success' },
@@ -34,11 +38,51 @@ const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
   MANUTENCAO: { label: 'Manutenção', tone: 'danger' },
 };
 
+/**
+ * Quem tem acesso aos detalhes vê a gestão completa da frota; o Solicitante vê só os
+ * veículos disponíveis, sem dados sensíveis (a API já devolve a lista reduzida).
+ */
 export default function VeiculosPage() {
+  const { pode } = usePermissao();
+  return pode('veiculos.detalhes') ? <GestaoDeVeiculos /> : <VeiculosDisponiveis />;
+}
+
+const TEXTOS_FROTA: Record<TipoFrota, { titulo: string; capacidade: string }> = {
+  ADMINISTRATIVA: { titulo: 'Frota Administrativa', capacidade: 'Passageiros' },
+  SVO: { titulo: 'Frota SVO', capacidade: 'Corpos (máx. 4)' },
+};
+
+/** Veículos com a alternância Administrativo/SVO (SCRUM-173); a frota do perfil vem primeiro. */
+function GestaoDeVeiculos() {
+  const { abasDeVeiculos } = usePermissao();
+  const abas = abasDeVeiculos();
+  const { ativa, mudar } = useAbaOperacao(abas);
+  if (!ativa) return null;
+
+  return (
+    <div className="grid gap-6">
+      <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
+      <div key={ativa} className="animate-tab-fade">
+        <PainelVeiculos frota={ativa} />
+      </div>
+    </div>
+  );
+}
+
+function PainelVeiculos({ frota }: { frota: TipoFrota }) {
+  const { podeNaFrota, podeVerDetalhesDaFrota } = usePermissao();
+  const textos = TEXTOS_FROTA[frota];
+  // Cada gestor só cadastra e edita veículos da própria frota (o Administrador, nas duas)
+  const podeCadastrar = podeNaFrota('veiculos.cadastrar', frota);
+  const podeEditar = (v: Veiculo) => podeNaFrota('veiculos.cadastrar', v.tipo_frota);
+  // Da outra frota o gestor vê só a consulta básica: sem km (nem custos e históricos no drawer)
+  const veKm = podeVerDetalhesDaFrota(frota);
+  // Lotação da cabine SVO depende da coluna nova (SCRUM-175/181)
+  const mostraCabine = frota === 'SVO' && recursoAtivo('lotacaoCabine');
+  const totalColunas = 5 + (veKm ? 1 : 0) + (mostraCabine ? 1 : 0);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
-  const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
@@ -53,14 +97,15 @@ export default function VeiculosPage() {
 
   const carregarVeiculos = useCallback(async () => {
     try {
-      setVeiculos(await veiculosApi.listar());
+      const lista = await veiculosApi.listar();
+      setVeiculos(lista.filter((v) => v.tipo_frota === frota));
       setErroCarga(null);
     } catch (error) {
       setErroCarga(mensagemDeErro(error));
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [frota]);
 
   useEffect(() => {
     carregarVeiculos();
@@ -125,12 +170,10 @@ export default function VeiculosPage() {
     };
   }, [veiculos]);
 
-  // Filtragem combinada por Busca, Tipo de Frota e Status
+  // Filtragem combinada por Busca e Status (a aba já define a frota)
   const veiculosFiltrados = useMemo(() => {
     return veiculos.filter((v) => {
-      const bateTipo = filtroTipo === 'TODOS' || v.tipo_frota === filtroTipo;
-      const bateStatus = filtroStatus === 'TODOS' || v.status === filtroStatus;
-      if (!bateTipo || !bateStatus) return false;
+      if (filtroStatus !== 'TODOS' && v.status !== filtroStatus) return false;
       if (busca.trim()) {
         const termo = busca.trim().toLowerCase();
         const matchPlaca = v.placa.toLowerCase().includes(termo);
@@ -139,7 +182,7 @@ export default function VeiculosPage() {
       }
       return true;
     });
-  }, [veiculos, filtroTipo, filtroStatus, busca]);
+  }, [veiculos, filtroStatus, busca]);
 
   const handleSalvarVeiculo = async (novo: NovoVeiculoInput) => {
     try {
@@ -215,37 +258,25 @@ export default function VeiculosPage() {
       {/* ── Tabela de Veículos ── */}
       <Card>
         <TableToolbar
-          title="Frota de Veículos"
+          title={textos.titulo}
           subtitle={`${veiculosFiltrados.length} de ${veiculos.length} veículos listados`}
-          newLabel="Novo Veículo"
-          onNew={() => setModalAberto(true)}
+          newLabel={podeCadastrar ? 'Novo Veículo' : undefined}
+          onNew={podeCadastrar ? () => setModalAberto(true) : undefined}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
           isFilterActive={
-            filtroTipo !== 'TODOS' ||
             filtroStatus !== 'TODOS' ||
             Boolean(busca) ||
             filtrosAbertosMobile
           }
         />
 
-        {/* Barra de Filtros: Busca + Tipo de Frota + Status do Veículo */}
+        {/* Barra de Filtros: Busca + Status do Veículo */}
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
           {/* Busca textual na esquerda */}
           <SearchInput
             value={busca}
             onChange={setBusca}
             placeholder="Buscar por placa, modelo ou marca..."
-          />
-
-          <FilterSelect
-            aria-label="Filtrar por frota"
-            value={filtroTipo}
-            onChange={(val) => setFiltroTipo(val as TipoFrota | 'TODOS')}
-            options={[
-              { value: 'TODOS', label: 'Todas as frotas' },
-              { value: 'ADMINISTRATIVA', label: 'Frota Administrativa' },
-              { value: 'SVO', label: 'Frota SVO' },
-            ]}
           />
 
           <FilterSelect
@@ -261,13 +292,12 @@ export default function VeiculosPage() {
             ]}
           />
 
-          {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || busca) && (
+          {(filtroStatus !== 'TODOS' || busca) && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setBusca('');
-                setFiltroTipo('TODOS');
                 setFiltroStatus('TODOS');
               }}
             >
@@ -281,9 +311,9 @@ export default function VeiculosPage() {
             <tr>
               <th>Placa</th>
               <th>Modelo</th>
-              <th>Tipo de Frota</th>
-              <th>Capacidade Máxima</th>
-              <th>Km Atual</th>
+              <th>{textos.capacidade}</th>
+              {mostraCabine && <th>Cabine (pessoas)</th>}
+              {veKm && <th>Km Atual</th>}
               <th>Status</th>
               <th>Ações</th>
             </tr>
@@ -291,7 +321,7 @@ export default function VeiculosPage() {
           <tbody>
             {veiculosFiltrados.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-9 text-center text-slate-500">
+                <td colSpan={totalColunas} className="p-9 text-center text-slate-500">
                   {carregando ? (
                     <div>Carregando veículos...</div>
                   ) : erroCarga ? (
@@ -304,11 +334,10 @@ export default function VeiculosPage() {
                   ) : (
                     <div>
                       <div>Nenhum veículo encontrado com os filtros selecionados.</div>
-                      {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
+                      {filtroStatus !== 'TODOS' && (
                         <button
                           type="button"
                           onClick={() => {
-                            setFiltroTipo('TODOS');
                             setFiltroStatus('TODOS');
                           }}
                           className="mt-2 cursor-pointer border-none bg-transparent text-xs font-semibold text-primary underline hover:text-primary-hover"
@@ -339,36 +368,37 @@ export default function VeiculosPage() {
                     <td>
                       <strong className="font-semibold text-slate-900">{v.modelo}</strong>
                     </td>
-                    <td>
-                      <span
-                        className={cn(
-                          'rounded px-2 py-0.5 text-[11px] font-bold',
-                          v.tipo_frota === 'SVO'
-                            ? 'bg-purple-bg text-purple'
-                            : 'bg-neutral-bg text-slate-900',
-                        )}
-                      >
-                        {v.tipo_frota}
-                      </span>
-                    </td>
                     <td>{v.capacidade_maxima}</td>
-                    <td>{v.km_atual.toLocaleString('pt-BR')} km</td>
+                    {mostraCabine && (
+                      <td>
+                        {v.lotacao_cabine ?? (
+                          <span className="text-xs text-slate-400" title="Lotação não cadastrada">
+                            Não informada
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    {veKm && <td>{v.km_atual.toLocaleString('pt-BR')} km</td>}
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>
                     <td>
                       <div className="flex items-center justify-start gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setVeiculoEditando(v);
-                          }}
-                          title={`Editar dados de ${v.modelo}`}
-                        >
-                          Editar
-                        </Button>
+                        {podeEditar(v) ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVeiculoEditando(v);
+                            }}
+                            title={`Editar dados de ${v.modelo}`}
+                          >
+                            Editar
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -385,6 +415,7 @@ export default function VeiculosPage() {
       {(modalAberto || veiculoEditando) && (
         <ModalVeiculo
           veiculoParaEditar={veiculoEditando}
+          apenasFrota={frota}
           onClose={() => {
             setModalAberto(false);
             setVeiculoEditando(null);
@@ -397,15 +428,23 @@ export default function VeiculosPage() {
       <DrawerDetalhesVeiculo
         veiculo={veiculoDetalhes}
         onClose={() => setVeiculoDetalhes(null)}
-        onEditar={(v) => setVeiculoEditando(v)}
-        onNovoAbastecimento={(v) => {
-          setVeiculoPreSelecionado(v);
-          setModalAbastecimentoAberto(true);
-        }}
-        onNovaMulta={(v) => {
-          setVeiculoPreSelecionado(v);
-          setModalMultaAberto(true);
-        }}
+        onEditar={veiculoDetalhes && podeEditar(veiculoDetalhes) ? (v) => setVeiculoEditando(v) : undefined}
+        onNovoAbastecimento={
+          veiculoDetalhes && podeNaFrota('abastecimentos.registrar', veiculoDetalhes.tipo_frota)
+            ? (v) => {
+                setVeiculoPreSelecionado(v);
+                setModalAbastecimentoAberto(true);
+              }
+            : undefined
+        }
+        onNovaMulta={
+          veiculoDetalhes && podeNaFrota('multas.gerenciar', veiculoDetalhes.tipo_frota)
+            ? (v) => {
+                setVeiculoPreSelecionado(v);
+                setModalMultaAberto(true);
+              }
+            : undefined
+        }
       />
 
       {/* ── Modal de Abastecimento (Ação Rápida do Drawer) ── */}
@@ -416,6 +455,7 @@ export default function VeiculosPage() {
             setVeiculoPreSelecionado(null);
           }}
           onSalvar={handleSalvarAbastecimento}
+          filtrarVeiculo={(v) => podeNaFrota('abastecimentos.registrar', v.tipo_frota)}
           veiculoIdInicial={
             veiculoPreSelecionado ? String(veiculoPreSelecionado.id) : undefined
           }
@@ -430,6 +470,7 @@ export default function VeiculosPage() {
             setVeiculoPreSelecionado(null);
           }}
           onSalvar={handleSalvarMulta}
+          filtrarVeiculo={(v) => podeNaFrota('multas.gerenciar', v.tipo_frota)}
           veiculoIdInicial={
             veiculoPreSelecionado ? String(veiculoPreSelecionado.id) : undefined
           }

@@ -31,11 +31,35 @@ export interface Veiculo extends NovoVeiculo {
 
 const COLUNAS_VEICULO = ['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'km_atual', 'status'];
 
+// Status em que a viagem (frota) ou a ordem (SVO) mantém o veículo vinculado ao motorista
+const VIAGENS_ATIVAS = ['AGENDADA', 'EM_ANDAMENTO'];
+const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
+
 export const veiculoModel = {
-  async listarVeiculos(): Promise<Veiculo[]> {
+  async listarVeiculos(ids?: number[]): Promise<Veiculo[]> {
     return db('veiculos')
       .select(COLUNAS_VEICULO)
+      .modify((q) => {
+        if (ids) q.whereIn('id', ids);
+      })
       .orderBy('id', 'asc');
+  },
+
+  // Veículos "vinculados" ao motorista (DVP): os das viagens e ordens dele agendadas ou em andamento
+  async idsVinculadosAoUsuarioMotorista(usuarioId: number, conexao: Knex = db): Promise<number[]> {
+    const linhas: { veiculo_id: number }[] = await conexao('viagens_frota as v')
+      .join('motoristas as m', 'm.id', 'v.motorista_id')
+      .where('m.usuario_id', usuarioId)
+      .whereIn('v.status', VIAGENS_ATIVAS)
+      .select('v.veiculo_id')
+      .union((q) => {
+        q.from('ordens_svo as o')
+          .join('motoristas as m', 'm.id', 'o.motorista_id')
+          .where('m.usuario_id', usuarioId)
+          .whereIn('o.status', ORDENS_SVO_ATIVAS)
+          .select('o.veiculo_id');
+      });
+    return linhas.map((linha) => Number(linha.veiculo_id));
   },
 
   async buscarPorId(id: number, trx?: Knex.Transaction): Promise<Veiculo | undefined> {

@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { UserCheck, Shield } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { PERFIS } from '../types/usuario';
+import { usePermissao } from '../utils/permissoes';
 import MotoristasPage from './MotoristasPage';
 import UsuariosPage from './UsuariosPage';
 import { cn } from '../utils/cn';
@@ -11,8 +10,9 @@ type AbaEquipe = 'motoristas' | 'usuarios';
 
 export default function EquipePage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { usuario } = useAuth();
-  const isAdmin = usuario?.perfil === PERFIS.ADMINISTRADOR;
+  const { pode } = usePermissao();
+  // Aba de usuários e perfis: só o Administrador
+  const isAdmin = pode('usuarios.gerenciar');
 
   const abaUrl = searchParams.get('aba') as AbaEquipe | null;
   const abaAtiva: AbaEquipe =

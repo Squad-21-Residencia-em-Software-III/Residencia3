@@ -4,12 +4,17 @@ services:
   db:
     image: postgres:15
     container_name: bd_frotas_svo
-    env_file:
-      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Defina POSTGRES_DB no arquivo .env}
+      POSTGRES_USER: ${POSTGRES_MIGRATION_USER:-${POSTGRES_USER:?Defina POSTGRES_USER no arquivo .env}}
+      POSTGRES_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:-${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-frotas_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
     ports:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./src/backend/database/init:/docker-entrypoint-initdb.d:ro
     restart: unless-stopped
 
 volumes:
