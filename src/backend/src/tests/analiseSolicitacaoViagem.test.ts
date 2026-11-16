@@ -137,6 +137,20 @@ describe('solicitacaoViagemService.aprovar / recusar', () => {
     );
   });
 
+  it('registra motivo de 200 caracteres completo na auditoria mesmo com id inteiro máximo', async () => {
+    const id = 2147483647;
+    const motivo = 'x'.repeat(200);
+
+    await solicitacaoViagemService.recusar(id, gestorFrota, motivo);
+
+    const acao = `RECUSOU_SOLICITACAO_VIAGEM id=${id} motivo="${motivo}"`;
+    expect(acao.length).toBeLessThanOrEqual(255);
+    expect(auditoriaModel.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ usuario_id: gestorFrota.id, acao }),
+      'trx'
+    );
+  });
+
   it('deve rejeitar no service recusa com motivo vazio ou apenas espaços (400)', async () => {
     await expect(solicitacaoViagemService.recusar(1, gestorFrota, '')).rejects.toMatchObject({
       statusCode: 400,
