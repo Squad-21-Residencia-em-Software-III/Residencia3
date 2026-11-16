@@ -12,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Alert, Avatar, Badge, Button, IdBadge, Modal, PlacaMercosul, Textarea } from '../../components/ui';
+import { erroDaJustificativa } from '../../utils/justificativaRecusa';
 import type { BadgeTone } from '../../components/ui';
 import { mensagemDeErro } from '../../services/api/http';
 import { solicitacoesApi } from '../../services/api/solicitacoesApi';
@@ -131,12 +132,9 @@ export function ModalAnaliseSolicitacao({
 
   const handleConfirmarRecusa = async () => {
     const motivoLimpo = motivoRecusa.trim();
-    if (!motivoLimpo) {
-      setErroMotivo('Informe a justificativa da recusa.');
-      return;
-    }
-    if (motivoLimpo.length > 200) {
-      setErroMotivo('A justificativa da recusa deve conter no máximo 200 caracteres.');
+    const erroJustificativa = erroDaJustificativa(motivoRecusa);
+    if (erroJustificativa) {
+      setErroMotivo(erroJustificativa);
       return;
     }
     setErroMotivo(null);
