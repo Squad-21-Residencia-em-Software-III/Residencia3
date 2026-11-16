@@ -35,7 +35,7 @@ Content-Type: application/json
 
 **Regras esperadas no back:**
 - **Quem pode:** só ADMINISTRADOR e GESTOR_SVO; os demais recebem 403.
-- **Motivo:** `motivo_recusa` com `trim()`, de 1 a **200** caracteres (mesmo limite da recusa administrativa do PR #122). Faltando, vazio ou só com espaços: 400.
+- **Motivo:** `motivo_recusa` com `trim()`, de 1 a **500** caracteres. A recusa administrativa tem limite próprio de 200 caracteres. Faltando, vazio ou só com espaços: 400.
 - **Status:** só a partir de `EM_TRIAGEM`, que passa a `RECUSADA`. Em CONFIRMADA, EM_ANDAMENTO, CONCLUIDA, CANCELADA ou RECUSADA: 409 com mensagem clara.
 - **Concorrência:** transação com `FOR UPDATE`. Recusar e confirmar ao mesmo tempo não pode gerar ordem nem regravar o status.
 - **Ordem de coleta:** a recusa nunca gera ordem.
