@@ -62,7 +62,7 @@ describe('Configuração do JWT (env)', () => {
 describe('Configuração de CORS, proxy e cookie (env)', () => {
   it('usa a origem do Vite no desenvolvimento e nenhuma origem cruzada em produção', () => {
     expect(carregar().corsOrigens).toEqual(['http://localhost:5173']);
-    expect(carregar({ NODE_ENV: 'production' }).corsOrigens).toEqual([]);
+    expect(carregar({ NODE_ENV: 'production', TRUST_PROXY: '2' }).corsOrigens).toEqual([]);
   });
 
   it('aceita uma lista explícita de origens', () => {
@@ -79,20 +79,49 @@ describe('Configuração de CORS, proxy e cookie (env)', () => {
     }
   );
 
-  it('lê TRUST_PROXY como número de saltos', () => {
-    expect(carregar().trustProxy).toBe(0);
-    expect(carregar({ TRUST_PROXY: '1' }).trustProxy).toBe(1);
+  it('sem TRUST_PROXY fora de produção, não confia em nenhum proxy', () => {
+    expect(carregar().trustProxy).toBe(false);
+    expect(carregar({ TRUST_PROXY: '0' }).trustProxy).toBe(false);
   });
 
-  it.each(['true', '-1', '1.5', '99'])('rejeita TRUST_PROXY inválido: %s', (valor) => {
-    expect(() => carregar({ TRUST_PROXY: valor })).toThrow('TRUST_PROXY');
+  it('lê TRUST_PROXY como número de saltos', () => {
+    expect(carregar({ TRUST_PROXY: '2' }).trustProxy).toBe(2);
+  });
+
+  it('lê TRUST_PROXY como lista de IPs, CIDRs e sub-redes nomeadas', () => {
+    expect(carregar({ TRUST_PROXY: 'loopback, 10.0.0.0/8, 76.76.21.21, 2001:db8::/32' }).trustProxy).toEqual([
+      'loopback',
+      '10.0.0.0/8',
+      '76.76.21.21',
+      '2001:db8::/32',
+    ]);
+  });
+
+  it.each(['true', '*', '-1', '1.5', '99', '0.0.0.0/0', '::/0', '10.0.0.0/33', '300.1.1.1', 'proxy.render.com', '10.0.0.0/8/1', ','])(
+    'rejeita TRUST_PROXY inválido ou irrestrito: %s',
+    (valor) => {
+      expect(() => carregar({ TRUST_PROXY: valor })).toThrow('TRUST_PROXY');
+    }
+  );
+
+  it('exige TRUST_PROXY em produção, sem presumir a cadeia de proxies', () => {
+    expect(() => carregar({ NODE_ENV: 'production' })).toThrow('TRUST_PROXY é obrigatório em produção');
+    expect(carregar({ NODE_ENV: 'production', TRUST_PROXY: '2' }).trustProxy).toBe(2);
+  });
+
+  it('aceita apenas origens https no CORS_ORIGIN em produção', () => {
+    const producao = { NODE_ENV: 'production', TRUST_PROXY: '2' };
+    expect(() => carregar({ ...producao, CORS_ORIGIN: 'http://fsph-web.vercel.app' })).toThrow('https');
+    expect(carregar({ ...producao, CORS_ORIGIN: 'https://fsph-web.vercel.app' }).corsOrigens).toEqual([
+      'https://fsph-web.vercel.app',
+    ]);
   });
 
   it('exige cookie Secure em produção', () => {
-    expect(carregar({ NODE_ENV: 'production' }).cookieSecure).toBe(true);
+    expect(carregar({ NODE_ENV: 'production', TRUST_PROXY: '2' }).cookieSecure).toBe(true);
     expect(carregar().cookieSecure).toBe(false);
     expect(carregar({ COOKIE_SECURE: 'true' }).cookieSecure).toBe(true);
-    expect(() => carregar({ NODE_ENV: 'production', COOKIE_SECURE: 'false' })).toThrow('COOKIE_SECURE');
+    expect(() => carregar({ NODE_ENV: 'production', TRUST_PROXY: '2', COOKIE_SECURE: 'false' })).toThrow('COOKIE_SECURE');
     expect(() => carregar({ COOKIE_SECURE: 'sim' })).toThrow('COOKIE_SECURE');
   });
 });
