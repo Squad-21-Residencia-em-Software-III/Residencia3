@@ -9,6 +9,7 @@ import {
   Pagination,
   PlacaMercosul,
   SearchInput,
+  SeletorOperacao,
   Table,
   TableFilterCollapse,
   TableToolbar,
@@ -21,7 +22,8 @@ import { mensagemDeErro } from '../services/api/http';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { abastecimentosApi } from '../services/api/abastecimentosApi';
 import { multasApi } from '../services/api/multasApi';
-import { cn } from '../utils/cn';
+import { recursoAtivo } from '../config/recursosBackend';
+import { useAbaOperacao } from '../utils/abaOperacao';
 import { ModalVeiculo } from './veiculos/ModalVeiculo';
 import { DrawerDetalhesVeiculo } from './veiculos/DrawerDetalhesVeiculo';
 import { ModalAbastecimento } from './abastecimento/ModalAbastecimento';
@@ -45,20 +47,42 @@ export default function VeiculosPage() {
   return pode('veiculos.detalhes') ? <GestaoDeVeiculos /> : <VeiculosDisponiveis />;
 }
 
+const TEXTOS_FROTA: Record<TipoFrota, { titulo: string; capacidade: string }> = {
+  ADMINISTRATIVA: { titulo: 'Frota Administrativa', capacidade: 'Passageiros' },
+  SVO: { titulo: 'Frota SVO', capacidade: 'Corpos (máx. 4)' },
+};
+
+/** Veículos com a alternância Administrativo/SVO (SCRUM-173); a frota do perfil vem primeiro. */
 function GestaoDeVeiculos() {
-  // Km de veículo da outra frota não aparece para o gestor (fica só a consulta básica)
-  const { pode, podeNaFrota, podeVerDetalhesDaFrota } = usePermissao();
-  const podeCadastrar = pode('veiculos.cadastrar');
+  const { abasDeVeiculos } = usePermissao();
+  const abas = abasDeVeiculos();
+  const { ativa, mudar } = useAbaOperacao(abas);
+  if (!ativa) return null;
+
+  return (
+    <div className="grid gap-6">
+      <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
+      <div key={ativa} className="animate-tab-fade">
+        <PainelVeiculos frota={ativa} />
+      </div>
+    </div>
+  );
+}
+
+function PainelVeiculos({ frota }: { frota: TipoFrota }) {
+  const { podeNaFrota, podeVerDetalhesDaFrota } = usePermissao();
+  const textos = TEXTOS_FROTA[frota];
   // Cada gestor só cadastra e edita veículos da própria frota (o Administrador, nas duas)
-  const podeAdministrativa = podeNaFrota('veiculos.cadastrar', 'ADMINISTRATIVA');
-  const podeSvo = podeNaFrota('veiculos.cadastrar', 'SVO');
-  const frotaFixa =
-    podeAdministrativa && !podeSvo ? 'ADMINISTRATIVA' : podeSvo && !podeAdministrativa ? 'SVO' : undefined;
+  const podeCadastrar = podeNaFrota('veiculos.cadastrar', frota);
   const podeEditar = (v: Veiculo) => podeNaFrota('veiculos.cadastrar', v.tipo_frota);
+  // Da outra frota o gestor vê só a consulta básica: sem km (nem custos e históricos no drawer)
+  const veKm = podeVerDetalhesDaFrota(frota);
+  // Lotação da cabine SVO depende da coluna nova (SCRUM-175/181)
+  const mostraCabine = frota === 'SVO' && recursoAtivo('lotacaoCabine');
+  const totalColunas = 5 + (veKm ? 1 : 0) + (mostraCabine ? 1 : 0);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
-  const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
@@ -73,14 +97,15 @@ function GestaoDeVeiculos() {
 
   const carregarVeiculos = useCallback(async () => {
     try {
-      setVeiculos(await veiculosApi.listar());
+      const lista = await veiculosApi.listar();
+      setVeiculos(lista.filter((v) => v.tipo_frota === frota));
       setErroCarga(null);
     } catch (error) {
       setErroCarga(mensagemDeErro(error));
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [frota]);
 
   useEffect(() => {
     carregarVeiculos();
@@ -145,12 +170,10 @@ function GestaoDeVeiculos() {
     };
   }, [veiculos]);
 
-  // Filtragem combinada por Busca, Tipo de Frota e Status
+  // Filtragem combinada por Busca e Status (a aba já define a frota)
   const veiculosFiltrados = useMemo(() => {
     return veiculos.filter((v) => {
-      const bateTipo = filtroTipo === 'TODOS' || v.tipo_frota === filtroTipo;
-      const bateStatus = filtroStatus === 'TODOS' || v.status === filtroStatus;
-      if (!bateTipo || !bateStatus) return false;
+      if (filtroStatus !== 'TODOS' && v.status !== filtroStatus) return false;
       if (busca.trim()) {
         const termo = busca.trim().toLowerCase();
         const matchPlaca = v.placa.toLowerCase().includes(termo);
@@ -159,7 +182,7 @@ function GestaoDeVeiculos() {
       }
       return true;
     });
-  }, [veiculos, filtroTipo, filtroStatus, busca]);
+  }, [veiculos, filtroStatus, busca]);
 
   const handleSalvarVeiculo = async (novo: NovoVeiculoInput) => {
     try {
@@ -235,37 +258,25 @@ function GestaoDeVeiculos() {
       {/* ── Tabela de Veículos ── */}
       <Card>
         <TableToolbar
-          title="Frota de Veículos"
+          title={textos.titulo}
           subtitle={`${veiculosFiltrados.length} de ${veiculos.length} veículos listados`}
           newLabel={podeCadastrar ? 'Novo Veículo' : undefined}
           onNew={podeCadastrar ? () => setModalAberto(true) : undefined}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
           isFilterActive={
-            filtroTipo !== 'TODOS' ||
             filtroStatus !== 'TODOS' ||
             Boolean(busca) ||
             filtrosAbertosMobile
           }
         />
 
-        {/* Barra de Filtros: Busca + Tipo de Frota + Status do Veículo */}
+        {/* Barra de Filtros: Busca + Status do Veículo */}
         <TableFilterCollapse isOpen={filtrosAbertosMobile}>
           {/* Busca textual na esquerda */}
           <SearchInput
             value={busca}
             onChange={setBusca}
             placeholder="Buscar por placa, modelo ou marca..."
-          />
-
-          <FilterSelect
-            aria-label="Filtrar por frota"
-            value={filtroTipo}
-            onChange={(val) => setFiltroTipo(val as TipoFrota | 'TODOS')}
-            options={[
-              { value: 'TODOS', label: 'Todas as frotas' },
-              { value: 'ADMINISTRATIVA', label: 'Frota Administrativa' },
-              { value: 'SVO', label: 'Frota SVO' },
-            ]}
           />
 
           <FilterSelect
@@ -281,13 +292,12 @@ function GestaoDeVeiculos() {
             ]}
           />
 
-          {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS' || busca) && (
+          {(filtroStatus !== 'TODOS' || busca) && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setBusca('');
-                setFiltroTipo('TODOS');
                 setFiltroStatus('TODOS');
               }}
             >
@@ -301,9 +311,9 @@ function GestaoDeVeiculos() {
             <tr>
               <th>Placa</th>
               <th>Modelo</th>
-              <th>Tipo de Frota</th>
-              <th>Capacidade Máxima</th>
-              <th>Km Atual</th>
+              <th>{textos.capacidade}</th>
+              {mostraCabine && <th>Cabine (pessoas)</th>}
+              {veKm && <th>Km Atual</th>}
               <th>Status</th>
               <th>Ações</th>
             </tr>
@@ -311,7 +321,7 @@ function GestaoDeVeiculos() {
           <tbody>
             {veiculosFiltrados.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-9 text-center text-slate-500">
+                <td colSpan={totalColunas} className="p-9 text-center text-slate-500">
                   {carregando ? (
                     <div>Carregando veículos...</div>
                   ) : erroCarga ? (
@@ -324,11 +334,10 @@ function GestaoDeVeiculos() {
                   ) : (
                     <div>
                       <div>Nenhum veículo encontrado com os filtros selecionados.</div>
-                      {(filtroTipo !== 'TODOS' || filtroStatus !== 'TODOS') && (
+                      {filtroStatus !== 'TODOS' && (
                         <button
                           type="button"
                           onClick={() => {
-                            setFiltroTipo('TODOS');
                             setFiltroStatus('TODOS');
                           }}
                           className="mt-2 cursor-pointer border-none bg-transparent text-xs font-semibold text-primary underline hover:text-primary-hover"
@@ -359,26 +368,17 @@ function GestaoDeVeiculos() {
                     <td>
                       <strong className="font-semibold text-slate-900">{v.modelo}</strong>
                     </td>
-                    <td>
-                      <span
-                        className={cn(
-                          'rounded px-2 py-0.5 text-[11px] font-bold',
-                          v.tipo_frota === 'SVO'
-                            ? 'bg-purple-bg text-purple'
-                            : 'bg-neutral-bg text-slate-900',
-                        )}
-                      >
-                        {v.tipo_frota}
-                      </span>
-                    </td>
                     <td>{v.capacidade_maxima}</td>
-                    <td>
-                      {podeVerDetalhesDaFrota(v.tipo_frota) ? (
-                        `${v.km_atual.toLocaleString('pt-BR')} km`
-                      ) : (
-                        <span title="Disponível só para a gestão desta frota">—</span>
-                      )}
-                    </td>
+                    {mostraCabine && (
+                      <td>
+                        {v.lotacao_cabine ?? (
+                          <span className="text-xs text-slate-400" title="Lotação não cadastrada">
+                            Não informada
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    {veKm && <td>{v.km_atual.toLocaleString('pt-BR')} km</td>}
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>
@@ -415,7 +415,7 @@ function GestaoDeVeiculos() {
       {(modalAberto || veiculoEditando) && (
         <ModalVeiculo
           veiculoParaEditar={veiculoEditando}
-          apenasFrota={frotaFixa}
+          apenasFrota={frota}
           onClose={() => {
             setModalAberto(false);
             setVeiculoEditando(null);

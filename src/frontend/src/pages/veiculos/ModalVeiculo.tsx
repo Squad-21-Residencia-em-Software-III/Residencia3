@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal, Select } from '../../components/ui';
+import { recursoAtivo } from '../../config/recursosBackend';
 import { mensagemDeErro } from '../../services/api/http';
 import type { NovoVeiculoInput, TipoFrota, Veiculo } from '../../types/veiculo';
 
@@ -25,6 +26,12 @@ export function ModalVeiculo({
   );
   const [capacidade, setCapacidade] = useState(String(veiculoParaEditar?.capacidade_maxima ?? '4'));
   const [kmAtual, setKmAtual] = useState(String(veiculoParaEditar?.km_atual ?? '0'));
+  // Lotação da cabine SVO (motorista incluído): coluna nova da SCRUM-175/181
+  const [cabine, setCabine] = useState(
+    veiculoParaEditar?.lotacao_cabine != null ? String(veiculoParaEditar.lotacao_cabine) : '',
+  );
+  const isSvo = tipoFrota === 'SVO';
+  const comCabine = isSvo && recursoAtivo('lotacaoCabine');
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
@@ -35,6 +42,9 @@ export function ModalVeiculo({
       setTipoFrota(veiculoParaEditar.tipo_frota);
       setCapacidade(String(veiculoParaEditar.capacidade_maxima));
       setKmAtual(String(veiculoParaEditar.km_atual));
+      setCabine(
+        veiculoParaEditar.lotacao_cabine != null ? String(veiculoParaEditar.lotacao_cabine) : '',
+      );
     }
   }, [veiculoParaEditar]);
 
@@ -51,8 +61,14 @@ export function ModalVeiculo({
       setErro('A capacidade deve ser um número inteiro de no mínimo 1 pessoa/óbito.');
       return;
     }
-    if (tipoFrota === 'SVO' && capacidadeNum > 4) {
+    if (isSvo && capacidadeNum > 4) {
       setErro('Veículos da frota SVO podem ter capacidade máxima de até 4.');
+      return;
+    }
+
+    const cabineNum = Number(cabine);
+    if (comCabine && (!cabine || !Number.isInteger(cabineNum) || cabineNum < 1)) {
+      setErro('Informe a lotação da cabine: número inteiro de pessoas, contando o motorista.');
       return;
     }
     if (capacidadeNum > 20) {
@@ -74,6 +90,8 @@ export function ModalVeiculo({
         tipo_frota: tipoFrota,
         capacidade_maxima: capacidadeNum,
         km_atual: kmAtualNum,
+        // Corpos e cabine são medidas diferentes e vão em campos separados
+        ...(comCabine ? { lotacao_cabine: cabineNum } : {}),
       });
       onClose();
     } catch (error) {
@@ -126,10 +144,10 @@ export function ModalVeiculo({
           </Select>
 
           <Input
-            label="Capacidade Máxima *"
+            label={isSvo ? 'Capacidade Máxima de corpos * (1 a 4)' : 'Capacidade Máxima de passageiros *'}
             type="number"
             min="1"
-            max={tipoFrota === 'SVO' ? '4' : '20'}
+            max={isSvo ? '4' : '20'}
             step="1"
             value={capacidade}
             onChange={(e: ChangeEvent<HTMLInputElement>) => {
@@ -140,6 +158,19 @@ export function ModalVeiculo({
             }}
           />
         </div>
+
+        {comCabine && (
+          <Input
+            label="Lotação da cabine * (pessoas, contando o motorista)"
+            type="number"
+            min="1"
+            step="1"
+            value={cabine}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              if (e.target.value.length <= 2) setCabine(e.target.value);
+            }}
+          />
+        )}
 
         <Input
           label="Quilometragem Atual *"

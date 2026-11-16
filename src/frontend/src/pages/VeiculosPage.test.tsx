@@ -106,12 +106,15 @@ describe('VeiculosPage', () => {
     expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
   });
 
-  it('Gestor SVO só edita veículos da frota SVO e cadastra só na frota SVO', async () => {
-    sessao.perfil = 'GESTOR_SVO';
+  const duasFrotas = () =>
     vi.mocked(veiculosApi.listar).mockResolvedValue([
       { id: 1, placa: 'BRA2E19', modelo: 'Van Administrativa', tipo_frota: 'ADMINISTRATIVA', status: 'DISPONIVEL', capacidade_maxima: 5, km_atual: 1000 },
       { id: 2, placa: 'SVO1A23', modelo: 'Rabecão', tipo_frota: 'SVO', status: 'DISPONIVEL', capacidade_maxima: 4, km_atual: 2000 },
     ]);
+
+  it('Gestor SVO abre na aba SVO, edita e cadastra só na frota SVO', async () => {
+    sessao.perfil = 'GESTOR_SVO';
+    duasFrotas();
 
     render(
       <MemoryRouter>
@@ -119,13 +122,13 @@ describe('VeiculosPage', () => {
       </MemoryRouter>
     );
 
-    const linhaAdm = (await screen.findByText('Van Administrativa')).closest('tr')!;
-    const linhaSvo = screen.getByText('Rabecão').closest('tr')!;
-    expect(within(linhaAdm).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    // A aba do próprio perfil vem primeiro e já aberta; a outra frota não se mistura
+    expect(screen.getByRole('tab', { name: /SVO/ })).toHaveAttribute('aria-selected', 'true');
+    const linhaSvo = (await screen.findByText('Rabecão')).closest('tr')!;
+    expect(screen.queryByText('Van Administrativa')).not.toBeInTheDocument();
     expect(within(linhaSvo).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
-    // Km da frota administrativa não aparece para o Gestor SVO; o da SVO, sim
-    expect(within(linhaAdm).queryByText(/1.000 km/)).not.toBeInTheDocument();
     expect(within(linhaSvo).getByText('2.000 km')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /Corpos/ })).toBeInTheDocument();
 
     // No cadastro, a frota fica fixa em SVO
     await userEvent.click(screen.getByRole('button', { name: /Novo Veículo/i }));
@@ -134,12 +137,27 @@ describe('VeiculosPage', () => {
     expect(frota).toBeDisabled();
   });
 
+  it('Gestor SVO na aba Administrativo vê só a consulta básica, sem km nem cadastro', async () => {
+    sessao.perfil = 'GESTOR_SVO';
+    duasFrotas();
+
+    render(
+      <MemoryRouter initialEntries={['/veiculos?aba=administrativo']}>
+        <VeiculosPage />
+      </MemoryRouter>
+    );
+
+    const linhaAdm = (await screen.findByText('Van Administrativa')).closest('tr')!;
+    expect(screen.queryByText('Rabecão')).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Km/ })).not.toBeInTheDocument();
+    expect(within(linhaAdm).queryByText(/1.000 km/)).not.toBeInTheDocument();
+    expect(within(linhaAdm).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Novo Veículo/i })).not.toBeInTheDocument();
+  });
+
   it('Gestor de Frota não vê km da frota SVO e não edita veículo SVO', async () => {
     sessao.perfil = 'GESTOR_FROTA';
-    vi.mocked(veiculosApi.listar).mockResolvedValue([
-      { id: 1, placa: 'BRA2E19', modelo: 'Van Administrativa', tipo_frota: 'ADMINISTRATIVA', status: 'DISPONIVEL', capacidade_maxima: 5, km_atual: 1000 },
-      { id: 2, placa: 'SVO1A23', modelo: 'Rabecão', tipo_frota: 'SVO', status: 'DISPONIVEL', capacidade_maxima: 4, km_atual: 2000 },
-    ]);
+    duasFrotas();
 
     render(
       <MemoryRouter>
@@ -147,17 +165,24 @@ describe('VeiculosPage', () => {
       </MemoryRouter>
     );
 
+    // Abre no Administrativo, com km e edição
     const linhaAdm = (await screen.findByText('Van Administrativa')).closest('tr')!;
-    const linhaSvo = screen.getByText('Rabecão').closest('tr')!;
     expect(within(linhaAdm).getByText('1.000 km')).toBeInTheDocument();
-    expect(within(linhaSvo).queryByText(/2.000 km/)).not.toBeInTheDocument();
     expect(within(linhaAdm).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
-    expect(within(linhaSvo).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Rabecão')).not.toBeInTheDocument();
 
     // No cadastro, a frota fica fixa na administrativa
     await userEvent.click(screen.getByRole('button', { name: /Novo Veículo/i }));
     const frota = await screen.findByLabelText(/Tipo de Frota/i);
     expect(frota).toHaveValue('ADMINISTRATIVA');
     expect(frota).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    // Na aba SVO: consulta básica, sem km e sem edição
+    await userEvent.click(screen.getByRole('tab', { name: /SVO/ }));
+    const linhaSvo = (await screen.findByText('Rabecão')).closest('tr')!;
+    expect(within(linhaSvo).queryByText(/2.000 km/)).not.toBeInTheDocument();
+    expect(within(linhaSvo).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Novo Veículo/i })).not.toBeInTheDocument();
   });
 });
