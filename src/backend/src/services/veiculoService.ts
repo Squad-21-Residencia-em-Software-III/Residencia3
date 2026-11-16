@@ -25,12 +25,33 @@ async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<nu
 }
 
 export const veiculoService = {
-  // Motoristas só enxergam os veículos vinculados a eles; os demais perfis, toda a frota
-  async listar(autor: { id: number; perfil: Perfil }): Promise<Veiculo[]> {
+  // Motoristas só enxergam os veículos vinculados a eles
+  // Gestor SVO vê toda frota SVO e visão restrita da Administrativa
+  async listar(autor: { id: number; perfil: Perfil }): Promise<any[]> {
     if (autor.perfil === PERFIS.MOTORISTA_FROTA || autor.perfil === PERFIS.MOTORISTA_SVO) {
       return veiculoModel.listarVeiculos(await veiculoModel.idsVinculadosAoUsuarioMotorista(autor.id));
     }
-    return veiculoModel.listarVeiculos();
+
+    const veiculos = await veiculoModel.listarVeiculos();
+
+    // Se for GESTOR_SVO, aplica segregação: veículos administrativos ficam visíveis apenas com dados básicos
+    if (autor.perfil === PERFIS.GESTOR_SVO) {
+      return veiculos.map((veiculo) => {
+        if (veiculo.tipo_frota === 'ADMINISTRATIVA') {
+          return {
+            id: veiculo.id,
+            placa: veiculo.placa,
+            modelo: veiculo.modelo,
+            status: veiculo.status,
+            capacidade_maxima: veiculo.capacidade_maxima,
+            tipo_frota: veiculo.tipo_frota,
+          };
+        }
+        return veiculo;
+      });
+    }
+
+    return veiculos;
   },
 
   async listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
@@ -40,7 +61,13 @@ export const veiculoService = {
   async listarOcupacaoSvo(): Promise<OcupacaoVeiculoSvo[]> {
     return veiculoModel.listarOcupacaoSvo();
   },
-  async criar(dados: CriarVeiculoInput, autorId: number): Promise<Veiculo> {
+
+  async criar(dados: CriarVeiculoInput, autorId: number, perfilAutor?: Perfil): Promise<Veiculo> {
+    // Restrição de perfil: GESTOR_SVO só pode cadastrar veículos SVO
+    if (perfilAutor === PERFIS.GESTOR_SVO && dados.tipo_frota !== 'SVO') {
+      throw new AppError('Gestor SVO só pode cadastrar veículos da frota SVO', 403);
+    }
+
     const veiculoExistente = await veiculoModel.buscarPorPlaca(dados.placa);
     if (veiculoExistente) {
       throw new AppError('Já existe um veículo cadastrado com essa placa', 409);
@@ -62,13 +89,21 @@ export const veiculoService = {
     });
   },
 
-  async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number): Promise<Veiculo> {
+  async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number, perfilAutor?: Perfil): Promise<Veiculo> {
     return db.transaction(async (trx) => {
-      // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco,
-      // e edições e alocações SVO do mesmo veículo ficam em fila
       const veiculo = await veiculoModel.buscarParaAtualizar(id, trx);
       if (!veiculo) {
         throw new AppError('Veículo não encontrado', 404);
+      }
+
+      // Restrição de perfil: GESTOR_SVO não pode gerenciar ou alterar veículos da frota administrativa
+      if (perfilAutor === PERFIS.GESTOR_SVO) {
+        if (veiculo.tipo_frota === 'ADMINISTRATIVA') {
+          throw new AppError('Gestor SVO não tem permissão para alterar veículos da frota administrativa', 403);
+        }
+        if (dados.tipo_frota && dados.tipo_frota !== 'SVO') {
+          throw new AppError('Gestor SVO não pode alterar o tipo de frota para fora de SVO', 403);
+        }
       }
 
       const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
