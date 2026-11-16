@@ -193,7 +193,7 @@ A autenticação utiliza tokens **JWT (JSON Web Tokens)** fornecidos pelo endpoi
 | **Abastecimento** (`/abastecimento`) | API REST Real | `abastecimentosApi.ts` | `POST /api/abastecimentos` com Zod estrito e `GET /api/abastecimentos/veiculo/:id`. |
 | **Multas & Infrações** (`/multas`) | API REST Real | `multasApi.ts`, `documentosApi.ts` | `GET /api/multas`, `POST /api/multas`, `PUT /:id`, `DELETE /:id` e `GET /api/documentos/vencimentos`. |
 | **Usuários** (`/equipe?aba=usuarios`) | API REST Real | `usuariosApi.ts` | `GET /api/usuarios` (paginado), `POST`, `PATCH /:id`, `PATCH /:id/senha`. |
-| **Agenda** (`/agenda`) | Mocks (`agendaMock.ts`) | Estrutura de Gantt em transição para `/api/viagens/agenda`. |
+| **Agenda** (`/agenda`) | API REST Real | `viagensApi.ts`, `veiculosApi.ts` | Grade 24h (Hoje, Semana, Mês), polling inteligente (30s) e `DrawerDetalhesViagem`. |
 | **Sobre Nós** (`/sobre`) | Componente Estático | Apresentação institucional da FSPH e Squad 21. |
 
 ---
@@ -428,3 +428,20 @@ flowchart TD
    - Exclusão de `storageService.ts` e arquivos de mock legados após a conexão da Agenda.
 5. **Especialização do Módulo SVO**:
    - Fluxo completo de ordens de remoção com trava máxima de 4 corpos e escalas de plantão 24h.
+
+---
+
+## 21. Tela de Agenda (`/agenda`) e Melhorias Futuras
+
+A tela de Agenda passou a consumir diretamente os dados reais da API REST, eliminando os últimos arquivos legados (`storageService.ts` e `agendaMock.ts`):
+
+- **Fontes de dados:** `GET /api/viagens` (`viagensApi.listar()`) e `GET /api/veiculos` (`veiculosApi.listar()`) em paralelo (`Promise.all`), exibindo toda a frota ativa na coluna lateral (inclusive veículos livres no dia) e os detalhes da viagem via reutilização do `DrawerDetalhesViagem.tsx`.
+- **Grade 24h e regra de horários:** janela `00:00`–`24:00` com destaque para o expediente comercial (`07:00`–`17:00`, Hemose/Lacen) e cobertura contínua de plantão 24h (SVO), marcador dinâmico do horário atual e auto-scroll horizontal. Ordens SVO ou viagens sem `fim_previsto` e ainda não concluídas estendem a barra até `23:59` do mesmo dia.
+- **Atualização automática (*polling* inteligente):** revalidação em segundo plano a cada `30s` (pausada quando `document.hidden === true`) e atualização imediata ao retornar à aba (`visibilitychange` / `focus`).
+
+### Melhorias Futuras Planejadas para a Agenda
+1. **Filtro por período no `GET /api/viagens`:** adicionar query params opcionais `data_inicio` e `data_fim` no back-end para evitar truncamento pelo limite atual de 200 registros em navegações distantes no histórico.
+2. **Estimativa de distância (`km_estimado`):** integrar cálculo prévio de distância após futura adoção de API de mapas/rotas (atualmente são exibidos apenas `km_inicial` e `km_final` efetivos no drawer).
+3. **Push em tempo real (SSE / WebSocket):** avaliar apenas se surgir demanda de atualização em sub-segundo (considerando que rewrites HTTP da Vercel não fazem proxy de WebSocket e exigem endpoint direto no Render autenticado por Bearer token).
+4. **Bloqueios de manutenção e permissão de menu:** exibir janelas de manutenção programada na grade e alinhar a visibilidade do item `/agenda` no menu lateral para perfis sem acesso a `/api/viagens` (como `SOLICITANTE`).
+
