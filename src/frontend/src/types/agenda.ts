@@ -1,39 +1,39 @@
-import type { StatusViagem, TipoOperacaoViagem } from './viagem';
+import type { StatusVeiculo, TipoFrota } from './veiculo';
+import type { Viagem } from './viagem';
 
 export type ModoVisualizacaoAgenda = 'hoje' | 'semana' | 'mes';
-
-export interface RotaAgenda {
-  id: number;
-  solicitacao_id: number;
-  tipo_operacao: TipoOperacaoViagem;
-  origem: string;
-  destino: string;
-  finalidade: string;
-  solicitante_nome: string;
-  veiculo_id: number;
-  veiculo_modelo: string;
-  veiculo_placa: string;
-  capacidade_maxima: number;
-  motorista_id: number;
-  motorista_nome: string;
-  data: string; // YYYY-MM-DD
-  hora_inicio: string; // HH:mm
-  hora_fim: string; // HH:mm
-  km_estimado: number;
-  status: StatusViagem;
-}
-
-export type TipoExcecaoAgenda = 'gargalo' | 'pico' | 'normal';
-
-export interface ExcecaoAgenda {
-  tipo: TipoExcecaoAgenda;
-  hora?: string;
-  mensagem: string;
-}
 
 export interface DiaAgendaSemana {
   data: string; // YYYY-MM-DD
   label: string; // Seg, Ter, Qua...
   diaNumero: number;
-  isToday: boolean;
+  ehHoje: boolean;
+}
+
+export interface CelulaMesAgenda {
+  dia: number;
+  dataIso: string; // YYYY-MM-DD
+  ehHoje: boolean;
+  ehPassado: boolean;
+  totalViagens: number;
+}
+
+export interface BlocoAgendaDia {
+  chave: string; // `${viagem.tipo_operacao}-${viagem.id}`
+  data: string; // YYYY-MM-DD do dia projetado
+  viagem: Viagem;
+  inicioMin: number; // 0..1440
+  fimMin: number; // 0..1440
+  horaInicioLabel: string; // HH:mm
+  horaFimLabel: string; // HH:mm
+  semPrevisaoFim: boolean;
+}
+
+export interface LinhaRecursoAgenda {
+  id: number;
+  modelo: string;
+  placa: string;
+  tipoFrota?: TipoFrota;
+  statusVeiculo?: StatusVeiculo;
+  blocos: BlocoAgendaDia[];
 }
