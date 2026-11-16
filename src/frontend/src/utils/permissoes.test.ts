@@ -174,9 +174,10 @@ describe('abas Administrativo/SVO (SCRUM-166)', () => {
 
   it('Veículos: as duas frotas para quem vê detalhes, a do perfil primeiro', () => {
     expect(abasDeVeiculos(ADMINISTRADOR)).toEqual(['ADMINISTRATIVA', 'SVO']);
-    expect(abasDeVeiculos(GESTOR_FROTA)).toEqual(['ADMINISTRATIVA', 'SVO']);
+    expect(abasDeVeiculos(GESTOR_FROTA)).toEqual(['ADMINISTRATIVA']);
     expect(abasDeVeiculos(GESTOR_SVO)).toEqual(['SVO', 'ADMINISTRATIVA']);
-    expect(abasDeVeiculos(MOTORISTA_SVO)).toEqual(['SVO', 'ADMINISTRATIVA']);
+    expect(abasDeVeiculos(MOTORISTA_SVO)).toEqual(['SVO']);
+    expect(abasDeVeiculos(MOTORISTA_FROTA)).toEqual(['ADMINISTRATIVA']);
     // O Solicitante tem a tela reduzida, sem abas
     expect(abasDeVeiculos(SOLICITANTE)).toEqual([]);
   });
