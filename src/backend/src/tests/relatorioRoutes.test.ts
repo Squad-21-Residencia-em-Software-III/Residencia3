@@ -3,7 +3,8 @@ import request from 'supertest';
 import type { Response as RespostaHttp } from 'superagent';
 
 import { PERFIS, type Perfil } from '../constants/perfis';
-import { LIMITE_LINHAS_EXPORTACAO } from '../constants/relatorios';
+import { LIMITE_LINHAS_EXPORTACAO, LIMITE_LINHAS_PDF } from '../constants/relatorios';
+import { textoDoPdf } from './pdfHelper';
 
 vi.mock('../services/authService', () => ({
   authService: {
@@ -79,7 +80,7 @@ describe('GET /api/relatorios', () => {
       'manutencoes',
       'multas',
     ]);
-    expect(resposta.body[0].formatos).toEqual(['csv', 'xlsx']);
+    expect(resposta.body[0].formatos).toEqual(['csv', 'xlsx', 'pdf']);
   });
 
   it('exige autenticação', async () => {
@@ -194,6 +195,122 @@ describe('GET /api/relatorios/:tipo/exportar — arquivos (RN20)', () => {
     expect((resposta.body as Buffer).subarray(0, 2).toString()).toBe('PK');
   });
 
+  it('exporta PDF com o tipo de conteúdo e o nome de arquivo corretos', async () => {
+    vi.mocked(relatorioModel.abastecimentos).mockResolvedValueOnce([abastecimento]);
+
+    const resposta = await request(app)
+      .get('/api/relatorios/abastecimentos/exportar?formato=pdf&inicio=2026-11-01&fim=2026-11-13')
+      .set('Authorization', token)
+      .buffer(true)
+      .parse(comoBuffer);
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.headers['content-type']).toBe('application/pdf');
+    expect(resposta.headers['content-disposition']).toMatch(/filename="relatorio-abastecimentos-\d{4}-\d{2}-\d{2}\.pdf"$/);
+    expect((resposta.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+
+    const texto = textoDoPdf(resposta.body as Buffer);
+    expect(texto).toContain('Relatório de Abastecimentos');
+    expect(texto).toContain('Período: 01/11/2026 a 13/11/2026');
+    expect(texto).toContain('Total de registros: 1');
+    expect(texto).toContain('João Silva');
+  });
+
+  it('informa no PDF de viagens o escopo do perfil de quem exporta', async () => {
+    const exportar = async () => {
+      const resposta = await request(app)
+        .get('/api/relatorios/viagens/exportar?formato=pdf')
+        .set('Authorization', token)
+        .buffer(true)
+        .parse(comoBuffer);
+      return textoDoPdf(resposta.body as Buffer);
+    };
+
+    const gestor = await exportar();
+    autenticarComo(PERFIS.ADMINISTRADOR);
+    const administrador = await exportar();
+
+    expect(gestor).toContain('Escopo: viagens administrativas');
+    expect(gestor).not.toContain('SVO');
+    expect(administrador).toContain('Escopo: viagens administrativas e ordens de coleta SVO');
+  });
+
+  it('bloqueia o PDF para perfis sem acesso, sem consultar nem auditar', async () => {
+    autenticarComo(PERFIS.MOTORISTA_FROTA);
+
+    const resposta = await request(app).get('/api/relatorios/multas/exportar?formato=pdf').set('Authorization', token);
+
+    expect(resposta.status).toBe(403);
+    expect(relatorioModel.multas).not.toHaveBeenCalled();
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('registra o formato pdf na auditoria', async () => {
+    autenticarComo(PERFIS.ADMINISTRADOR, 3);
+    vi.mocked(relatorioModel.manutencoes).mockResolvedValueOnce([{ id: 1 }]);
+
+    await request(app)
+      .get('/api/relatorios/manutencoes/exportar?formato=pdf')
+      .set('Authorization', token)
+      .buffer(true)
+      .parse(comoBuffer);
+
+    expect(auditoriaModel.registrar).toHaveBeenCalledWith({
+      usuario_id: 3,
+      acao: 'EXPORTOU_RELATORIO tipo=manutencoes formato=pdf linhas=1 inicio=- fim=-',
+      modulo: 'RELATORIOS',
+    });
+  });
+
+  it('consulta com o limite próprio do PDF, menor que o de CSV e XLSX', async () => {
+    await request(app)
+      .get('/api/relatorios/abastecimentos/exportar?formato=pdf')
+      .set('Authorization', token)
+      .buffer(true)
+      .parse(comoBuffer);
+
+    expect(relatorioModel.abastecimentos).toHaveBeenCalledWith({}, LIMITE_LINHAS_PDF + 1, ['ADMINISTRATIVA']);
+  });
+
+  it('retorna 422 para PDF acima do limite, orientando o uso de CSV ou XLSX, sem auditar', async () => {
+    vi.mocked(relatorioModel.multas).mockResolvedValueOnce(
+      Array.from({ length: LIMITE_LINHAS_PDF + 1 }, (_, i) => ({ id: i })),
+    );
+
+    const resposta = await request(app).get('/api/relatorios/multas/exportar?formato=pdf').set('Authorization', token);
+
+    expect(resposta.status).toBe(422);
+    expect(resposta.body.erro).toContain(`${LIMITE_LINHAS_PDF} linhas`);
+    expect(resposta.body.erro).toContain('CSV ou XLSX');
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('aceita PDF com exatamente o limite de linhas', async () => {
+    vi.mocked(relatorioModel.multas).mockResolvedValueOnce(
+      Array.from({ length: LIMITE_LINHAS_PDF }, (_, i) => ({ id: i + 1 })),
+    );
+
+    const resposta = await request(app)
+      .get('/api/relatorios/multas/exportar?formato=pdf')
+      .set('Authorization', token)
+      .buffer(true)
+      .parse(comoBuffer);
+
+    expect(resposta.status).toBe(200);
+    expect((resposta.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('mantém em CSV e XLSX o limite maior, que o PDF não comporta', async () => {
+    vi.mocked(relatorioModel.multas).mockResolvedValueOnce(
+      Array.from({ length: LIMITE_LINHAS_PDF + 1 }, (_, i) => ({ id: i })),
+    );
+
+    const resposta = await request(app).get('/api/relatorios/multas/exportar?formato=csv').set('Authorization', token);
+
+    expect(resposta.status).toBe(200);
+    expect(relatorioModel.multas).toHaveBeenCalledWith({}, LIMITE_LINHAS_EXPORTACAO + 1, ['ADMINISTRATIVA']);
+  });
+
   it('exporta relatório vazio apenas com o cabeçalho', async () => {
     const resposta = await request(app).get('/api/relatorios/manutencoes/exportar?formato=csv').set('Authorization', token);
 
@@ -270,10 +387,56 @@ describe('GET /api/relatorios/:tipo/exportar — isolamento por tipo de frota', 
   });
 });
 
+describe('GET /api/relatorios/:tipo/exportar — isolamento por tipo de frota no PDF', () => {
+  const relatorios = [
+    ['abastecimentos', relatorioModel.abastecimentos],
+    ['manutencoes', relatorioModel.manutencoes],
+    ['multas', relatorioModel.multas],
+  ] as const;
+
+  const exportarPdf = async (tipo: string, consulta = '') => {
+    const resposta = await request(app)
+      .get(`/api/relatorios/${tipo}/exportar?formato=pdf${consulta}`)
+      .set('Authorization', token)
+      .buffer(true)
+      .parse(comoBuffer);
+    return resposta;
+  };
+
+  it.each(relatorios)('limita %s à frota administrativa no PDF do Gestor de Frota', async (tipo, consulta) => {
+    const resposta = await exportarPdf(tipo);
+
+    expect(resposta.status).toBe(200);
+    expect(consulta).toHaveBeenCalledWith({}, LIMITE_LINHAS_PDF + 1, ['ADMINISTRATIVA']);
+    expect(textoDoPdf(resposta.body as Buffer)).toContain('Escopo: frota administrativa');
+    expect(textoDoPdf(resposta.body as Buffer)).not.toContain('SVO');
+  });
+
+  it.each(relatorios)('mantém %s com as duas frotas no PDF do Administrador', async (tipo, consulta) => {
+    autenticarComo(PERFIS.ADMINISTRADOR);
+
+    const resposta = await exportarPdf(tipo);
+
+    expect(resposta.status).toBe(200);
+    expect(consulta).toHaveBeenCalledWith({}, LIMITE_LINHAS_PDF + 1, ['ADMINISTRATIVA', 'SVO']);
+    expect(textoDoPdf(resposta.body as Buffer)).toContain('Escopo: frota administrativa e SVO');
+  });
+
+  it.each(relatorios)('combina o escopo de frota com o período no PDF de %s', async (tipo, consulta) => {
+    await exportarPdf(tipo, '&inicio=2026-11-01&fim=2026-11-30');
+
+    expect(consulta).toHaveBeenCalledWith(
+      { inicio: '2026-11-01', fim: '2026-11-30' },
+      LIMITE_LINHAS_PDF + 1,
+      ['ADMINISTRATIVA'],
+    );
+  });
+});
+
 describe('GET /api/relatorios/:tipo/exportar — validação', () => {
   it.each([
     ['formato ausente', '/api/relatorios/multas/exportar'],
-    ['formato não suportado', '/api/relatorios/multas/exportar?formato=pdf'],
+    ['formato não suportado', '/api/relatorios/multas/exportar?formato=docx'],
     ['tipo inexistente', '/api/relatorios/estoque/exportar?formato=csv'],
     ['data inicial inválida', '/api/relatorios/multas/exportar?formato=csv&inicio=13/11/2026'],
     ['período invertido', '/api/relatorios/multas/exportar?formato=csv&inicio=2026-11-13&fim=2026-11-01'],
