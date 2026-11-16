@@ -1,31 +1,27 @@
+
 import { db } from '../config/database';
+import { AppError } from '../errors/AppError';
 import type { ConsultarDisponibilidadeEquipesInput } from '../validators/equipeSvoSchemas';
 
 // Ordens que indicam uma equipe ocupada no momento operacional atual
 const ORDENS_OCUPANDO_EQUIPE = ['ALOCADA', 'EM_DESLOCAMENTO'];
 
-// Tolerância para consultas operacionais imediatas (compensa latência de rede e diferença de relógio)
-const TOLERANCIA_CONSULTA_IMEDIATA_MS = 15 * 60 * 1000;
+// Janela técnica de observação, não uma duração estimada de coleta.
+// O resultado representa somente a situação operacional consultada.
+const JANELA_CONSULTA_IMEDIATA_MS = 60 * 1000;
 
-function criarErroPeriodoNaoSuportado(mensagem: string): Error & {
-  statusCode: number;
-  status: number;
-} {
-  return Object.assign(new Error(mensagem), {
-    name: 'PeriodoNaoSuportadoError',
-    statusCode: 400,
-    status: 400,
-  });
+function criarErroPeriodoNaoSuportado(mensagem: string): AppError {
+  return new AppError(mensagem, 400);
 }
 
 export const equipeSvoService = {
   /**
-   * Consulta equipes SVO disponíveis para atendimento operacional imediato.
+   * Consulta a disponibilidade operacional atual das equipes SVO.
    *
-   * Contrato temporal (SCRUM-104 / BL29):
-   * - Como ordens ALOCADA/EM_DESLOCAMENTO ainda não possuem previsão de término (escopo SCRUM-166),
-   *   a consulta suporta exclusivamente o período operacional imediato (`inicio` próximo ao horário atual).
-   * - Consultas de períodos futuros ou passados fora da tolerância operacional são rejeitadas.
+   * A consulta usa uma janela técnica próxima ao horário do servidor.
+   * Não representa reserva nem garantia de disponibilidade futura.
+   * Agendamento e validação definitiva da alocação pertencem
+   * às tarefas específicas SCRUM-166 e SCRUM-105.
    */
   async consultarDisponibilidade(
     filtros: ConsultarDisponibilidadeEquipesInput
@@ -44,8 +40,15 @@ export const equipeSvoService = {
       );
     }
 
-    const diferencaParaAgoraMs = Math.abs(inicio.getTime() - agora.getTime());
-    if (diferencaParaAgoraMs > TOLERANCIA_CONSULTA_IMEDIATA_MS) {
+    const limiteInferior = agora.getTime() - JANELA_CONSULTA_IMEDIATA_MS;
+    const limiteSuperior = agora.getTime() + JANELA_CONSULTA_IMEDIATA_MS;
+
+    if (
+      inicio.getTime() < limiteInferior ||
+      inicio.getTime() > agora.getTime() ||
+      fim.getTime() <= agora.getTime() ||
+      fim.getTime() > limiteSuperior
+    ) {
       throw criarErroPeriodoNaoSuportado(
         'Período não suportado: a consulta de disponibilidade atende apenas à operação imediata.'
       );
