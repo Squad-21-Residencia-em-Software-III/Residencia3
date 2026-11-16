@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import knexConfig = require('../../knexfile');
 
-const { resolverSsl, resolverCredenciais, resolverPool, criarConfigKnex } = knexConfig as typeof knexConfig & {
+const { resolverSsl, resolverCredenciais, resolverPool, resolverTimeouts, criarConfigKnex } = knexConfig as typeof knexConfig & {
+  resolverTimeouts: (env: NodeJS.ProcessEnv, argv?: string[]) => Record<string, number>;
   resolverSsl: (env: NodeJS.ProcessEnv) => false | { rejectUnauthorized: true; ca?: string };
   resolverCredenciais: (
     env: NodeJS.ProcessEnv,
@@ -149,6 +150,42 @@ describe('Configuração de segurança do PostgreSQL (knexfile)', () => {
 
       expect(poolAjustado.min).toBe(8);
       expect(poolAjustado.max).toBe(8);
+    });
+  });
+
+  describe('Tempos máximos das operações no banco (resolverTimeouts)', () => {
+    const app = ['node', 'dist/server.js'];
+
+    it('limita consultas a 10s no servidor, 12s no driver e transações ociosas a 15s', () => {
+      expect(resolverTimeouts({}, app)).toEqual({
+        statement_timeout: 10000,
+        query_timeout: 12000,
+        idle_in_transaction_session_timeout: 15000,
+      });
+    });
+
+    it('respeita os valores configurados', () => {
+      expect(
+        resolverTimeouts({ POSTGRES_STATEMENT_TIMEOUT_MS: '5000', POSTGRES_IDLE_TRANSACTION_TIMEOUT_MS: '8000' }, app)
+      ).toEqual({ statement_timeout: 5000, query_timeout: 7000, idle_in_transaction_session_timeout: 8000 });
+    });
+
+    it('ignora valores inválidos e usa o padrão', () => {
+      expect(resolverTimeouts({ POSTGRES_STATEMENT_TIMEOUT_MS: 'abc' }, app).statement_timeout).toBe(10000);
+    });
+
+    it('desativa os limites em migrations e seeds, que podem ser longas', () => {
+      expect(resolverTimeouts({ DB_ROLE: 'migration' }, app)).toEqual({
+        statement_timeout: 0,
+        query_timeout: 0,
+        idle_in_transaction_session_timeout: 0,
+      });
+    });
+
+    it('aplica os tempos na conexão usada pela aplicação', () => {
+      const config = criarConfigKnex({ DB_ROLE: 'app' }, app) as unknown as { connection: Record<string, unknown> };
+
+      expect(config.connection).toMatchObject({ statement_timeout: 10000, query_timeout: 12000 });
     });
   });
 });

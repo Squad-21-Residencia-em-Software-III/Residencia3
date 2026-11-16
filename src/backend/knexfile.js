@@ -94,6 +94,29 @@ function resolverPool(env = process.env) {
 }
 
 /**
+ * Tempos máximos das operações no PostgreSQL (docs/limites-e-timeouts.md):
+ * - statement_timeout: o servidor cancela consultas que passam do limite (erro 57014);
+ * - query_timeout: o driver desiste de esperar a resposta (margem de 2s sobre o anterior);
+ * - idle_in_transaction_session_timeout: encerra transações esquecidas abertas.
+ * Migrations e seeds podem ser longas: no contexto de migration os limites ficam desativados (0).
+ */
+function resolverTimeouts(env = process.env, argv = process.argv) {
+  if (ehContextoMigration(env, argv)) {
+    return { statement_timeout: 0, query_timeout: 0, idle_in_transaction_session_timeout: 0 };
+  }
+  const inteiro = (valor, padrao) => {
+    const numero = Number(valor);
+    return Number.isInteger(numero) && numero > 0 ? numero : padrao;
+  };
+  const statement = inteiro(env.POSTGRES_STATEMENT_TIMEOUT_MS, 10000);
+  return {
+    statement_timeout: statement,
+    query_timeout: statement + 2000,
+    idle_in_transaction_session_timeout: inteiro(env.POSTGRES_IDLE_TRANSACTION_TIMEOUT_MS, 15000),
+  };
+}
+
+/**
  * Monta a configuração completa do Knex a partir do ambiente informado.
  * @param {NodeJS.ProcessEnv} [env]
  * @param {string[]} [argv]
@@ -113,6 +136,7 @@ function criarConfigKnex(env = process.env, argv = process.argv) {
       database: env.POSTGRES_DB,
       ssl: resolverSsl(env),
       connectionTimeoutMillis: pool.createTimeoutMillis,
+      ...resolverTimeouts(env, argv),
     },
     pool,
     migrations: {
@@ -132,6 +156,7 @@ Object.defineProperties(config, {
   ehContextoMigration: { value: ehContextoMigration, enumerable: false },
   resolverCredenciais: { value: resolverCredenciais, enumerable: false },
   resolverPool: { value: resolverPool, enumerable: false },
+  resolverTimeouts: { value: resolverTimeouts, enumerable: false },
   criarConfigKnex: { value: criarConfigKnex, enumerable: false },
 });
 

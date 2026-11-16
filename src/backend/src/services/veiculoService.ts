@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import {
@@ -24,7 +25,11 @@ async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<nu
 }
 
 export const veiculoService = {
-  async listar(): Promise<Veiculo[]> {
+  // Motoristas só enxergam os veículos vinculados a eles; os demais perfis, toda a frota
+  async listar(autor: { id: number; perfil: Perfil }): Promise<Veiculo[]> {
+    if (autor.perfil === PERFIS.MOTORISTA_FROTA || autor.perfil === PERFIS.MOTORISTA_SVO) {
+      return veiculoModel.listarVeiculos(await veiculoModel.idsVinculadosAoUsuarioMotorista(autor.id));
+    }
     return veiculoModel.listarVeiculos();
   },
 
