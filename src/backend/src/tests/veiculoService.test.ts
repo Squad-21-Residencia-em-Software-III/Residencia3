@@ -6,7 +6,6 @@ const { mockDb, mockTrx, estado } = vi.hoisted(() => {
     consultas: [] as string[],
   };
 
-  // Consulta encadeável: registra a tabela e responde à soma das ordens SVO
   const trx = vi.fn((tabela: string) => {
     estado.consultas.push(tabela);
     const consulta: Record<string, any> = {};
@@ -32,6 +31,7 @@ vi.mock('../models/veiculoModel', () => ({
     buscarPorId: vi.fn(),
     buscarParaAtualizar: vi.fn(),
     buscarPorPlaca: vi.fn(),
+    cadastrarVeiculo: vi.fn(),
     atualizarVeiculo: vi.fn(),
     listarVeiculos: vi.fn(async () => []),
     idsVinculadosAoUsuarioMotorista: vi.fn(async () => [4, 9]),
@@ -45,6 +45,7 @@ vi.mock('../models/auditoriaModel', () => ({
 
 import { veiculoService } from '../services/veiculoService';
 import { veiculoModel } from '../models/veiculoModel';
+import { auditoriaModel } from '../models/auditoriaModel';
 
 const veiculoSvo = {
   id: 10,
@@ -52,6 +53,7 @@ const veiculoSvo = {
   modelo: 'Rabecão',
   tipo_frota: 'SVO',
   capacidade_maxima: 4,
+  lotacao_cabine: 3,
   km_atual: 1000,
   status: 'RESERVADO',
 };
@@ -66,6 +68,37 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
     vi.mocked(veiculoModel.atualizarVeiculo).mockImplementation(
       async (_id, dados) => ({ ...veiculoSvo, ...dados }) as any
     );
+  });
+
+  it('deve permitir cadastrar veículo SVO com lotação de cabine', async () => {
+    vi.mocked(veiculoModel.buscarPorPlaca).mockResolvedValue(undefined);
+    vi.mocked(veiculoModel.cadastrarVeiculo).mockResolvedValue({
+      id: 15,
+      placa: 'XYZ9K88',
+      modelo: 'Fiorino SVO',
+      tipo_frota: 'SVO',
+      capacidade_maxima: 2,
+      lotacao_cabine: 3,
+      km_atual: 100,
+      status: 'DISPONIVEL',
+    } as any);
+
+    const resultado = await veiculoService.criar(
+      {
+        placa: 'XYZ9K88',
+        modelo: 'Fiorino SVO',
+        tipo_frota: 'SVO',
+        capacidade_maxima: 2,
+        lotacao_cabine: 3,
+        km_atual: 100,
+      },
+      1
+    );
+
+    expect(resultado).toMatchObject({
+      capacidade_maxima: 2,
+      lotacao_cabine: 3,
+    });
   });
 
   it('deve bloquear capacidade menor que a ocupação atual', async () => {
@@ -93,6 +126,40 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
     await expect(veiculoService.atualizar(10, { capacidade_maxima: 1 } as any, 1)).resolves.toMatchObject({
       capacidade_maxima: 1,
     });
+  });
+
+  it('altera a cabine sem modificar a capacidade e registra auditoria', async () => {
+    const resultado = await veiculoService.atualizar(10, { lotacao_cabine: 5 }, 1);
+    expect(resultado).toMatchObject({ capacidade_maxima: 4, lotacao_cabine: 5 });
+    expect(veiculoModel.buscarParaAtualizar).toHaveBeenCalledWith(10, mockTrx);
+    expect(auditoriaModel.registrar).toHaveBeenCalledWith(expect.objectContaining({ usuario_id: 1, modulo: 'VEICULOS' }), mockTrx);
+  });
+
+  it('preserva a cabine desconhecida ao editar um veículo legado', async () => {
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, lotacao_cabine: null } as any);
+    vi.mocked(veiculoModel.atualizarVeiculo).mockImplementation(async (_id, dados) => ({ ...veiculoSvo, lotacao_cabine: null, ...dados }) as any);
+    const resultado = await veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1);
+    expect(resultado).toMatchObject({ capacidade_maxima: 2, lotacao_cabine: null });
+    expect(veiculoModel.atualizarVeiculo).toHaveBeenCalledWith(10, { capacidade_maxima: 2 }, mockTrx);
+  });
+
+  it('rejeita conversão administrativa para SVO sem cabine conhecida', async () => {
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, tipo_frota: 'ADMINISTRATIVA', lotacao_cabine: null } as any);
+    await expect(veiculoService.atualizar(10, { tipo_frota: 'SVO' }, 1)).rejects.toMatchObject({ statusCode: 400 });
+    expect(veiculoModel.atualizarVeiculo).not.toHaveBeenCalled();
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('permite conversão administrativa para SVO com cabine válida e audita', async () => {
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, tipo_frota: 'ADMINISTRATIVA', lotacao_cabine: null } as any);
+    await veiculoService.atualizar(10, { tipo_frota: 'SVO', lotacao_cabine: 3 }, 1);
+    expect(veiculoModel.atualizarVeiculo).toHaveBeenCalledWith(10, { tipo_frota: 'SVO', lotacao_cabine: 3 }, mockTrx);
+    expect(auditoriaModel.registrar).toHaveBeenCalledOnce();
+  });
+
+  it('aceita cabine válida já registrada ao converter para SVO', async () => {
+    vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, tipo_frota: 'ADMINISTRATIVA', lotacao_cabine: 2 } as any);
+    await expect(veiculoService.atualizar(10, { tipo_frota: 'SVO' }, 1)).resolves.toBeDefined();
   });
 
   it('deve impedir que o veículo saia da frota SVO com ordens ativas', async () => {
@@ -132,14 +199,12 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
   });
 
   it('deve validar com o estado atual do banco, não com o que o cliente supõe', async () => {
-    // Outra requisição já reduziu a capacidade para 3; o cliente envia 4 (o valor que viu antes)
     vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, capacidade_maxima: 3 } as any);
     estado.ocupacao = 3;
 
     await expect(veiculoService.atualizar(10, { capacidade_maxima: 4 } as any, 1)).resolves.toMatchObject({
       capacidade_maxima: 4,
     });
-    // A mudança 3 -> 4 é detectada pelo valor do banco e a ocupação é conferida
     expect(estado.consultas).toEqual(['ordens_svo']);
   });
 });

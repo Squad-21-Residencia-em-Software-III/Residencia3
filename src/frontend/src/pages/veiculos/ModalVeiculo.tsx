@@ -67,7 +67,8 @@ export function ModalVeiculo({
     }
 
     const cabineNum = Number(cabine);
-    if (comCabine && (!cabine || !Number.isInteger(cabineNum) || cabineNum < 1)) {
+    const cabineObrigatoria = !veiculoParaEditar || veiculoParaEditar.tipo_frota !== 'SVO';
+    if (comCabine && ((cabineObrigatoria && !cabine.trim()) || (cabine.trim() !== '' && (!Number.isInteger(cabineNum) || cabineNum < 1)))) {
       setErro('Informe a lotação da cabine: número inteiro de pessoas, contando o motorista.');
       return;
     }
@@ -91,7 +92,7 @@ export function ModalVeiculo({
         capacidade_maxima: capacidadeNum,
         km_atual: kmAtualNum,
         // Corpos e cabine são medidas diferentes e vão em campos separados
-        ...(comCabine ? { lotacao_cabine: cabineNum } : {}),
+        ...(comCabine && cabine.trim() !== '' ? { lotacao_cabine: cabineNum } : {}),
       });
       onClose();
     } catch (error) {
@@ -161,7 +162,7 @@ export function ModalVeiculo({
 
         {comCabine && (
           <Input
-            label="Lotação da cabine * (pessoas, contando o motorista)"
+            label={`Lotação da cabine${!isEdicao || veiculoParaEditar?.tipo_frota !== 'SVO' ? ' *' : ''} (pessoas, contando o motorista)`}
             type="number"
             min="1"
             step="1"

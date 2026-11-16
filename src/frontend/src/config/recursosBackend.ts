@@ -24,7 +24,7 @@ export const RECURSOS_BACKEND = {
    * SCRUM-175 (banco) + SCRUM-181 (back): coluna `veiculos.lotacao_cabine` (pessoas na cabine,
    * motorista incluído), validada no cadastro e na edição de veículos SVO.
    */
-  lotacaoCabine: false,
+  lotacaoCabine: true,
 
   /**
    * SCRUM-176 (banco) + SCRUM-182 (back): agendamento da coleta com `inicio_previsto` e

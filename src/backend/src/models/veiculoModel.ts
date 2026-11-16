@@ -9,6 +9,7 @@ export interface VeiculoSvoDisponivel {
   placa: string;
   modelo: string;
   capacidade_maxima: number;
+  lotacao_cabine: number | null;
   status: StatusVeiculo | string;
   capacidade_utilizada: number;
   vagas_disponiveis: number;
@@ -21,6 +22,7 @@ export interface NovoVeiculo {
   modelo: string;
   tipo_frota: TipoFrota;
   capacidade_maxima: number;
+  lotacao_cabine?: number | null;
   km_atual: number;
 }
 
@@ -29,7 +31,7 @@ export interface Veiculo extends NovoVeiculo {
   status: StatusVeiculo | string;
 }
 
-const COLUNAS_VEICULO = ['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'km_atual', 'status'];
+const COLUNAS_VEICULO = ['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'lotacao_cabine', 'km_atual', 'status'];
 
 // Status em que a viagem (frota) ou a ordem (SVO) mantém o veículo vinculado ao motorista
 const VIAGENS_ATIVAS = ['AGENDADA', 'EM_ANDAMENTO'];
@@ -112,6 +114,7 @@ export const veiculoModel = {
         v.placa,
         v.modelo,
         v.capacidade_maxima,
+        v.lotacao_cabine,
         v.status,
         COALESCE(SUM(o.capacidade_utilizada), 0)::integer AS capacidade_utilizada,
         (
@@ -131,6 +134,7 @@ export const veiculoModel = {
         v.placa,
         v.modelo,
         v.capacidade_maxima,
+        v.lotacao_cabine,
         v.status
       HAVING v.capacidade_maxima >
         COALESCE(SUM(o.capacidade_utilizada), 0)
@@ -147,6 +151,7 @@ export const veiculoModel = {
         v.placa,
         v.modelo,
         v.capacidade_maxima,
+        v.lotacao_cabine,
         v.status,
         COALESCE(SUM(o.capacidade_utilizada), 0)::integer AS capacidade_utilizada,
         (
@@ -163,6 +168,7 @@ export const veiculoModel = {
         v.placa,
         v.modelo,
         v.capacidade_maxima,
+        v.lotacao_cabine,
         v.status
       ORDER BY v.id
     `);

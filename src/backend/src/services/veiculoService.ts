@@ -40,6 +40,7 @@ export const veiculoService = {
   async listarOcupacaoSvo(): Promise<OcupacaoVeiculoSvo[]> {
     return veiculoModel.listarOcupacaoSvo();
   },
+
   async criar(dados: CriarVeiculoInput, autorId: number): Promise<Veiculo> {
     const veiculoExistente = await veiculoModel.buscarPorPlaca(dados.placa);
     if (veiculoExistente) {
@@ -64,8 +65,7 @@ export const veiculoService = {
 
   async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number): Promise<Veiculo> {
     return db.transaction(async (trx) => {
-      // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco,
-      // e edições e alocações SVO do mesmo veículo ficam em fila
+      // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco
       const veiculo = await veiculoModel.buscarParaAtualizar(id, trx);
       if (!veiculo) {
         throw new AppError('Veículo não encontrado', 404);
@@ -73,6 +73,13 @@ export const veiculoService = {
 
       const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
       const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
+
+      if (veiculo.tipo_frota !== 'SVO' && tipoFrotaFinal === 'SVO') {
+        const cabineFinal = dados.lotacao_cabine ?? veiculo.lotacao_cabine;
+        if (!Number.isInteger(cabineFinal) || cabineFinal == null || cabineFinal < 1) {
+          throw new AppError('Informe a lotação da cabine ao converter o veículo para SVO', 400);
+        }
+      }
 
       if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
         throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);
