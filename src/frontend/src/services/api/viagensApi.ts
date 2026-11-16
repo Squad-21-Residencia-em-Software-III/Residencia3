@@ -1,5 +1,5 @@
 import { recursoAtivo } from '../../config/recursosBackend'
-import type { ListaSolicitacoesSvo } from '../../types/solicitacaoSvo'
+import type { ListaSolicitacoesSvo, SolicitacaoSvoDetalhada } from '../../types/solicitacaoSvo'
 import type {
   AgendamentoColetaSvoInput,
   NovaViagemInput,
@@ -41,8 +41,7 @@ export const viagensApi = {
 
   /**
    * Ordens de coleta aguardando alocação. Com a consulta do backend (SCRUM-182) vem de
-   * `GET /viagens/ordens-svo/pendentes`; antes dela, das solicitações SVO confirmadas, que têm
-   * exatamente uma ordem AGUARDANDO_ALOCACAO cada.
+   * `GET /viagens/ordens-svo/pendentes`; antes dela, confirma o estado real em cada detalhe.
    */
   listarOrdensPendentesSvo: async (): Promise<OrdemPendenteSvo[]> => {
     if (recursoAtivo('ordensPendentesSvo')) {
@@ -52,18 +51,24 @@ export const viagensApi = {
         }),
       )
     }
-    const confirmadas = await todasAsPaginas((pagina) =>
-      request<ListaSolicitacoesSvo>('GET', '/solicitacoes-svo', {
-        query: { pagina, limite: LIMITE_PAGINA, status: 'CONFIRMADA' },
-      }),
-    )
-    return confirmadas.map((s) => ({
-      ordem_id: null,
-      solicitacao_id: s.id,
-      local_ocorrencia: s.local_ocorrencia,
-      material_sensivel: s.material_sensivel,
-      confirmado_em: s.confirmado_em ?? null,
-    }))
+    // Limite operacional: a API atual exige uma consulta de detalhe por solicitação.
+    const primeira = await request<ListaSolicitacoesSvo>('GET', '/solicitacoes-svo', {
+      query: { pagina: 1, limite: LIMITE_PAGINA, status: 'CONFIRMADA' },
+    })
+    if (primeira.paginacao.total > LIMITE_PAGINA || primeira.paginacao.totalPaginas > 1) {
+      throw new Error('Há solicitações demais para verificar as ordens com segurança. A listagem depende da SCRUM-182.')
+    }
+    const detalhes: SolicitacaoSvoDetalhada[] = []
+    for (let i = 0; i < primeira.dados.length; i += 4) {
+      const lote = primeira.dados.slice(i, i + 4)
+      detalhes.push(...await Promise.all(lote.map((s) =>
+        request<SolicitacaoSvoDetalhada>('GET', `/solicitacoes-svo/${s.id}`),
+      )))
+    }
+    return detalhes.filter((s) => s.status === 'CONFIRMADA' && s.ordem?.status === 'AGUARDANDO_ALOCACAO' && s.ordem.solicitacao_id === s.id)
+      .map((s) => ({ ordem_id: s.ordem!.id, solicitacao_id: s.id,
+        local_ocorrencia: s.local_ocorrencia, material_sensivel: s.material_sensivel,
+        confirmado_em: s.confirmado_em ?? null }))
   },
 
   criar: (dados: NovaViagemInput) => request<Viagem>('POST', '/viagens', { body: dados }),

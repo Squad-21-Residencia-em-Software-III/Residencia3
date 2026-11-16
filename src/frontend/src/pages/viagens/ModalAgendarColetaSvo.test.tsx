@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RECURSOS_BACKEND } from '../../config/recursosBackend';
 import { ApiError } from '../../services/api/http';
+import { equipesSvoApi } from '../../services/api/equipesSvoApi';
 import { veiculosApi } from '../../services/api/veiculosApi';
 import { viagensApi } from '../../services/api/viagensApi';
 import type { Motorista } from '../../types/motorista';
@@ -11,6 +12,7 @@ import type { Veiculo } from '../../types/veiculo';
 import { CODIGO_CONFIRMAR_INTERVALO } from '../../types/viagem';
 import { ModalAgendarColetaSvo } from './ModalAgendarColetaSvo';
 
+vi.mock('../../services/api/equipesSvoApi', () => ({ equipesSvoApi: { listarDisponiveis: vi.fn() } }));
 vi.mock('../../services/api/viagensApi', () => ({ viagensApi: { agendarColetaSvo: vi.fn() } }));
 vi.mock('../../services/api/veiculosApi', () => ({
   veiculosApi: { listarOcupacaoSvo: vi.fn() },
@@ -60,6 +62,7 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(veiculosApi.listarOcupacaoSvo).mockResolvedValue([]);
+    vi.mocked(equipesSvoApi.listarDisponiveis).mockResolvedValue({ periodo: { inicio: '', fim: '' }, equipes: [{ id: 12, nome_equipe: 'Equipe 12' }] });
   });
 
   afterEach(() => {
@@ -89,6 +92,23 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
     });
     await waitFor(() => expect(onAgendada).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('envia a equipe opcional escolhida', async () => {
+    api.agendarColetaSvo.mockResolvedValue({} as never);
+    abrir();
+    await userEvent.selectOptions(await screen.findByLabelText('Equipe SVO (opcional)'), '12');
+    await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
+    expect(api.agendarColetaSvo).toHaveBeenCalledWith(expect.objectContaining({ equipe_id: 12 }));
+  });
+
+  it('permite alocar sem equipe quando a consulta falha', async () => {
+    vi.mocked(equipesSvoApi.listarDisponiveis).mockRejectedValueOnce(new Error('indisponível'));
+    api.agendarColetaSvo.mockResolvedValue({} as never);
+    abrir();
+    expect(await screen.findByText(/ainda pode alocar a ordem sem equipe/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
+    expect(api.agendarColetaSvo.mock.calls[0][0]).not.toHaveProperty('equipe_id');
   });
 
   describe('com o agendamento temporal (SCRUM-182)', () => {

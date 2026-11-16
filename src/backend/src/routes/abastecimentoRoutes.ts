@@ -4,6 +4,7 @@ import { abastecimentoController } from '../controllers/abastecimentoController'
 import { autenticar } from '../middlewares/autenticar';
 import { autorizar } from '../middlewares/autorizar';
 import { PERFIS } from '../constants/perfis';
+import { restringirFrotaAdministrativa } from '../middlewares/restringirFrotaAdministrativa';
 
 export const abastecimentoRoutes = Router();
 
@@ -17,7 +18,7 @@ abastecimentoRoutes.post(
     PERFIS.MOTORISTA_FROTA,
     PERFIS.MOTORISTA_SVO
   ),
-  abastecimentoController.criar
+  restringirFrotaAdministrativa('veiculo-body'), abastecimentoController.criar
 );
 
 abastecimentoRoutes.get(
@@ -28,5 +29,5 @@ abastecimentoRoutes.get(
     PERFIS.MOTORISTA_FROTA,
     PERFIS.MOTORISTA_SVO
   ),
-  abastecimentoController.listarPorVeiculo
+  restringirFrotaAdministrativa('veiculo-param'), abastecimentoController.listarPorVeiculo
 );

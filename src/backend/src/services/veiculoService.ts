@@ -8,6 +8,7 @@ import {
   type Veiculo,
   type VeiculoSvoDisponivel,
   type OcupacaoVeiculoSvo,
+  type VeiculoConsultaBasica,
 } from '../models/veiculoModel';
 import type { CriarVeiculoInput, AtualizarVeiculoInput } from '../validators/veiculoSchemas';
 
@@ -25,33 +26,14 @@ async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<nu
 }
 
 export const veiculoService = {
-  // Motoristas só enxergam os veículos vinculados a eles
-  // Gestor SVO vê toda frota SVO e visão restrita da Administrativa
-  async listar(autor: { id: number; perfil: Perfil }): Promise<any[]> {
+  // Motoristas só enxergam os veículos vinculados a eles; os demais perfis, toda a frota
+  async listar(autor: { id: number; perfil: Perfil }): Promise<Array<Veiculo | VeiculoConsultaBasica>> {
     if (autor.perfil === PERFIS.MOTORISTA_FROTA || autor.perfil === PERFIS.MOTORISTA_SVO) {
       return veiculoModel.listarVeiculos(await veiculoModel.idsVinculadosAoUsuarioMotorista(autor.id));
     }
-
-    const veiculos = await veiculoModel.listarVeiculos();
-
-    // Se for GESTOR_SVO, aplica segregação: veículos administrativos ficam visíveis apenas com dados básicos
-    if (autor.perfil === PERFIS.GESTOR_SVO) {
-      return veiculos.map((veiculo) => {
-        if (veiculo.tipo_frota === 'ADMINISTRATIVA') {
-          return {
-            id: veiculo.id,
-            placa: veiculo.placa,
-            modelo: veiculo.modelo,
-            status: veiculo.status,
-            capacidade_maxima: veiculo.capacidade_maxima,
-            tipo_frota: veiculo.tipo_frota,
-          };
-        }
-        return veiculo;
-      });
-    }
-
-    return veiculos;
+    if (autor.perfil === PERFIS.GESTOR_SVO) return veiculoModel.listarParaGestorSvo();
+    if (autor.perfil === PERFIS.GESTOR_FROTA) return veiculoModel.listarFrotaAdministrativa();
+    return veiculoModel.listarVeiculos();
   },
 
   async listarSvoDisponiveis(): Promise<VeiculoSvoDisponivel[]> {
@@ -62,12 +44,12 @@ export const veiculoService = {
     return veiculoModel.listarOcupacaoSvo();
   },
 
-  async criar(dados: CriarVeiculoInput, autorId: number, perfilAutor?: Perfil): Promise<Veiculo> {
-    // Restrição de perfil: GESTOR_SVO só pode cadastrar veículos SVO
-    if (perfilAutor === PERFIS.GESTOR_SVO && dados.tipo_frota !== 'SVO') {
-      throw new AppError('Gestor SVO só pode cadastrar veículos da frota SVO', 403);
+  async criar(dados: CriarVeiculoInput, autorId: number, perfilAutor: Perfil): Promise<Veiculo> {
+    if (perfilAutor !== PERFIS.ADMINISTRADOR &&
+      !((perfilAutor === PERFIS.GESTOR_SVO && dados.tipo_frota === 'SVO') ||
+        (perfilAutor === PERFIS.GESTOR_FROTA && dados.tipo_frota === 'ADMINISTRATIVA'))) {
+      throw new AppError('Você não tem permissão para cadastrar veículo nessa frota', 403);
     }
-
     const veiculoExistente = await veiculoModel.buscarPorPlaca(dados.placa);
     if (veiculoExistente) {
       throw new AppError('Já existe um veículo cadastrado com essa placa', 409);
@@ -89,25 +71,29 @@ export const veiculoService = {
     });
   },
 
-  async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number, perfilAutor?: Perfil): Promise<Veiculo> {
+  async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number, perfilAutor: Perfil): Promise<Veiculo> {
     return db.transaction(async (trx) => {
+      // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco
       const veiculo = await veiculoModel.buscarParaAtualizar(id, trx);
       if (!veiculo) {
         throw new AppError('Veículo não encontrado', 404);
       }
 
-      // Restrição de perfil: GESTOR_SVO não pode gerenciar ou alterar veículos da frota administrativa
-      if (perfilAutor === PERFIS.GESTOR_SVO) {
-        if (veiculo.tipo_frota === 'ADMINISTRATIVA') {
-          throw new AppError('Gestor SVO não tem permissão para alterar veículos da frota administrativa', 403);
-        }
-        if (dados.tipo_frota && dados.tipo_frota !== 'SVO') {
-          throw new AppError('Gestor SVO não pode alterar o tipo de frota para fora de SVO', 403);
-        }
-      }
-
       const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
       const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
+
+      if (perfilAutor !== PERFIS.ADMINISTRADOR &&
+        !((perfilAutor === PERFIS.GESTOR_SVO && veiculo.tipo_frota === 'SVO' && tipoFrotaFinal === 'SVO') ||
+          (perfilAutor === PERFIS.GESTOR_FROTA && veiculo.tipo_frota === 'ADMINISTRATIVA' && tipoFrotaFinal === 'ADMINISTRATIVA'))) {
+        throw new AppError('Você não tem permissão para alterar veículo nessa frota', 403);
+      }
+
+      if (veiculo.tipo_frota !== 'SVO' && tipoFrotaFinal === 'SVO') {
+        const cabineFinal = dados.lotacao_cabine ?? veiculo.lotacao_cabine;
+        if (!Number.isInteger(cabineFinal) || cabineFinal == null || cabineFinal < 1) {
+          throw new AppError('Informe a lotação da cabine ao converter o veículo para SVO', 400);
+        }
+      }
 
       if (tipoFrotaFinal === 'SVO' && capacidadeFinal > 4) {
         throw new AppError('Veículos da frota SVO podem ter capacidade máxima de até 4', 400);

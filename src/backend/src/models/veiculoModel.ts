@@ -9,6 +9,7 @@ export interface VeiculoSvoDisponivel {
   placa: string;
   modelo: string;
   capacidade_maxima: number;
+  lotacao_cabine: number | null;
   status: StatusVeiculo | string;
   capacidade_utilizada: number;
   vagas_disponiveis: number;
@@ -21,6 +22,7 @@ export interface NovoVeiculo {
   modelo: string;
   tipo_frota: TipoFrota;
   capacidade_maxima: number;
+  lotacao_cabine?: number | null;
   km_atual: number;
 }
 
@@ -29,13 +31,26 @@ export interface Veiculo extends NovoVeiculo {
   status: StatusVeiculo | string;
 }
 
-const COLUNAS_VEICULO = ['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'km_atual', 'status'];
+export type VeiculoConsultaBasica = Pick<Veiculo, 'id' | 'placa' | 'modelo' | 'tipo_frota' | 'status' | 'capacidade_maxima'>;
+
+const COLUNAS_VEICULO = ['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxima', 'lotacao_cabine', 'km_atual', 'status'];
 
 // Status em que a viagem (frota) ou a ordem (SVO) mantém o veículo vinculado ao motorista
 const VIAGENS_ATIVAS = ['AGENDADA', 'EM_ANDAMENTO'];
 const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
 
 export const veiculoModel = {
+  async listarParaGestorSvo(): Promise<Array<Veiculo | VeiculoConsultaBasica>> {
+    const [svo, administrativos]: [Veiculo[], VeiculoConsultaBasica[]] = await Promise.all([
+      db('veiculos').select(COLUNAS_VEICULO).where('tipo_frota', 'SVO'),
+      db('veiculos').select('id', 'placa', 'modelo', 'tipo_frota', 'status', 'capacidade_maxima').where('tipo_frota', 'ADMINISTRATIVA'),
+    ]);
+    return [...svo, ...administrativos].sort((a, b) => a.id - b.id);
+  },
+
+  async listarFrotaAdministrativa(): Promise<Veiculo[]> {
+    return db('veiculos').select(COLUNAS_VEICULO).where('tipo_frota', 'ADMINISTRATIVA').orderBy('id', 'asc');
+  },
   async listarVeiculos(ids?: number[]): Promise<Veiculo[]> {
     return db('veiculos')
       .select(COLUNAS_VEICULO)
@@ -112,6 +127,7 @@ export const veiculoModel = {
         v.placa,
         v.modelo,
         v.capacidade_maxima,
+        v.lotacao_cabine,
         v.status,
         COALESCE(SUM(o.capacidade_utilizada), 0)::integer AS capacidade_utilizada,
         (
@@ -131,6 +147,7 @@ export const veiculoModel = {
         v.placa,
         v.modelo,
         v.capacidade_maxima,
+        v.lotacao_cabine,
         v.status
       HAVING v.capacidade_maxima >
         COALESCE(SUM(o.capacidade_utilizada), 0)
@@ -147,6 +164,7 @@ export const veiculoModel = {
         v.placa,
         v.modelo,
         v.capacidade_maxima,
+        v.lotacao_cabine,
         v.status,
         COALESCE(SUM(o.capacidade_utilizada), 0)::integer AS capacidade_utilizada,
         (
@@ -163,6 +181,7 @@ export const veiculoModel = {
         v.placa,
         v.modelo,
         v.capacidade_maxima,
+        v.lotacao_cabine,
         v.status
       ORDER BY v.id
     `);

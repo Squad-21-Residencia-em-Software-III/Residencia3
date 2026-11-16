@@ -155,12 +155,12 @@ describe('VeiculosPage', () => {
     expect(screen.queryByRole('button', { name: /Novo Veículo/i })).not.toBeInTheDocument();
   });
 
-  it('Gestor de Frota não vê km da frota SVO e não edita veículo SVO', async () => {
+  it('Gestor de Frota permanece na frota administrativa mesmo com link SVO', async () => {
     sessao.perfil = 'GESTOR_FROTA';
     duasFrotas();
 
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/veiculos?aba=svo']}>
         <VeiculosPage />
       </MemoryRouter>
     );
@@ -178,11 +178,8 @@ describe('VeiculosPage', () => {
     expect(frota).toBeDisabled();
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
 
-    // Na aba SVO: consulta básica, sem km e sem edição
-    await userEvent.click(screen.getByRole('tab', { name: /SVO/ }));
-    const linhaSvo = (await screen.findByText('Rabecão')).closest('tr')!;
-    expect(within(linhaSvo).queryByText(/2.000 km/)).not.toBeInTheDocument();
-    expect(within(linhaSvo).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Novo Veículo/i })).not.toBeInTheDocument();
+    // A URL proibida não libera a aba ou o conteúdo da frota SVO.
+    expect(screen.queryByRole('tab', { name: /SVO/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Rabecão')).not.toBeInTheDocument();
   });
 });
