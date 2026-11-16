@@ -17,6 +17,7 @@ import { manutencoesApi } from '../../services/api/manutencoesApi';
 import { abastecimentosApi } from '../../services/api/abastecimentosApi';
 import { multasApi } from '../../services/api/multasApi';
 import { cn } from '../../utils/cn';
+import { rotuloCapacidade } from '../../utils/capacidadeVeiculo';
 import { usePermissao } from '../../utils/permissoes';
 
 interface DrawerDetalhesVeiculoProps {
@@ -51,13 +52,15 @@ export function DrawerDetalhesVeiculo({
   onEditar,
 }: DrawerDetalhesVeiculoProps) {
   const navigate = useNavigate();
-  const { pode } = usePermissao();
-  // Cada histórico só é consultado por quem tem acesso a ele (a API responde 403 aos demais)
-  const veManutencoes = pode('manutencoes.acessar');
-  const veAbastecimentos = pode('abastecimentos.acessar');
-  const veMultas = pode('multas.acessar');
+  const { pode, podeVerDetalhesDaFrota } = usePermissao();
   // Retém o último estado do veículo para saída suave no fechamento (350ms)
   const [veiculoState, setVeiculoState] = useState<Veiculo | null>(veiculo);
+  // Gestor só vê km, custos e históricos da própria frota; da outra, só a consulta básica
+  const veDetalhes = podeVerDetalhesDaFrota(veiculoState?.tipo_frota);
+  // Cada histórico só é consultado por quem tem acesso a ele (a API responde 403 aos demais)
+  const veManutencoes = veDetalhes && pode('manutencoes.acessar');
+  const veAbastecimentos = veDetalhes && pode('abastecimentos.acessar');
+  const veMultas = veDetalhes && pode('multas.acessar');
 
   useEffect(() => {
     if (veiculo) {
@@ -232,17 +235,19 @@ export function DrawerDetalhesVeiculo({
         )}
 
         {/* 2. Cartões de Resumo Técnico & Quilometragem */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl border border-border bg-surface-alt p-3.5">
-            <div className="flex items-center gap-1.5 text-xs text-text-muted">
-              <Gauge size={14} className="text-primary" />
-              <span>Quilometragem Atual</span>
+        <div className={veDetalhes ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 gap-3'}>
+          {veDetalhes && (
+            <div className="rounded-xl border border-border bg-surface-alt p-3.5">
+              <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                <Gauge size={14} className="text-primary" />
+                <span>Quilometragem Atual</span>
+              </div>
+              <div className="mt-1 font-display text-lg font-bold text-slate-900">
+                {veiculoState.km_atual?.toLocaleString('pt-BR') ?? '0'}{' '}
+                <span className="text-xs font-normal text-slate-500">km</span>
+              </div>
             </div>
-            <div className="mt-1 font-display text-lg font-bold text-slate-900">
-              {veiculoState.km_atual?.toLocaleString('pt-BR') ?? '0'}{' '}
-              <span className="text-xs font-normal text-slate-500">km</span>
-            </div>
-          </div>
+          )}
 
           <div className="rounded-xl border border-border bg-surface-alt p-3.5">
             <div className="flex items-center gap-1.5 text-xs text-text-muted">
@@ -250,8 +255,7 @@ export function DrawerDetalhesVeiculo({
               <span>Capacidade Máxima</span>
             </div>
             <div className="mt-1 font-display text-lg font-bold text-slate-900">
-              {veiculoState.capacidade_maxima ?? '—'}{' '}
-              <span className="text-xs font-normal text-slate-500">ocupantes</span>
+              {veiculoState.capacidade_maxima != null ? rotuloCapacidade(veiculoState) : '—'}
             </div>
           </div>
         </div>

@@ -46,7 +46,8 @@ export default function VeiculosPage() {
 }
 
 function GestaoDeVeiculos() {
-  const { pode, podeNaFrota } = usePermissao();
+  // Km de veículo da outra frota não aparece para o gestor (fica só a consulta básica)
+  const { pode, podeNaFrota, podeVerDetalhesDaFrota } = usePermissao();
   const podeCadastrar = pode('veiculos.cadastrar');
   // Cada gestor só cadastra e edita veículos da própria frota (o Administrador, nas duas)
   const podeAdministrativa = podeNaFrota('veiculos.cadastrar', 'ADMINISTRATIVA');
@@ -371,7 +372,13 @@ function GestaoDeVeiculos() {
                       </span>
                     </td>
                     <td>{v.capacidade_maxima}</td>
-                    <td>{v.km_atual.toLocaleString('pt-BR')} km</td>
+                    <td>
+                      {podeVerDetalhesDaFrota(v.tipo_frota) ? (
+                        `${v.km_atual.toLocaleString('pt-BR')} km`
+                      ) : (
+                        <span title="Disponível só para a gestão desta frota">—</span>
+                      )}
+                    </td>
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>

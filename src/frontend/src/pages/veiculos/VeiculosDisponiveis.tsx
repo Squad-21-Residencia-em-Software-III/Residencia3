@@ -3,6 +3,7 @@ import { Alert, Button, Card, Table } from '../../components/ui';
 import { mensagemDeErro } from '../../services/api/http';
 import { veiculosApi } from '../../services/api/veiculosApi';
 import type { Veiculo } from '../../types/veiculo';
+import { rotuloCapacidade } from '../../utils/capacidadeVeiculo';
 import { cn } from '../../utils/cn';
 
 /** O que o Solicitante recebe da API: só dados não sensíveis (sem placa e sem km). */
@@ -12,16 +13,6 @@ const LABEL_FROTA: Record<string, string> = {
   ADMINISTRATIVA: 'Administrativa',
   SVO: 'SVO',
 };
-
-/**
- * `capacidade_maxima` muda de sentido conforme a frota: na administrativa são lugares para
- * pessoas; na SVO, quantos corpos o veículo transporta (até 4). A capacidade da cabine SVO ainda
- * não existe no cadastro, então não é exibida.
- */
-function rotuloCapacidade({ capacidade_maxima: n, tipo_frota }: VeiculoDisponivel) {
-  if (tipo_frota === 'SVO') return `Transporte de até ${n} ${n === 1 ? 'corpo' : 'corpos'}`;
-  return `${n} ${n === 1 ? 'lugar' : 'lugares'}`;
-}
 
 /**
  * Consulta de veículos para quem não gerencia a frota (Solicitante): lista só os disponíveis,

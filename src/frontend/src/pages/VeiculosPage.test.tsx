@@ -123,11 +123,41 @@ describe('VeiculosPage', () => {
     const linhaSvo = screen.getByText('Rabecão').closest('tr')!;
     expect(within(linhaAdm).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(within(linhaSvo).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    // Km da frota administrativa não aparece para o Gestor SVO; o da SVO, sim
+    expect(within(linhaAdm).queryByText(/1.000 km/)).not.toBeInTheDocument();
+    expect(within(linhaSvo).getByText('2.000 km')).toBeInTheDocument();
 
     // No cadastro, a frota fica fixa em SVO
     await userEvent.click(screen.getByRole('button', { name: /Novo Veículo/i }));
     const frota = await screen.findByLabelText(/Tipo de Frota/i);
     expect(frota).toHaveValue('SVO');
+    expect(frota).toBeDisabled();
+  });
+
+  it('Gestor de Frota não vê km da frota SVO e não edita veículo SVO', async () => {
+    sessao.perfil = 'GESTOR_FROTA';
+    vi.mocked(veiculosApi.listar).mockResolvedValue([
+      { id: 1, placa: 'BRA2E19', modelo: 'Van Administrativa', tipo_frota: 'ADMINISTRATIVA', status: 'DISPONIVEL', capacidade_maxima: 5, km_atual: 1000 },
+      { id: 2, placa: 'SVO1A23', modelo: 'Rabecão', tipo_frota: 'SVO', status: 'DISPONIVEL', capacidade_maxima: 4, km_atual: 2000 },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <VeiculosPage />
+      </MemoryRouter>
+    );
+
+    const linhaAdm = (await screen.findByText('Van Administrativa')).closest('tr')!;
+    const linhaSvo = screen.getByText('Rabecão').closest('tr')!;
+    expect(within(linhaAdm).getByText('1.000 km')).toBeInTheDocument();
+    expect(within(linhaSvo).queryByText(/2.000 km/)).not.toBeInTheDocument();
+    expect(within(linhaAdm).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(linhaSvo).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+
+    // No cadastro, a frota fica fixa na administrativa
+    await userEvent.click(screen.getByRole('button', { name: /Novo Veículo/i }));
+    const frota = await screen.findByLabelText(/Tipo de Frota/i);
+    expect(frota).toHaveValue('ADMINISTRATIVA');
     expect(frota).toBeDisabled();
   });
 });

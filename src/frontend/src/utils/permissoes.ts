@@ -107,6 +107,19 @@ export function podeEditarFrota(
   return FROTA_DO_PERFIL[perfil] === tipoFrota;
 }
 
+/**
+ * Km, custos e históricos de um veículo. Quem gerencia frota só vê os da própria (o Administrador,
+ * das duas); da outra frota, só a consulta básica (modelo, placa, status, capacidade).
+ */
+export function podeVerDetalhesDaFrota(
+  perfil: Perfil | null | undefined,
+  tipoFrota: string | null | undefined,
+): boolean {
+  if (!perfilPode(perfil, 'veiculos.detalhes')) return false;
+  if (!perfilPode(perfil, 'veiculos.cadastrar')) return true;
+  return podeEditarFrota(perfil, tipoFrota);
+}
+
 /** Tipos de operação que o perfil pode agendar (administrativa) ou alocar (SVO) em Viagens. */
 export function operacoesAgendaveis(perfil: Perfil | null | undefined): TipoFrota[] {
   const tipos: TipoFrota[] = [];
@@ -124,6 +137,9 @@ export function usePermissao() {
     /** Permissão da ação + regra de frota (cada perfil só na própria frota). */
     podeNaFrota: (permissao: Permissao, tipoFrota: string | null | undefined) =>
       perfilPode(perfil, permissao) && podeEditarFrota(perfil, tipoFrota),
+    /** Km, custos e históricos do veículo (gestor só da própria frota). */
+    podeVerDetalhesDaFrota: (tipoFrota: string | null | undefined) =>
+      podeVerDetalhesDaFrota(perfil, tipoFrota),
     /** Operações que o perfil pode abrir no agendamento de viagens. */
     operacoesAgendaveis: () => operacoesAgendaveis(perfil),
   };

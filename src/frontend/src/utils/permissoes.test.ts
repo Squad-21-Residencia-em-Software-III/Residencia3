@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { LISTA_PERFIS, PERFIS } from '../types/usuario';
 import type { Perfil } from '../types/usuario';
-import { operacoesAgendaveis, PERMISSOES, perfilPode, podeEditarFrota } from './permissoes';
+import {
+  operacoesAgendaveis,
+  PERMISSOES,
+  perfilPode,
+  podeEditarFrota,
+  podeVerDetalhesDaFrota,
+} from './permissoes';
 import type { Permissao } from './permissoes';
 
 const { ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO, SOLICITANTE, MOTORISTA_FROTA, MOTORISTA_SVO } =
@@ -166,6 +172,17 @@ describe('regra de frota (podeEditarFrota)', () => {
     expect(podeEditarFrota(MOTORISTA_FROTA, 'SVO')).toBe(false);
     expect(podeEditarFrota(MOTORISTA_SVO, 'SVO')).toBe(true);
     expect(podeEditarFrota(MOTORISTA_SVO, 'ADMINISTRATIVA')).toBe(false);
+  });
+
+  it('detalhes (km, custos, históricos): gestor só da própria frota', () => {
+    expect(podeVerDetalhesDaFrota(ADMINISTRADOR, 'SVO')).toBe(true);
+    expect(podeVerDetalhesDaFrota(ADMINISTRADOR, 'ADMINISTRATIVA')).toBe(true);
+    expect(podeVerDetalhesDaFrota(GESTOR_FROTA, 'ADMINISTRATIVA')).toBe(true);
+    expect(podeVerDetalhesDaFrota(GESTOR_FROTA, 'SVO')).toBe(false);
+    expect(podeVerDetalhesDaFrota(GESTOR_SVO, 'SVO')).toBe(true);
+    expect(podeVerDetalhesDaFrota(GESTOR_SVO, 'ADMINISTRATIVA')).toBe(false);
+    expect(podeVerDetalhesDaFrota(SOLICITANTE, 'ADMINISTRATIVA')).toBe(false);
+    expect(podeVerDetalhesDaFrota(null, 'SVO')).toBe(false);
   });
 
   it('Solicitante não altera nenhuma frota', () => {
