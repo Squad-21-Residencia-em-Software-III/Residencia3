@@ -311,3 +311,38 @@ describe('GET /api/solicitacoes-viagem', () => {
     expect(resposta.status).toBe(403);
   });
 });
+describe('Segregação de funções: autoaprovação', () => {
+  it.each(['aprovar', 'recusar'] as const)('impede o gestor de %s a própria solicitação', async (acao) => {
+    solicitacaoNoBanco({ solicitante_id: gestorFrota.id });
+
+    await expect(solicitacaoViagemService[acao](1, gestorFrota, 'motivo')).rejects.toMatchObject({
+      statusCode: 403,
+      message: 'Você não pode analisar uma solicitação criada por você',
+    });
+    expect(solicitacaoViagemModel.atualizarStatus).not.toHaveBeenCalled();
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('vale também para o administrador', async () => {
+    const admin = { id: 9, perfil: PERFIS.ADMINISTRADOR };
+    solicitacaoNoBanco({ solicitante_id: admin.id });
+
+    await expect(solicitacaoViagemService.aprovar(1, admin)).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('permite que outro gestor analise a solicitação', async () => {
+    solicitacaoNoBanco({ solicitante_id: 50 });
+
+    await expect(solicitacaoViagemService.aprovar(1, gestorFrota)).resolves.toMatchObject({ status: 'APROVADA' });
+  });
+
+  it('responde 403 pela API quando o gestor tenta aprovar a própria solicitação', async () => {
+    solicitacaoNoBanco({ solicitante_id: 3 });
+
+    const resposta = await request(app)
+      .patch('/api/solicitacoes-viagem/1/aprovar')
+      .set('Authorization', 'Bearer token');
+
+    expect(resposta.status).toBe(403);
+  });
+});

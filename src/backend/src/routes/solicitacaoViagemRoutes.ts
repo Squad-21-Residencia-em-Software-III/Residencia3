@@ -14,6 +14,10 @@ solicitacaoViagemRoutes.use(autenticar);
 // Perfis que analisam solicitações; o Gestor SVO apenas as da unidade SVO a que está associado
 const ANALISTAS = [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO];
 
+// Registram solicitações (RF11): o Usuário Institucional e os gestores/administrador, que também
+// pedem viagens para a própria unidade. Motoristas executam viagens, não as solicitam.
+const PERFIS_SOLICITANTES = [PERFIS.ADMINISTRADOR, PERFIS.SOLICITANTE, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO];
+
 // Lista as solicitações encaminhadas ao usuário, conforme a unidade
 solicitacaoViagemRoutes.get(
   '/',
@@ -30,14 +34,14 @@ solicitacaoViagemRoutes.get(
 // Registra uma nova solicitação de viagem
 solicitacaoViagemRoutes.post(
   '/',
+  autorizar(...PERFIS_SOLICITANTES),
   solicitacaoViagemController.criar
 );
 
-// Consulta a disponibilidade para uma solicitação
-// Acesso exclusivo ao Gestor de Frota
+// Consulta a disponibilidade para uma solicitação (RF16: Gestor de Frota e Administrador)
 solicitacaoViagemRoutes.get(
   '/:id/disponibilidade',
-  autorizar(PERFIS.GESTOR_FROTA),
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
   disponibilidadeController.consultar
 );
 

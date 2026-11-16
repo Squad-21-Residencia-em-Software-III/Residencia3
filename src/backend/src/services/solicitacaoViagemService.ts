@@ -179,6 +179,11 @@ async function analisar(
       );
     }
 
+    // Segregação de funções: quem pediu a viagem não decide sobre ela
+    if (solicitacao.solicitante_id === autor.id) {
+      throw new AppError('Você não pode analisar uma solicitação criada por você', 403);
+    }
+
     await garantirCompetencia(autor, solicitacao.unidade_id, trx);
 
     if (solicitacao.status !== 'PENDENTE_APROVACAO') {
