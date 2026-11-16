@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { PERFIS } from '../constants/perfis';
 import { viagemController } from '../controllers/viagemController';
 import { autenticar } from '../middlewares/autenticar';
-import { autorizar } from '../middlewares/autorizar';
+import { autorizar, exigirAssociacaoSvo } from '../middlewares/autorizar';
 
 export const viagemRoutes = Router();
 
 viagemRoutes.use(autenticar);
+// O Gestor SVO só opera viagens SVO se estiver associado à unidade SVO
+viagemRoutes.use(exigirAssociacaoSvo);
 
 const gestores = autorizar(
   PERFIS.ADMINISTRADOR,

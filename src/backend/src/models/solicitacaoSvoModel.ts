@@ -20,6 +20,9 @@ export interface NovaSolicitacaoSvo {
 
 export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
   id: number;
+  observacoes?: string | null;
+  motivo_recusa?: string | null;
+  criado_em?: Date | string;
   confirmado_por?: number | null;
   confirmado_em?: Date | null;
 }
@@ -80,6 +83,14 @@ export const solicitacaoSvoModel = {
     const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
       .where({ id })
       .update({ status: 'CONFIRMADA', confirmado_por: autorId, confirmado_em: trx.fn.now() })
+      .returning('*');
+    return solicitacao!;
+  },
+
+  async recusar(id: number, motivoRecusa: string, trx: Knex.Transaction): Promise<SolicitacaoSvo> {
+    const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
+      .where({ id })
+      .update({ status: 'RECUSADA', motivo_recusa: motivoRecusa })
       .returning('*');
     return solicitacao!;
   },

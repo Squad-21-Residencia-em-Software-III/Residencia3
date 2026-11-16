@@ -1,6 +1,10 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render as renderBase, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { RECURSOS_BACKEND } from '../config/recursosBackend';
 
 import TriagemSvoPage from './TriagemSvoPage';
 import { DrawerTriagemSvo } from './triagemSvo/DrawerTriagemSvo';
@@ -14,8 +18,20 @@ import type {
 } from '../types/solicitacaoSvo';
 
 vi.mock('../services/api/solicitacoesSvoApi', () => ({
-  solicitacoesSvoApi: { listar: vi.fn(), buscarPorId: vi.fn(), confirmar: vi.fn() },
+  solicitacoesSvoApi: { listar: vi.fn(), buscarPorId: vi.fn(), confirmar: vi.fn(), recusar: vi.fn() },
 }));
+
+const sessao = vi.hoisted(() => ({ perfil: 'GESTOR_SVO' }));
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    usuario: { id: 1, nome: 'Gestor SVO', perfil: sessao.perfil },
+    temPerfil: (...perfis: string[]) => perfis.includes(sessao.perfil),
+  }),
+}));
+
+// O drawer tem atalho (Link) para Viagens > SVO
+const render = (ui: ReactElement) => renderBase(ui, { wrapper: MemoryRouter });
 
 const api = vi.mocked(solicitacoesSvoApi);
 
@@ -60,6 +76,11 @@ async function abrirSolicitacao(id: number) {
 describe('TriagemSvoPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    sessao.perfil = 'GESTOR_SVO';
+  });
+
+  afterEach(() => {
+    RECURSOS_BACKEND.recusaSvo = false;
   });
 
   it('lista as solicitações em triagem por padrão', async () => {
@@ -250,11 +271,11 @@ describe('TriagemSvoPage', () => {
       }),
     );
 
-    const onConfirmada = vi.fn();
+    const onAtualizada = vi.fn();
     const onClose = vi.fn();
 
     const { rerender } = render(
-      <DrawerTriagemSvo solicitacaoId={7} onClose={onClose} onConfirmada={onConfirmada} />,
+      <DrawerTriagemSvo solicitacaoId={7} onClose={onClose} onAtualizada={onAtualizada} />,
     );
 
     const painel = await screen.findByRole('dialog');
@@ -268,7 +289,7 @@ describe('TriagemSvoPage', () => {
     expect(api.confirmar).toHaveBeenCalledWith(7);
 
     rerender(
-      <DrawerTriagemSvo solicitacaoId={8} onClose={onClose} onConfirmada={onConfirmada} />,
+      <DrawerTriagemSvo solicitacaoId={8} onClose={onClose} onAtualizada={onAtualizada} />,
     );
 
     expect(await within(painel).findByText('Familiar 8 - (79) 99999-0000')).toBeInTheDocument();
@@ -286,7 +307,7 @@ describe('TriagemSvoPage', () => {
     expect(
       within(painel).getByRole('button', { name: 'Confirmar e gerar ordem' }),
     ).toBeEnabled();
-    expect(onConfirmada).not.toHaveBeenCalled();
+    expect(onAtualizada).not.toHaveBeenCalled();
   });
 
   it('solicitação que não está em triagem não pode ser confirmada', async () => {
@@ -303,5 +324,98 @@ describe('TriagemSvoPage', () => {
       within(painel).queryByRole('button', { name: 'Confirmar e gerar ordem' }),
     ).not.toBeInTheDocument();
     expect(api.confirmar).not.toHaveBeenCalled();
+  });
+
+  describe('recusa justificada (SCRUM-170 / endpoint da SCRUM-178)', () => {
+    async function abrirEmTriagem(id = 5) {
+      api.listar.mockResolvedValue(lista([solicitacao(id)]));
+      api.buscarPorId.mockResolvedValue({ ...solicitacao(id), ordem: null });
+      render(<TriagemSvoPage />);
+      const painel = await abrirSolicitacao(id);
+      await within(painel).findByText(`Familiar ${id} - (79) 99999-0000`);
+      return painel;
+    }
+
+    it('sem o endpoint do backend, não oferece recusar', async () => {
+      const painel = await abrirEmTriagem();
+      expect(within(painel).queryByRole('button', { name: 'Recusar' })).not.toBeInTheDocument();
+      expect(
+        within(painel).getByRole('button', { name: 'Confirmar e gerar ordem' }),
+      ).toBeInTheDocument();
+    });
+
+    it('exige justificativa: vazio ou só espaços não chama a API', async () => {
+      RECURSOS_BACKEND.recusaSvo = true;
+      const painel = await abrirEmTriagem();
+
+      await userEvent.click(within(painel).getByRole('button', { name: 'Recusar' }));
+      await userEvent.click(within(painel).getByRole('button', { name: 'Confirmar recusa' }));
+      expect(within(painel).getByRole('alert')).toHaveTextContent(
+        'Informe a justificativa da recusa.',
+      );
+
+      await userEvent.type(within(painel).getByLabelText(/Justificativa da recusa/), '   ');
+      await userEvent.click(within(painel).getByRole('button', { name: 'Confirmar recusa' }));
+      expect(within(painel).getByLabelText(/Justificativa da recusa/)).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      expect(api.recusar).not.toHaveBeenCalled();
+    });
+
+    it('recusa com motivo e mostra o status e a justificativa gravados pela API', async () => {
+      RECURSOS_BACKEND.recusaSvo = true;
+      const painel = await abrirEmTriagem();
+      api.recusar.mockResolvedValue(undefined);
+
+      await userEvent.click(within(painel).getByRole('button', { name: 'Recusar' }));
+      await userEvent.type(
+        within(painel).getByLabelText(/Justificativa da recusa/),
+        '  Óbito fora da área de cobertura.  ',
+      );
+      api.buscarPorId.mockResolvedValue({
+        ...solicitacao(5, {
+          status: 'RECUSADA',
+          motivo_recusa: 'Óbito fora da área de cobertura.',
+        }),
+        ordem: null,
+      });
+      await userEvent.click(within(painel).getByRole('button', { name: 'Confirmar recusa' }));
+
+      expect(api.recusar).toHaveBeenCalledWith(5, 'Óbito fora da área de cobertura.');
+      expect(await within(painel).findByText('Solicitação recusada')).toBeInTheDocument();
+      expect(within(painel).getByText('Óbito fora da área de cobertura.')).toBeInTheDocument();
+      expect(
+        within(painel).queryByRole('button', { name: 'Confirmar e gerar ordem' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('em falha da API não mostra sucesso', async () => {
+      RECURSOS_BACKEND.recusaSvo = true;
+      const painel = await abrirEmTriagem();
+      api.recusar.mockRejectedValue(new ApiError('Solicitação já confirmada.', 409));
+
+      await userEvent.click(within(painel).getByRole('button', { name: 'Recusar' }));
+      await userEvent.type(within(painel).getByLabelText(/Justificativa da recusa/), 'Duplicada');
+      await userEvent.click(within(painel).getByRole('button', { name: 'Confirmar recusa' }));
+
+      expect(await within(painel).findByText('Solicitação já confirmada.')).toBeInTheDocument();
+      expect(within(painel).queryByText('Solicitação recusada')).not.toBeInTheDocument();
+    });
+  });
+
+  it('com a ordem aguardando alocação, oferece o atalho para agendar a coleta', async () => {
+    api.listar.mockResolvedValue(lista([solicitacao(6, { status: 'CONFIRMADA' })]));
+    api.buscarPorId.mockResolvedValue({
+      ...solicitacao(6, { status: 'CONFIRMADA' }),
+      ordem: ordem(40, 6),
+    });
+
+    render(<TriagemSvoPage />);
+    const painel = await abrirSolicitacao(6);
+
+    expect(
+      await within(painel).findByRole('link', { name: /Agendar coleta em Viagens > SVO/ }),
+    ).toHaveAttribute('href', '/viagens?aba=svo');
   });
 });

@@ -3,6 +3,12 @@ import request from 'supertest';
 
 import { PERFIS, type Perfil } from '../constants/perfis';
 
+// Gestor SVO associado à unidade SVO (exigirAssociacaoSvo)
+vi.mock('../models/unidadeModel', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../models/unidadeModel')>();
+  return { ...original, unidadeModel: { ...original.unidadeModel, estaAssociadoPorNome: vi.fn(async () => true) } };
+});
+
 vi.mock('../services/authService', () => ({
   authService: {
     usuarioDoToken: vi.fn(),

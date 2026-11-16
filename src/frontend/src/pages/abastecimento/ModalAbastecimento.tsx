@@ -8,17 +8,21 @@ import { veiculosApi } from '../../services/api/veiculosApi';
 import { motoristasApi } from '../../services/api/motoristasApi';
 import { mensagemDeErro } from '../../services/api/http';
 import { useAuth } from '../../contexts/AuthContext';
+import { MENSAGEM_VEICULO_NAO_PERMITIDO, useVeiculoPermitido } from '../../utils/veiculoPermitido';
 
 interface ModalAbastecimentoProps {
   onClose: () => void;
   onSalvar: (abastecimento: NovoAbastecimentoInput) => Promise<void> | void;
   veiculoIdInicial?: string;
+  /** Restringe os veículos selecionáveis (ex.: Gestor de Frota só abastece veículo da frota administrativa). */
+  filtrarVeiculo?: (veiculo: Veiculo) => boolean;
 }
 
 export function ModalAbastecimento({
   onClose,
   onSalvar,
   veiculoIdInicial,
+  filtrarVeiculo,
 }: ModalAbastecimentoProps) {
   const { usuario } = useAuth();
   const isMotorista =
@@ -53,9 +57,6 @@ export function ModalAbastecimento({
 
         if (vRes.status === 'fulfilled') {
           setVeiculos(vRes.value);
-          if (!veiculoId && vRes.value.length > 0) {
-            setVeiculoId(String(vRes.value[0].id));
-          }
         } else {
           setErro(`Falha ao carregar veículos: ${mensagemDeErro(vRes.reason)}`);
         }
@@ -77,9 +78,6 @@ export function ModalAbastecimento({
           if (!ativo) return;
           setVeiculos(listaV);
           setMotoristas(listaM);
-          if (!veiculoId && listaV.length > 0) {
-            setVeiculoId(String(listaV[0].id));
-          }
           if (!motoristaId && listaM.length > 0) {
             setMotoristaId(String(listaM[0].id));
           }
@@ -104,6 +102,14 @@ export function ModalAbastecimento({
     return null;
   }, [litros, valorLitro]);
 
+  // Só veículos permitidos ao perfil: a seleção inicial e a de ações rápidas passam por aqui
+  const { permitidos: veiculosPermitidos, selecaoValida } = useVeiculoPermitido(
+    veiculos,
+    filtrarVeiculo,
+    veiculoId,
+    setVeiculoId,
+  );
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErro('');
@@ -116,6 +122,10 @@ export function ModalAbastecimento({
 
     if (!vId) {
       setErro('Selecione um veículo.');
+      return;
+    }
+    if (!selecaoValida) {
+      setErro(MENSAGEM_VEICULO_NAO_PERMITIDO);
       return;
     }
     if (!mId || (isMotorista && motoristas.length === 0)) {
@@ -182,7 +192,7 @@ export function ModalAbastecimento({
             required
           >
             <option value="">Selecione o veículo</option>
-            {veiculos.map((v) => (
+            {veiculosPermitidos.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.placa} — {v.modelo}
               </option>

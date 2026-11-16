@@ -1,4 +1,3 @@
-
 import type { Request, Response } from 'express';
 import { solicitacaoViagemService } from '../services/solicitacaoViagemService';
 import {
@@ -52,7 +51,6 @@ export const solicitacaoViagemController = {
 
   async recusar(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
-    // O corpo é opcional: o motivo pode ser omitido
     const { motivo } = recusarSolicitacaoViagemSchema.parse(req.body ?? {});
     const gestor = usuarioAutenticado(req);
 

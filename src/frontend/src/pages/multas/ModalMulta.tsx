@@ -7,6 +7,7 @@ import type { Veiculo } from '../../types/veiculo';
 import type { Motorista } from '../../types/motorista';
 import { veiculosApi } from '../../services/api/veiculosApi';
 import { motoristasApi } from '../../services/api/motoristasApi';
+import { MENSAGEM_VEICULO_NAO_PERMITIDO, useVeiculoPermitido } from '../../utils/veiculoPermitido';
 
 interface ModalMultaProps {
   /** Quando informado, o modal edita a multa (ex.: para vincular o motorista depois). */
@@ -14,6 +15,8 @@ interface ModalMultaProps {
   onClose: () => void;
   onSalvar: (multa: NovaMultaInput) => Promise<void> | void;
   veiculoIdInicial?: string;
+  /** Restringe os veículos selecionáveis (ex.: Gestor de Frota só registra multa de veículo da frota administrativa). */
+  filtrarVeiculo?: (veiculo: Veiculo) => boolean;
 }
 
 /** Data/hora local no formato do input datetime-local (AAAA-MM-DDTHH:mm). */
@@ -23,7 +26,13 @@ function agoraLocal(): string {
   return d.toISOString().slice(0, 16);
 }
 
-export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: ModalMultaProps) {
+export function ModalMulta({
+  multa,
+  onClose,
+  onSalvar,
+  veiculoIdInicial,
+  filtrarVeiculo,
+}: ModalMultaProps) {
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [motoristas, setMotoristas] = useState<Motorista[]>([]);
   const agora = useMemo(agoraLocal, []);
@@ -51,9 +60,6 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
 
         if (vRes.status === 'fulfilled') {
           setVeiculos(vRes.value);
-          if (!veiculoId && vRes.value.length > 0) {
-            setVeiculoId(String(vRes.value[0].id));
-          }
         } else {
           setErro('Falha ao carregar veículos.');
         }
@@ -74,6 +80,14 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
     };
   }, [veiculoId]);
 
+  // Só veículos permitidos ao perfil: a seleção inicial e a de ações rápidas passam por aqui
+  const { permitidos: veiculosPermitidos, selecaoValida } = useVeiculoPermitido(
+    veiculos,
+    filtrarVeiculo,
+    veiculoId,
+    setVeiculoId,
+  );
+
   const handleSubmit = async (e?: FormEvent) => {
     e?.preventDefault();
     if (enviando) return;
@@ -83,6 +97,7 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
     const p = Number(pontos);
 
     if (!vId) return setErro('Selecione o veículo.');
+    if (!selecaoValida) return setErro(MENSAGEM_VEICULO_NAO_PERMITIDO);
     if (!dataInfracao) return setErro('Informe a data e hora da infração.');
     if (dataInfracao > agoraLocal()) return setErro('A data da infração não pode ser futura.');
     if (!v || v <= 0) return setErro('Informe um valor maior que zero.');
@@ -135,7 +150,7 @@ export function ModalMulta({ multa, onClose, onSalvar, veiculoIdInicial }: Modal
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setVeiculoId(e.target.value)}
           >
             <option value="">Selecione o veículo</option>
-            {veiculos.map((v) => (
+            {veiculosPermitidos.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.placa} — {v.modelo}
               </option>

@@ -34,7 +34,8 @@ Registo dos veículos pertencentes à frota geral e ao Serviço de Verificação
 | `placa` | Varchar(10) | NOT NULL, UNIQUE | Matrícula do veículo. |
 | `modelo` | Varchar(100) | NOT NULL | Marca e modelo. |
 | `tipo_frota` | Varchar(20) | NOT NULL | CHECK: `ADMINISTRATIVA`, `SVO`. |
-| `capacidade_maxima` | Integer | NOT NULL | Lotação (CHECK: `>= 0`). |
+| `capacidade_maxima` | Integer | NOT NULL | Lotação de passageiros (frota administrativa) ou capacidade de corpos (SVO, 1 a 4) (CHECK: `>= 0`). |
+| `lotacao_cabine` | Integer | NULLABLE | Lotação de pessoas na cabine para veículos SVO, incluindo motorista (CHECK: `IS NULL OR >= 1`). |
 | `km_atual` | Integer | NOT NULL, DEFAULT 0 | Quilometragem atual do veículo (CHECK: `>= 0`). |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `RESERVADO`, `EM_USO`, `MANUTENCAO`. |
 
@@ -202,6 +203,8 @@ veículo, motorista ou equipe; alocadas/em deslocamento exigem veículo e motori
 | `equipe_id` | Integer | FOREIGN KEY | Profissionais alocados (RESTRICT). |
 | `capacidade_utilizada`| Integer | NOT NULL, DEFAULT 1 | CHECK: `> 0`. |
 | `data_hora_chamado` | Timestamptz | DEFAULT now() | Momento de geração da ordem (com fuso horário). |
+| `inicio_previsto` | Timestamptz | NULLABLE | Início previsto do agendamento da coleta SVO (SCRUM-176, com fuso horário). |
+| `fim_previsto` | Timestamptz | NULLABLE, CHECK: `> inicio_previsto` | Término previsto do agendamento da coleta SVO (SCRUM-176, com fuso horário). |
 | `data_hora_saida` | Timestamptz | NULLABLE | Momento de início do deslocamento (com fuso horário). |
 | `data_hora_conclusao`| Timestamptz | NULLABLE, CHECK: `>= data_hora_saida` | Regresso e término da operação (com fuso horário). |
 | `km_inicial` | Integer | NULLABLE | CHECK: `>= 0`. |
