@@ -207,7 +207,15 @@ export function BotaoExportarRelatorio({ tipo }: BotaoExportarRelatorioProps) {
 
             {estado === 'sucesso' && arquivoBaixado && (
               <Alert tone="success">
-                Download concluído: <strong className="font-semibold">{arquivoBaixado}</strong>
+                <div className="flex flex-col gap-1">
+                  <span>
+                    Download concluído: <strong className="font-semibold">{arquivoBaixado}</strong>
+                  </span>
+                  <span className="text-xs opacity-90">
+                    Caso não haja registros no período selecionado, o arquivo será gerado apenas com
+                    o cabeçalho (ou aviso no PDF).
+                  </span>
+                </div>
               </Alert>
             )}
 
@@ -312,6 +320,14 @@ export function BotaoExportarRelatorio({ tipo }: BotaoExportarRelatorioProps) {
               <p className="m-0 rounded-md border border-border bg-surface-alt px-3 py-2 text-xs text-text-muted">
                 Escopo do seu perfil: o arquivo conterá apenas registros da{' '}
                 <strong className="text-text-strong">frota administrativa</strong>.
+              </p>
+            )}
+
+            {usuario?.perfil === PERFIS.ADMINISTRADOR && tipo === 'viagens' && (
+              <p className="m-0 rounded-md border border-border bg-surface-alt px-3 py-2 text-xs text-text-muted">
+                Escopo do seu perfil: o relatório de viagens inclui registros das frotas{' '}
+                <strong className="text-text-strong">administrativa e SVO</strong> (independente da
+                aba ativa).
               </p>
             )}
 

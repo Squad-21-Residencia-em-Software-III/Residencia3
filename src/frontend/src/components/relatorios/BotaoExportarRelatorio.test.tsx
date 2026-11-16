@@ -102,11 +102,36 @@ describe('BotaoExportarRelatorio', () => {
       expect(screen.getByText(/Download concluído:/i)).toBeInTheDocument();
     });
     expect(screen.getByText('relatorio-viagens-2026-11-16.pdf')).toBeInTheDocument();
+    expect(screen.getByText(/Caso não haja registros no período/i)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Baixar novamente' })).toBeInTheDocument();
     expect(relatoriosApi.exportar).toHaveBeenCalledWith('viagens', 'pdf', {
       inicio: undefined,
       fim: undefined,
     });
+  });
+
+  it('esclarece ao Administrador que o relatório de viagens inclui frota administrativa e SVO', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      usuario: {
+        id: 1,
+        nome: 'Admin',
+        email: 'admin@fsph.se.gov.br',
+        perfil: PERFIS.ADMINISTRADOR,
+        tipo_usuario: 'ADMINISTRADOR',
+        ativo: true,
+      },
+      carregando: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      temPerfil: () => true,
+    });
+
+    render(<BotaoExportarRelatorio tipo="viagens" />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Baixar relatório/i }));
+
+    expect(screen.getByText(/administrativa e SVO/i)).toBeInTheDocument();
   });
 
   it('exibe erro 422 no PDF com atalho de 1 clique para Excel (.xlsx) e botão Tentar novamente', async () => {
