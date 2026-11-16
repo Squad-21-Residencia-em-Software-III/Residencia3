@@ -1,10 +1,11 @@
-import { FORMATOS_EXPORTACAO, LIMITE_LINHAS_EXPORTACAO } from '../constants/relatorios';
+import { FORMATOS_EXPORTACAO, LIMITE_LINHAS_EXPORTACAO, LIMITE_LINHAS_PDF } from '../constants/relatorios';
 import type { FormatoExportacao, TipoRelatorio } from '../constants/relatorios';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
 import { gerarCsv } from '../exportadores/csvExportador';
 import { hojeNoFusoLocal } from '../exportadores/formatacao';
-import type { ColunaTabela, TabelaExportavel } from '../exportadores/tipos';
+import { gerarPdf } from '../exportadores/pdfExportador';
+import type { ColunaTabela, ContextoExportacao, TabelaExportavel } from '../exportadores/tipos';
 import { gerarXlsx } from '../exportadores/xlsxExportador';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { relatorioModel, type LinhaRelatorio } from '../models/relatorioModel';
@@ -20,6 +21,10 @@ interface DefinicaoRelatorio {
   titulo: string;
   descricao: string;
   colunas: ColunaTabela[];
+  // Colunas que cabem na página do PDF (CSV e XLSX sempre levam todas)
+  colunasPdf?: string[];
+  // Observação impressa no cabeçalho do PDF, conforme o perfil de quem exporta
+  nota?: (autor: Autor) => string | undefined;
   buscar: (periodo: PeriodoRelatorio, autor: Autor, limite: number) => Promise<LinhaRelatorio[]>;
 }
 
@@ -41,6 +46,10 @@ const PERFIS_COM_ACESSO: Perfil[] = [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA];
 
 // Frotas que o perfil enxerga (mesmo vocabulário de tipo_frota); perfil sem escopo não recebe nada
 const frotasDoPerfil = (autor: Autor) => TIPOS_POR_PERFIL[autor.perfil] ?? [];
+
+// Escopo impresso no PDF dos relatórios filtrados por tipo de frota
+const notaDeFrota = (autor: Autor) =>
+  frotasDoPerfil(autor).includes('SVO') ? 'Escopo: frota administrativa e SVO' : 'Escopo: frota administrativa';
 
 const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
   viagens: {
@@ -65,6 +74,24 @@ const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
       { chave: 'km_inicial', titulo: 'Km inicial', tipo: 'inteiro' },
       { chave: 'km_final', titulo: 'Km final', tipo: 'inteiro' },
     ],
+    colunasPdf: [
+      'id',
+      'tipo_operacao',
+      'status',
+      'origem',
+      'destino',
+      'veiculo_placa',
+      'motorista_nome',
+      'inicio_previsto',
+      'data_hora_efetiva_saida',
+      'data_hora_efetiva_chegada',
+      'km_inicial',
+      'km_final',
+    ],
+    nota: (autor) =>
+      TIPOS_POR_PERFIL[autor.perfil]?.includes('SVO')
+        ? 'Escopo: viagens administrativas e ordens de coleta SVO'
+        : 'Escopo: viagens administrativas',
     // Mesmo escopo por perfil das demais operações de viagem
     buscar: (periodo, autor, limite) => relatorioModel.viagens(frotasDoPerfil(autor), periodo, limite),
   },
@@ -86,6 +113,7 @@ const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
       { chave: 'valor_total', titulo: 'Valor total (R$)', tipo: 'decimal' },
       { chave: 'preco_por_litro', titulo: 'Preço por litro (R$)', tipo: 'decimal' },
     ],
+    nota: notaDeFrota,
     buscar: (periodo, autor, limite) => relatorioModel.abastecimentos(periodo, limite, frotasDoPerfil(autor)),
   },
 
@@ -104,6 +132,7 @@ const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
       { chave: 'custo', titulo: 'Custo (R$)', tipo: 'decimal' },
       { chave: 'status', titulo: 'Status', tipo: 'texto' },
     ],
+    nota: notaDeFrota,
     buscar: (periodo, autor, limite) => relatorioModel.manutencoes(periodo, limite, frotasDoPerfil(autor)),
   },
 
@@ -125,16 +154,39 @@ const DEFINICOES: Record<TipoRelatorio, DefinicaoRelatorio> = {
       { chave: 'data_vencimento', titulo: 'Vencimento', tipo: 'data' },
       { chave: 'status_pagamento', titulo: 'Pagamento', tipo: 'texto' },
     ],
+    nota: notaDeFrota,
     buscar: (periodo, autor, limite) => relatorioModel.multas(periodo, limite, frotasDoPerfil(autor)),
   },
 };
 
-const FORMATOS: Record<FormatoExportacao, { extensao: string; contentType: string; gerar: (t: TabelaExportavel) => Buffer }> = {
-  csv: { extensao: 'csv', contentType: 'text/csv; charset=utf-8', gerar: gerarCsv },
+interface SaidaDoFormato {
+  extensao: string;
+  contentType: string;
+  // Teto de linhas do formato e orientação dada quando ele é ultrapassado
+  limiteLinhas: number;
+  sugestaoAoExceder?: string;
+  gerar: (tabela: TabelaExportavel, contexto: ContextoExportacao) => Buffer;
+}
+
+const FORMATOS: Record<FormatoExportacao, SaidaDoFormato> = {
+  csv: {
+    extensao: 'csv',
+    contentType: 'text/csv; charset=utf-8',
+    limiteLinhas: LIMITE_LINHAS_EXPORTACAO,
+    gerar: (tabela) => gerarCsv(tabela),
+  },
   xlsx: {
     extensao: 'xlsx',
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    gerar: gerarXlsx,
+    limiteLinhas: LIMITE_LINHAS_EXPORTACAO,
+    gerar: (tabela) => gerarXlsx(tabela),
+  },
+  pdf: {
+    extensao: 'pdf',
+    contentType: 'application/pdf',
+    limiteLinhas: LIMITE_LINHAS_PDF,
+    sugestaoAoExceder: ' ou exporte em CSV ou XLSX',
+    gerar: gerarPdf,
   },
 };
 
@@ -157,21 +209,31 @@ export const relatorioService = {
   },
 
   // Dados independentes de formato: o PDF reutiliza esta mesma tabela
-  async gerar(tipo: TipoRelatorio, periodo: PeriodoRelatorio, autor: Autor): Promise<TabelaExportavel> {
+  async gerar(
+    tipo: TipoRelatorio,
+    periodo: PeriodoRelatorio,
+    autor: Autor,
+    { limite = LIMITE_LINHAS_EXPORTACAO, sugestao = '' }: { limite?: number; sugestao?: string } = {},
+  ): Promise<TabelaExportavel> {
     garantirAcesso(autor);
 
     const definicao = DEFINICOES[tipo];
     // Uma linha além do limite basta para saber que o resultado foi truncado
-    const linhas = await definicao.buscar(periodo, autor, LIMITE_LINHAS_EXPORTACAO + 1);
+    const linhas = await definicao.buscar(periodo, autor, limite + 1);
 
-    if (linhas.length > LIMITE_LINHAS_EXPORTACAO) {
-      throw new AppError(
-        `O relatório excede ${LIMITE_LINHAS_EXPORTACAO} linhas. Reduza o período e tente novamente`,
-        422,
-      );
+    if (linhas.length > limite) {
+      throw new AppError(`O relatório excede ${limite} linhas. Reduza o período e tente novamente${sugestao}`, 422);
     }
 
-    return { titulo: definicao.titulo, colunas: definicao.colunas, linhas };
+    const nota = definicao.nota?.(autor);
+
+    return {
+      titulo: definicao.titulo,
+      colunas: definicao.colunas,
+      linhas,
+      ...(definicao.colunasPdf ? { colunasPdf: definicao.colunasPdf } : {}),
+      ...(nota ? { notas: [nota] } : {}),
+    };
   },
 
   async exportar(
@@ -180,9 +242,12 @@ export const relatorioService = {
     periodo: PeriodoRelatorio,
     autor: Autor,
   ): Promise<ArquivoExportado> {
-    const tabela = await relatorioService.gerar(tipo, periodo, autor);
     const saida = FORMATOS[formato];
-    const conteudo = saida.gerar(tabela);
+    const tabela = await relatorioService.gerar(tipo, periodo, autor, {
+      limite: saida.limiteLinhas,
+      sugestao: saida.sugestaoAoExceder,
+    });
+    const conteudo = saida.gerar(tabela, { periodo, geradoEm: new Date() });
 
     await auditoriaModel.registrar({
       usuario_id: autor.id,
