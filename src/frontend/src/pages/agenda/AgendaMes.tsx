@@ -42,7 +42,7 @@ export function AgendaMes({
               key={dataIso}
               type="button"
               className={cn(
-                'flex cursor-pointer flex-col rounded-none border-t-0 border-r border-b border-l-0 border-divider p-1 text-left transition-all duration-150 hover:bg-surface-alt md:px-3 md:py-2',
+                'group relative flex cursor-pointer flex-col rounded-none border-t-0 border-r border-b border-l-0 border-divider p-1 text-left transition-all duration-150 hover:z-1 hover:bg-primary/[0.06] hover:outline-1 hover:-outline-offset-1 hover:outline-primary/40 md:px-3 md:py-2',
                 ehHoje && 'bg-primary/[0.04] outline-2 -outline-offset-2 outline-primary',
                 ehPassado && 'bg-surface-alt',
               )}
@@ -52,8 +52,12 @@ export function AgendaMes({
               <div className="mb-1 flex items-center justify-between">
                 <span
                   className={cn(
-                    'flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px] font-bold md:h-[22px] md:w-[22px] md:text-xs',
-                    ehHoje ? 'bg-primary text-white' : ehPassado ? 'text-text-muted' : 'text-text',
+                    'flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px] font-bold transition-colors duration-150 md:h-[22px] md:w-[22px] md:text-xs',
+                    ehHoje
+                      ? 'bg-primary text-white'
+                      : ehPassado
+                        ? 'text-text-muted group-hover:text-primary'
+                        : 'text-text group-hover:text-primary',
                   )}
                 >
                   {dia}

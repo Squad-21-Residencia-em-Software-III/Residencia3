@@ -8,6 +8,7 @@ import { cn } from '../../utils/cn';
 
 interface AgendaGanttHojeProps {
   linhas: LinhaRecursoAgenda[];
+  dataReferenciaIso: string;
   ehHoje: boolean;
   onSelecionarViagem: (viagem: Viagem) => void;
 }
@@ -52,12 +53,14 @@ function formatarMinutosParaHora(minutos: number): string {
 
 export function AgendaGanttHoje({
   linhas,
+  dataReferenciaIso,
   ehHoje,
   onSelecionarViagem,
 }: AgendaGanttHojeProps) {
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const resourceScrollRef = useRef<HTMLDivElement>(null);
   const gridScrollRef = useRef<HTMLDivElement>(null);
+  const primeiroMountRef = useRef<boolean>(true);
   const [agoraMinutos, setAgoraMinutos] = useState<number>(() => obterMinutosAtuais());
 
   // Atualiza o marcador do horário real a cada minuto enquanto estiver na visão de hoje
@@ -70,17 +73,23 @@ export function AgendaGanttHoje({
     return () => window.clearInterval(timer);
   }, [ehHoje]);
 
-  // Posiciona o scroll horizontal próximo ao horário atual (hoje) ou às 07:00 (outros dias)
+  // Posiciona o scroll horizontal: imediato na abertura e suave ao navegar entre dias ou voltar para Hoje
   useEffect(() => {
     const grid = gridScrollRef.current;
     if (!grid) return;
     const horaAlvo = ehHoje ? Math.max(0, new Date().getHours() - 1) : 7;
     const scrollAlvo = horaAlvo * HORA_LARGURA_PX;
-    grid.scrollLeft = scrollAlvo;
-    if (headerScrollRef.current) {
-      headerScrollRef.current.scrollLeft = scrollAlvo;
+
+    if (!primeiroMountRef.current && typeof grid.scrollTo === 'function') {
+      grid.scrollTo({ left: scrollAlvo, behavior: 'smooth' });
+    } else {
+      grid.scrollLeft = scrollAlvo;
+      if (headerScrollRef.current) {
+        headerScrollRef.current.scrollLeft = scrollAlvo;
+      }
     }
-  }, [ehHoje]);
+    primeiroMountRef.current = false;
+  }, [ehHoje, dataReferenciaIso]);
 
   const horas = Array.from({ length: TOTAL_HORAS }, (_, i) => HORA_INICIO + i);
   const agoraLeft = (agoraMinutos / 60) * HORA_LARGURA_PX;
@@ -130,11 +139,11 @@ export function AgendaGanttHoje({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-card">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-card">
       {/* ── Linha de Horas Fixa no Topo (00:00 às 23:00) ── */}
       <div className="relative z-5 flex shrink-0 border-b border-border bg-surface-alt">
         <div className="flex h-[38px] w-[120px] shrink-0 items-center border-r border-border px-2 font-display text-[10px] font-bold tracking-[0.05em] text-text-muted uppercase md:w-[190px] md:px-4 md:text-[11px]">
-          Recurso / Veículo
+          Veículo
         </div>
         <div className="flex-1 overflow-x-hidden" ref={headerScrollRef}>
           <div className="flex" style={{ width: `${LARGURA_TOTAL_GRADE}px` }}>
@@ -160,10 +169,10 @@ export function AgendaGanttHoje({
           ref={resourceScrollRef}
         >
           {linhasComLayout.map(({ linha, alturaLinha }) => {
-            const primeiroMotorista = linha.blocos[0]?.viagem.motorista_nome;
-            const subtituloSecundario = primeiroMotorista
-              ? primeiroMotorista.split(' ')[0]
-              : 'Livre';
+            const emViagem =
+              linha.blocos.some((b) => b.viagem.status === 'EM_ANDAMENTO') ||
+              (ehHoje && linha.statusVeiculo === 'EM_USO');
+            const subtituloSecundario = emViagem ? 'Em viagem' : 'No pátio';
 
             return (
               <div
@@ -183,8 +192,11 @@ export function AgendaGanttHoje({
                   </span>
                   <span className="text-[10px] text-text-muted">·</span>
                   <span
-                    className="truncate text-[11px] text-text-muted"
-                    title={primeiroMotorista ?? subtituloSecundario}
+                    className={cn(
+                      'truncate text-[11px]',
+                      emViagem ? 'font-semibold text-primary' : 'text-text-muted',
+                    )}
+                    title={subtituloSecundario}
                   >
                     {subtituloSecundario}
                   </span>
@@ -312,10 +324,6 @@ export function AgendaGanttHoje({
           <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
             <span className="h-[9px] w-[9px] rounded-[2px] bg-[#94a3b8]" />
             <span>Concluída</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-            <span className="h-[9px] w-[9px] rounded-[2px] bg-[#dc2626]" />
-            <span>Cancelada</span>
           </div>
         </div>
       </div>

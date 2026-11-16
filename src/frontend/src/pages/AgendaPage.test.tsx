@@ -104,9 +104,10 @@ describe('AgendaPage: integração com API, estados e DrawerDetalhesViagem', () 
       expect(screen.getByText('Renault Master')).toBeInTheDocument();
     });
 
-    // Veículo livre sem viagem também aparece na lateral
+    // Veículo sem viagem no dia aparece como "No pátio" e veículo com viagem em andamento como "Em viagem"
     expect(screen.getByText('Fiat Ducato')).toBeInTheDocument();
-    expect(screen.getByText('Livre')).toBeInTheDocument();
+    expect(screen.getByText('No pátio')).toBeInTheDocument();
+    expect(screen.getByText('Em viagem')).toBeInTheDocument();
 
     // Clica no bloco da viagem para abrir o DrawerDetalhesViagem
     const user = userEvent.setup();
@@ -148,17 +149,24 @@ describe('AgendaPage: integração com API, estados e DrawerDetalhesViagem', () 
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Semana' }));
+    expect(screen.getByRole('tab', { name: 'Dia' })).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByRole('tab', { name: 'Semana' }));
     expect(
       screen.getByText(/Passe o mouse sobre os blocos para ver o horário e rota/i),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Mês' }));
-    expect(screen.getByText('1 viagem')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Mês' }));
+    const chipsViagem = screen.getAllByText('1 viagem');
+    expect(chipsViagem.length).toBeGreaterThanOrEqual(2);
 
     // Clicar no dia com viagem volta para a grade do dia
-    await user.click(screen.getByText('1 viagem'));
+    await user.click(chipsViagem[chipsViagem.length - 1]);
     expect(screen.getByText(/Grade 24h \(SVO contínuo/i)).toBeInTheDocument();
+
+    // Avança 1 dia e valida o botão "Voltar para Hoje"
+    await user.click(screen.getByRole('button', { name: 'Próximo período' }));
+    expect(screen.getByRole('button', { name: 'Voltar para Hoje' })).toBeInTheDocument();
   });
 
   it('exibe apenas veículos SVO na lateral quando o usuário logado for GESTOR_SVO', async () => {

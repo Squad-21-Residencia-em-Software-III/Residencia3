@@ -47,11 +47,11 @@ export function AgendaSemana({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-card">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-card">
       {/* ── Cabeçalho dos 7 Dias da Semana ── */}
       <div className="flex min-w-[calc(120px+7*65px)] shrink-0 border-b border-border bg-surface-alt md:min-w-0">
         <div className="flex h-12 w-[120px] shrink-0 items-center border-r border-border px-2 font-display text-[10px] font-bold tracking-[0.05em] text-text-muted uppercase md:w-[190px] md:px-4 md:text-[11px]">
-          Recurso / Veículo
+          Veículo
         </div>
         {diasSemana.map((d) => (
           <div
@@ -173,10 +173,6 @@ export function AgendaSemana({
           <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
             <span className="h-[9px] w-[9px] rounded-[2px] bg-[#94a3b8]" />
             <span>Concluída</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-            <span className="h-[9px] w-[9px] rounded-[2px] bg-[#dc2626]" />
-            <span>Cancelada</span>
           </div>
         </div>
       </div>

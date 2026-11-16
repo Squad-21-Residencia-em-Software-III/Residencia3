@@ -42,8 +42,17 @@ function capitalizarPrimeiraLetra(texto: string): string {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
-export function formatarTituloDia(dataIso: string): string {
+export function formatarTituloDia(dataIso: string, hojeIso?: string): string {
   const data = parseDataIsoLocal(dataIso);
+  if (hojeIso && dataIso === hojeIso) {
+    const diaMes = new Intl.DateTimeFormat('pt-BR', {
+      day: 'numeric',
+      month: 'short',
+    })
+      .format(data)
+      .replace('.', '');
+    return `Hoje, ${diaMes}`;
+  }
   const formatado = new Intl.DateTimeFormat('pt-BR', {
     weekday: 'long',
     day: 'numeric',

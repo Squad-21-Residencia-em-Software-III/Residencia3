@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Alert, Button, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { ApiError } from '../services/api/http';
@@ -38,10 +38,8 @@ export default function AgendaPage() {
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [carregando, setCarregando] = useState<boolean>(true);
-  const [atualizando, setAtualizando] = useState<boolean>(false);
   const [erroInicial, setErroInicial] = useState<string | null>(null);
   const [erroAtualizacao, setErroAtualizacao] = useState<string | null>(null);
-  const [ultimaAtualizacao, setUltimaAtualizacao] = useState<string | null>(null);
   const [viagemSelecionada, setViagemSelecionada] = useState<Viagem | null>(null);
 
   const jaCarregouRef = useRef<boolean>(false);
@@ -53,8 +51,6 @@ export default function AgendaPage() {
 
     if (!jaCarregouRef.current && !silencioso) {
       setCarregando(true);
-    } else {
-      setAtualizando(true);
     }
 
     try {
@@ -67,10 +63,6 @@ export default function AgendaPage() {
       jaCarregouRef.current = true;
       setErroInicial(null);
       setErroAtualizacao(null);
-      const agora = new Date();
-      setUltimaAtualizacao(
-        `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`,
-      );
     } catch (erro) {
       const mensagem =
         erro instanceof ApiError && erro.status === 403
@@ -86,7 +78,6 @@ export default function AgendaPage() {
       }
     } finally {
       setCarregando(false);
-      setAtualizando(false);
       requisicaoEmAndamentoRef.current = false;
     }
   }, []);
@@ -148,10 +139,6 @@ export default function AgendaPage() {
     () => projetarViagensNoDia(viagens, dataReferenciaIso).length,
     [viagens, dataReferenciaIso],
   );
-  const veiculosComViagemHoje = useMemo(
-    () => new Set(projetarViagensNoDia(viagens, dataReferenciaIso).map((b) => b.viagem.veiculo_id)).size,
-    [viagens, dataReferenciaIso],
-  );
 
   const navegarPeriodo = (direcao: -1 | 1) => {
     setDataReferenciaIso((atual) => {
@@ -163,7 +150,7 @@ export default function AgendaPage() {
 
   const tituloPrincipal =
     modoVisualizacao === 'hoje'
-      ? formatarTituloDia(dataReferenciaIso)
+      ? formatarTituloDia(dataReferenciaIso, hojeIso)
       : modoVisualizacao === 'semana'
         ? formatarTituloSemana(diasSemana)
         : formatarTituloMes(dataReferenciaIso);
@@ -179,80 +166,85 @@ export default function AgendaPage() {
     <div className="flex h-full min-h-0 flex-col gap-3 md:gap-5">
       {/* ── Barra de Cabeçalho e Controles da Agenda ── */}
       <Card className="flex shrink-0 flex-col items-stretch justify-between gap-3 p-3 md:flex-row md:items-center md:px-6 md:py-3.5">
-        <div className="flex w-full items-center justify-between gap-3 md:w-auto md:justify-start">
-          <button
+        <div className="flex w-full flex-wrap items-center justify-between gap-3 md:w-auto md:justify-start">
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => navegarPeriodo(-1)}
-            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-all duration-150 hover:border-border-strong hover:bg-surface-alt hover:text-text"
+            className="h-8 w-8 px-0"
             aria-label="Período anterior"
             title="Período anterior"
           >
             <ChevronLeft size={16} />
-          </button>
+          </Button>
 
-          <div>
+          <div
+            key={`${modoVisualizacao}-${dataReferenciaIso}`}
+            className="animate-agenda-fade"
+          >
             <span className="block text-center font-display text-[14px] font-bold text-text md:inline md:text-left md:text-base">
               {tituloPrincipal}
             </span>
             <span className="mt-0.5 block text-center text-[11px] text-text-muted md:mt-0 md:ml-3 md:inline md:text-left md:text-xs">
-              {ehHojeSelecionado ? 'Hoje · ' : ''}
-              {totalViagensHoje} {totalViagensHoje === 1 ? 'viagem' : 'viagens'} ·{' '}
-              {veiculosComViagemHoje}{' '}
-              {veiculosComViagemHoje === 1 ? 'veículo alocado' : 'veículos alocados'}
-              {ultimaAtualizacao ? ` · Atualizado às ${ultimaAtualizacao}` : ''}
+              {totalViagensHoje} {totalViagensHoje === 1 ? 'viagem' : 'viagens'}
             </span>
           </div>
 
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => navegarPeriodo(1)}
-            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-text-muted transition-all duration-150 hover:border-border-strong hover:bg-surface-alt hover:text-text"
+            className="h-8 w-8 px-0"
             aria-label="Próximo período"
             title="Próximo período"
           >
             <ChevronRight size={16} />
-          </button>
+          </Button>
 
           {!ehHojeSelecionado && (
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="h-8 animate-agenda-fade"
               onClick={() => setDataReferenciaIso(hojeIso)}
             >
-              Hoje
+              Voltar para Hoje
             </Button>
           )}
         </div>
 
-        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center md:w-auto">
-          <button
-            type="button"
-            onClick={() => void carregarAgenda(true)}
-            disabled={atualizando || carregando}
-            className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-xs font-medium text-text-muted transition-all duration-150 hover:border-border-strong hover:bg-surface-alt hover:text-text disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Atualizar agenda"
-            title="Atualizar agenda"
+        <div className="flex items-center justify-end md:w-auto">
+          {/* Seletor Segmentado de Visualização (Dia | Semana | Mês) com indicador deslizante */}
+          <div
+            role="tablist"
+            aria-label="Modo de visualização da agenda"
+            className="relative grid flex-1 grid-cols-3 rounded-lg border border-border bg-surface-alt p-1 md:w-[240px] md:flex-none"
           >
-            <RefreshCw size={13} className={cn(atualizando && 'animate-spin')} />
-            <span className="hidden sm:inline">Atualizar</span>
-          </button>
-
-          {/* Seletor Segmentado de Visualização (Hoje | Semana | Mês) */}
-          <div className="flex w-full items-center overflow-hidden rounded-lg border-[1.5px] border-border bg-surface md:w-auto">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-md bg-primary shadow-sm transition-transform duration-300 ease-out"
+              style={{
+                transform: `translateX(${
+                  modoVisualizacao === 'hoje' ? '0%' : modoVisualizacao === 'semana' ? '100%' : '200%'
+                })`,
+              }}
+            />
             {(['hoje', 'semana', 'mes'] as const).map((modo) => {
-              const label = modo === 'hoje' ? 'Hoje' : modo === 'semana' ? 'Semana' : 'Mês';
+              const label = modo === 'hoje' ? 'Dia' : modo === 'semana' ? 'Semana' : 'Mês';
               const isAtivo = modoVisualizacao === modo;
               return (
                 <button
                   key={modo}
                   type="button"
+                  role="tab"
+                  aria-selected={isAtivo}
                   onClick={() => setModoVisualizacao(modo)}
                   className={cn(
-                    'flex-1 cursor-pointer border-r border-border px-0 py-2 text-center font-display text-[13px] font-semibold transition-all duration-150 last:border-r-0 md:flex-none md:px-4 md:py-1.5 md:text-xs',
-                    isAtivo
-                      ? 'bg-primary text-white'
-                      : 'bg-transparent text-text-muted hover:bg-surface-alt hover:text-text',
+                    'relative z-1 cursor-pointer rounded-md py-1.5 text-center font-display text-xs font-semibold transition-colors duration-200',
+                    isAtivo ? 'text-white' : 'text-text-muted hover:text-text',
                   )}
                 >
                   {label}
@@ -284,10 +276,14 @@ export default function AgendaPage() {
           </Button>
         </Card>
       ) : (
-        <>
+        <div
+          key={modoVisualizacao}
+          className="animate-agenda-fade flex min-h-0 flex-1 flex-col"
+        >
           {modoVisualizacao === 'hoje' && (
             <AgendaGanttHoje
               linhas={linhasHoje}
+              dataReferenciaIso={dataReferenciaIso}
               ehHoje={ehHojeSelecionado}
               onSelecionarViagem={setViagemSelecionada}
             />
@@ -308,7 +304,7 @@ export default function AgendaPage() {
               onSelecionarDia={handleSelecionarDiaNoMes}
             />
           )}
-        </>
+        </div>
       )}
 
       {/* ── Drawer Lateral de Detalhes (reutilizado do módulo de Viagens) ── */}
