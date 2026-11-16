@@ -114,7 +114,7 @@ describe('ModalNovaViagem (operação SVO)', () => {
     ]);
   });
 
-  it('carrega as solicitações SVO confirmadas e as equipes disponíveis no período da coleta', async () => {
+  it('carrega as solicitações SVO confirmadas e as equipes disponíveis no momento da alocação', async () => {
     renderizar();
 
     expect(await screen.findByRole('option', { name: '#7 — Rua 7, Aracaju' })).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe('ModalNovaViagem (operação SVO)', () => {
 
     expect(solicitacoesApi.listarTodas).toHaveBeenCalledWith('CONFIRMADA');
     const { inicio, fim } = equipesApi.listarDisponiveis.mock.calls[0][0];
-    expect(new Date(fim).getTime() - new Date(inicio).getTime()).toBe(60 * 60_000);
+    expect(new Date(fim).getTime() - new Date(inicio).getTime()).toBe(60_000); // janela mínima: só a escala vigente agora
   });
 
   it('envia o equipe_id quando uma equipe é selecionada', async () => {
@@ -177,7 +177,7 @@ describe('ModalNovaViagem (operação SVO)', () => {
     equipesApi.listarDisponiveis.mockResolvedValue(disponibilidade([]));
     const { onSalvar } = renderizar();
 
-    expect(await screen.findByText(/Nenhuma equipe disponível no período/)).toBeInTheDocument();
+    expect(await screen.findByText(/Nenhuma equipe disponível no momento/)).toBeInTheDocument();
     await waitFor(() => expect(botaoAgendar()).toBeEnabled());
     await userEvent.click(botaoAgendar());
 

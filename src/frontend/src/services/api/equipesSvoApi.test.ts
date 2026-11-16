@@ -33,10 +33,10 @@ describe('equipesSvoApi', () => {
 });
 
 describe('periodoConsultaEquipes', () => {
-  it('vai de agora até uma hora depois, em ISO 8601 com fuso', () => {
+  it('usa só a janela mínima a partir de agora (escala vigente), em ISO 8601 com fuso', () => {
     const periodo = periodoConsultaEquipes(new Date('2026-11-13T21:00:00.000Z'));
 
-    expect(periodo).toEqual({ inicio: '2026-11-13T21:00:00.000Z', fim: '2026-11-13T22:00:00.000Z' });
+    expect(periodo).toEqual({ inicio: '2026-11-13T21:00:00.000Z', fim: '2026-11-13T21:01:00.000Z' });
   });
 });
 

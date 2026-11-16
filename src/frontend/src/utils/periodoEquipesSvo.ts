@@ -1,18 +1,21 @@
 import type { PeriodoEquipesSvo } from '../types/equipeSvo';
 
 /**
- * DECISÃO PENDENTE (SCRUM-145, revisão do PR #117): não existe regra aprovada para o período da
- * consulta de disponibilidade de equipes. O backend (PR #116) só exige `inicio` e `fim`; considera
- * disponível a equipe cuja escala cobre o período inteiro e que não tem ordem ativa. A ordem SVO
- * não tem período próprio e a duração de uma coleta não está definida na documentação.
+ * Janela mínima enviada à API de disponibilidade (PR #116, BL29 / SCRUM-104).
  *
- * Enquanto o time (responsáveis pelo PR #116 e pela SCRUM-105) não definir o critério, o valor
- * abaixo é apenas uma estimativa provisória e NÃO deve ser tratado como regra de negócio.
- * Quando houver decisão, a mudança fica concentrada neste arquivo.
+ * O backend só suporta, por enquanto, a consulta operacional imediata: o `inicio` precisa estar
+ * próximo do horário atual (tolerância de 15 min), pois as ordens SVO ativas ainda não têm
+ * previsão de término (SCRUM-166). Por isso o intervalo enviado representa a verificação da
+ * escala vigente NO MOMENTO da alocação e NÃO uma duração de coleta: a janela existe apenas
+ * porque a API exige `fim > inicio`.
+ *
+ * Consequência: a lista de equipes não garante disponibilidade durante uma coleta futura.
+ * Quando a SCRUM-166 trouxer início e término previstos informados pelo gestor, este período
+ * deve passar a vir desses campos.
  */
-export const DURACAO_ESTIMADA_COLETA_MINUTOS = 60;
+export const JANELA_CONSULTA_IMEDIATA_MS = 60_000;
 
 export function periodoConsultaEquipes(agora: Date = new Date()): PeriodoEquipesSvo {
-  const fim = new Date(agora.getTime() + DURACAO_ESTIMADA_COLETA_MINUTOS * 60_000);
+  const fim = new Date(agora.getTime() + JANELA_CONSULTA_IMEDIATA_MS);
   return { inicio: agora.toISOString(), fim: fim.toISOString() };
 }
