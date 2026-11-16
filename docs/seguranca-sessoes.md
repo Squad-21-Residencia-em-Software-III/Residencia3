@@ -91,7 +91,7 @@ O navegador acessa o frontend na Vercel. A Vercel encaminha `/api/*` para a API 
 | Variável | Padrão | Função |
 |---|---|---|
 | `CORS_ORIGIN` | `http://localhost:5173` em desenvolvimento; vazio em produção | Lista, separada por vírgula, das origens autorizadas a fazer requisições com credenciais. Cada item é `https://dominio[:porta]`. `*` é recusado na inicialização. |
-| `TRUST_PROXY` | `0` | Quantidade de proxies reversos à frente da API. Define `req.ip`, usado no limite de tentativas, e `req.protocol`. |
+| `TRUST_PROXY` | `0` fora de produção; obrigatório em produção | Proxies reversos confiáveis (número de saltos ou IPs/CIDRs). Define `req.ip`, usado no limite de tentativas, e `req.protocol`. Veja [seguranca-http.md](seguranca-http.md). |
 | `COOKIE_SECURE` | `true` em produção, `false` fora dela | Atributo `Secure` do cookie. `false` em produção é recusado. |
 
 ### CSRF
@@ -106,7 +106,7 @@ Requisições sem `Origin`, como as de Postman ou de scripts, são aceitas, porq
 ### Configuração em produção
 
 - Inclua a origem do frontend em `CORS_ORIGIN`, por exemplo `CORS_ORIGIN=https://fsph-web.vercel.app`. Atrás do rewrite, o `Host` recebido pelo Render pode não coincidir com o `Origin` do navegador.
-- Ajuste `TRUST_PROXY` ao número de proxies da infraestrutura.
+- Defina `TRUST_PROXY` conforme a cadeia real de proxies, como descrito em [seguranca-http.md](seguranca-http.md#como-calibrar-no-render).
 - Mantenha `NODE_ENV=production`, para que o cookie seja `Secure`.
 
 ## Segredo de assinatura
