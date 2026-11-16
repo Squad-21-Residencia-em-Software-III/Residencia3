@@ -6,7 +6,6 @@ const { mockDb, mockTrx, estado } = vi.hoisted(() => {
     consultas: [] as string[],
   };
 
-  // Consulta encadeável: registra a tabela e responde à soma das ordens SVO
   const trx = vi.fn((tabela: string) => {
     estado.consultas.push(tabela);
     const consulta: Record<string, any> = {};
@@ -32,6 +31,7 @@ vi.mock('../models/veiculoModel', () => ({
     buscarPorId: vi.fn(),
     buscarParaAtualizar: vi.fn(),
     buscarPorPlaca: vi.fn(),
+    cadastrarVeiculo: vi.fn(),
     atualizarVeiculo: vi.fn(),
     listarVeiculos: vi.fn(async () => []),
     idsVinculadosAoUsuarioMotorista: vi.fn(async () => [4, 9]),
@@ -52,6 +52,7 @@ const veiculoSvo = {
   modelo: 'Rabecão',
   tipo_frota: 'SVO',
   capacidade_maxima: 4,
+  lotacao_cabine: 3,
   km_atual: 1000,
   status: 'RESERVADO',
 };
@@ -66,6 +67,37 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
     vi.mocked(veiculoModel.atualizarVeiculo).mockImplementation(
       async (_id, dados) => ({ ...veiculoSvo, ...dados }) as any
     );
+  });
+
+  it('deve permitir cadastrar veículo SVO com lotação de cabine', async () => {
+    vi.mocked(veiculoModel.buscarPorPlaca).mockResolvedValue(undefined);
+    vi.mocked(veiculoModel.cadastrarVeiculo).mockResolvedValue({
+      id: 15,
+      placa: 'XYZ9K88',
+      modelo: 'Fiorino SVO',
+      tipo_frota: 'SVO',
+      capacidade_maxima: 2,
+      lotacao_cabine: 3,
+      km_atual: 100,
+      status: 'DISPONIVEL',
+    } as any);
+
+    const resultado = await veiculoService.criar(
+      {
+        placa: 'XYZ9K88',
+        modelo: 'Fiorino SVO',
+        tipo_frota: 'SVO',
+        capacidade_maxima: 2,
+        lotacao_cabine: 3,
+        km_atual: 100,
+      },
+      1
+    );
+
+    expect(resultado).toMatchObject({
+      capacidade_maxima: 2,
+      lotacao_cabine: 3,
+    });
   });
 
   it('deve bloquear capacidade menor que a ocupação atual', async () => {
@@ -132,14 +164,12 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
   });
 
   it('deve validar com o estado atual do banco, não com o que o cliente supõe', async () => {
-    // Outra requisição já reduziu a capacidade para 3; o cliente envia 4 (o valor que viu antes)
     vi.mocked(veiculoModel.buscarParaAtualizar).mockResolvedValue({ ...veiculoSvo, capacidade_maxima: 3 } as any);
     estado.ocupacao = 3;
 
     await expect(veiculoService.atualizar(10, { capacidade_maxima: 4 } as any, 1)).resolves.toMatchObject({
       capacidade_maxima: 4,
     });
-    // A mudança 3 -> 4 é detectada pelo valor do banco e a ocupação é conferida
     expect(estado.consultas).toEqual(['ordens_svo']);
   });
 });

@@ -40,6 +40,7 @@ export const veiculoService = {
   async listarOcupacaoSvo(): Promise<OcupacaoVeiculoSvo[]> {
     return veiculoModel.listarOcupacaoSvo();
   },
+
   async criar(dados: CriarVeiculoInput, autorId: number): Promise<Veiculo> {
     const veiculoExistente = await veiculoModel.buscarPorPlaca(dados.placa);
     if (veiculoExistente) {
@@ -64,8 +65,7 @@ export const veiculoService = {
 
   async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number): Promise<Veiculo> {
     return db.transaction(async (trx) => {
-      // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco,
-      // e edições e alocações SVO do mesmo veículo ficam em fila
+      // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco
       const veiculo = await veiculoModel.buscarParaAtualizar(id, trx);
       if (!veiculo) {
         throw new AppError('Veículo não encontrado', 404);
