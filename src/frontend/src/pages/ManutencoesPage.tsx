@@ -25,6 +25,7 @@ import {
   Textarea,
   type BadgeTone,
 } from '../components/ui';
+import { BotaoExportarRelatorio } from '../components/relatorios/BotaoExportarRelatorio';
 import { manutencoesApi } from '../services/api/manutencoesApi';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { mensagemDeErro } from '../services/api/http';
@@ -361,6 +362,7 @@ export default function ManutencoesPage() {
               ? 'Carregando registros...'
               : `${filtradas.length} manutenç${filtradas.length === 1 ? 'ão registrada' : 'ões registradas'}`
           }
+          actions={<BotaoExportarRelatorio tipo="manutencoes" />}
           newLabel={podeRegistrar ? 'Nova Manutenção' : undefined}
           onNew={podeRegistrar ? () => setModalAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
