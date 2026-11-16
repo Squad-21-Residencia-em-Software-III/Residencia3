@@ -1,44 +1,19 @@
-import { AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import type { ExcecaoAgenda } from '../../types/agenda';
+import type { CelulaMesAgenda } from '../../types/agenda';
 import { cn } from '../../utils/cn';
 
 interface AgendaMesProps {
-  excecoes: Record<number, ExcecaoAgenda[]>;
-  historicoMes: Record<number, number>;
-  diaAtualNumero: number;
-  onSelecionarDia: (dia: number) => void;
+  offsetInicial: number;
+  celulas: CelulaMesAgenda[];
+  onSelecionarDia: (dataIso: string) => void;
 }
 
 const DIAS_SEMANA_NOMES = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
-const MES_CHIP_STYLES: Record<ExcecaoAgenda['tipo'], string> = {
-  gargalo: 'bg-[#fee2e2] text-[#b91c1c]',
-  pico: 'bg-[#fef3c7] text-[#b45309]',
-  normal: 'bg-[#dcfce7] text-[#15803d]',
-};
-
 export function AgendaMes({
-  excecoes,
-  historicoMes,
-  diaAtualNumero,
+  offsetInicial,
+  celulas,
   onSelecionarDia,
 }: AgendaMesProps) {
-  // Mês com 31 dias (Outubro 2026 começa na Quinta-feira, offset de 3 dias: Seg, Ter, Qua)
-  const offsetInicial = 3;
-  const totalDias = 31;
-
-  const obterIconeExcecao = (tipo: ExcecaoAgenda['tipo']) => {
-    switch (tipo) {
-      case 'gargalo':
-        return <AlertCircle size={11} color="#b91c1c" />;
-      case 'pico':
-        return <AlertTriangle size={11} color="#b45309" />;
-      case 'normal':
-      default:
-        return <CheckCircle2 size={11} color="#15803d" />;
-    }
-  };
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-card">
       {/* ── Cabeçalho dos Dias da Semana ── */}
@@ -53,72 +28,42 @@ export function AgendaMes({
         ))}
       </div>
 
-      {/* ── Grade de Calendário Mensal ── */}
+      {/* ── Grade de Calendário Mensal Dinâmico ── */}
       <div className="grid flex-1 auto-rows-[minmax(70px,1fr)] grid-cols-7 overflow-y-auto md:auto-rows-[minmax(96px,1fr)]">
-        {/* Espaços vazios do início do mês (Seg, Ter, Qua) */}
         {Array.from({ length: offsetInicial }).map((_, i) => (
           <div key={`offset-${i}`} className="border-r border-b border-divider bg-surface-alt" />
         ))}
 
-        {/* Células de cada dia do mês */}
-        {Array.from({ length: totalDias }, (_, i) => i + 1).map((dia) => {
-          const isToday = dia === diaAtualNumero;
-          const isPassado = dia < diaAtualNumero;
-          const listaExcecoes = excecoes[dia] ?? [];
-          const temExcecao = listaExcecoes.length > 0;
-          const totalHistorico = historicoMes[dia];
+        {celulas.map((celula) => {
+          const { dia, dataIso, ehHoje, ehPassado, totalViagens } = celula;
 
           return (
             <button
-              key={dia}
+              key={dataIso}
               type="button"
               className={cn(
                 'flex cursor-pointer flex-col rounded-none border-t-0 border-r border-b border-l-0 border-divider p-1 text-left transition-all duration-150 hover:bg-surface-alt md:px-3 md:py-2',
-                isToday && 'bg-primary/[0.04] outline-2 -outline-offset-2 outline-primary',
-                isPassado && 'bg-surface-alt',
+                ehHoje && 'bg-primary/[0.04] outline-2 -outline-offset-2 outline-primary',
+                ehPassado && 'bg-surface-alt',
               )}
-              onClick={() => onSelecionarDia(dia)}
-              title={
-                temExcecao
-                  ? `Dia ${dia}: clique para inspecionar as rotas detalhadas`
-                  : `Dia ${dia}`
-              }
+              onClick={() => onSelecionarDia(dataIso)}
+              title={`Dia ${dia}: clique para inspecionar as viagens detalhadas`}
             >
               <div className="mb-1 flex items-center justify-between">
                 <span
                   className={cn(
                     'flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px] font-bold md:h-[22px] md:w-[22px] md:text-xs',
-                    isToday ? 'bg-primary text-white' : isPassado ? 'text-text-muted' : 'text-text',
+                    ehHoje ? 'bg-primary text-white' : ehPassado ? 'text-text-muted' : 'text-text',
                   )}
                 >
                   {dia}
                 </span>
-                {isToday && <span className="text-[10px] font-bold text-primary">Hoje</span>}
+                {ehHoje && <span className="text-[10px] font-bold text-primary">Hoje</span>}
               </div>
 
-              {/* Chips de Exceção (Apenas alertas nos dias futuros e hoje) */}
-              {!isPassado && temExcecao && (
-                <div className="flex w-full flex-col gap-[3px]">
-                  {listaExcecoes.map((exc, idx) => (
-                    <div
-                      key={idx}
-                      className={cn(
-                        'inline-flex items-center gap-1 overflow-hidden rounded-sm px-1.5 py-0.5 text-[10px] font-semibold text-ellipsis whitespace-nowrap',
-                        MES_CHIP_STYLES[exc.tipo],
-                      )}
-                      title={exc.mensagem}
-                    >
-                      {obterIconeExcecao(exc.tipo)}
-                      <span className="truncate">{exc.mensagem}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Dias passados: quantitativo discreto */}
-              {isPassado && totalHistorico !== undefined && (
-                <div className="mt-1 text-[11px] text-text-muted">
-                  {totalHistorico} {totalHistorico === 1 ? 'viagem' : 'viagens'}
+              {totalViagens > 0 && (
+                <div className="mt-1 inline-flex w-fit items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary md:text-[11px]">
+                  {totalViagens} {totalViagens === 1 ? 'viagem' : 'viagens'}
                 </div>
               )}
             </button>
@@ -126,26 +71,11 @@ export function AgendaMes({
         })}
       </div>
 
-      {/* ── Rodapé de Legenda de Gestão por Exceção ── */}
-      <div className="flex shrink-0 flex-col-reverse items-stretch justify-between gap-2 border-t border-border bg-surface-alt px-3 py-2.5 md:flex-row md:items-center md:px-5">
+      {/* ── Rodapé ── */}
+      <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface-alt px-3 py-2.5 md:px-5">
         <span className="text-[11px] text-text-muted md:text-xs">
-          Apenas gargalos e horários de pico são sinalizados · Clique em qualquer dia para ver a
-          timeline detalhada
+          Clique em qualquer dia para abrir a grade horária detalhada
         </span>
-        <div className="flex flex-wrap items-center justify-start gap-2.5 md:gap-4">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-            <AlertCircle size={13} color="#b91c1c" />
-            <span className="text-[#b91c1c]">Gargalo Operacional</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-            <AlertTriangle size={13} color="#b45309" />
-            <span className="text-[#b45309]">Horário de Pico</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-            <CheckCircle2 size={13} color="#15803d" />
-            <span className="text-[#15803d]">Capacidade Normal</span>
-          </div>
-        </div>
       </div>
     </div>
   );
