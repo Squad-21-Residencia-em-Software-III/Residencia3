@@ -18,6 +18,7 @@ import {
   TableToolbar,
   type BadgeTone,
 } from '../components/ui';
+import { BotaoExportarRelatorio } from '../components/relatorios/BotaoExportarRelatorio';
 import { mensagemDeErro } from '../services/api/http';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { solicitacoesApi } from '../services/api/solicitacoesApi';
@@ -525,6 +526,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         <TableToolbar
           title={textos.titulo}
           subtitle={`${filtradas.length} de ${viagens.length} ${textos.registro}`}
+          actions={!somenteProprias ? <BotaoExportarRelatorio tipo="viagens" /> : undefined}
           newLabel={podeAgendar ? 'Agendar Viagem' : undefined}
           onNew={podeAgendar ? () => setModalNovaAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
