@@ -26,6 +26,8 @@ import { ModalVeiculo } from './veiculos/ModalVeiculo';
 import { DrawerDetalhesVeiculo } from './veiculos/DrawerDetalhesVeiculo';
 import { ModalAbastecimento } from './abastecimento/ModalAbastecimento';
 import { ModalMulta } from './multas/ModalMulta';
+import { VeiculosDisponiveis } from './veiculos/VeiculosDisponiveis';
+import { usePermissao } from '../utils/permissoes';
 
 const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
   DISPONIVEL: { label: 'Disponível', tone: 'success' },
@@ -34,7 +36,25 @@ const STATUS_MAP: Record<StatusVeiculo, { label: string; tone: BadgeTone }> = {
   MANUTENCAO: { label: 'Manutenção', tone: 'danger' },
 };
 
+/**
+ * Quem tem acesso aos detalhes vê a gestão completa da frota; o Solicitante vê só os
+ * veículos disponíveis, sem dados sensíveis (a API já devolve a lista reduzida).
+ */
 export default function VeiculosPage() {
+  const { pode } = usePermissao();
+  return pode('veiculos.detalhes') ? <GestaoDeVeiculos /> : <VeiculosDisponiveis />;
+}
+
+function GestaoDeVeiculos() {
+  // Km de veículo da outra frota não aparece para o gestor (fica só a consulta básica)
+  const { pode, podeNaFrota, podeVerDetalhesDaFrota } = usePermissao();
+  const podeCadastrar = pode('veiculos.cadastrar');
+  // Cada gestor só cadastra e edita veículos da própria frota (o Administrador, nas duas)
+  const podeAdministrativa = podeNaFrota('veiculos.cadastrar', 'ADMINISTRATIVA');
+  const podeSvo = podeNaFrota('veiculos.cadastrar', 'SVO');
+  const frotaFixa =
+    podeAdministrativa && !podeSvo ? 'ADMINISTRATIVA' : podeSvo && !podeAdministrativa ? 'SVO' : undefined;
+  const podeEditar = (v: Veiculo) => podeNaFrota('veiculos.cadastrar', v.tipo_frota);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -217,8 +237,8 @@ export default function VeiculosPage() {
         <TableToolbar
           title="Frota de Veículos"
           subtitle={`${veiculosFiltrados.length} de ${veiculos.length} veículos listados`}
-          newLabel="Novo Veículo"
-          onNew={() => setModalAberto(true)}
+          newLabel={podeCadastrar ? 'Novo Veículo' : undefined}
+          onNew={podeCadastrar ? () => setModalAberto(true) : undefined}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
           isFilterActive={
             filtroTipo !== 'TODOS' ||
@@ -352,23 +372,33 @@ export default function VeiculosPage() {
                       </span>
                     </td>
                     <td>{v.capacidade_maxima}</td>
-                    <td>{v.km_atual.toLocaleString('pt-BR')} km</td>
+                    <td>
+                      {podeVerDetalhesDaFrota(v.tipo_frota) ? (
+                        `${v.km_atual.toLocaleString('pt-BR')} km`
+                      ) : (
+                        <span title="Disponível só para a gestão desta frota">—</span>
+                      )}
+                    </td>
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>
                     <td>
                       <div className="flex items-center justify-start gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setVeiculoEditando(v);
-                          }}
-                          title={`Editar dados de ${v.modelo}`}
-                        >
-                          Editar
-                        </Button>
+                        {podeEditar(v) ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVeiculoEditando(v);
+                            }}
+                            title={`Editar dados de ${v.modelo}`}
+                          >
+                            Editar
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -385,6 +415,7 @@ export default function VeiculosPage() {
       {(modalAberto || veiculoEditando) && (
         <ModalVeiculo
           veiculoParaEditar={veiculoEditando}
+          apenasFrota={frotaFixa}
           onClose={() => {
             setModalAberto(false);
             setVeiculoEditando(null);
@@ -397,15 +428,23 @@ export default function VeiculosPage() {
       <DrawerDetalhesVeiculo
         veiculo={veiculoDetalhes}
         onClose={() => setVeiculoDetalhes(null)}
-        onEditar={(v) => setVeiculoEditando(v)}
-        onNovoAbastecimento={(v) => {
-          setVeiculoPreSelecionado(v);
-          setModalAbastecimentoAberto(true);
-        }}
-        onNovaMulta={(v) => {
-          setVeiculoPreSelecionado(v);
-          setModalMultaAberto(true);
-        }}
+        onEditar={veiculoDetalhes && podeEditar(veiculoDetalhes) ? (v) => setVeiculoEditando(v) : undefined}
+        onNovoAbastecimento={
+          veiculoDetalhes && podeNaFrota('abastecimentos.registrar', veiculoDetalhes.tipo_frota)
+            ? (v) => {
+                setVeiculoPreSelecionado(v);
+                setModalAbastecimentoAberto(true);
+              }
+            : undefined
+        }
+        onNovaMulta={
+          veiculoDetalhes && podeNaFrota('multas.gerenciar', veiculoDetalhes.tipo_frota)
+            ? (v) => {
+                setVeiculoPreSelecionado(v);
+                setModalMultaAberto(true);
+              }
+            : undefined
+        }
       />
 
       {/* ── Modal de Abastecimento (Ação Rápida do Drawer) ── */}
@@ -416,6 +455,7 @@ export default function VeiculosPage() {
             setVeiculoPreSelecionado(null);
           }}
           onSalvar={handleSalvarAbastecimento}
+          filtrarVeiculo={(v) => podeNaFrota('abastecimentos.registrar', v.tipo_frota)}
           veiculoIdInicial={
             veiculoPreSelecionado ? String(veiculoPreSelecionado.id) : undefined
           }
@@ -430,6 +470,7 @@ export default function VeiculosPage() {
             setVeiculoPreSelecionado(null);
           }}
           onSalvar={handleSalvarMulta}
+          filtrarVeiculo={(v) => podeNaFrota('multas.gerenciar', v.tipo_frota)}
           veiculoIdInicial={
             veiculoPreSelecionado ? String(veiculoPreSelecionado.id) : undefined
           }

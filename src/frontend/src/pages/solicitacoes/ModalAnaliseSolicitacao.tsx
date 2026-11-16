@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { Alert, Avatar, Badge, Button, IdBadge, Modal, PlacaMercosul, Textarea } from '../../components/ui';
 import type { BadgeTone } from '../../components/ui';
-import { useAuth } from '../../contexts/AuthContext';
 import { mensagemDeErro } from '../../services/api/http';
 import { solicitacoesApi } from '../../services/api/solicitacoesApi';
 import type {
@@ -22,15 +21,17 @@ import type {
   StatusSolicitacao,
 } from '../../types/solicitacao';
 import { LABELS_STATUS_SOLICITACAO } from '../../types/solicitacao';
-import { PERFIS } from '../../types/usuario';
 import { cn } from '../../utils/cn';
 
 interface ModalAnaliseSolicitacaoProps {
   solicitacao: SolicitacaoViagem | null;
   onClose: () => void;
   onAprovar: (id: number) => Promise<void>;
-  onRecusar: (id: number, motivo?: string) => Promise<void>;
+  /** Toda recusa exige justificativa (até 200 caracteres). */
+  onRecusar: (id: number, motivo: string) => Promise<void>;
   onAgendar?: (solicitacao: SolicitacaoViagem) => void;
+  /** Mostra Aprovar/Recusar. Sem isso, o modal é só de consulta. */
+  podeDecidir?: boolean;
 }
 
 function obterToneStatus(status: StatusSolicitacao): BadgeTone {
@@ -72,9 +73,11 @@ export function ModalAnaliseSolicitacao({
   onAprovar,
   onRecusar,
   onAgendar,
+  podeDecidir = true,
 }: ModalAnaliseSolicitacaoProps) {
   const [modoRecusa, setModoRecusa] = useState(false);
   const [motivoRecusa, setMotivoRecusa] = useState('');
+  const [erroMotivo, setErroMotivo] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [processando, setProcessando] = useState(false);
   const [disponibilidade, setDisponibilidade] = useState<DisponibilidadeSolicitacao | null>(null);
@@ -85,8 +88,8 @@ export function ModalAnaliseSolicitacao({
 
   // Consulta de disponibilidade no período pretendido (SCRUM-73).
   // A API libera essa rota somente para o Gestor de Frota.
-  const { temPerfil } = useAuth();
-  const podeConsultarDisponibilidade = temPerfil(PERFIS.GESTOR_FROTA);
+  // A disponibilidade só interessa a quem decide a solicitação
+  const podeConsultarDisponibilidade = podeDecidir;
   const solicitacaoId = solicitacao?.id;
 
   useEffect(() => {
@@ -128,14 +131,19 @@ export function ModalAnaliseSolicitacao({
 
   const handleConfirmarRecusa = async () => {
     const motivoLimpo = motivoRecusa.trim();
-    if (motivoLimpo.length > 200) {
-      setErro('O motivo da recusa deve conter no máximo 200 caracteres.');
+    if (!motivoLimpo) {
+      setErroMotivo('Informe a justificativa da recusa.');
       return;
     }
+    if (motivoLimpo.length > 200) {
+      setErroMotivo('A justificativa da recusa deve conter no máximo 200 caracteres.');
+      return;
+    }
+    setErroMotivo(null);
     setErro(null);
     setProcessando(true);
     try {
-      await onRecusar(solicitacao.id, motivoLimpo || undefined);
+      await onRecusar(solicitacao.id, motivoLimpo);
       onClose();
     } catch (error) {
       setErro(mensagemDeErro(error));
@@ -320,20 +328,38 @@ export function ModalAnaliseSolicitacao({
           <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
             <Textarea
               id="motivo-recusa-input"
-              label="Justificativa da Recusa (opcional, máx. 200 caracteres):"
+              label="Justificativa da Recusa * (máx. 200 caracteres):"
               value={motivoRecusa}
-              onChange={(e) => setMotivoRecusa(e.target.value)}
+              onChange={(e) => {
+                setMotivoRecusa(e.target.value);
+                if (erroMotivo) setErroMotivo(null);
+              }}
+              required
+              aria-invalid={Boolean(erroMotivo)}
+              aria-describedby={erroMotivo ? 'motivo-recusa-erro' : undefined}
               placeholder="Ex: Veículos da categoria alocados em outra missão de urgência."
               maxLength={200}
               rows={3}
               className="bg-white text-[13px]"
             />
+            {erroMotivo && (
+              <p id="motivo-recusa-erro" role="alert" className="-mt-2 text-xs font-semibold text-rose-700">
+                {erroMotivo}
+              </p>
+            )}
             <div className="mt-2 flex items-center justify-between">
               <span className="text-[11px] text-slate-500">
                 {motivoRecusa.length}/200 caracteres
               </span>
               <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setModoRecusa(false)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setModoRecusa(false);
+                    setErroMotivo(null);
+                  }}
+                >
                   Cancelar
                 </Button>
                 <Button
@@ -355,7 +381,7 @@ export function ModalAnaliseSolicitacao({
             Fechar
           </Button>
 
-          {solicitacao.status === 'PENDENTE_APROVACAO' && !modoRecusa && (
+          {solicitacao.status === 'PENDENTE_APROVACAO' && podeDecidir && !modoRecusa && (
             <>
               <Button variant="danger-outline" onClick={() => setModoRecusa(true)}>
                 <XCircle size={15} className="mr-1.5" />

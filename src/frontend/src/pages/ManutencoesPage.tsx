@@ -29,6 +29,8 @@ import { manutencoesApi } from '../services/api/manutencoesApi';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { mensagemDeErro } from '../services/api/http';
 import type { Veiculo } from '../types/veiculo';
+import { usePermissao } from '../utils/permissoes';
+import { MENSAGEM_VEICULO_NAO_PERMITIDO, useVeiculoPermitido } from '../utils/veiculoPermitido';
 import type {
   Manutencao,
   NovaManutencaoInput,
@@ -50,6 +52,10 @@ const TIPO_MAP: Record<TipoManutencao, { label: string; tone: BadgeTone }> = {
 export default function ManutencoesPage() {
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
+  const { pode, podeNaFrota } = usePermissao();
+  const podeRegistrar = pode('manutencoes.gerenciar');
+  const podeGerenciar = (m: Manutencao) =>
+    podeNaFrota('manutencoes.gerenciar', veiculos.find((v) => v.id === m.veiculo_id)?.tipo_frota);
   const [carregando, setCarregando] = useState(true);
 
   // Filtros
@@ -72,6 +78,13 @@ export default function ManutencoesPage() {
   const [statusForm, setStatusForm] = useState<StatusManutencao>('CONCLUIDA');
   const [descricaoForm, setDescricaoForm] = useState<string>('');
   const [erroForm, setErroForm] = useState<string>('');
+  // Cada gestor só registra manutenção em veículo da própria frota (Admin, nas duas)
+  const { permitidos: veiculosEditaveis, selecaoValida: veiculoFormValido } = useVeiculoPermitido(
+    veiculos,
+    (v) => podeNaFrota('manutencoes.gerenciar', v.tipo_frota),
+    veiculoIdForm,
+    setVeiculoIdForm,
+  );
 
   // Modal de Edição
   const [manutencaoEditar, setManutencaoEditar] = useState<Manutencao | null>(null);
@@ -93,9 +106,6 @@ export default function ManutencoesPage() {
       setErroCarga(null);
       const listaVeiculos = await veiculosApi.listar();
       setVeiculos(listaVeiculos);
-      if (listaVeiculos.length > 0 && !veiculoIdForm) {
-        setVeiculoIdForm(String(listaVeiculos[0].id));
-      }
       const listaManutencoes = await manutencoesApi.listarTodas(listaVeiculos.map((v) => v.id));
       setManutencoes(listaManutencoes);
     } catch (err) {
@@ -105,7 +115,7 @@ export default function ManutencoesPage() {
     } finally {
       setCarregando(false);
     }
-  }, [veiculoIdForm]);
+  }, []);
 
   useEffect(() => {
     carregarDados();
@@ -265,6 +275,10 @@ export default function ManutencoesPage() {
       setErroForm('Selecione um veículo.');
       return;
     }
+    if (!veiculoFormValido) {
+      setErroForm(MENSAGEM_VEICULO_NAO_PERMITIDO);
+      return;
+    }
     const custoNum = parseFloat(custoForm.replace(',', '.'));
     if (isNaN(custoNum) || custoNum < 0) {
       setErroForm('Informe um custo numérico válido.');
@@ -347,8 +361,8 @@ export default function ManutencoesPage() {
               ? 'Carregando registros...'
               : `${filtradas.length} manutenç${filtradas.length === 1 ? 'ão registrada' : 'ões registradas'}`
           }
-          newLabel="Nova Manutenção"
-          onNew={() => setModalAberto(true)}
+          newLabel={podeRegistrar ? 'Nova Manutenção' : undefined}
+          onNew={podeRegistrar ? () => setModalAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
           isFilterActive={
             filtroVeiculo !== 'TODOS' ||
@@ -515,7 +529,7 @@ export default function ManutencoesPage() {
                   </td>
                   <td>
                     <div className="flex items-center justify-start gap-1.5">
-                      {m.status === 'AGENDADA' && (
+                      {m.status === 'AGENDADA' && podeGerenciar(m) && (
                         <Button
                           variant="primary"
                           size="sm"
@@ -525,7 +539,7 @@ export default function ManutencoesPage() {
                           Iniciar
                         </Button>
                       )}
-                      {m.status === 'EM_ANDAMENTO' && (
+                      {m.status === 'EM_ANDAMENTO' && podeGerenciar(m) && (
                         <Button
                           variant="primary"
                           size="sm"
@@ -535,22 +549,28 @@ export default function ManutencoesPage() {
                           Concluir
                         </Button>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleAbrirEdicao(m)}
-                        title="Editar registro de manutenção"
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        variant="danger-outline"
-                        size="sm"
-                        onClick={() => setManutencaoExcluir(m)}
-                        title="Excluir manutenção"
-                      >
-                        Excluir
-                      </Button>
+                      {podeGerenciar(m) ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAbrirEdicao(m)}
+                            title="Editar registro de manutenção"
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="danger-outline"
+                            size="sm"
+                            onClick={() => setManutencaoExcluir(m)}
+                            title="Excluir manutenção"
+                          >
+                            Excluir
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -578,8 +598,12 @@ export default function ManutencoesPage() {
                 onChange={(e: ChangeEvent<HTMLSelectElement>) => setVeiculoIdForm(e.target.value)}
                 required
               >
-                <option value="">Selecione a viatura</option>
-                {veiculos.map((v) => (
+                <option value="">
+                  {veiculosEditaveis.length === 0 && veiculos.length > 0
+                    ? 'Nenhum veículo disponível para o seu perfil'
+                    : 'Selecione a viatura'}
+                </option>
+                {veiculosEditaveis.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.placa} — {v.modelo}
                   </option>
