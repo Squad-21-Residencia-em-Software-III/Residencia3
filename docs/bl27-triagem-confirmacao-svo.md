@@ -1,7 +1,9 @@
-# BL27 — Triagem e confirmação SVO
+# BL27 — Triagem, confirmação e recusa SVO
 
-A API permite consultar solicitações SVO para análise e confirmar o atendimento,
-gerando a ordem de coleta na mesma transação. Implementa RF20, RF21 e RN09.
+A API permite consultar solicitações SVO para análise e confirmar ou recusar o
+atendimento. A confirmação gera a ordem de coleta na mesma transação; a recusa
+exige justificativa e encerra a solicitação sem gerar ordens. Implementa RF20,
+RF21 e RN09.
 
 ## Endpoints
 
@@ -12,11 +14,28 @@ Exigem token JWT e perfil `GESTOR_SVO` ou `ADMINISTRADOR`.
 | GET | `/api/solicitacoes-svo` | `200`, `{ dados, paginacao }` |
 | GET | `/api/solicitacoes-svo/:id` | `200`, campos da solicitação + `ordem` (ordem ativa ou `null`) |
 | PATCH | `/api/solicitacoes-svo/:id/confirmar` | `201` na geração; `200` na repetição; `{ solicitacao, ordem }` |
+| PATCH | `/api/solicitacoes-svo/:id/recusar` | `200`, `{ solicitacao }` com `status: "RECUSADA"` e `motivo_recusa` |
 
 A listagem aceita `status`, `pagina` (padrão 1) e `limite` (padrão 20, máximo
-100). O detalhe inclui dados do solicitante, local da ocorrência e indicador
-de material sensível. A confirmação aceita corpo ausente ou `{}` e rejeita
-campos adicionais.
+100). O detalhe inclui dados do solicitante, local da ocorrência, indicador de
+material sensível e `motivo_recusa` (quando recusada). A confirmação aceita
+corpo ausente ou `{}` e rejeita campos adicionais.
+
+## Recusa da solicitação (RF20)
+
+- Endpoint `PATCH /api/solicitacoes-svo/:id/recusar` exige corpo JSON com
+  `motivo_recusa` (ou `motivo`) não vazio após `trim()`, de 1 a 500 caracteres.
+- Corpo ausente, vazio, apenas espaços, acima de 500 caracteres ou com campos
+  extras retorna `400`.
+- Somente solicitações em `EM_TRIAGEM` podem ser recusadas. Tentativas sobre
+  solicitações já `RECUSADA`, `CONFIRMADA`, `EM_ANDAMENTO`, `CONCLUIDA` ou
+  `CANCELADA` retornam `409`.
+- Executa dentro de transação com `FOR UPDATE` (`buscarParaAtualizar`),
+  serializando chamadas concorrentes entre si e com `PATCH /:id/confirmar`.
+- Persiste `status = 'RECUSADA'` e `motivo_recusa` (coluna `TEXT` existente),
+  sem gerar ou cancelar ordens de coleta.
+- Registra auditoria no módulo `SOLICITACOES_SVO` com o autor (`usuario_id`),
+  data/hora e motivo sanitizado.
 
 ## Confirmação e alocação
 
@@ -28,7 +47,7 @@ campos adicionais.
 - Repetir a confirmação retorna a ordem existente. Solicitação `CONFIRMADA`
   exige ordem aguardando alocação; `EM_ANDAMENTO` exige ordem alocada ou em
   deslocamento. Estados incompatíveis retornam `409`.
-- Solicitações canceladas ou concluídas não podem ser confirmadas.
+- Solicitações recusadas, canceladas ou concluídas não podem ser confirmadas.
 - `POST /api/viagens` com `tipo_operacao: "SVO"` aloca a ordem existente e retorna
   `200`. Exige solicitação confirmada e ordem aguardando alocação; mantém as
   validações de recursos, CNH e capacidade. Viagens administrativas retornam `201`.
@@ -55,11 +74,12 @@ formato `{ erro }`; erros de validação também incluem `detalhes`.
 
 Aplicar `npm run migrate` em `src/backend`. A migration
 `20261112120000_bl27_confirmacao_e_ordem_svo.js` roda depois da
-`20261111140211_ajustes_solicitacoes_svo.js` (que já criou os status
-`CONFIRMADA` e `RECUSADA`) e adiciona `confirmado_por`, `confirmado_em`
-(`timestamptz`), o estado `AGUARDANDO_ALOCACAO` das ordens, um índice único de
-ordem ativa por solicitação e restrições de recursos conforme o estado da ordem.
-A confirmação bloqueia a solicitação com `FOR UPDATE`.
+`20261111140211_ajustes_solicitacoes_svo.js` (que já criou a coluna
+`motivo_recusa` e os status `CONFIRMADA` e `RECUSADA`) e adiciona
+`confirmado_por`, `confirmado_em` (`timestamptz`), o estado
+`AGUARDANDO_ALOCACAO` das ordens, um índice único de ordem ativa por solicitação
+e restrições de recursos conforme o estado da ordem. A confirmação e a recusa
+bloqueiam a solicitação com `FOR UPDATE`.
 
 Solicitações legadas em triagem com ordens alocadas/em deslocamento passam a
 `EM_ANDAMENTO`; suas ordens são preservadas, com autor/data de confirmação nulos.
@@ -72,7 +92,8 @@ migration 20261111140211 e não é alterada no rollback; as colunas
 ## Testes
 
 Em `src/backend`: `npm run typecheck`, `npm test` e `npm run build`.
-Os testes cobrem consulta, confirmação, repetição, estados incompatíveis,
+Os testes cobrem consulta, confirmação, repetição, recusa com justificativa
+obrigatória, concorrência entre recusa e confirmação, estados incompatíveis,
 validação de entrada, permissões, alocação sem geração de outra ordem e
 cancelamento da ordem aguardando alocação. Listagem e paginação ficam em
 `solicitacaoSvoRoutes.test.ts` (BL26).

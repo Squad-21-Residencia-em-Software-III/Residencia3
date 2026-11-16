@@ -9,6 +9,17 @@ import {
 import type { CriarAbastecimentoInput } from '../validators/abastecimentoSchemas';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import type { Usuario } from '../models/usuarioModel';
+import { veiculoModel } from '../models/veiculoModel';
+
+const VEICULO_NAO_VINCULADO = 'Este veículo não está vinculado a uma viagem sua em andamento ou agendada';
+
+// O motorista só atua sobre os veículos das próprias viagens/ordens ativas (DVP: "veículos a ele vinculados")
+async function garantirVeiculoVinculado(usuarioId: number, veiculoId: number): Promise<void> {
+  const vinculados = await veiculoModel.idsVinculadosAoUsuarioMotorista(usuarioId);
+  if (!vinculados.includes(Number(veiculoId))) {
+    throw new AppError(VEICULO_NAO_VINCULADO, 403);
+  }
+}
 
 export type IdentificadorAutor = Usuario | { id: number; perfil?: Perfil } | number;
 
@@ -72,6 +83,8 @@ export const abastecimentoService = {
           403
         );
       }
+
+      await garantirVeiculoVinculado(autorId, veiculo.id);
 
       motoristaIdFinal = motoristaDoUsuario.id;
     } else {
@@ -182,6 +195,8 @@ export const abastecimentoService = {
         if (motoristaDoUsuario.tipo_motorista === 'SVO' && veiculo.tipo_frota !== 'SVO') {
           throw new AppError('Acesso não autorizado aos registros deste veículo', 403);
         }
+
+        await garantirVeiculoVinculado(autorId, veiculo.id);
       }
     }
 

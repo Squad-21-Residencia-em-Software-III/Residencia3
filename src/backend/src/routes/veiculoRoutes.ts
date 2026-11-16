@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { PERFIS } from '../constants/perfis';
 import { veiculoController } from '../controllers/veiculoController';
 import { autenticar } from '../middlewares/autenticar';
-import { autorizar } from '../middlewares/autorizar';
+import { autorizar, exigirAssociacaoSvo } from '../middlewares/autorizar';
 
 export const veiculoRoutes = Router();
 
 veiculoRoutes.use(autenticar);
+// O Gestor SVO só consulta a frota se estiver associado à unidade SVO
+veiculoRoutes.use(exigirAssociacaoSvo);
 
 veiculoRoutes.get(
   '/svo/disponiveis',

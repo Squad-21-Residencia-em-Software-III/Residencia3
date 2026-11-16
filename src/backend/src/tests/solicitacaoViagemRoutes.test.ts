@@ -37,6 +37,7 @@ describe('POST /api/solicitacoes-viagem', () => {
 
     vi.mocked(authService.usuarioDoToken).mockResolvedValue({
       id: 1,
+      perfil: 'SOLICITANTE',
     } as Awaited<ReturnType<typeof authService.usuarioDoToken>>);
 
     vi.mocked(solicitacaoViagemService.criar).mockResolvedValue({
@@ -45,6 +46,23 @@ describe('POST /api/solicitacoes-viagem', () => {
       ...dadosValidos,
       status: 'PENDENTE_APROVACAO',
     });
+  });
+
+  it.each(['MOTORISTA_FROTA', 'MOTORISTA_SVO'])('deve retornar 403 quando um %s tentar solicitar viagem', async (perfil) => {
+    vi.mocked(authService.usuarioDoToken).mockResolvedValueOnce({ id: 1, perfil } as never);
+
+    const resposta = await request(app).post(endpoint).set('Authorization', 'Bearer token-teste').send(dadosValidos);
+
+    expect(resposta.status).toBe(403);
+    expect(solicitacaoViagemService.criar).not.toHaveBeenCalled();
+  });
+
+  it.each(['SOLICITANTE', 'GESTOR_FROTA', 'GESTOR_SVO', 'ADMINISTRADOR'])('deve permitir que %s solicite viagem', async (perfil) => {
+    vi.mocked(authService.usuarioDoToken).mockResolvedValueOnce({ id: 1, perfil } as never);
+
+    const resposta = await request(app).post(endpoint).set('Authorization', 'Bearer token-teste').send(dadosValidos);
+
+    expect(resposta.status).toBe(201);
   });
 
   it('deve retornar 201 para uma solicitação válida', async () => {

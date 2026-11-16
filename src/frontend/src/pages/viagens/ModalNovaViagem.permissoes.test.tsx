@@ -1,14 +1,25 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { equipesSvoApi } from '../../services/api/equipesSvoApi';
+import { solicitacoesSvoApi } from '../../services/api/solicitacoesSvoApi';
 import { veiculosApi } from '../../services/api/veiculosApi';
 import type { Motorista } from '../../types/motorista';
 import type { Veiculo } from '../../types/veiculo';
 import { operacoesAgendaveis } from '../../utils/permissoes';
 import { ModalNovaViagem } from './ModalNovaViagem';
 
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ usuario: null }),
+}));
 vi.mock('../../services/api/veiculosApi', () => ({
   veiculosApi: { listarOcupacaoSvo: vi.fn() },
+}));
+vi.mock('../../services/api/solicitacoesSvoApi', () => ({
+  solicitacoesSvoApi: { listarTodas: vi.fn() },
+}));
+vi.mock('../../services/api/equipesSvoApi', () => ({
+  equipesSvoApi: { listarDisponiveis: vi.fn() },
 }));
 
 const veiculoSvo: Veiculo = {
@@ -59,6 +70,20 @@ const opcoesOperacao = () =>
 describe('ModalNovaViagem: agendamento administrativo x alocação SVO', () => {
   beforeEach(() => {
     vi.mocked(veiculosApi.listarOcupacaoSvo).mockResolvedValue([]);
+    vi.mocked(solicitacoesSvoApi.listarTodas).mockResolvedValue([
+      {
+        id: 1,
+        registrante_id: 4,
+        dados_solicitante: 'Hospital',
+        local_ocorrencia: 'Centro',
+        material_sensivel: false,
+        status: 'CONFIRMADA',
+      },
+    ]);
+    vi.mocked(equipesSvoApi.listarDisponiveis).mockResolvedValue({
+      periodo: { inicio: '2026-11-16T12:00:00.000Z', fim: '2026-11-16T13:00:00.000Z' },
+      equipes: [],
+    });
   });
 
   it('Gestor SVO só aloca ordens SVO: a operação administrativa nem aparece', async () => {
@@ -69,7 +94,7 @@ describe('ModalNovaViagem: agendamento administrativo x alocação SVO', () => {
     // Veículos da frota SVO, não da administrativa
     expect(screen.getByRole('option', { name: /Fiat Ducato/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Fiat Uno/ })).not.toBeInTheDocument();
-    expect(await screen.findByText(/agendamento SVO/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Solicitação SVO Vinculada *')).toBeInTheDocument();
   });
 
   it('Gestor de Frota só agenda viagens administrativas', () => {
