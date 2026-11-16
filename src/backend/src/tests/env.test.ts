@@ -125,3 +125,43 @@ describe('Configuração de CORS, proxy e cookie (env)', () => {
     expect(() => carregar({ COOKIE_SECURE: 'sim' })).toThrow('COOKIE_SECURE');
   });
 });
+
+describe('Limites de requisição e tempo (env)', () => {
+  it('aplica os padrões e desliga os limites gerais apenas nos testes automatizados', () => {
+    expect(carregar()).toMatchObject({
+      limitarRequisicoes: true,
+      rateLimitLeituraPorMin: 300,
+      rateLimitEscritaPorMin: 60,
+      rateLimitPesadasPorMin: 30,
+      maxRequisicoesSimultaneas: 50,
+      requestTimeoutMs: 15000,
+    });
+    expect(carregar({ NODE_ENV: 'test' }).limitarRequisicoes).toBe(false);
+    expect(carregar({ NODE_ENV: 'test', RATE_LIMIT: 'on' }).limitarRequisicoes).toBe(true);
+  });
+
+  it('aceita valores configurados dentro da faixa', () => {
+    expect(carregar({ RATE_LIMIT_LEITURA_POR_MIN: '600', REQUEST_TIMEOUT_MS: '30000' })).toMatchObject({
+      rateLimitLeituraPorMin: 600,
+      requestTimeoutMs: 30000,
+    });
+  });
+
+  it.each([
+    ['RATE_LIMIT_LEITURA_POR_MIN', '0'],
+    ['RATE_LIMIT_ESCRITA_POR_MIN', 'muito'],
+    ['RATE_LIMIT_PESADAS_POR_MIN', '-1'],
+    ['MAX_REQUISICOES_SIMULTANEAS', '1.5'],
+    ['REQUEST_TIMEOUT_MS', '500'],
+    ['REQUEST_TIMEOUT_MS', '999999'],
+    ['RATE_LIMIT', 'talvez'],
+  ])('rejeita %s=%s', (nome, valor) => {
+    expect(() => carregar({ [nome]: valor })).toThrow(nome);
+  });
+
+  it('não permite desligar os limites em produção', () => {
+    expect(() => carregar({ NODE_ENV: 'production', TRUST_PROXY: '2', RATE_LIMIT: 'off' })).toThrow(
+      'RATE_LIMIT não pode ser desligado em produção'
+    );
+  });
+});

@@ -140,6 +140,29 @@ function cookieSeguro(valor: string | undefined, producao: boolean): boolean {
   return valor === 'true';
 }
 
+// Inteiro configurável dentro de uma faixa segura (limites de requisição e tempos)
+function inteiroNaFaixa(nome: string, valor: string | undefined, padrao: number, minimo: number, maximo: number): number {
+  if (valor === undefined || valor.trim() === '') return padrao;
+  const numero = Number(valor.trim());
+  if (!/^\d+$/.test(valor.trim()) || numero < minimo || numero > maximo) {
+    throw new Error(`${nome} deve ser um número inteiro entre ${minimo} e ${maximo}`);
+  }
+  return numero;
+}
+
+// Limites gerais de requisição (docs/limites-e-timeouts.md). Ficam desligados por padrão só nos
+// testes automatizados; em produção não podem ser desligados.
+function limitesAtivos(valor: string | undefined, nodeEnv: string, producao: boolean): boolean {
+  if (valor === undefined || valor === '') return nodeEnv !== 'test';
+  if (valor !== 'on' && valor !== 'off') {
+    throw new Error('RATE_LIMIT deve ser on ou off');
+  }
+  if (producao && valor === 'off') {
+    throw new Error('RATE_LIMIT não pode ser desligado em produção');
+  }
+  return valor === 'on';
+}
+
 export function carregarEnv(origem: Origem = process.env) {
   const nodeEnv = origem.NODE_ENV ?? 'development';
   const producao = nodeEnv === 'production';
@@ -167,6 +190,12 @@ export function carregarEnv(origem: Origem = process.env) {
     corsOrigens: origensCors(origem.CORS_ORIGIN, producao),
     trustProxy: confiancaProxy(origem.TRUST_PROXY, producao),
     cookieSecure: cookieSeguro(origem.COOKIE_SECURE, producao),
+    limitarRequisicoes: limitesAtivos(origem.RATE_LIMIT, nodeEnv, producao),
+    rateLimitLeituraPorMin: inteiroNaFaixa('RATE_LIMIT_LEITURA_POR_MIN', origem.RATE_LIMIT_LEITURA_POR_MIN, 300, 10, 10000),
+    rateLimitEscritaPorMin: inteiroNaFaixa('RATE_LIMIT_ESCRITA_POR_MIN', origem.RATE_LIMIT_ESCRITA_POR_MIN, 60, 5, 5000),
+    rateLimitPesadasPorMin: inteiroNaFaixa('RATE_LIMIT_PESADAS_POR_MIN', origem.RATE_LIMIT_PESADAS_POR_MIN, 30, 1, 1000),
+    maxRequisicoesSimultaneas: inteiroNaFaixa('MAX_REQUISICOES_SIMULTANEAS', origem.MAX_REQUISICOES_SIMULTANEAS, 50, 1, 1000),
+    requestTimeoutMs: inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000),
   };
 }
 
