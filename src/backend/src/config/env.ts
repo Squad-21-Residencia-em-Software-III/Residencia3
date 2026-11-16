@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import path from 'node:path';
 import dotenv from 'dotenv';
 
@@ -24,6 +25,8 @@ const UNIDADES: Record<string, number> = { s: 1, m: 60, h: 60 * 60, d: 24 * 60 *
 // Origem do frontend no desenvolvimento local (Vite)
 const CORS_ORIGIN_PADRAO_DEV = 'http://localhost:5173';
 const MAXIMO_SALTOS_PROXY = 10;
+// Sub-redes nomeadas aceitas pelo Express em "trust proxy"
+const PRESETS_PROXY = ['loopback', 'linklocal', 'uniquelocal'];
 
 function obrigatoria(origem: Origem, nome: string): string {
   const valor = origem[nome];
@@ -75,17 +78,54 @@ function origensCors(valor: string | undefined, producao: boolean): string[] {
     if (!url || !['http:', 'https:'].includes(url.protocol) || url.origin !== item) {
       throw new Error('CORS_ORIGIN deve conter apenas origens no formato https://dominio[:porta], separadas por vírgula');
     }
+    if (producao && url.protocol !== 'https:') {
+      throw new Error('CORS_ORIGIN deve usar apenas origens https em produção');
+    }
   }
   return itens;
 }
 
-// Quantidade de proxies reversos à frente da API (Render, Vercel), usada para obter o IP real
-function saltosDeProxy(valor: string | undefined): number {
-  if (valor === undefined || valor === '') return 0;
-  if (!/^\d+$/.test(valor) || Number(valor) > MAXIMO_SALTOS_PROXY) {
-    throw new Error(`TRUST_PROXY deve ser um número inteiro de 0 a ${MAXIMO_SALTOS_PROXY}`);
+// Endereço IP ou faixa CIDR de um proxy confiável. Faixas que cobrem toda a internet
+// (prefixo /0) equivalem a confiar em qualquer cliente e são recusadas.
+function enderecoDeProxyValido(item: string): boolean {
+  if (PRESETS_PROXY.includes(item)) return true;
+  const [ip, prefixo, ...resto] = item.split('/');
+  const versao = isIP(ip ?? '');
+  if (!versao || resto.length > 0) return false;
+  if (prefixo === undefined) return true;
+  const bits = Number(prefixo);
+  return /^\d+$/.test(prefixo) && bits >= 1 && bits <= (versao === 4 ? 32 : 128);
+}
+
+// Proxies reversos à frente da API (ex.: Vercel → Render), usados pelo Express para obter o
+// IP real do cliente (req.ip) a partir do X-Forwarded-For. Aceita:
+// - número de saltos confiáveis (0 a 10), contado a partir da API;
+// - lista de IPs/CIDRs dos proxies (ou loopback, linklocal, uniquelocal).
+// "true" (confiar em qualquer proxy) é recusado: permitiria a qualquer cliente forjar o IP.
+// Em produção é obrigatório, para que a cadeia real seja declarada, e não presumida.
+// Nenhum proxy confiável é representado por false (e não 0): é o valor que o express-rate-limit
+// reconhece para acusar X-Forwarded-For inesperado (TRUST_PROXY ausente atrás de um proxy).
+function confiancaProxy(valor: string | undefined, producao: boolean): false | number | string[] {
+  if (valor === undefined || valor.trim() === '') {
+    if (producao) {
+      throw new Error('TRUST_PROXY é obrigatório em produção: informe os saltos ou os IPs/CIDRs dos proxies');
+    }
+    return false;
   }
-  return Number(valor);
+  const texto = valor.trim();
+  if (/^\d+$/.test(texto)) {
+    if (Number(texto) > MAXIMO_SALTOS_PROXY) {
+      throw new Error(`TRUST_PROXY deve ter no máximo ${MAXIMO_SALTOS_PROXY} saltos`);
+    }
+    return Number(texto) === 0 ? false : Number(texto);
+  }
+  const itens = texto.split(',').map((item) => item.trim()).filter(Boolean);
+  if (itens.length === 0 || !itens.every(enderecoDeProxyValido)) {
+    throw new Error(
+      'TRUST_PROXY deve ser um número de saltos ou uma lista de IPs/CIDRs (ou loopback, linklocal, uniquelocal); "true" e faixas /0 não são permitidos'
+    );
+  }
+  return itens;
 }
 
 // Cookies de sessão exigem HTTPS em produção; COOKIE_SECURE=false só é aceito fora dela
@@ -117,6 +157,7 @@ export function carregarEnv(origem: Origem = process.env) {
 
   return {
     nodeEnv,
+    producao,
     port: Number(origem.PORT) || 3000,
     jwtSecret: validarSegredo(obrigatoria(origem, 'JWT_SECRET')),
     jwtExpiresIn,
@@ -124,7 +165,7 @@ export function carregarEnv(origem: Origem = process.env) {
     jwtRefreshExpiresIn,
     jwtRefreshExpiraEmSegundos,
     corsOrigens: origensCors(origem.CORS_ORIGIN, producao),
-    trustProxy: saltosDeProxy(origem.TRUST_PROXY),
+    trustProxy: confiancaProxy(origem.TRUST_PROXY, producao),
     cookieSecure: cookieSeguro(origem.COOKIE_SECURE, producao),
   };
 }

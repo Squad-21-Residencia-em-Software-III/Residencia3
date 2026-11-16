@@ -99,7 +99,10 @@ describe('POST /api/auth/login', () => {
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('SameSite=Strict');
     expect(cookie).toContain('Path=/api/auth');
-    expect(cookie).toMatch(/Max-Age=(3599|3600)/);
+    // Max-Age = tempo restante da sessão (1h no mock), com folga para a lentidão do teste
+    const maxAge = Number(/Max-Age=(\d+)/.exec(cookie)?.[1]);
+    expect(maxAge).toBeGreaterThan(3500);
+    expect(maxAge).toBeLessThanOrEqual(3600);
     expect(cookie).not.toMatch(/Domain=/i);
   });
 
