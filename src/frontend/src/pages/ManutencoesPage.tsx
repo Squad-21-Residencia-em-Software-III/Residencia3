@@ -30,6 +30,7 @@ import { veiculosApi } from '../services/api/veiculosApi';
 import { mensagemDeErro } from '../services/api/http';
 import type { Veiculo } from '../types/veiculo';
 import { usePermissao } from '../utils/permissoes';
+import { MENSAGEM_VEICULO_NAO_PERMITIDO, useVeiculoPermitido } from '../utils/veiculoPermitido';
 import type {
   Manutencao,
   NovaManutencaoInput,
@@ -53,8 +54,6 @@ export default function ManutencoesPage() {
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const { pode, podeNaFrota } = usePermissao();
   const podeRegistrar = pode('manutencoes.gerenciar');
-  // Gestor SVO: só altera manutenções de veículos da frota SVO
-  const veiculosEditaveis = veiculos.filter((v) => podeNaFrota('manutencoes.gerenciar', v.tipo_frota));
   const podeGerenciar = (m: Manutencao) =>
     podeNaFrota('manutencoes.gerenciar', veiculos.find((v) => v.id === m.veiculo_id)?.tipo_frota);
   const [carregando, setCarregando] = useState(true);
@@ -79,6 +78,13 @@ export default function ManutencoesPage() {
   const [statusForm, setStatusForm] = useState<StatusManutencao>('CONCLUIDA');
   const [descricaoForm, setDescricaoForm] = useState<string>('');
   const [erroForm, setErroForm] = useState<string>('');
+  // Cada gestor só registra manutenção em veículo da própria frota (Admin, nas duas)
+  const { permitidos: veiculosEditaveis, selecaoValida: veiculoFormValido } = useVeiculoPermitido(
+    veiculos,
+    (v) => podeNaFrota('manutencoes.gerenciar', v.tipo_frota),
+    veiculoIdForm,
+    setVeiculoIdForm,
+  );
 
   // Modal de Edição
   const [manutencaoEditar, setManutencaoEditar] = useState<Manutencao | null>(null);
@@ -100,9 +106,6 @@ export default function ManutencoesPage() {
       setErroCarga(null);
       const listaVeiculos = await veiculosApi.listar();
       setVeiculos(listaVeiculos);
-      if (listaVeiculos.length > 0 && !veiculoIdForm) {
-        setVeiculoIdForm(String(listaVeiculos[0].id));
-      }
       const listaManutencoes = await manutencoesApi.listarTodas(listaVeiculos.map((v) => v.id));
       setManutencoes(listaManutencoes);
     } catch (err) {
@@ -112,7 +115,7 @@ export default function ManutencoesPage() {
     } finally {
       setCarregando(false);
     }
-  }, [veiculoIdForm]);
+  }, []);
 
   useEffect(() => {
     carregarDados();
@@ -270,6 +273,10 @@ export default function ManutencoesPage() {
     const vId = Number(veiculoIdForm);
     if (!vId) {
       setErroForm('Selecione um veículo.');
+      return;
+    }
+    if (!veiculoFormValido) {
+      setErroForm(MENSAGEM_VEICULO_NAO_PERMITIDO);
       return;
     }
     const custoNum = parseFloat(custoForm.replace(',', '.'));
@@ -591,7 +598,11 @@ export default function ManutencoesPage() {
                 onChange={(e: ChangeEvent<HTMLSelectElement>) => setVeiculoIdForm(e.target.value)}
                 required
               >
-                <option value="">Selecione a viatura</option>
+                <option value="">
+                  {veiculosEditaveis.length === 0 && veiculos.length > 0
+                    ? 'Nenhum veículo disponível para o seu perfil'
+                    : 'Selecione a viatura'}
+                </option>
                 {veiculosEditaveis.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.placa} — {v.modelo}

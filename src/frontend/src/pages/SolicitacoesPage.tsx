@@ -169,7 +169,7 @@ export default function SolicitacoesPage() {
     exibirFeedback(`Solicitação #${id} aprovada com sucesso! Liberada para agendamento.`);
   };
 
-  const handleRecusar = async (id: number, motivo?: string) => {
+  const handleRecusar = async (id: number, motivo: string) => {
     await solicitacoesApi.recusar(id, motivo);
     await recarregar();
     exibirFeedback(`Solicitação #${id} foi recusada.`);

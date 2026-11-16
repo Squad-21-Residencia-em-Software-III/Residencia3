@@ -59,6 +59,7 @@ const MENU_POR_PERFIL: Record<Perfil, Tela[]> = {
     'Infrações',
     'Equipe',
   ],
+  // Manutenções, multas e abastecimentos: o documento só lista Administrador e Gestor de Frota
   [PERFIS.GESTOR_SVO]: [
     'Início',
     'Solicitações',
@@ -66,9 +67,6 @@ const MENU_POR_PERFIL: Record<Perfil, Tela[]> = {
     'Viagens',
     'Agenda',
     'Veículos',
-    'Abastecimento',
-    'Manutenções',
-    'Infrações',
     'Equipe',
   ],
   [PERFIS.SOLICITANTE]: ['Início', 'Solicitações', 'Veículos'],

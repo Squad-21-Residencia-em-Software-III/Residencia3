@@ -15,6 +15,8 @@ interface ModalNovaViagemProps {
   veiculos: Veiculo[];
   motoristas: Motorista[];
   solicitacaoIdInicial?: number;
+  /** Operações que o perfil pode agendar/alocar (ver `operacoesAgendaveis`). */
+  tiposPermitidos: TipoOperacaoViagem[];
   onClose: () => void;
   onSalvar: (novaViagem: NovaViagemInput) => Promise<void>;
 }
@@ -40,9 +42,12 @@ export function ModalNovaViagem({
   veiculos,
   motoristas,
   solicitacaoIdInicial,
+  tiposPermitidos,
   onClose,
   onSalvar,
 }: ModalNovaViagemProps) {
+  // Gestor SVO só aloca ordens SVO; Gestor de Frota só agenda viagens administrativas
+  const tipoInicial: TipoOperacaoViagem = tiposPermitidos[0] ?? 'ADMINISTRATIVA';
   const veiculosDoTipo = (tipo: TipoOperacaoViagem) =>
     veiculos.filter(
       (v) => v.tipo_frota === tipo && (tipo === 'SVO' || !VEICULO_BLOQUEADO.includes(v.status)),
@@ -57,16 +62,16 @@ export function ModalNovaViagem({
   const solicitacaoInicial =
     solicitacoesAprovadas.find((s) => s.id === solicitacaoIdInicial) ?? solicitacoesAprovadas[0];
 
-  const [tipoOperacao, setTipoOperacao] = useState<TipoOperacaoViagem>('ADMINISTRATIVA');
+  const [tipoOperacao, setTipoOperacao] = useState<TipoOperacaoViagem>(tipoInicial);
   const [solicitacaoId, setSolicitacaoId] = useState<string>(
     solicitacaoInicial ? String(solicitacaoInicial.id) : '',
   );
   const [veiculoId, setVeiculoId] = useState<string>(() => {
-    const primeiro = veiculosDoTipo('ADMINISTRATIVA')[0];
+    const primeiro = veiculosDoTipo(tipoInicial)[0];
     return primeiro ? String(primeiro.id) : '';
   });
   const [motoristaId, setMotoristaId] = useState<string>(() => {
-    const primeiro = motoristasDoTipo('ADMINISTRATIVA')[0];
+    const primeiro = motoristasDoTipo(tipoInicial)[0];
     return primeiro ? String(primeiro.id) : '';
   });
   const [erro, setErro] = useState<string>('');
@@ -118,6 +123,7 @@ export function ModalNovaViagem({
   }, [isSvo]);
 
   const handleMudarTipo = (novoTipo: TipoOperacaoViagem) => {
+    if (!tiposPermitidos.includes(novoTipo)) return;
     setTipoOperacao(novoTipo);
     const veiculo = veiculosDoTipo(novoTipo)[0];
     const motorista = motoristasDoTipo(novoTipo)[0];
@@ -172,8 +178,12 @@ export function ModalNovaViagem({
               handleMudarTipo(e.target.value as TipoOperacaoViagem)
             }
           >
-            <option value="ADMINISTRATIVA">Frota Administrativa (Institucional)</option>
-            <option value="SVO">Serviço de Verificação de Óbito (SVO)</option>
+            {tiposPermitidos.includes('ADMINISTRATIVA') && (
+              <option value="ADMINISTRATIVA">Frota Administrativa (Institucional)</option>
+            )}
+            {tiposPermitidos.includes('SVO') && (
+              <option value="SVO">Serviço de Verificação de Óbito (SVO)</option>
+            )}
           </Select>
         </div>
 

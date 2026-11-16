@@ -48,8 +48,11 @@ export default function VeiculosPage() {
 function GestaoDeVeiculos() {
   const { pode, podeNaFrota } = usePermissao();
   const podeCadastrar = pode('veiculos.cadastrar');
-  // Gestor SVO: só cadastra e edita veículos da frota SVO
-  const frotaFixa = podeCadastrar && !podeNaFrota('veiculos.cadastrar', 'ADMINISTRATIVA') ? 'SVO' : undefined;
+  // Cada gestor só cadastra e edita veículos da própria frota (o Administrador, nas duas)
+  const podeAdministrativa = podeNaFrota('veiculos.cadastrar', 'ADMINISTRATIVA');
+  const podeSvo = podeNaFrota('veiculos.cadastrar', 'SVO');
+  const frotaFixa =
+    podeAdministrativa && !podeSvo ? 'ADMINISTRATIVA' : podeSvo && !podeAdministrativa ? 'SVO' : undefined;
   const podeEditar = (v: Veiculo) => podeNaFrota('veiculos.cadastrar', v.tipo_frota);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -445,6 +448,7 @@ function GestaoDeVeiculos() {
             setVeiculoPreSelecionado(null);
           }}
           onSalvar={handleSalvarAbastecimento}
+          filtrarVeiculo={(v) => podeNaFrota('abastecimentos.registrar', v.tipo_frota)}
           veiculoIdInicial={
             veiculoPreSelecionado ? String(veiculoPreSelecionado.id) : undefined
           }
@@ -459,6 +463,7 @@ function GestaoDeVeiculos() {
             setVeiculoPreSelecionado(null);
           }}
           onSalvar={handleSalvarMulta}
+          filtrarVeiculo={(v) => podeNaFrota('multas.gerenciar', v.tipo_frota)}
           veiculoIdInicial={
             veiculoPreSelecionado ? String(veiculoPreSelecionado.id) : undefined
           }

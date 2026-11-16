@@ -45,7 +45,7 @@ export default function MultasPage() {
   const [multas, setMultas] = useState<Multa[]>([]);
   const { pode, podeNaFrota } = usePermissao();
   const podeRegistrar = pode('multas.gerenciar');
-  // Gestor SVO: só altera multas de veículos da frota SVO
+  // Cada gestor só altera multas de veículos da própria frota (o Administrador, nas duas)
   const podeGerenciar = (m: Multa) => podeNaFrota('multas.gerenciar', m.veiculo_tipo_frota);
   const [documentosAlerta, setDocumentosAlerta] = useState<DocumentoComAlerta[]>([]);
   const [carregando, setCarregando] = useState(true);

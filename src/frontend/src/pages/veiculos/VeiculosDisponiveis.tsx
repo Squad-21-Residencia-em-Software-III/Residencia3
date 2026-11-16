@@ -14,6 +14,16 @@ const LABEL_FROTA: Record<string, string> = {
 };
 
 /**
+ * `capacidade_maxima` muda de sentido conforme a frota: na administrativa são lugares para
+ * pessoas; na SVO, quantos corpos o veículo transporta (até 4). A capacidade da cabine SVO ainda
+ * não existe no cadastro, então não é exibida.
+ */
+function rotuloCapacidade({ capacidade_maxima: n, tipo_frota }: VeiculoDisponivel) {
+  if (tipo_frota === 'SVO') return `Transporte de até ${n} ${n === 1 ? 'corpo' : 'corpos'}`;
+  return `${n} ${n === 1 ? 'lugar' : 'lugares'}`;
+}
+
+/**
  * Consulta de veículos para quem não gerencia a frota (Solicitante): lista só os disponíveis,
  * com modelo, capacidade e frota. A API já devolve a lista filtrada e sem dados sensíveis.
  */
@@ -100,9 +110,7 @@ export function VeiculosDisponiveis() {
                     <td>
                       <strong className="font-semibold text-slate-900">{v.modelo}</strong>
                     </td>
-                    <td>
-                      {v.capacidade_maxima} {v.capacidade_maxima === 1 ? 'lugar' : 'lugares'}
-                    </td>
+                    <td>{rotuloCapacidade(v)}</td>
                     <td>
                       <span
                         className={cn(

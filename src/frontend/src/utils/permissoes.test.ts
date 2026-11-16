@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { LISTA_PERFIS, PERFIS } from '../types/usuario';
 import type { Perfil } from '../types/usuario';
-import { PERMISSOES, perfilPode, podeEditarFrota } from './permissoes';
+import { operacoesAgendaveis, PERMISSOES, perfilPode, podeEditarFrota } from './permissoes';
 import type { Permissao } from './permissoes';
 
 const { ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO, SOLICITANTE, MOTORISTA_FROTA, MOTORISTA_SVO } =
@@ -40,9 +40,9 @@ describe('matriz de permissões por perfil', () => {
     expect(perfilPode(SOLICITANTE, 'solicitacoes.analisar')).toBe(false);
   });
 
-  it('Gestor SVO solicita e visualiza a frota administrativa, mas não aprova, recusa nem agenda', () => {
+  it('Gestor SVO solicita e acompanha só as próprias; não aprova, recusa nem agenda', () => {
     expect(perfilPode(GESTOR_SVO, 'solicitacoes.criar')).toBe(true);
-    expect(perfilPode(GESTOR_SVO, 'solicitacoes.listarTodas')).toBe(true);
+    expect(perfilPode(GESTOR_SVO, 'solicitacoes.listarTodas')).toBe(false);
     expect(perfilPode(GESTOR_SVO, 'solicitacoes.analisar')).toBe(false);
     expect(perfilPode(GESTOR_SVO, 'solicitacoes.agendar')).toBe(false);
     expect(perfilPode(GESTOR_SVO, 'viagens.agendar')).toBe(false);
@@ -60,12 +60,36 @@ describe('matriz de permissões por perfil', () => {
     }
   });
 
+  it('consulta de todas as solicitações: só Administrador e Gestor de Frota', () => {
+    expect(ordenar(quemPode('solicitacoes.listarTodas'))).toEqual(
+      ordenar([ADMINISTRADOR, GESTOR_FROTA]),
+    );
+  });
+
+  it('alocação SVO é separada do agendamento administrativo', () => {
+    expect(ordenar(quemPode('viagens.agendar'))).toEqual(ordenar([ADMINISTRADOR, GESTOR_FROTA]));
+    expect(ordenar(quemPode('viagens.alocarSvo'))).toEqual(ordenar([ADMINISTRADOR, GESTOR_SVO]));
+    // Uma operação não libera a outra
+    expect(perfilPode(GESTOR_FROTA, 'viagens.alocarSvo')).toBe(false);
+    expect(perfilPode(GESTOR_SVO, 'viagens.agendar')).toBe(false);
+  });
+
+  it('operações abertas no agendamento de viagens, por perfil', () => {
+    expect(operacoesAgendaveis(ADMINISTRADOR)).toEqual(['ADMINISTRATIVA', 'SVO']);
+    expect(operacoesAgendaveis(GESTOR_FROTA)).toEqual(['ADMINISTRATIVA']);
+    expect(operacoesAgendaveis(GESTOR_SVO)).toEqual(['SVO']);
+    for (const perfil of [MOTORISTA_FROTA, MOTORISTA_SVO, SOLICITANTE, null]) {
+      expect(operacoesAgendaveis(perfil), String(perfil)).toEqual([]);
+    }
+  });
+
   it('Motoristas executam viagens e registram abastecimentos, sem agendar nem cancelar', () => {
     for (const motorista of [MOTORISTA_FROTA, MOTORISTA_SVO]) {
       expect(perfilPode(motorista, 'viagens.acessar')).toBe(true);
       expect(perfilPode(motorista, 'viagens.executar')).toBe(true);
       expect(perfilPode(motorista, 'abastecimentos.registrar')).toBe(true);
       expect(perfilPode(motorista, 'viagens.agendar')).toBe(false);
+      expect(perfilPode(motorista, 'viagens.alocarSvo')).toBe(false);
       expect(perfilPode(motorista, 'viagens.cancelar')).toBe(false);
       expect(perfilPode(motorista, 'solicitacoes.acessar')).toBe(false);
       expect(perfilPode(motorista, 'manutencoes.acessar')).toBe(false);
@@ -81,17 +105,31 @@ describe('matriz de permissões por perfil', () => {
     );
   });
 
-  it('Manutenções, multas e disponibilidade: Administrador, Gestor de Frota e Gestor SVO', () => {
-    const gestores = ordenar([ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO]);
+  it('Manutenções e multas: só Administrador e Gestor de Frota (sem o Gestor SVO)', () => {
     for (const permissao of [
       'manutencoes.acessar',
       'manutencoes.gerenciar',
       'multas.acessar',
       'multas.gerenciar',
-      'agenda.acessar',
     ] as const) {
-      expect(ordenar(quemPode(permissao)), permissao).toEqual(gestores);
+      expect(ordenar(quemPode(permissao)), permissao).toEqual(
+        ordenar([ADMINISTRADOR, GESTOR_FROTA]),
+      );
     }
+  });
+
+  it('Abastecimentos: Administrador, Gestor de Frota e motoristas (sem o Gestor SVO)', () => {
+    for (const permissao of ['abastecimentos.acessar', 'abastecimentos.registrar'] as const) {
+      expect(ordenar(quemPode(permissao)), permissao).toEqual(
+        ordenar([ADMINISTRADOR, GESTOR_FROTA, MOTORISTA_FROTA, MOTORISTA_SVO]),
+      );
+    }
+  });
+
+  it('Disponibilidade da frota: Administrador, Gestor de Frota e Gestor SVO', () => {
+    expect(ordenar(quemPode('agenda.acessar'))).toEqual(
+      ordenar([ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO]),
+    );
   });
 
   it('Triagem SVO: Administrador e Gestor SVO', () => {
@@ -112,11 +150,27 @@ describe('regra de frota (podeEditarFrota)', () => {
     expect(podeEditarFrota(GESTOR_SVO, undefined)).toBe(false);
   });
 
-  it('os demais perfis não têm restrição de frota', () => {
-    for (const perfil of [ADMINISTRADOR, GESTOR_FROTA, MOTORISTA_FROTA]) {
-      expect(podeEditarFrota(perfil, 'ADMINISTRATIVA')).toBe(true);
-      expect(podeEditarFrota(perfil, 'SVO')).toBe(true);
-    }
+  it('Gestor de Frota só altera itens da frota administrativa', () => {
+    expect(podeEditarFrota(GESTOR_FROTA, 'ADMINISTRATIVA')).toBe(true);
+    expect(podeEditarFrota(GESTOR_FROTA, 'SVO')).toBe(false);
+  });
+
+  it('Administrador altera as duas frotas', () => {
+    expect(podeEditarFrota(ADMINISTRADOR, 'ADMINISTRATIVA')).toBe(true);
+    expect(podeEditarFrota(ADMINISTRADOR, 'SVO')).toBe(true);
+    expect(podeEditarFrota(ADMINISTRADOR, undefined)).toBe(false);
+  });
+
+  it('motoristas só registram na própria frota', () => {
+    expect(podeEditarFrota(MOTORISTA_FROTA, 'ADMINISTRATIVA')).toBe(true);
+    expect(podeEditarFrota(MOTORISTA_FROTA, 'SVO')).toBe(false);
+    expect(podeEditarFrota(MOTORISTA_SVO, 'SVO')).toBe(true);
+    expect(podeEditarFrota(MOTORISTA_SVO, 'ADMINISTRATIVA')).toBe(false);
+  });
+
+  it('Solicitante não altera nenhuma frota', () => {
+    expect(podeEditarFrota(SOLICITANTE, 'ADMINISTRATIVA')).toBe(false);
+    expect(podeEditarFrota(SOLICITANTE, 'SVO')).toBe(false);
   });
 
   it('sem usuário, nada é permitido', () => {

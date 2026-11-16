@@ -61,17 +61,20 @@ describe('SolicitacoesPage por perfil', () => {
     expect(screen.queryByRole('button', { name: 'Analisar' })).not.toBeInTheDocument();
   });
 
-  it('Gestor SVO vê as solicitações e pode solicitar, mas não analisa a frota administrativa', async () => {
+  it('Gestor SVO acompanha só as próprias solicitações e pode solicitar, sem analisar nem agendar', async () => {
     sessao.perfil = 'GESTOR_SVO';
-    api.listar.mockResolvedValue([pendente]);
+    api.listarMinhas.mockResolvedValue([pendente, { ...pendente, id: 10, status: 'APROVADA' }]);
 
     abrir();
 
-    expect(await screen.findByText('Hospital Regional')).toBeInTheDocument();
-    expect(api.listar).toHaveBeenCalled();
+    expect(await screen.findAllByText('Hospital Regional')).toHaveLength(2);
+    expect(api.listarMinhas).toHaveBeenCalled();
+    expect(api.listar).not.toHaveBeenCalled();
+    expect(screen.getByText('Minhas Solicitações de Viagem')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Nova Solicitação/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Analisar' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Detalhes/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Agendar/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Detalhes/ })).toHaveLength(2);
   });
 
   it('Gestor de Frota analisa as pendentes, mas não cria solicitação', async () => {
@@ -81,6 +84,8 @@ describe('SolicitacoesPage por perfil', () => {
     abrir();
 
     expect(await screen.findByRole('button', { name: 'Analisar' })).toBeInTheDocument();
+    expect(api.listar).toHaveBeenCalled();
+    expect(api.listarMinhas).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /Nova Solicitação/ })).not.toBeInTheDocument();
   });
 });

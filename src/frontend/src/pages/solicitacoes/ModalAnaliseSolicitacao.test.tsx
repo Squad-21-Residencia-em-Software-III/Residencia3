@@ -129,3 +129,65 @@ describe('ModalAnaliseSolicitacao - disponibilidade de veículos', () => {
     expect(screen.queryByRole('button', { name: /Recusar/ })).not.toBeInTheDocument()
   })
 })
+
+describe('ModalAnaliseSolicitacao - justificativa da recusa', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    consultarDisponibilidade.mockResolvedValue(disponibilidadeComVeiculos)
+  })
+
+  function abrirRecusa() {
+    const onRecusar = vi.fn().mockResolvedValue(undefined)
+    const onClose = vi.fn()
+    render(
+      <ModalAnaliseSolicitacao
+        solicitacao={solicitacao}
+        podeDecidir
+        onClose={onClose}
+        onAprovar={vi.fn()}
+        onRecusar={onRecusar}
+      />
+    )
+    return { onRecusar, onClose }
+  }
+
+  it('o campo é obrigatório e limitado a 200 caracteres', async () => {
+    const user = userEvent.setup()
+    abrirRecusa()
+
+    await user.click(screen.getByRole('button', { name: /Recusar/ }))
+
+    const campo = screen.getByLabelText(/Justificativa da Recusa \*/)
+    expect(campo).toBeRequired()
+    expect(campo).toHaveAttribute('maxLength', '200')
+  })
+
+  it.each([
+    ['vazia', ''],
+    ['só com espaços', '   '],
+  ])('não confirma a recusa com justificativa %s', async (_caso, texto) => {
+    const user = userEvent.setup()
+    const { onRecusar, onClose } = abrirRecusa()
+
+    await user.click(screen.getByRole('button', { name: /Recusar/ }))
+    if (texto) await user.type(screen.getByLabelText(/Justificativa da Recusa/), texto)
+    await user.click(screen.getByRole('button', { name: 'Confirmar Recusa' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Informe a justificativa da recusa.')
+    expect(screen.getByLabelText(/Justificativa da Recusa/)).toHaveAttribute('aria-invalid', 'true')
+    expect(onRecusar).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('confirma a recusa com a justificativa sem espaços nas pontas', async () => {
+    const user = userEvent.setup()
+    const { onRecusar, onClose } = abrirRecusa()
+
+    await user.click(screen.getByRole('button', { name: /Recusar/ }))
+    await user.type(screen.getByLabelText(/Justificativa da Recusa/), '  Sem veículo no período  ')
+    await user.click(screen.getByRole('button', { name: 'Confirmar Recusa' }))
+
+    await waitFor(() => expect(onRecusar).toHaveBeenCalledWith(7, 'Sem veículo no período'))
+    expect(onClose).toHaveBeenCalled()
+  })
+})

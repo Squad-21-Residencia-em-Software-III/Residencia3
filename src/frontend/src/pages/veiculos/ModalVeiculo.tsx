@@ -8,7 +8,7 @@ interface ModalVeiculoProps {
   onClose: () => void;
   onSalvar: (veiculo: NovoVeiculoInput) => Promise<void>;
   veiculoParaEditar?: Veiculo | null;
-  /** Fixa a frota (ex.: o Gestor SVO só cadastra veículos da frota SVO). */
+  /** Fixa a frota (cada gestor só cadastra veículos da própria frota). */
   apenasFrota?: TipoFrota;
 }
 

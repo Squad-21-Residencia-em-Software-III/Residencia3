@@ -82,8 +82,11 @@ function limitarTexto(texto: string | null, maximo = 28): string {
 
 export default function ViagensPage() {
   const location = useLocation();
-  const { pode } = usePermissao();
+  const { pode, operacoesAgendaveis } = usePermissao();
+  // Agendamento administrativo (Admin e Gestor de Frota) e alocação SVO (Admin e Gestor SVO)
   const podeAgendar = pode('viagens.agendar');
+  const tiposAgendaveis = operacoesAgendaveis();
+  const podeAbrirAgendamento = tiposAgendaveis.length > 0;
   const podeCancelar = pode('viagens.cancelar');
   // Motoristas registram saída e retorno das próprias viagens (a API só lista as deles)
   const podeExecutar = pode('viagens.executar');
@@ -153,8 +156,8 @@ export default function ViagensPage() {
     Promise.all([
       veiculosApi.listar(),
       motoristasApi.listar(),
-      solicitacoesApi
-        .listarAprovadas()
+      // Solicitações administrativas aprovadas só interessam a quem agenda a frota administrativa
+      (podeAgendar ? solicitacoesApi.listarAprovadas() : Promise.resolve([]))
         .then((solicitacoes) => ({ solicitacoes, erroSolicitacoes: null }))
         .catch((error) => ({
           solicitacoes: [],
@@ -173,7 +176,7 @@ export default function ViagensPage() {
     return () => {
       ativo = false;
     };
-  }, [modalNovaAberto]);
+  }, [modalNovaAberto, podeAgendar]);
 
   const totais = useMemo(
     () => ({
@@ -322,8 +325,8 @@ export default function ViagensPage() {
         <TableToolbar
           title="Registro de Viagens"
           subtitle={`${filtradas.length} de ${viagens.length} viagens registradas`}
-          newLabel={podeAgendar ? 'Nova Viagem' : undefined}
-          onNew={podeAgendar ? () => setModalNovaAberto(true) : undefined}
+          newLabel={podeAbrirAgendamento ? 'Nova Viagem' : undefined}
+          onNew={podeAbrirAgendamento ? () => setModalNovaAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
           isFilterActive={
             filtroStatus !== 'TODOS' ||
@@ -657,6 +660,7 @@ export default function ViagensPage() {
           veiculos={dadosNovaViagem.veiculos}
           motoristas={dadosNovaViagem.motoristas}
           solicitacaoIdInicial={location.state?.solicitacaoId}
+          tiposPermitidos={tiposAgendaveis}
           onClose={() => setModalNovaAberto(false)}
           onSalvar={handleSalvarNovaViagem}
         />

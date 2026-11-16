@@ -472,7 +472,7 @@ export default function AbastecimentoPage() {
       {/* Modal de Novo Abastecimento */}
       {modalAberto && (
         <ModalAbastecimento
-          // Gestor SVO: só abastece veículos da frota SVO
+          // Cada perfil só abastece veículos da própria frota (o Administrador, nas duas)
           filtrarVeiculo={(v) => podeNaFrota('abastecimentos.registrar', v.tipo_frota)}
           onClose={() => setModalAberto(false)}
           onSalvar={handleSalvarAbastecimento}

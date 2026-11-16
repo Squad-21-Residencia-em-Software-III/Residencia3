@@ -29,7 +29,7 @@ export interface Multa {
   // Campos de exibição (joins), não existem na tabela
   veiculo_placa?: string;
   veiculo_modelo?: string;
-  /** Frota do veículo (usada para a regra de permissão do Gestor SVO). */
+  /** Frota do veículo (usada na regra de permissão por frota). */
   veiculo_tipo_frota?: string;
   motorista_nome?: string | null;
 }
