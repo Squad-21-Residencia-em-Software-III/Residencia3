@@ -67,12 +67,12 @@ const MATRIZ: Regra[] = [
   ['post', '/api/abastecimentos', [A, GF, MF, MS]],
   ['get', '/api/abastecimentos/veiculo/1', [A, GF, MF, MS]],
 
-  ['get', '/api/solicitacoes-viagem', [A, GF, GS]],
+  ['get', '/api/solicitacoes-viagem', [A, GF]],
   ['get', '/api/solicitacoes-viagem/minhas', TODOS],
   ['post', '/api/solicitacoes-viagem', [A, S, GF, GS]],
   ['get', '/api/solicitacoes-viagem/1/disponibilidade', [A, GF]],
-  ['patch', '/api/solicitacoes-viagem/1/aprovar', [A, GF, GS]],
-  ['patch', '/api/solicitacoes-viagem/1/recusar', [A, GF, GS]],
+  ['patch', '/api/solicitacoes-viagem/1/aprovar', [A, GF]],
+  ['patch', '/api/solicitacoes-viagem/1/recusar', [A, GF]],
 
   ['post', '/api/manutencoes', [A, GF]],
   ['get', '/api/manutencoes/veiculo/1', [A, GF]],

@@ -15,3 +15,5 @@ solicitacaoSvoRoutes.get('/:id', solicitacaoSvoController.buscarPorId);
 solicitacaoSvoRoutes.post('/', solicitacaoSvoController.registrar);
 // Confirmação e geração da ordem de coleta (BL27 / RF20, RF21)
 solicitacaoSvoRoutes.patch('/:id/confirmar', solicitacaoSvoController.confirmar);
+// Recusa da solicitação em triagem com justificativa obrigatória (RF20)
+solicitacaoSvoRoutes.patch('/:id/recusar', solicitacaoSvoController.recusar);

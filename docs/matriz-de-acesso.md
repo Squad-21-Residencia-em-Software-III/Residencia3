@@ -33,11 +33,11 @@ A matriz é verificada rota a rota por `src/backend/src/tests/matrizAcesso.test.
 | `GET /veiculos/svo/disponiveis`, `/svo/ocupacao` | ✅ | ❌ | ✅ | 🔗² | ❌ | ❌ |
 | `POST /veiculos`, `PUT /veiculos/:id` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `POST /abastecimentos`, `GET /abastecimentos/veiculo/:id` | ✅ | ❌ | ✅ | ❌ | 🔗¹ | 🔗¹ |
-| `GET /solicitacoes-viagem` | ✅ | ❌ | ✅ | 🔗³ | ❌ | ❌ |
+| `GET /solicitacoes-viagem` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `GET /solicitacoes-viagem/minhas` | 🔗⁴ | 🔗⁴ | 🔗⁴ | 🔗⁴ | 🔗⁴ | 🔗⁴ |
 | `POST /solicitacoes-viagem` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | `GET /solicitacoes-viagem/:id/disponibilidade` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| `PATCH /solicitacoes-viagem/:id/aprovar`, `/recusar` | 🔗⁵ | ❌ | 🔗⁵ | 🔗³⁵ | ❌ | ❌ |
+| `PATCH /solicitacoes-viagem/:id/aprovar`, `/recusar` | 🔗⁵ | ❌ | 🔗⁵ | ❌ | ❌ | ❌ |
 | `/manutencoes` (todas) | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `GET /documentos/vencimentos` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `/multas` (todas) | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |

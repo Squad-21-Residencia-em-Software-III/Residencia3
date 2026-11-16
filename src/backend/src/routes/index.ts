@@ -1,3 +1,4 @@
+
 import { Router } from 'express';
 import { db } from '../config/database';
 import { authRoutes } from './authRoutes';
@@ -14,6 +15,8 @@ import { unidadeRoutes } from './unidadeRoutes';
 import { dashboardRoutes } from './dashboardRoutes';
 import { solicitacaoSvoRoutes } from './solicitacaoSvoRoutes';
 import { auditoriaRoutes } from './auditoriaRoutes';
+import { equipeSvoRoutes } from './equipeSvoRoutes';
+import { relatorioRoutes } from './relatorioRoutes';
 
 export const routes = Router();
 
@@ -41,3 +44,5 @@ routes.use('/unidades', unidadeRoutes);
 routes.use('/dashboard', dashboardRoutes);
 routes.use('/solicitacoes-svo', solicitacaoSvoRoutes);
 routes.use('/auditorias', auditoriaRoutes);
+routes.use('/equipes-svo', equipeSvoRoutes);
+routes.use('/relatorios', relatorioRoutes);

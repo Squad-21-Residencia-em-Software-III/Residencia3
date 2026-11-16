@@ -1,4 +1,3 @@
-import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { PERFIS_ANALISAM_TODAS } from '../constants/unidades';
 import { AppError } from '../errors/AppError';
@@ -22,6 +21,8 @@ import type { ListaPaginada } from './usuarioService';
 
 type Analista = Pick<Usuario, 'id' | 'perfil'>;
 
+const TAMANHO_MAXIMO_MOTIVO = 200;
+
 function paginar<T>(
   resultado: { dados: T[]; total: number },
   filtros: Pick<ListarSolicitacoesViagemInput, 'pagina' | 'limite'>
@@ -37,39 +38,59 @@ function paginar<T>(
   };
 }
 
+function normalizarMotivoRecusa(motivo: string): string {
+  if (typeof motivo !== 'string') {
+    throw new AppError('Informe o motivo da recusa', 400);
+  }
+
+  const motivoLimpo = motivo.trim();
+
+  if (motivoLimpo.length === 0) {
+    throw new AppError('Informe o motivo da recusa', 400);
+  }
+
+  if (motivoLimpo.length > TAMANHO_MAXIMO_MOTIVO) {
+    throw new AppError(
+      `O motivo deve ter no máximo ${TAMANHO_MAXIMO_MOTIVO} caracteres`,
+      400
+    );
+  }
+
+  return motivoLimpo;
+}
+
 export const solicitacaoViagemService = {
-  // Encaminhamento: cada analista vê apenas as solicitações das unidades que gere
+  // Encaminhamento administrativo: apenas Administrador e Gestor de Frota listam solicitações para análise
   async listar(
     analista: Analista,
     filtros: ListarSolicitacoesViagemInput
   ): Promise<ListaPaginada<SolicitacaoViagemDetalhada>> {
-    let resultado = { dados: [] as SolicitacaoViagemDetalhada[], total: 0 };
-
-    if (PERFIS_ANALISAM_TODAS.includes(analista.perfil)) {
-      resultado = await solicitacaoViagemModel.listar(filtros);
-    } else {
-      const unidadeIds = await unidadeModel.idsDasUnidadesDoGestor(analista.id);
-      if (unidadeIds.length > 0) {
-        resultado = await solicitacaoViagemModel.listar({ ...filtros, unidadeIds });
-      }
+    if (!PERFIS_ANALISAM_TODAS.includes(analista.perfil)) {
+      throw new AppError(
+        'Você não tem permissão para analisar solicitações de viagem administrativas',
+        403
+      );
     }
 
+    const resultado = await solicitacaoViagemModel.listar(filtros);
     return paginar(resultado, filtros);
   },
 
-  // O solicitante acompanha a aprovação e o agendamento das próprias solicitações
+  // O solicitante acompanha a aprovação, motivo de recusa e agendamento das próprias solicitações
   async listarMinhas(
     solicitanteId: number,
     filtros: ListarSolicitacoesViagemInput
   ): Promise<ListaPaginada<SolicitacaoViagemDoSolicitante>> {
-    return paginar(await solicitacaoViagemModel.listarDoSolicitante(solicitanteId, filtros), filtros);
+    return paginar(
+      await solicitacaoViagemModel.listarDoSolicitante(solicitanteId, filtros),
+      filtros
+    );
   },
 
   async criar(
     dados: CriarSolicitacaoViagemInput,
     solicitanteId: number
   ): Promise<SolicitacaoViagem> {
-
     const dataSaida = new Date(dados.data_saida_desejada);
 
     if (dataSaida.getTime() <= Date.now()) {
@@ -132,34 +153,26 @@ export const solicitacaoViagemService = {
   async recusar(
     id: number,
     autor: Analista,
-    motivo?: string
+    motivo: string
   ): Promise<SolicitacaoViagem> {
-    return analisar(id, 'RECUSADA', autor, motivo);
+    const motivoValidado = normalizarMotivoRecusa(motivo);
+    return analisar(id, 'RECUSADA', autor, motivoValidado);
   },
 };
 
-// Administrador e Gestor de Frota analisam tudo, inclusive solicitações de unidade sem gestor;
-// os demais gestores, apenas as solicitações das unidades a que estão associados
-async function garantirCompetencia(
-  autor: Analista,
-  unidadeId: number | null,
-  trx: Knex.Transaction
-): Promise<void> {
+// Apenas Administrador e Gestor de Frota têm competência para aprovar ou recusar viagens administrativas
+function garantirCompetenciaAdministrativa(autor: Analista): void {
   if (PERFIS_ANALISAM_TODAS.includes(autor.perfil)) {
     return;
   }
 
-  if (unidadeId !== null && (await unidadeModel.estaAssociado(unidadeId, autor.id, trx))) {
-    return;
-  }
-
   throw new AppError(
-    'Você não é gestor da unidade desta solicitação',
+    'Você não tem permissão para analisar solicitações de viagem administrativas',
     403
   );
 }
 
-// Aprova ou recusa uma solicitação pendente
+// Aprova ou recusa uma solicitação pendente com bloqueio transacional para evitar concorrência inconsistente
 async function analisar(
   id: number,
   novoStatus: 'APROVADA' | 'RECUSADA',
@@ -167,6 +180,10 @@ async function analisar(
   motivo?: string
 ): Promise<SolicitacaoViagem> {
   const autorId = autor.id;
+  garantirCompetenciaAdministrativa(autor);
+
+  const motivoRecusa =
+    novoStatus === 'RECUSADA' ? normalizarMotivoRecusa(motivo ?? '') : null;
 
   return db.transaction(async (trx) => {
     const solicitacao =
@@ -183,8 +200,6 @@ async function analisar(
     if (solicitacao.solicitante_id === autor.id) {
       throw new AppError('Você não pode analisar uma solicitação criada por você', 403);
     }
-
-    await garantirCompetencia(autor, solicitacao.unidade_id, trx);
 
     if (solicitacao.status !== 'PENDENTE_APROVACAO') {
       throw new AppError(
@@ -203,15 +218,13 @@ async function analisar(
       );
     }
 
-    const motivoRecusa = novoStatus === 'RECUSADA' ? (motivo ?? null) : null;
-
     const atualizada =
       await solicitacaoViagemModel.atualizarStatus(id, novoStatus, trx, motivoRecusa);
 
-    // O motivo da recusa fica registrado na coluna motivo_recusa e na auditoria
+    // O motivo da recusa fica registrado na coluna motivo_recusa e na auditoria com autor e data
     const acao = novoStatus === 'APROVADA'
       ? `APROVOU_SOLICITACAO_VIAGEM id=${id}`
-      : `RECUSOU_SOLICITACAO_VIAGEM id=${id}${motivo ? ` motivo="${motivo}"` : ''}`;
+      : `RECUSOU_SOLICITACAO_VIAGEM id=${id} motivo="${motivoRecusa}"`;
 
     await auditoriaModel.registrar(
       {
