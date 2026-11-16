@@ -189,7 +189,7 @@ export function ModalNovaViagem({
         if (ativo) setCarregandoSolicitacoesSvo(false);
       });
 
-    // Equipes escaladas e livres de agora até a duração estimada da coleta
+    // Consulta da disponibilidade operacional imediata; não representa a duração da coleta.
     equipesSvoApi
       .listarDisponiveis(periodoConsultaEquipes())
       .then((resposta) => {
