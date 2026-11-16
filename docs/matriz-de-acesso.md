@@ -1,0 +1,81 @@
+# Matriz de acesso
+
+Este documento registra quem pode fazer o quê na API. As permissões são aplicadas **no backend**, e o frontend apenas reflete o que a API permite. Esconder um botão não substitui a checagem do servidor.
+
+A autorização acontece em três camadas:
+
+1. **Autenticação** (`middlewares/autenticar.ts`): sem token válido, a resposta é **401**. Usuário inativo recebe **403**. O perfil vem sempre do banco, nunca do token.
+2. **Perfil** (`middlewares/autorizar.ts`, `autorizar(...perfis)`, criado na BL03): perfil não permitido na rota recebe **403**.
+3. **Registro** (services e `exigirAssociacaoSvo`): mesmo com o perfil certo, o usuário só atua sobre registros da sua competência. Fora dela, recebe **403**.
+
+A matriz é verificada rota a rota por `src/backend/src/tests/matrizAcesso.test.ts`, que testa 401 sem token, 403 para os perfis não permitidos e acesso liberado para os permitidos.
+
+## Legenda
+
+| Sigla | Perfil |
+|---|---|
+| ADM | Administrador |
+| SOL | Solicitante (Usuário Institucional) |
+| GF | Gestor de Frota |
+| GS | Gestor SVO |
+| MF | Motorista da frota administrativa |
+| MS | Motorista SVO |
+
+✅ permitido · ❌ 403 · 🔗 permitido, com checagem por registro (veja as regras abaixo)
+
+## Rotas
+
+| Rota | ADM | SOL | GF | GS | MF | MS |
+|---|---|---|---|---|---|---|
+| `GET /auth/me`, `PATCH /auth/senha` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/usuarios` (todas) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `GET /veiculos` | ✅ | ❌ | ✅ | 🔗² | 🔗¹ | 🔗¹ |
+| `GET /veiculos/svo/disponiveis`, `/svo/ocupacao` | ✅ | ❌ | ✅ | 🔗² | ❌ | ❌ |
+| `POST /veiculos`, `PUT /veiculos/:id` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `POST /abastecimentos`, `GET /abastecimentos/veiculo/:id` | ✅ | ❌ | ✅ | ❌ | 🔗¹ | 🔗¹ |
+| `GET /solicitacoes-viagem` | ✅ | ❌ | ✅ | 🔗³ | ❌ | ❌ |
+| `GET /solicitacoes-viagem/minhas` | 🔗⁴ | 🔗⁴ | 🔗⁴ | 🔗⁴ | 🔗⁴ | 🔗⁴ |
+| `POST /solicitacoes-viagem` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `GET /solicitacoes-viagem/:id/disponibilidade` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `PATCH /solicitacoes-viagem/:id/aprovar`, `/recusar` | 🔗⁵ | ❌ | 🔗⁵ | 🔗³⁵ | ❌ | ❌ |
+| `/manutencoes` (todas) | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `GET /documentos/vencimentos` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `/multas` (todas) | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `GET /viagens` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | 🔗⁷ | 🔗⁷ |
+| `POST /viagens`, `PATCH /viagens/:id/cancelar` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | ❌ | ❌ |
+| `PATCH /viagens/:id/iniciar`, `/finalizar` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | 🔗⁷ | 🔗⁷ |
+| `GET /motoristas/me` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `GET /motoristas` | ✅ | ❌ | ✅ | 🔗² | ❌ | ❌ |
+| `GET /unidades` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/unidades/gestores` (consulta e associação) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `GET /dashboard` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `/solicitacoes-svo` (todas) | ✅ | ❌ | ❌ | 🔗² | ❌ | ❌ |
+| `GET /auditorias` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+Rotas públicas: `GET /status`, `POST /auth/login`, `POST /auth/refresh` e `POST /auth/logout`. As três de autenticação são protegidas por validação de origem e por limite de tentativas.
+
+## Regras por registro
+
+1. **Motorista e veículos vinculados.** O motorista só lista, abastece e consulta abastecimentos de veículos **vinculados a ele**: os das suas viagens (`AGENDADA` ou `EM_ANDAMENTO`) ou ordens SVO (`ALOCADA` ou `EM_DESLOCAMENTO`). Além disso, o veículo precisa ser do seu tipo de frota. Ao registrar um abastecimento, o `motorista_id` do corpo é ignorado e vale o motorista do token. Implementação: `veiculoModel.idsVinculadosAoUsuarioMotorista`, `abastecimentoService` e `veiculoService.listar`.
+2. **Gestor SVO e a unidade SVO.** O perfil não basta. O Gestor SVO precisa estar **associado à unidade SVO** (`gestores_unidades`) para operar solicitações SVO, viagens e ordens SVO, veículos e motoristas. Sem a associação, recebe 403 "Você não está associado à unidade SVO". Implementação: `exigirAssociacaoSvo`.
+3. **Solicitações por unidade.** O Gestor SVO só lista e analisa as solicitações de viagem das unidades às quais está associado. O Administrador e o Gestor de Frota analisam todas. Implementação: `garantirCompetencia` em `solicitacaoViagemService`.
+4. **Solicitações próprias.** `/minhas` devolve apenas as solicitações do usuário autenticado (`solicitante_id` do token).
+5. **Segregação de funções.** Ninguém aprova nem recusa uma solicitação criada por si mesmo, nem o Administrador. A resposta é 403 "Você não pode analisar uma solicitação criada por você".
+6. **Tipo de operação.** O Gestor de Frota gerencia viagens da frota administrativa, e o Gestor SVO, ordens SVO. O Administrador gerencia ambos.
+7. **Viagens do motorista.** O motorista só lista, inicia e finaliza as próprias viagens ou ordens, e só do seu tipo de frota.
+
+Outras proteções que já existiam:
+
+- o Administrador não remove o próprio perfil de administrador nem inativa a própria conta;
+- ao trocar o perfil de um gestor, as associações a unidades que ele não pode mais gerir são removidas;
+- só perfis compatíveis podem ser associados a cada unidade.
+
+## Decisões da equipe
+
+| Tema | Decisão | Base |
+|---|---|---|
+| Quem cria solicitação de viagem | Solicitante, Gestor de Frota, Gestor SVO e Administrador. Motoristas não. | O DVP (RF11) atribui o registro ao Usuário Institucional. Os gestores também pedem viagens para a própria unidade, e o motorista executa viagens, não as solicita. |
+| Autoaprovação | Bloqueada para todos os perfis | Segregação de funções (RN02: a análise é responsabilidade do gestor, não de quem solicitou) |
+| Vínculo motorista–veículo | Pelas viagens e ordens ativas | DVP: "consulta dos veículos a ele vinculados". Não há tabela de vínculo fixo. |
+| Gestor SVO | Exige associação à unidade SVO em todas as operações SVO | Consistência com o encaminhamento por unidade (BL15) |
+| Disponibilidade | Gestor de Frota e Administrador | RF16 |
