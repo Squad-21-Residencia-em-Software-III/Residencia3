@@ -1,3 +1,4 @@
+import { recursoAtivo } from '../config/recursosBackend';
 import { useAuth } from '../contexts/AuthContext';
 import { LISTA_PERFIS, PERFIS } from '../types/usuario';
 import type { Perfil } from '../types/usuario';
@@ -40,6 +41,8 @@ export const PERMISSOES = {
 
   // Solicitações SVO (BL27)
   'triagemSvo.acessar': [ADMINISTRADOR, GESTOR_SVO],
+  /** Confirmar ou recusar (com justificativa) um chamado SVO em triagem. */
+  'triagemSvo.analisar': [ADMINISTRADOR, GESTOR_SVO],
 
   // Viagens e quilometragem
   'viagens.acessar': [...GESTORES, ...MOTORISTAS],
@@ -48,6 +51,15 @@ export const PERMISSOES = {
   /** Alocar veículo e equipe numa ordem de coleta SVO (RF22/RF23). */
   'viagens.alocarSvo': [ADMINISTRADOR, GESTOR_SVO],
   'viagens.cancelar': GESTORES,
+  /** Aba Viagens > Administrativo (a API lista as viagens administrativas a esses perfis). */
+  'viagens.operacaoAdministrativa': [ADMINISTRADOR, GESTOR_FROTA, MOTORISTA_FROTA],
+  /** Aba Viagens > SVO: ordens de coleta (a API lista as ordens SVO a esses perfis). */
+  'viagens.operacaoSvo': [ADMINISTRADOR, GESTOR_SVO, MOTORISTA_SVO],
+  /**
+   * Acompanhar as próprias viagens administrativas (Gestor SVO que solicitou). Quem já tem a aba
+   * Administrativo completa, como o Administrador, não usa essa visão.
+   */
+  'viagens.acompanharProprias': [ADMINISTRADOR, GESTOR_SVO],
   /** Registrar saída e retorno (iniciar e finalizar com quilometragem). */
   'viagens.executar': [...GESTORES, ...MOTORISTAS],
 
@@ -128,6 +140,34 @@ export function operacoesAgendaveis(perfil: Perfil | null | undefined): TipoFrot
   return tipos;
 }
 
+/**
+ * Abas de Viagens. Administrativo: quem gerencia ou executa a frota administrativa e, com a
+ * consulta própria do backend (SCRUM-179), o Gestor SVO acompanhando só as viagens que pediu.
+ */
+export function abasDeViagens(
+  perfil: Perfil | null | undefined,
+  minhasViagensDisponivel: boolean,
+): TipoFrota[] {
+  const abas: TipoFrota[] = [];
+  if (
+    perfilPode(perfil, 'viagens.operacaoAdministrativa') ||
+    (minhasViagensDisponivel && perfilPode(perfil, 'viagens.acompanharProprias'))
+  ) {
+    abas.push('ADMINISTRATIVA');
+  }
+  if (perfilPode(perfil, 'viagens.operacaoSvo')) abas.push('SVO');
+  // A operação do próprio perfil vem primeiro
+  return FROTA_DO_PERFIL[perfil as Perfil] === 'SVO' ? abas.reverse() : abas;
+}
+
+/** Abas de Veículos: todos consultam as duas frotas; a do próprio perfil vem primeiro. */
+export function abasDeVeiculos(perfil: Perfil | null | undefined): TipoFrota[] {
+  if (!perfilPode(perfil, 'veiculos.detalhes')) return [];
+  return FROTA_DO_PERFIL[perfil as Perfil] === 'SVO'
+    ? ['SVO', 'ADMINISTRATIVA']
+    : ['ADMINISTRATIVA', 'SVO'];
+}
+
 /** `const { pode, podeNaFrota } = usePermissao()` → `pode('viagens.agendar')`. */
 export function usePermissao() {
   const { usuario } = useAuth();
@@ -142,5 +182,8 @@ export function usePermissao() {
       podeVerDetalhesDaFrota(perfil, tipoFrota),
     /** Operações que o perfil pode abrir no agendamento de viagens. */
     operacoesAgendaveis: () => operacoesAgendaveis(perfil),
+    /** Abas Administrativo/SVO de Viagens e de Veículos que o perfil pode ver. */
+    abasDeViagens: () => abasDeViagens(perfil, recursoAtivo('minhasViagensAdministrativas')),
+    abasDeVeiculos: () => abasDeVeiculos(perfil),
   };
 }
