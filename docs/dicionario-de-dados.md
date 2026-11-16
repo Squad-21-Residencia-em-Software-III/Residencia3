@@ -34,7 +34,8 @@ Registo dos veículos pertencentes à frota geral e ao Serviço de Verificação
 | `placa` | Varchar(10) | NOT NULL, UNIQUE | Matrícula do veículo. |
 | `modelo` | Varchar(100) | NOT NULL | Marca e modelo. |
 | `tipo_frota` | Varchar(20) | NOT NULL | CHECK: `ADMINISTRATIVA`, `SVO`. |
-| `capacidade_maxima` | Integer | NOT NULL | Lotação (CHECK: `>= 0`). |
+| `capacidade_maxima` | Integer | NOT NULL | Lotação de passageiros (frota administrativa) ou capacidade de corpos (SVO, 1 a 4) (CHECK: `>= 0`). |
+| `lotacao_cabine` | Integer | NULLABLE | Lotação de pessoas na cabine para veículos SVO, incluindo motorista (CHECK: `IS NULL OR >= 1`). |
 | `km_atual` | Integer | NOT NULL, DEFAULT 0 | Quilometragem atual do veículo (CHECK: `>= 0`). |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'DISPONIVEL' | CHECK: `DISPONIVEL`, `RESERVADO`, `EM_USO`, `MANUTENCAO`. |
 
