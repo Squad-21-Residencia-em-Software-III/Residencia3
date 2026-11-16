@@ -203,6 +203,8 @@ veículo, motorista ou equipe; alocadas/em deslocamento exigem veículo e motori
 | `equipe_id` | Integer | FOREIGN KEY | Profissionais alocados (RESTRICT). |
 | `capacidade_utilizada`| Integer | NOT NULL, DEFAULT 1 | CHECK: `> 0`. |
 | `data_hora_chamado` | Timestamptz | DEFAULT now() | Momento de geração da ordem (com fuso horário). |
+| `inicio_previsto` | Timestamptz | NULLABLE | Início previsto do agendamento da coleta SVO (SCRUM-176, com fuso horário). |
+| `fim_previsto` | Timestamptz | NULLABLE, CHECK: `> inicio_previsto` | Término previsto do agendamento da coleta SVO (SCRUM-176, com fuso horário). |
 | `data_hora_saida` | Timestamptz | NULLABLE | Momento de início do deslocamento (com fuso horário). |
 | `data_hora_conclusao`| Timestamptz | NULLABLE, CHECK: `>= data_hora_saida` | Regresso e término da operação (com fuso horário). |
 | `km_inicial` | Integer | NULLABLE | CHECK: `>= 0`. |
