@@ -41,7 +41,13 @@ export const navItems: NavItemComPerfil[] = [
     perfis: [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO],
   },
   { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação' },
-  { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação' },
+  {
+    path: '/agenda',
+    label: 'Agenda',
+    icon: CalendarIcon,
+    section: 'Operação',
+    perfis: [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO],
+  },
 
   // FROTA
   { path: '/veiculos', label: 'Veículos', icon: TruckIcon, section: 'Frota' },
@@ -100,7 +106,15 @@ export function AppRoutes() {
           <Route path="/dashboard" element={<Navigate to="/inicio" replace />} />
           <Route path="/solicitacoes" element={<SolicitacoesPage />} />
           <Route path="/viagens" element={<ViagensPage />} />
-          <Route path="/agenda" element={<AgendaPage />} />
+          <Route
+            element={
+              <RotaPorPerfil
+                perfis={[PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO]}
+              />
+            }
+          >
+            <Route path="/agenda" element={<AgendaPage />} />
+          </Route>
           <Route path="/veiculos" element={<VeiculosPage />} />
           <Route path="/manutencoes" element={<ManutencoesPage />} />
           <Route path="/abastecimento" element={<AbastecimentoPage />} />

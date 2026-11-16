@@ -3,7 +3,7 @@ import { Calendar } from 'lucide-react';
 import { EmptyState } from '../../components/ui';
 import type { LinhaRecursoAgenda } from '../../types/agenda';
 import type { StatusViagem, Viagem } from '../../types/viagem';
-import { obterResumoTrajeto } from '../../utils/agenda';
+import { alocarSubfaixasBlocos, obterResumoTrajeto } from '../../utils/agenda';
 import { cn } from '../../utils/cn';
 
 interface AgendaGanttHojeProps {
@@ -15,7 +15,8 @@ interface AgendaGanttHojeProps {
 const HORA_INICIO = 0; // 00:00 (operação SVO 24h)
 const HORA_FIM = 24; // 24:00
 const HORA_LARGURA_PX = 80;
-const ALTURA_LINHA_PX = 60;
+const ALTURA_FAIXA_PX = 52;
+const PADDING_LINHA_PX = 8;
 const TOTAL_HORAS = HORA_FIM - HORA_INICIO;
 const LARGURA_TOTAL_GRADE = TOTAL_HORAS * HORA_LARGURA_PX;
 
@@ -84,6 +85,28 @@ export function AgendaGanttHoje({
   const horas = Array.from({ length: TOTAL_HORAS }, (_, i) => HORA_INICIO + i);
   const agoraLeft = (agoraMinutos / 60) * HORA_LARGURA_PX;
 
+  const linhasComLayout = (() => {
+    let topAcumulado = 0;
+    return linhas.map((linha) => {
+      const { blocosComFaixa, totalFaixas } = alocarSubfaixasBlocos(linha.blocos);
+      const alturaLinha = totalFaixas * ALTURA_FAIXA_PX + PADDING_LINHA_PX;
+      const topLinha = topAcumulado;
+      topAcumulado += alturaLinha;
+      return {
+        linha,
+        blocosComFaixa,
+        alturaLinha,
+        topLinha,
+      };
+    });
+  })();
+
+  const alturaTotalGrade =
+    linhasComLayout.length > 0
+      ? linhasComLayout[linhasComLayout.length - 1].topLinha +
+        linhasComLayout[linhasComLayout.length - 1].alturaLinha
+      : 0;
+
   const handleGridScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     if (headerScrollRef.current) {
@@ -136,18 +159,17 @@ export function AgendaGanttHoje({
           className="w-[120px] shrink-0 overflow-y-hidden border-r border-border bg-surface md:w-[190px]"
           ref={resourceScrollRef}
         >
-          {linhas.map((linha) => {
+          {linhasComLayout.map(({ linha, alturaLinha }) => {
             const primeiroMotorista = linha.blocos[0]?.viagem.motorista_nome;
             const subtituloSecundario = primeiroMotorista
               ? primeiroMotorista.split(' ')[0]
-              : linha.statusVeiculo === 'MANUTENCAO'
-                ? 'Manutenção'
-                : 'Livre';
+              : 'Livre';
 
             return (
               <div
                 key={linha.id}
-                className="flex h-[60px] flex-col justify-center border-b border-divider px-2 md:px-4"
+                className="flex flex-col justify-center border-b border-divider px-2 md:px-4"
+                style={{ height: `${alturaLinha}px` }}
               >
                 <div
                   className="truncate font-display text-[11px] font-bold text-text md:text-xs"
@@ -182,7 +204,7 @@ export function AgendaGanttHoje({
             className="relative"
             style={{
               width: `${LARGURA_TOTAL_GRADE}px`,
-              minHeight: `${linhas.length * ALTURA_LINHA_PX}px`,
+              minHeight: `${alturaTotalGrade}px`,
             }}
           >
             {/* Faixas verticais 24h (destaca janela comercial 07:00–17:00 vs plantão SVO) */}
@@ -198,11 +220,11 @@ export function AgendaGanttHoje({
             ))}
 
             {/* Linhas horizontais dos veículos */}
-            {linhas.map((_, i) => (
+            {linhasComLayout.map(({ linha, topLinha, alturaLinha }) => (
               <div
-                key={i}
+                key={linha.id}
                 className="pointer-events-none absolute right-0 left-0 z-1 border-t border-divider"
-                style={{ top: `${(i + 1) * ALTURA_LINHA_PX}px` }}
+                style={{ top: `${topLinha + alturaLinha}px` }}
               />
             ))}
 
@@ -219,14 +241,14 @@ export function AgendaGanttHoje({
               </div>
             )}
 
-            {/* Blocos de Viagem Posicionados Proporcionalmente */}
-            {linhas.map((linha, rowIdx) =>
-              linha.blocos.map((bloco) => {
+            {/* Blocos de Viagem Posicionados Proporcionalmente (empilhados se houver sobreposição) */}
+            {linhasComLayout.map(({ blocosComFaixa, topLinha }) =>
+              blocosComFaixa.map((bloco) => {
                 const { viagem } = bloco;
                 const left = (bloco.inicioMin / 60) * HORA_LARGURA_PX;
                 const duracaoHoras = (bloco.fimMin - bloco.inicioMin) / 60;
                 const width = Math.max(duracaoHoras * HORA_LARGURA_PX, 56);
-                const top = rowIdx * ALTURA_LINHA_PX;
+                const top = topLinha + PADDING_LINHA_PX / 2 + bloco.faixa * ALTURA_FAIXA_PX;
 
                 const statusStyles = GANTT_STATUS_STYLES[viagem.status];
                 const resumoTrajeto = obterResumoTrajeto(viagem);
@@ -242,8 +264,8 @@ export function AgendaGanttHoje({
                       statusStyles.block,
                     )}
                     style={{
-                      top: `${top + 7}px`,
-                      height: `${ALTURA_LINHA_PX - 14}px`,
+                      top: `${top + 3}px`,
+                      height: `${ALTURA_FAIXA_PX - 6}px`,
                       left: `${left + 2}px`,
                       width: `${width - 4}px`,
                     }}

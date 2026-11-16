@@ -5,6 +5,8 @@ import {
   adicionarDias,
   adicionarMeses,
   agruparRecursosAgenda,
+  alocarSubfaixasBlocos,
+  filtrarVeiculosPorPerfil,
   obterDiasSemana,
   obterGradeMes,
   obterResumoTrajeto,
@@ -135,5 +137,68 @@ describe('agenda utils (grade 24h e projeção de viagens)', () => {
 
     expect(adicionarDias('2026-10-31', 1)).toBe('2026-11-01');
     expect(adicionarMeses('2026-01-31', 1)).toBe('2026-02-28');
+  });
+
+  it('oculta viagens canceladas, filtra frota para GESTOR_SVO e empilha ordens sobrepostas', () => {
+    const cancelada = criarViagemBase({ id: 9, status: 'CANCELADA' });
+    const svo1 = criarViagemBase({
+      id: 1,
+      tipo_operacao: 'SVO',
+      origem: null,
+      destino: 'HUSE',
+      inicio_previsto: '2026-10-19T08:00:00',
+      fim_previsto: null,
+    });
+    const svo2 = criarViagemBase({
+      id: 2,
+      tipo_operacao: 'SVO',
+      origem: null,
+      destino: 'Hospital Primavera',
+      inicio_previsto: '2026-10-19T09:00:00',
+      fim_previsto: null,
+    });
+
+    const blocos = projetarViagensNoDia([cancelada, svo1, svo2], '2026-10-19');
+    expect(blocos).toHaveLength(2);
+
+    const { blocosComFaixa, totalFaixas } = alocarSubfaixasBlocos(blocos);
+    expect(totalFaixas).toBe(2);
+    expect(blocosComFaixa[0].faixa).toBe(0);
+    expect(blocosComFaixa[1].faixa).toBe(1);
+
+    const frota: Veiculo[] = [
+      {
+        id: 1,
+        placa: 'QRM-1020',
+        modelo: 'Van Admin',
+        tipo_frota: 'ADMINISTRATIVA',
+        capacidade_maxima: 15,
+        km_atual: 1000,
+        status: 'DISPONIVEL',
+      },
+      {
+        id: 2,
+        placa: 'QRM-2030',
+        modelo: 'Furgão SVO',
+        tipo_frota: 'SVO',
+        capacidade_maxima: 4,
+        km_atual: 2000,
+        status: 'DISPONIVEL',
+      },
+      {
+        id: 3,
+        placa: 'QRM-3040',
+        modelo: 'Kombi Oficina',
+        tipo_frota: 'SVO',
+        capacidade_maxima: 2,
+        km_atual: 3000,
+        status: 'MANUTENCAO',
+      },
+    ];
+
+    expect(filtrarVeiculosPorPerfil(frota, 'GESTOR_SVO')).toHaveLength(1);
+    expect(filtrarVeiculosPorPerfil(frota, 'GESTOR_SVO')[0].id).toBe(2);
+    expect(filtrarVeiculosPorPerfil(frota, 'GESTOR_FROTA')).toHaveLength(2);
+    expect(filtrarVeiculosPorPerfil(frota, 'ADMINISTRADOR')).toHaveLength(2);
   });
 });

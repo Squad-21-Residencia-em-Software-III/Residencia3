@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { Alert, Button, Card } from '../components/ui';
+import { useAuth } from '../contexts/AuthContext';
 import { ApiError } from '../services/api/http';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { viagensApi } from '../services/api/viagensApi';
@@ -11,6 +12,7 @@ import {
   adicionarDias,
   adicionarMeses,
   agruparRecursosAgenda,
+  filtrarVeiculosPorPerfil,
   formatarDataIso,
   formatarTituloDia,
   formatarTituloMes,
@@ -29,6 +31,7 @@ import { AgendaSemana } from './agenda/AgendaSemana';
 const INTERVALO_POLLING_MS = 30_000;
 
 export default function AgendaPage() {
+  const { usuario } = useAuth();
   const hojeIso = formatarDataIso(new Date());
   const [dataReferenciaIso, setDataReferenciaIso] = useState<string>(hojeIso);
   const [modoVisualizacao, setModoVisualizacao] = useState<ModoVisualizacaoAgenda>('hoje');
@@ -121,15 +124,20 @@ export default function AgendaPage() {
     [dataReferenciaIso, hojeIso],
   );
 
+  const veiculosVisiveis = useMemo(
+    () => filtrarVeiculosPorPerfil(veiculos, usuario?.perfil),
+    [veiculos, usuario?.perfil],
+  );
+
   const linhasHoje = useMemo(() => {
     const blocos = projetarViagensNoDia(viagens, dataReferenciaIso);
-    return agruparRecursosAgenda(veiculos, blocos);
-  }, [viagens, veiculos, dataReferenciaIso]);
+    return agruparRecursosAgenda(veiculosVisiveis, blocos);
+  }, [viagens, veiculosVisiveis, dataReferenciaIso]);
 
   const linhasSemana = useMemo(() => {
     const blocosSemana = diasSemana.flatMap((d) => projetarViagensNoDia(viagens, d.data));
-    return agruparRecursosAgenda(veiculos, blocosSemana);
-  }, [viagens, veiculos, diasSemana]);
+    return agruparRecursosAgenda(veiculosVisiveis, blocosSemana);
+  }, [viagens, veiculosVisiveis, diasSemana]);
 
   const gradeMes = useMemo(() => {
     const ref = parseDataIsoLocal(dataReferenciaIso);

@@ -435,13 +435,13 @@ flowchart TD
 
 A tela de Agenda passou a consumir diretamente os dados reais da API REST, eliminando os últimos arquivos legados (`storageService.ts` e `agendaMock.ts`):
 
-- **Fontes de dados:** `GET /api/viagens` (`viagensApi.listar()`) e `GET /api/veiculos` (`veiculosApi.listar()`) em paralelo (`Promise.all`), exibindo toda a frota ativa na coluna lateral (inclusive veículos livres no dia) e os detalhes da viagem via reutilização do `DrawerDetalhesViagem.tsx`.
-- **Grade 24h e regra de horários:** janela `00:00`–`24:00` com destaque para o expediente comercial (`07:00`–`17:00`, Hemose/Lacen) e cobertura contínua de plantão 24h (SVO), marcador dinâmico do horário atual e auto-scroll horizontal. Ordens SVO ou viagens sem `fim_previsto` e ainda não concluídas estendem a barra até `23:59` do mesmo dia.
+- **Fontes de dados e acesso:** restrita a `ADMINISTRADOR`, `GESTOR_FROTA` e `GESTOR_SVO` (`routes/index.tsx`), consumindo `GET /api/viagens` (`viagensApi.listar()`) e `GET /api/veiculos` (`veiculosApi.listar()`) em paralelo (`Promise.all`). Veículos em `MANUTENCAO` não aparecem na lista operacional (exceto em dias históricos em que possuam viagem registrada); `GESTOR_SVO` visualiza apenas a frota `SVO` na lateral, enquanto `GESTOR_FROTA` e `ADMINISTRADOR` visualizam toda a frota. Os detalhes da viagem reutilizam o `DrawerDetalhesViagem.tsx`.
+- **Grade 24h e regra de horários:** janela `00:00`–`24:00` com destaque para o expediente comercial (`07:00`–`17:00`, Hemose/Lacen) e cobertura contínua de plantão 24h (SVO), marcador dinâmico do horário atual e auto-scroll horizontal. Ordens SVO ou viagens sem `fim_previsto` e ainda não concluídas estendem a barra até `23:59` do mesmo dia; ordens SVO simultâneas no mesmo veículo são empilhadas em sub-faixas verticais, e viagens `CANCELADA` são ocultadas da grade e dos contadores.
 - **Atualização automática (*polling* inteligente):** revalidação em segundo plano a cada `30s` (pausada quando `document.hidden === true`) e atualização imediata ao retornar à aba (`visibilitychange` / `focus`).
 
 ### Melhorias Futuras Planejadas para a Agenda
 1. **Filtro por período no `GET /api/viagens`:** adicionar query params opcionais `data_inicio` e `data_fim` no back-end para evitar truncamento pelo limite atual de 200 registros em navegações distantes no histórico.
 2. **Estimativa de distância (`km_estimado`):** integrar cálculo prévio de distância após futura adoção de API de mapas/rotas (atualmente são exibidos apenas `km_inicial` e `km_final` efetivos no drawer).
 3. **Push em tempo real (SSE / WebSocket):** avaliar apenas se surgir demanda de atualização em sub-segundo (considerando que rewrites HTTP da Vercel não fazem proxy de WebSocket e exigem endpoint direto no Render autenticado por Bearer token).
-4. **Bloqueios de manutenção e permissão de menu:** exibir janelas de manutenção programada na grade e alinhar a visibilidade do item `/agenda` no menu lateral para perfis sem acesso a `/api/viagens` (como `SOLICITANTE`).
+4. **Bloqueios de manutenção:** avaliar exibição de janelas de manutenção programada diretamente na grade horária dos veículos.
 

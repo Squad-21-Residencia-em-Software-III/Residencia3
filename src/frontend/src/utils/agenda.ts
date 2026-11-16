@@ -6,6 +6,7 @@ import type {
 } from '../types/agenda';
 import type { Veiculo } from '../types/veiculo';
 import type { Viagem } from '../types/viagem';
+import { PERFIS, type Perfil } from '../types/usuario';
 
 const NOMES_DIAS_CURTOS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'] as const;
 
@@ -142,6 +143,7 @@ export function projetarViagensNoDia(viagens: Viagem[], dataIso: string): BlocoA
   const blocos: BlocoAgendaDia[] = [];
 
   for (const viagem of viagens) {
+    if (viagem.status === 'CANCELADA') continue;
     const intervalo = obterIntervaloViagem(viagem);
     if (!intervalo) continue;
 
@@ -236,6 +238,47 @@ export function agruparRecursosAgenda(
   }
 
   return Array.from(mapa.values());
+}
+
+export function filtrarVeiculosPorPerfil(veiculos: Veiculo[], perfil?: Perfil): Veiculo[] {
+  const operacionais = veiculos.filter((v) => v.status !== 'MANUTENCAO');
+  if (perfil === PERFIS.GESTOR_SVO) {
+    return operacionais.filter((v) => v.tipo_frota === 'SVO');
+  }
+  return operacionais;
+}
+
+export interface BlocoComFaixa extends BlocoAgendaDia {
+  faixa: number;
+}
+
+/**
+ * Distribui blocos que se sobrepõem no mesmo veículo (ex.: até 4 ordens SVO simultâneas)
+ * em sub-faixas verticais para que nenhum bloco fique oculto atrás de outro.
+ */
+export function alocarSubfaixasBlocos(blocos: BlocoAgendaDia[]): {
+  blocosComFaixa: BlocoComFaixa[];
+  totalFaixas: number;
+} {
+  const ordenados = [...blocos].sort((a, b) => a.inicioMin - b.inicioMin || a.fimMin - b.fimMin);
+  const fimPorFaixa: number[] = [];
+  const blocosComFaixa: BlocoComFaixa[] = [];
+
+  for (const bloco of ordenados) {
+    let faixaAlocada = fimPorFaixa.findIndex((fim) => fim <= bloco.inicioMin);
+    if (faixaAlocada === -1) {
+      faixaAlocada = fimPorFaixa.length;
+      fimPorFaixa.push(bloco.fimMin);
+    } else {
+      fimPorFaixa[faixaAlocada] = bloco.fimMin;
+    }
+    blocosComFaixa.push({ ...bloco, faixa: faixaAlocada });
+  }
+
+  return {
+    blocosComFaixa,
+    totalFaixas: Math.max(1, fimPorFaixa.length),
+  };
 }
 
 export function obterResumoTrajeto(viagem: Viagem): string {

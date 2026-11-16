@@ -2,11 +2,17 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AgendaPage from './AgendaPage';
+import { useAuth } from '../contexts/AuthContext';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { viagensApi } from '../services/api/viagensApi';
+import { PERFIS } from '../types/usuario';
 import type { Veiculo } from '../types/veiculo';
 import type { Viagem } from '../types/viagem';
 import { formatarDataIso } from '../utils/agenda';
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: vi.fn(),
+}));
 
 vi.mock('../services/api/viagensApi', () => ({
   viagensApi: {
@@ -70,6 +76,20 @@ const mockViagens: Viagem[] = [
 describe('AgendaPage: integração com API, estados e DrawerDetalhesViagem', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useAuth).mockReturnValue({
+      usuario: {
+        id: 1,
+        nome: 'Admin Teste',
+        email: 'admin@fsph.se.gov.br',
+        perfil: PERFIS.ADMINISTRADOR,
+        tipo_usuario: 'ADMINISTRADOR',
+        ativo: true,
+      },
+      carregando: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      temPerfil: () => true,
+    });
   });
 
   it('exibe toda a frota na lateral, projeta viagens e abre DrawerDetalhesViagem ao clicar', async () => {
@@ -139,5 +159,32 @@ describe('AgendaPage: integração com API, estados e DrawerDetalhesViagem', () 
     // Clicar no dia com viagem volta para a grade do dia
     await user.click(screen.getByText('1 viagem'));
     expect(screen.getByText(/Grade 24h \(SVO contínuo/i)).toBeInTheDocument();
+  });
+
+  it('exibe apenas veículos SVO na lateral quando o usuário logado for GESTOR_SVO', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      usuario: {
+        id: 2,
+        nome: 'Gestor SVO',
+        email: 'svo@fsph.se.gov.br',
+        perfil: PERFIS.GESTOR_SVO,
+        tipo_usuario: 'GESTOR_SVO',
+        ativo: true,
+      },
+      carregando: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      temPerfil: () => true,
+    });
+    vi.mocked(viagensApi.listar).mockResolvedValueOnce([]);
+    vi.mocked(veiculosApi.listar).mockResolvedValueOnce(mockVeiculos);
+
+    render(<AgendaPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Fiat Ducato')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Renault Master')).not.toBeInTheDocument();
   });
 });
