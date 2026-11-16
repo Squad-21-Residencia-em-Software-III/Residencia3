@@ -89,6 +89,9 @@ export const PERMISSOES = {
 
   // Auditoria
   'auditoria.acessar': [ADMINISTRADOR],
+
+  // Relatórios gerenciais (BL35 / RF18 / RN20)
+  'relatorios.exportar': [ADMINISTRADOR, GESTOR_FROTA],
 } as const satisfies Record<string, readonly Perfil[]>;
 
 export type Permissao = keyof typeof PERMISSOES;
