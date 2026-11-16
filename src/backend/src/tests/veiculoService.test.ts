@@ -33,6 +33,8 @@ vi.mock('../models/veiculoModel', () => ({
     buscarParaAtualizar: vi.fn(),
     buscarPorPlaca: vi.fn(),
     atualizarVeiculo: vi.fn(),
+    listarVeiculos: vi.fn(async () => []),
+    idsVinculadosAoUsuarioMotorista: vi.fn(async () => [4, 9]),
   },
 }));
 
@@ -139,5 +141,31 @@ describe('veiculoService.atualizar - capacidade SVO', () => {
     });
     // A mudança 3 -> 4 é detectada pelo valor do banco e a ocupação é conferida
     expect(estado.consultas).toEqual(['ordens_svo']);
+  });
+});
+
+describe('veiculoService.listar (veículos vinculados ao motorista)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each(['MOTORISTA_FROTA', 'MOTORISTA_SVO'] as const)('%s recebe só os veículos das próprias viagens ativas', async (perfil) => {
+    await veiculoService.listar({ id: 100, perfil });
+
+    expect(veiculoModel.idsVinculadosAoUsuarioMotorista).toHaveBeenCalledWith(100);
+    expect(veiculoModel.listarVeiculos).toHaveBeenCalledWith([4, 9]);
+  });
+
+  it('motorista sem viagem ativa recebe lista vazia, não a frota inteira', async () => {
+    vi.mocked(veiculoModel.idsVinculadosAoUsuarioMotorista).mockResolvedValueOnce([]);
+
+    await veiculoService.listar({ id: 100, perfil: 'MOTORISTA_FROTA' });
+
+    expect(veiculoModel.listarVeiculos).toHaveBeenCalledWith([]);
+  });
+
+  it.each(['ADMINISTRADOR', 'GESTOR_FROTA', 'GESTOR_SVO'] as const)('%s recebe a frota inteira', async (perfil) => {
+    await veiculoService.listar({ id: 1, perfil });
+
+    expect(veiculoModel.idsVinculadosAoUsuarioMotorista).not.toHaveBeenCalled();
+    expect(veiculoModel.listarVeiculos).toHaveBeenCalledWith();
   });
 });

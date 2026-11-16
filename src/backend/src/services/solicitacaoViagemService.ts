@@ -196,6 +196,11 @@ async function analisar(
       );
     }
 
+    // Segregação de funções: quem pediu a viagem não decide sobre ela
+    if (solicitacao.solicitante_id === autor.id) {
+      throw new AppError('Você não pode analisar uma solicitação criada por você', 403);
+    }
+
     if (solicitacao.status !== 'PENDENTE_APROVACAO') {
       throw new AppError(
         'Apenas solicitações pendentes podem ser aprovadas ou recusadas',

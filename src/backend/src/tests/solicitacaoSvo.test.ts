@@ -6,6 +6,12 @@ const { trx, transaction } = vi.hoisted(() => {
   const trx = {};
   return { trx, transaction: vi.fn(async (callback: (conn: unknown) => unknown) => callback(trx)) };
 });
+// Gestor SVO associado à unidade SVO (exigirAssociacaoSvo)
+vi.mock('../models/unidadeModel', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../models/unidadeModel')>();
+  return { ...original, unidadeModel: { ...original.unidadeModel, estaAssociadoPorNome: vi.fn(async () => true) } };
+});
+
 vi.mock('../config/database', () => ({ db: { transaction } }));
 vi.mock('../services/authService', () => ({ authService: { usuarioDoToken: vi.fn() } }));
 vi.mock('../models/solicitacaoSvoModel', () => ({
