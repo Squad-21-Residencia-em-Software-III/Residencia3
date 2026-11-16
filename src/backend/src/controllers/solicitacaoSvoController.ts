@@ -6,6 +6,7 @@ import {
   confirmarSolicitacaoSvoSchema,
   criarSolicitacaoSvoSchema,
   listarSolicitacoesSvoQuerySchema,
+  recusarSolicitacaoSvoSchema,
 } from '../validators/solicitacaoSvoSchemas';
 
 export const solicitacaoSvoController = {
@@ -34,5 +35,12 @@ export const solicitacaoSvoController = {
     confirmarSolicitacaoSvoSchema.parse(req.body ?? {});
     const { criada, ...resultado } = await solicitacaoSvoService.confirmar(id, usuarioAutenticado(req));
     res.status(criada ? 201 : 200).json(resultado);
+  },
+
+  async recusar(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    const { motivo_recusa } = recusarSolicitacaoSvoSchema.parse(req.body ?? {});
+    const resultado = await solicitacaoSvoService.recusar(id, motivo_recusa, usuarioAutenticado(req));
+    res.status(200).json(resultado);
   },
 };
