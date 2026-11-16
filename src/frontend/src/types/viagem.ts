@@ -63,6 +63,7 @@ export interface OrdemPendenteSvo {
  * (SCRUM-182); antes disso o servidor os ignoraria.
  */
 export interface AgendamentoColetaSvoInput {
+  equipe_id?: number;
   solicitacao_id: number;
   veiculo_id: number;
   motorista_id: number;

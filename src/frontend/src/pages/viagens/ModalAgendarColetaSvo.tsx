@@ -4,6 +4,10 @@ import { AlertTriangle } from 'lucide-react';
 import { Alert, Button, IdBadge, Input, Modal, Select } from '../../components/ui';
 import { recursoAtivo } from '../../config/recursosBackend';
 import { ApiError, mensagemDeErro } from '../../services/api/http';
+import { equipesSvoApi } from '../../services/api/equipesSvoApi';
+import type { EquipeSvo } from '../../types/equipeSvo';
+import { periodoConsultaEquipes } from '../../utils/periodoEquipesSvo';
+import { SeletorEquipeSvo } from './SeletorEquipeSvo';
 import { veiculosApi } from '../../services/api/veiculosApi';
 import { viagensApi } from '../../services/api/viagensApi';
 import type { Motorista, StatusMotorista } from '../../types/motorista';
@@ -73,6 +77,10 @@ export function ModalAgendarColetaSvo({
   const [motoristaId, setMotoristaId] = useState(
     motoristasSvo[0] ? String(motoristasSvo[0].id) : '',
   );
+  const [equipes, setEquipes] = useState<EquipeSvo[]>([]);
+  const [equipeId, setEquipeId] = useState('');
+  const [erroEquipes, setErroEquipes] = useState<string | null>(null);
+  const [carregandoEquipes, setCarregandoEquipes] = useState(false);
   const [ocupacoes, setOcupacoes] = useState<OcupacaoVeiculoSvo[]>([]);
   const [erroOcupacao, setErroOcupacao] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -92,6 +100,24 @@ export function ModalAgendarColetaSvo({
     };
   }, []);
 
+  useEffect(() => {
+    let ativo = true;
+    setEquipeId('');
+    setEquipes([]);
+    setErroEquipes(null);
+    if (comPeriodo && (!inicio || !fim || new Date(fim) <= new Date(inicio))) {
+      setCarregandoEquipes(false);
+      return () => { ativo = false; };
+    }
+    const periodo = comPeriodo ? { inicio: paraIso(inicio), fim: paraIso(fim) } : periodoConsultaEquipes();
+    setCarregandoEquipes(true);
+    equipesSvoApi.listarDisponiveis(periodo)
+      .then((resposta) => { if (ativo) setEquipes(resposta.equipes); })
+      .catch((error) => { if (ativo) setErroEquipes(mensagemDeErro(error)); })
+      .finally(() => { if (ativo) setCarregandoEquipes(false); });
+    return () => { ativo = false; };
+  }, [comPeriodo, inicio, fim]);
+
   const ocupacaoDoVeiculo = ocupacoes.find((o) => String(o.id) === veiculoId);
   const bloqueio = ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
 
@@ -106,6 +132,7 @@ export function ModalAgendarColetaSvo({
   function validar(): string | null {
     if (!veiculoId || !motoristaId) return 'Selecione o veículo e o motorista da coleta.';
     if (bloqueio) return bloqueio;
+    if (equipeId && !equipes.some((e) => String(e.id) === equipeId)) return 'A equipe selecionada não está mais disponível.';
     if (!comPeriodo) return null;
     if (!inicio || !fim) return 'Informe o início e o término previstos da coleta.';
     if (new Date(fim) <= new Date(inicio)) return 'O término previsto deve ser depois do início.';
@@ -120,6 +147,7 @@ export function ModalAgendarColetaSvo({
       solicitacao_id: ordem.solicitacao_id,
       veiculo_id: Number(veiculoId),
       motorista_id: Number(motoristaId),
+      ...(equipeId ? { equipe_id: Number(equipeId) } : {}),
       ...(comPeriodo
         ? {
             inicio_previsto: paraIso(inicio),
@@ -243,6 +271,9 @@ export function ModalAgendarColetaSvo({
             ))}
           </Select>
         </div>
+
+        <SeletorEquipeSvo equipes={equipes} carregando={carregandoEquipes} erro={erroEquipes}
+          valor={equipeId} onChange={alterar(setEquipeId)} />
 
         {erroOcupacao && (
           <Alert tone="warning" className="mt-3.5">

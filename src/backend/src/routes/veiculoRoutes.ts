@@ -12,13 +12,13 @@ veiculoRoutes.use(exigirAssociacaoSvo);
 
 veiculoRoutes.get(
   '/svo/disponiveis',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO, PERFIS.GESTOR_FROTA),
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO),
   veiculoController.listarVeiculosSvoDisponiveis
 );
 
 veiculoRoutes.get(
   '/svo/ocupacao',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO, PERFIS.GESTOR_FROTA),
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO),
   veiculoController.listarOcupacaoSvo
 );
 
@@ -36,12 +36,12 @@ veiculoRoutes.get(
 
 veiculoRoutes.post(
   '/',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO),
   veiculoController.criar
 );
 
 veiculoRoutes.put(
   '/:id',
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA),
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO),
   veiculoController.atualizar
 );

@@ -4,6 +4,7 @@ import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { motoristaModel } from '../models/motoristaModel';
 import { multaModel, type Multa } from '../models/multaModel';
 import type { CriarMultaInput, AtualizarMultaInput } from '../validators/multaSchemas';
+import { PERFIS, type Perfil } from '../constants/perfis';
 
 async function garantirVeiculoExiste(veiculoId: number): Promise<void> {
   const veiculo = await db('veiculos').where({ id: veiculoId }).first();
@@ -98,7 +99,7 @@ export const multaService = {
     });
   },
 
-  async listar(): Promise<Multa[]> {
-    return multaModel.listar();
+  async listar(perfil?: Perfil): Promise<Multa[]> {
+    return perfil === PERFIS.GESTOR_FROTA ? multaModel.listar(undefined, true) : multaModel.listar();
   },
 };

@@ -12,7 +12,7 @@ export const RECURSOS_BACKEND = {
    * SCRUM-178: `PATCH /solicitacoes-svo/:id/recusar` com `{ motivo_recusa }` e status RECUSADA.
    * Serviço: `solicitacoesSvoApi.recusar`.
    */
-  recusaSvo: false,
+  recusaSvo: true,
 
   /**
    * SCRUM-179: `GET /viagens/minhas`, viagens administrativas das solicitações do próprio usuário
@@ -24,7 +24,7 @@ export const RECURSOS_BACKEND = {
    * SCRUM-175 (banco) + SCRUM-181 (back): coluna `veiculos.lotacao_cabine` (pessoas na cabine,
    * motorista incluído), validada no cadastro e na edição de veículos SVO.
    */
-  lotacaoCabine: false,
+  lotacaoCabine: true,
 
   /**
    * SCRUM-176 (banco) + SCRUM-182 (back): agendamento da coleta com `inicio_previsto` e
@@ -35,8 +35,7 @@ export const RECURSOS_BACKEND = {
 
   /**
    * SCRUM-182: `GET /viagens/ordens-svo/pendentes`, ordens AGUARDANDO_ALOCACAO paginadas.
-   * Desligado, a lista vem das solicitações SVO confirmadas (cada uma tem uma ordem aguardando
-   * alocação). Serviço: `viagensApi.listarOrdensPendentesSvo`.
+   * Desligado, a lista verifica o estado real da ordem no detalhe de cada solicitação confirmada. Serviço: `viagensApi.listarOrdensPendentesSvo`.
    */
   ordensPendentesSvo: false,
 };

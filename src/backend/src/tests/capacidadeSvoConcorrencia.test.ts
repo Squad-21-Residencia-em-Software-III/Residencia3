@@ -294,7 +294,7 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     await darVez();
 
     // 2. Ao mesmo tempo, a edição tenta reduzir a capacidade para 2
-    const edicao = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1);
+    const edicao = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1, "ADMINISTRADOR");
     const resultadoEdicao = edicao.catch((erro) => erro);
     await darVez();
 
@@ -320,7 +320,7 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     pausas.edicao = promessa;
 
     // 1. A edição reduz a capacidade para 2 e fica parada antes do commit
-    const edicao = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1);
+    const edicao = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1, "ADMINISTRADOR");
     await darVez();
 
     // 2. Ao mesmo tempo, chega uma alocação de +2 vagas
@@ -352,7 +352,7 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     pausas.edicao = promessa;
 
     // 1. Edição A aumenta a capacidade para 4 e fica parada com a trava
-    const edicaoA = veiculoService.atualizar(10, { capacidade_maxima: 4 }, 1);
+    const edicaoA = veiculoService.atualizar(10, { capacidade_maxima: 4 }, 1, "ADMINISTRADOR");
     await darVez();
 
     // 2. Chega uma alocação de +2 (contando com a capacidade 4) e entra na fila
@@ -360,7 +360,7 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     await darVez();
 
     // 3. Edição B, de quem ainda vê a capacidade 2, reenvia capacidade 2 e entra na fila
-    const edicaoB = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1).catch((erro) => erro);
+    const edicaoB = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1, "ADMINISTRADOR").catch((erro) => erro);
     await darVez();
 
     // 4. Libera: A confirma 4, a alocação ocupa as 4 vagas e B precisa ver isso

@@ -24,11 +24,21 @@ export const criarVeiculoSchema = z
       .number({ error: 'A capacidade máxima é obrigatória' })
       .int('A capacidade máxima deve ser um número inteiro')
       .min(1, 'A capacidade máxima deve ser de no mínimo 1 passageiro/óbito'),
+    lotacao_cabine: z
+      .number({ error: 'A lotação da cabine deve ser um número' })
+      .int('A lotação da cabine deve ser um número inteiro')
+      .min(1, 'A lotação da cabine deve ser de no mínimo 1')
+      .optional()
+      .nullable(),
     km_atual: z
       .number({ error: 'A quilometragem atual é obrigatória' })
       .int('A quilometragem deve ser um número inteiro')
       .nonnegative('A quilometragem não pode ser negativa'),
   })
+  .refine(
+    (dados) => dados.tipo_frota !== 'SVO' || dados.lotacao_cabine != null,
+    { message: 'Informe a lotação da cabine do veículo SVO', path: ['lotacao_cabine'] }
+  )
   .refine(
     (dados) => {
       if (dados.tipo_frota === 'SVO' && dados.capacidade_maxima > 4) {
@@ -70,6 +80,11 @@ export const atualizarVeiculoSchema = z
       .number()
       .int('A capacidade máxima deve ser um número inteiro')
       .min(1, 'A capacidade máxima deve ser de no mínimo 1 passageiro/óbito')
+      .optional(),
+    lotacao_cabine: z
+      .number()
+      .int('A lotação da cabine deve ser um número inteiro')
+      .min(1, 'A lotação da cabine deve ser de no mínimo 1')
       .optional(),
     km_atual: z
       .number()
