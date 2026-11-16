@@ -216,7 +216,7 @@ export default function TriagemSvoPage() {
       <DrawerTriagemSvo
         solicitacaoId={selecionada}
         onClose={() => setSelecionada(null)}
-        onConfirmada={() => void carregar(pagina, status)}
+        onAtualizada={() => void carregar(pagina, status)}
       />
     </div>
   );

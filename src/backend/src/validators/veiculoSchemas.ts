@@ -36,6 +36,10 @@ export const criarVeiculoSchema = z
       .nonnegative('A quilometragem não pode ser negativa'),
   })
   .refine(
+    (dados) => dados.tipo_frota !== 'SVO' || dados.lotacao_cabine != null,
+    { message: 'Informe a lotação da cabine do veículo SVO', path: ['lotacao_cabine'] }
+  )
+  .refine(
     (dados) => {
       if (dados.tipo_frota === 'SVO' && dados.capacidade_maxima > 4) {
         return false;
@@ -81,8 +85,7 @@ export const atualizarVeiculoSchema = z
       .number()
       .int('A lotação da cabine deve ser um número inteiro')
       .min(1, 'A lotação da cabine deve ser de no mínimo 1')
-      .optional()
-      .nullable(),
+      .optional(),
     km_atual: z
       .number()
       .int('A quilometragem deve ser um número inteiro')

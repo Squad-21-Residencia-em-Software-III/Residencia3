@@ -20,4 +20,5 @@ export type { AlertTone } from './Alert';
 export { PageHeader } from './PageHeader';
 export { ConfirmDialog } from './ConfirmDialog';
 export { EmptyState } from './EmptyState';
+export { SeletorOperacao } from './SeletorOperacao';
 export * from './icons';

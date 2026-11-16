@@ -94,6 +94,10 @@ export class ApiError extends Error {
     message: string,
     public readonly status: number,
     public readonly detalhes: DetalheErro[] = [],
+    /** Código de negócio enviado pela API (`codigo`), quando houver. */
+    public readonly codigo?: string,
+    /** Dados extras do erro (`contexto`), ex.: conflitos de agenda. */
+    public readonly contexto?: unknown,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -171,6 +175,8 @@ async function executar<T>(
         (semCorpo ? 'Servidor indisponível. Tente novamente em instantes.' : 'Erro inesperado. Tente novamente.'),
       resposta.status,
       dados?.detalhes ?? [],
+      typeof dados?.codigo === 'string' ? dados.codigo : undefined,
+      dados?.contexto,
     )
   }
 

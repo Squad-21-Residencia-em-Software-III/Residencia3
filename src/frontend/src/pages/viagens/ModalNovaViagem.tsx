@@ -11,7 +11,7 @@ import type { SolicitacaoSvo } from '../../types/solicitacaoSvo';
 import type { Motorista, StatusMotorista } from '../../types/motorista';
 import type { OcupacaoVeiculoSvo, StatusVeiculo, Veiculo } from '../../types/veiculo';
 import type { SolicitacaoViagem } from '../../types/solicitacao';
-import type { Perfil } from '../../types/usuario';
+import { operacoesAgendaveis } from '../../utils/permissoes';
 import { periodoConsultaEquipes } from '../../utils/periodoEquipesSvo';
 import type { NovaViagemInput, TipoOperacaoViagem } from '../../types/viagem';
 import { motivoBloqueioSvo, OcupacaoVeiculoSvoPainel, rotuloOcupacao } from './OcupacaoVeiculoSvo';
@@ -23,6 +23,8 @@ interface ModalNovaViagemProps {
   veiculos: Veiculo[];
   motoristas: Motorista[];
   solicitacaoIdInicial?: number;
+  /** Operações que o perfil pode agendar/alocar (ver `operacoesAgendaveis`). */
+  tiposPermitidos?: TipoOperacaoViagem[];
   onClose: () => void;
   onSalvar: (novaViagem: NovaViagemInput) => Promise<void>;
 }
@@ -39,16 +41,6 @@ const LABEL_OCUPADO: Partial<Record<StatusVeiculo | StatusMotorista, string>> = 
   EM_VIAGEM: 'em viagem',
 };
 
-// Mesmas permissões do backend (viagemService): o tipo de operação que cada perfil pode agendar.
-// Perfil fora da tabela (ou sem usuário) não tem nenhuma operação liberada.
-// Ao integrar a matriz central de permissões (PR #115), migrar esta tabela para ela: hoje a
-// permissão `viagens.agendar` da matriz exclui o Gestor SVO, que o backend autoriza a alocar SVO.
-const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacaoViagem[]>> = {
-  ADMINISTRADOR: ['ADMINISTRATIVA', 'SVO'],
-  GESTOR_FROTA: ['ADMINISTRATIVA'],
-  GESTOR_SVO: ['SVO'],
-};
-
 const sufixoStatus = (status: StatusVeiculo | StatusMotorista) =>
   LABEL_OCUPADO[status] ? ` — ${LABEL_OCUPADO[status]}` : '';
 
@@ -58,15 +50,15 @@ export function ModalNovaViagem({
   veiculos,
   motoristas,
   solicitacaoIdInicial,
+  tiposPermitidos: tiposPermitidosProp,
   onClose,
   onSalvar,
 }: ModalNovaViagemProps) {
   const { usuario } = useAuth();
-  const tiposPermitidos = (usuario && TIPOS_POR_PERFIL[usuario.perfil]) ?? [];
+  const tiposPermitidos = tiposPermitidosProp ?? operacoesAgendaveis(usuario?.perfil);
   const autorizado = tiposPermitidos.length > 0;
-  // Sem permissão nada é exibido nem consultado; o tipo inicial é só um valor de reserva
+  // Gestor SVO só aloca ordens SVO; Gestor de Frota só agenda viagens administrativas
   const tipoInicial: TipoOperacaoViagem = tiposPermitidos[0] ?? 'ADMINISTRATIVA';
-
   const veiculosDoTipo = (tipo: TipoOperacaoViagem) =>
     veiculos.filter(
       (v) => v.tipo_frota === tipo && (tipo === 'SVO' || !VEICULO_BLOQUEADO.includes(v.status)),
@@ -210,6 +202,7 @@ export function ModalNovaViagem({
   }, [isSvo]);
 
   const handleMudarTipo = (novoTipo: TipoOperacaoViagem) => {
+    if (!tiposPermitidos.includes(novoTipo)) return;
     setTipoOperacao(novoTipo);
     setEquipeId('');
     setErro('');
