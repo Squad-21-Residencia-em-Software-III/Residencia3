@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { LISTA_PERFIS, PERFIS } from '../types/usuario';
 import type { Perfil } from '../types/usuario';
 import {
+  abasDeVeiculos,
+  abasDeViagens,
   operacoesAgendaveis,
   PERMISSOES,
   perfilPode,
@@ -142,9 +144,41 @@ describe('matriz de permissões por perfil', () => {
     expect(ordenar(quemPode('triagemSvo.acessar'))).toEqual(ordenar([ADMINISTRADOR, GESTOR_SVO]));
   });
 
+  it('Recusar ou confirmar chamado SVO: Administrador e Gestor SVO', () => {
+    expect(ordenar(quemPode('triagemSvo.analisar'))).toEqual(ordenar([ADMINISTRADOR, GESTOR_SVO]));
+  });
+
   it('Usuários e Auditoria: só o Administrador', () => {
     expect(quemPode('usuarios.gerenciar')).toEqual([ADMINISTRADOR]);
     expect(quemPode('auditoria.acessar')).toEqual([ADMINISTRADOR]);
+  });
+});
+
+describe('abas Administrativo/SVO (SCRUM-166)', () => {
+  it('Viagens: cada perfil vê só a operação que a API lhe devolve', () => {
+    expect(abasDeViagens(ADMINISTRADOR, false)).toEqual(['ADMINISTRATIVA', 'SVO']);
+    expect(abasDeViagens(GESTOR_FROTA, false)).toEqual(['ADMINISTRATIVA']);
+    expect(abasDeViagens(MOTORISTA_FROTA, false)).toEqual(['ADMINISTRATIVA']);
+    expect(abasDeViagens(GESTOR_SVO, false)).toEqual(['SVO']);
+    expect(abasDeViagens(MOTORISTA_SVO, false)).toEqual(['SVO']);
+    expect(abasDeViagens(SOLICITANTE, false)).toEqual([]);
+    expect(abasDeViagens(null, true)).toEqual([]);
+  });
+
+  it('Viagens: com a consulta própria (SCRUM-179) o Gestor SVO ganha a aba Administrativo', () => {
+    expect(abasDeViagens(GESTOR_SVO, true)).toEqual(['SVO', 'ADMINISTRATIVA']);
+    // Os demais não mudam
+    expect(abasDeViagens(GESTOR_FROTA, true)).toEqual(['ADMINISTRATIVA']);
+    expect(abasDeViagens(MOTORISTA_SVO, true)).toEqual(['SVO']);
+  });
+
+  it('Veículos: as duas frotas para quem vê detalhes, a do perfil primeiro', () => {
+    expect(abasDeVeiculos(ADMINISTRADOR)).toEqual(['ADMINISTRATIVA', 'SVO']);
+    expect(abasDeVeiculos(GESTOR_FROTA)).toEqual(['ADMINISTRATIVA', 'SVO']);
+    expect(abasDeVeiculos(GESTOR_SVO)).toEqual(['SVO', 'ADMINISTRATIVA']);
+    expect(abasDeVeiculos(MOTORISTA_SVO)).toEqual(['SVO', 'ADMINISTRATIVA']);
+    // O Solicitante tem a tela reduzida, sem abas
+    expect(abasDeVeiculos(SOLICITANTE)).toEqual([]);
   });
 });
 

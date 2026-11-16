@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ChevronRight, Flag, MapPin, Play } from 'lucide-react';
+import { AlertTriangle, CalendarClock, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -12,6 +12,7 @@ import {
   MetricCard,
   Pagination,
   SearchInput,
+  SeletorOperacao,
   Table,
   TableFilterCollapse,
   TableToolbar,
@@ -28,18 +29,21 @@ import type { Veiculo } from '../types/veiculo';
 import {
   LABELS_STATUS_VIAGEM,
   type NovaViagemInput,
+  type OrdemPendenteSvo,
   type StatusViagem,
+  type TipoOperacaoViagem,
   type Viagem,
 } from '../types/viagem';
+import { useAbaOperacao } from '../utils/abaOperacao';
 import { cn } from '../utils/cn';
 import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
 import { ModalFinalizarViagem } from './viagens/ModalFinalizarViagem';
+import { ModalAgendarColetaSvo } from './viagens/ModalAgendarColetaSvo';
 import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
 import { usePermissao } from '../utils/permissoes';
 
 type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
-type FiltroOperacaoViagem = 'TODAS' | 'ADMINISTRATIVA' | 'SVO';
 
 interface DadosNovaViagem {
   veiculos: Veiculo[];
@@ -47,6 +51,32 @@ interface DadosNovaViagem {
   solicitacoes: SolicitacaoViagem[];
   erroSolicitacoes: string | null;
 }
+
+interface DadosAgendarColeta {
+  ordem: OrdemPendenteSvo;
+  veiculos: Veiculo[];
+  motoristas: Motorista[];
+}
+
+const TEXTOS_OPERACAO: Record<
+  TipoOperacaoViagem,
+  { total: string; titulo: string; registro: string; vazio: string; carregando: string }
+> = {
+  ADMINISTRATIVA: {
+    total: 'Total de Viagens',
+    titulo: 'Viagens administrativas',
+    registro: 'viagens registradas',
+    vazio: 'Nenhuma viagem encontrada com os filtros selecionados.',
+    carregando: 'Carregando viagens...',
+  },
+  SVO: {
+    total: 'Total de Coletas',
+    titulo: 'Coletas SVO',
+    registro: 'coletas registradas',
+    vazio: 'Nenhuma coleta encontrada com os filtros selecionados.',
+    carregando: 'Carregando coletas...',
+  },
+};
 
 // Viagens administrativas e ordens SVO têm ids independentes e podem repetir o mesmo número
 const chaveViagem = (v: Viagem) => `${v.tipo_operacao}-${v.id}`;
@@ -80,21 +110,55 @@ function limitarTexto(texto: string | null, maximo = 28): string {
   return texto.length > maximo ? `${texto.slice(0, maximo)}...` : texto;
 }
 
+/**
+ * Viagens com a alternância Administrativo/SVO (SCRUM-171). Cada aba tem lista, indicadores e
+ * filtros próprios: Administrativo mostra viagens da frota institucional; SVO mostra as coletas e
+ * as ordens aguardando agendamento.
+ */
 export default function ViagensPage() {
+  const { pode, abasDeViagens } = usePermissao();
+  const abas = abasDeViagens();
+  const { ativa, mudar } = useAbaOperacao(abas);
+
+  if (!ativa) return null;
+
+  // O Gestor SVO só acompanha, no Administrativo, as viagens que ele mesmo pediu (SCRUM-179)
+  const somenteProprias =
+    ativa === 'ADMINISTRATIVA' &&
+    !pode('viagens.operacaoAdministrativa') &&
+    pode('viagens.acompanharProprias');
+
+  return (
+    <div className="grid w-full min-w-0 gap-5">
+      <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
+      <div key={ativa} className="animate-tab-fade">
+        <PainelViagens operacao={ativa} somenteProprias={somenteProprias} />
+      </div>
+    </div>
+  );
+}
+
+interface PainelViagensProps {
+  operacao: TipoOperacaoViagem;
+  /** Só as viagens pedidas pelo próprio usuário, sem ações de gestão. */
+  somenteProprias: boolean;
+}
+
+function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const location = useLocation();
-  const { pode, operacoesAgendaveis } = usePermissao();
-  // Agendamento administrativo (Admin e Gestor de Frota) e alocação SVO (Admin e Gestor SVO)
-  const podeAgendar = pode('viagens.agendar');
-  const tiposAgendaveis = operacoesAgendaveis();
-  const podeAbrirAgendamento = tiposAgendaveis.length > 0;
-  const podeCancelar = pode('viagens.cancelar');
+  const { pode } = usePermissao();
+  const isSvo = operacao === 'SVO';
+  const textos = TEXTOS_OPERACAO[operacao];
+  // Agendar viagem administrativa (Admin e Gestor de Frota); alocar coleta SVO (Admin e Gestor SVO)
+  const podeAgendar = !isSvo && !somenteProprias && pode('viagens.agendar');
+  const podeAlocarSvo = isSvo && pode('viagens.alocarSvo');
+  const podeCancelar = !somenteProprias && pode('viagens.cancelar');
   // Motoristas registram saída e retorno das próprias viagens (a API só lista as deles)
-  const podeExecutar = pode('viagens.executar');
+  const podeExecutar = !somenteProprias && pode('viagens.executar');
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatusViagem>('TODOS');
-  const [filtroOperacao, setFiltroOperacao] = useState<FiltroOperacaoViagem>('TODAS');
   const [filtroMotorista, setFiltroMotorista] = useState<string>('TODOS');
   const [filtroVeiculo, setFiltroVeiculo] = useState<string>('TODOS');
   const [busca, setBusca] = useState('');
@@ -102,6 +166,13 @@ export default function ViagensPage() {
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
   const [dadosNovaViagem, setDadosNovaViagem] = useState<DadosNovaViagem | null>(null);
+
+  // Ordens SVO aguardando agendamento (só para quem aloca coletas)
+  const [pendentes, setPendentes] = useState<OrdemPendenteSvo[]>([]);
+  const [carregandoPendentes, setCarregandoPendentes] = useState(podeAlocarSvo);
+  const [erroPendentes, setErroPendentes] = useState<string | null>(null);
+  const [ordemAgendar, setOrdemAgendar] = useState<OrdemPendenteSvo | null>(null);
+  const [dadosAgendarColeta, setDadosAgendarColeta] = useState<DadosAgendarColeta | null>(null);
 
   useEffect(() => {
     if (location.state?.solicitacaoId && podeAgendar) {
@@ -132,18 +203,71 @@ export default function ViagensPage() {
 
   const carregarViagens = useCallback(async () => {
     try {
-      setViagens(await viagensApi.listar());
+      const lista = somenteProprias
+        ? await viagensApi.listarMinhasAdministrativas()
+        : await viagensApi.listar();
+      // A API lista as duas operações a quem gerencia as duas; cada aba mostra só a sua
+      setViagens(lista.filter((v) => v.tipo_operacao === operacao));
       setErroCarga(null);
     } catch (error) {
       setErroCarga(mensagemDeErro(error));
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [operacao, somenteProprias]);
 
   useEffect(() => {
     carregarViagens();
   }, [carregarViagens]);
+
+  const carregarPendentes = useCallback(async () => {
+    if (!podeAlocarSvo) return;
+    setCarregandoPendentes(true);
+    try {
+      setPendentes(await viagensApi.listarOrdensPendentesSvo());
+      setErroPendentes(null);
+    } catch (error) {
+      setPendentes([]);
+      setErroPendentes(mensagemDeErro(error));
+    } finally {
+      setCarregandoPendentes(false);
+    }
+  }, [podeAlocarSvo]);
+
+  useEffect(() => {
+    void carregarPendentes();
+  }, [carregarPendentes]);
+
+  // Atalho de Solicitações SVO: abre o agendamento da ordem confirmada
+  const solicitacaoSvoDoAtalho: number | undefined = location.state?.agendarSolicitacaoSvoId;
+  const [atalhoUsado, setAtalhoUsado] = useState(false);
+  useEffect(() => {
+    if (atalhoUsado || !solicitacaoSvoDoAtalho || carregandoPendentes) return;
+    const ordem = pendentes.find((p) => p.solicitacao_id === solicitacaoSvoDoAtalho);
+    if (ordem) setOrdemAgendar(ordem);
+    setAtalhoUsado(true);
+  }, [atalhoUsado, solicitacaoSvoDoAtalho, carregandoPendentes, pendentes]);
+
+  // Veículos e motoristas buscados a cada abertura, para refletir os status atuais
+  useEffect(() => {
+    if (!ordemAgendar) {
+      setDadosAgendarColeta(null);
+      return;
+    }
+    let ativo = true;
+    Promise.all([veiculosApi.listar(), motoristasApi.listar()])
+      .then(([veiculos, motoristas]) => {
+        if (ativo) setDadosAgendarColeta({ ordem: ordemAgendar, veiculos, motoristas });
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        setOrdemAgendar(null);
+        exibirFeedback(mensagemDeErro(error), true);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [ordemAgendar]);
 
   // Veículos e motoristas são buscados a cada abertura para refletir os status atuais do backend
   useEffect(() => {
@@ -216,7 +340,6 @@ export default function ViagensPage() {
   const filtradas = useMemo(() => {
     return viagens.filter((v) => {
       if (filtroStatus !== 'TODOS' && v.status !== filtroStatus) return false;
-      if (filtroOperacao !== 'TODAS' && v.tipo_operacao !== filtroOperacao) return false;
       if (filtroMotorista !== 'TODOS' && String(v.motorista_id) !== filtroMotorista) return false;
       if (filtroVeiculo !== 'TODOS' && String(v.veiculo_id) !== filtroVeiculo) return false;
 
@@ -233,7 +356,7 @@ export default function ViagensPage() {
       }
       return true;
     });
-  }, [viagens, filtroStatus, filtroOperacao, filtroMotorista, filtroVeiculo, busca]);
+  }, [viagens, filtroStatus, filtroMotorista, filtroVeiculo, busca]);
 
   const [paginaAtual, setPaginaAtual] = useState(1);
   const ITENS_POR_PAGINA = 10;
@@ -241,7 +364,7 @@ export default function ViagensPage() {
   // Reseta para a página 1 ao alterar qualquer critério de filtro
   useEffect(() => {
     setPaginaAtual(1);
-  }, [busca, filtroStatus, filtroOperacao, filtroMotorista, filtroVeiculo]);
+  }, [busca, filtroStatus, filtroMotorista, filtroVeiculo]);
 
   const totalItens = filtradas.length;
   const totalPaginas = Math.max(1, Math.ceil(totalItens / ITENS_POR_PAGINA));
@@ -288,6 +411,11 @@ export default function ViagensPage() {
     }
   };
 
+  const handleColetaAgendada = async () => {
+    await Promise.all([carregarViagens(), carregarPendentes()]);
+    exibirFeedback('Coleta agendada com sucesso!');
+  };
+
   return (
     <div className="grid w-full min-w-0 gap-5">
       {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
@@ -296,7 +424,7 @@ export default function ViagensPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <MetricCard
-          label="Total de Viagens"
+          label={textos.total}
           value={totais.total}
           tone="neutral"
           className="px-5 py-4"
@@ -321,16 +449,87 @@ export default function ViagensPage() {
         />
       </div>
 
+      {somenteProprias && (
+        <Alert tone="info">
+          Aqui aparecem só as viagens administrativas das solicitações feitas por você.
+        </Alert>
+      )}
+
+      {podeAlocarSvo && (
+        <Card>
+          <div className="flex flex-col gap-1 border-b border-divider px-3.5 py-3 md:px-6">
+            <h2 className="text-[15px] font-bold text-text md:text-base">
+              Aguardando agendamento
+            </h2>
+            <p className="text-xs text-text-muted">
+              Ordens de coleta geradas na confirmação das solicitações SVO, ainda sem veículo e
+              motorista.
+            </p>
+          </div>
+          <Table>
+            <thead>
+              <tr>
+                <th>Ordem</th>
+                <th>Local da ocorrência</th>
+                <th>Confirmada em</th>
+                <th className="text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendentes.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="p-6 text-center text-slate-500">
+                    {carregandoPendentes
+                      ? 'Carregando ordens...'
+                      : erroPendentes
+                        ? `Não foi possível carregar as ordens: ${erroPendentes}`
+                        : 'Nenhuma ordem aguardando agendamento.'}
+                  </td>
+                </tr>
+              ) : (
+                pendentes.map((o) => (
+                  <tr key={`pendente-${o.solicitacao_id}`}>
+                    <td>
+                      <div className="flex flex-col gap-0.5">
+                        {o.ordem_id !== null && <IdBadge id={`#${o.ordem_id}`} />}
+                        <span className="text-[11px] text-slate-500">
+                          Solicitação #{o.solicitacao_id}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="block max-w-xs truncate" title={o.local_ocorrencia}>
+                        {o.local_ocorrencia}
+                      </span>
+                      {o.material_sensivel && (
+                        <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
+                          <AlertTriangle size={12} /> Material sensível
+                        </span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap">{formatarDataHora(o.confirmado_em)}</td>
+                    <td className="text-right whitespace-nowrap">
+                      <Button size="sm" onClick={() => setOrdemAgendar(o)}>
+                        <CalendarClock size={13} className="mr-1" /> Agendar coleta
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </Table>
+        </Card>
+      )}
+
       <Card>
         <TableToolbar
-          title="Registro de Viagens"
-          subtitle={`${filtradas.length} de ${viagens.length} viagens registradas`}
-          newLabel={podeAbrirAgendamento ? 'Nova Viagem' : undefined}
-          onNew={podeAbrirAgendamento ? () => setModalNovaAberto(true) : undefined}
+          title={textos.titulo}
+          subtitle={`${filtradas.length} de ${viagens.length} ${textos.registro}`}
+          newLabel={podeAgendar ? 'Agendar Viagem' : undefined}
+          onNew={podeAgendar ? () => setModalNovaAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
           isFilterActive={
             filtroStatus !== 'TODOS' ||
-            filtroOperacao !== 'TODAS' ||
             filtroMotorista !== 'TODOS' ||
             filtroVeiculo !== 'TODOS' ||
             Boolean(busca) ||
@@ -361,17 +560,6 @@ export default function ViagensPage() {
           />
 
           <FilterSelect
-            aria-label="Filtrar por operação"
-            value={filtroOperacao}
-            onChange={(val) => setFiltroOperacao(val as FiltroOperacaoViagem)}
-            options={[
-              { value: 'TODAS', label: 'Todas as operações' },
-              { value: 'ADMINISTRATIVA', label: 'Frota Institucional' },
-              { value: 'SVO', label: 'Serviço SVO' },
-            ]}
-          />
-
-          <FilterSelect
             aria-label="Filtrar por motorista"
             value={filtroMotorista}
             onChange={setFiltroMotorista}
@@ -392,7 +580,6 @@ export default function ViagensPage() {
           />
 
           {(filtroStatus !== 'TODOS' ||
-            filtroOperacao !== 'TODAS' ||
             filtroMotorista !== 'TODOS' ||
             filtroVeiculo !== 'TODOS' ||
             busca) && (
@@ -402,7 +589,6 @@ export default function ViagensPage() {
               onClick={() => {
                 setBusca('');
                 setFiltroStatus('TODOS');
-                setFiltroOperacao('TODAS');
                 setFiltroMotorista('TODOS');
                 setFiltroVeiculo('TODOS');
               }}
@@ -441,9 +627,7 @@ export default function ViagensPage() {
             {filtradas.length === 0 ? (
               <tr>
                 <td colSpan={9} className="p-9 text-center text-slate-500">
-                  {carregando
-                    ? 'Carregando viagens...'
-                    : (erroCarga ?? 'Nenhuma viagem encontrada com os filtros selecionados.')}
+                  {carregando ? textos.carregando : (erroCarga ?? textos.vazio)}
                 </td>
               </tr>
             ) : (
@@ -660,9 +844,19 @@ export default function ViagensPage() {
           veiculos={dadosNovaViagem.veiculos}
           motoristas={dadosNovaViagem.motoristas}
           solicitacaoIdInicial={location.state?.solicitacaoId}
-          tiposPermitidos={tiposAgendaveis}
+          tiposPermitidos={['ADMINISTRATIVA']}
           onClose={() => setModalNovaAberto(false)}
           onSalvar={handleSalvarNovaViagem}
+        />
+      )}
+
+      {dadosAgendarColeta && (
+        <ModalAgendarColetaSvo
+          ordem={dadosAgendarColeta.ordem}
+          veiculos={dadosAgendarColeta.veiculos}
+          motoristas={dadosAgendarColeta.motoristas}
+          onClose={() => setOrdemAgendar(null)}
+          onAgendada={handleColetaAgendada}
         />
       )}
 

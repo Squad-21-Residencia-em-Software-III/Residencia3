@@ -17,6 +17,7 @@ import { manutencoesApi } from '../../services/api/manutencoesApi';
 import { abastecimentosApi } from '../../services/api/abastecimentosApi';
 import { multasApi } from '../../services/api/multasApi';
 import { cn } from '../../utils/cn';
+import { recursoAtivo } from '../../config/recursosBackend';
 import { rotuloCapacidade } from '../../utils/capacidadeVeiculo';
 import { usePermissao } from '../../utils/permissoes';
 
@@ -61,6 +62,8 @@ export function DrawerDetalhesVeiculo({
   const veManutencoes = veDetalhes && pode('manutencoes.acessar');
   const veAbastecimentos = veDetalhes && pode('abastecimentos.acessar');
   const veMultas = veDetalhes && pode('multas.acessar');
+  // Lotação da cabine SVO (SCRUM-175/181), separada da capacidade de corpos
+  const mostraCabine = veiculoState?.tipo_frota === 'SVO' && recursoAtivo('lotacaoCabine');
 
   useEffect(() => {
     if (veiculo) {
@@ -235,7 +238,7 @@ export function DrawerDetalhesVeiculo({
         )}
 
         {/* 2. Cartões de Resumo Técnico & Quilometragem */}
-        <div className={veDetalhes ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 gap-3'}>
+        <div className={veDetalhes || mostraCabine ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 gap-3'}>
           {veDetalhes && (
             <div className="rounded-xl border border-border bg-surface-alt p-3.5">
               <div className="flex items-center gap-1.5 text-xs text-text-muted">
@@ -258,6 +261,34 @@ export function DrawerDetalhesVeiculo({
               {veiculoState.capacidade_maxima != null ? rotuloCapacidade(veiculoState) : '—'}
             </div>
           </div>
+
+          {/* Cabine SVO em indicador separado: pessoas e corpos não se somam */}
+          {mostraCabine && (
+            <div
+              className={
+                veDetalhes
+                  ? 'col-span-2 rounded-xl border border-border bg-surface-alt p-3.5'
+                  : 'rounded-xl border border-border bg-surface-alt p-3.5'
+              }
+            >
+              <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                <Users size={14} className="text-primary" />
+                <span>Lotação da Cabine</span>
+              </div>
+              <div className="mt-1 font-display text-lg font-bold text-slate-900">
+                {veiculoState.lotacao_cabine != null ? (
+                  <>
+                    {veiculoState.lotacao_cabine}{' '}
+                    <span className="text-xs font-normal text-slate-500">
+                      {veiculoState.lotacao_cabine === 1 ? 'pessoa' : 'pessoas'}, com o motorista
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-sm font-normal text-slate-500">Não informada</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 3. Indicadores de Custo Acumulado */}

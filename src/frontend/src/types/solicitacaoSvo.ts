@@ -19,6 +19,8 @@ export interface SolicitacaoSvo {
   criado_em?: string;
   confirmado_por?: number | null; // nulo em dados legados e quando volta à triagem
   confirmado_em?: string | null;
+  /** Justificativa da recusa (coluna já existente; preenchida pela recusa da SCRUM-178). */
+  motivo_recusa?: string | null;
 }
 
 /** Ordem de coleta gerada na confirmação; nasce sem veículo, motorista ou equipe. */
