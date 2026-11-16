@@ -16,10 +16,14 @@ export function salvarBlobNoNavegador(blob: Blob, nomeArquivo: string): void {
   const link = document.createElement('a');
   link.href = url;
   link.download = nomeArquivo;
+  link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Aguarda o navegador iniciar a leitura do Blob antes de liberar a URL temporária
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 export const relatoriosApi = {
