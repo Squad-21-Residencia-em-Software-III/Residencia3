@@ -95,6 +95,12 @@ vi.mock('../models/abastecimentoModel', () => ({
   },
 }));
 
+// Veículos vinculados ao motorista (viagens/ordens ativas): por padrão, o 1 para o
+// motorista da frota (usuário 100) e o 2 para o motorista SVO (usuário 200)
+vi.mock('../models/veiculoModel', () => ({
+  veiculoModel: { idsVinculadosAoUsuarioMotorista: vi.fn() },
+}));
+
 vi.mock('../models/auditoriaModel', () => ({
   auditoriaModel: {
     registrar: vi.fn().mockResolvedValue(undefined),
@@ -106,6 +112,7 @@ vi.mock('../models/auditoriaModel', () => ({
 
 import { abastecimentoService } from '../services/abastecimentoService';
 import { abastecimentoModel } from '../models/abastecimentoModel';
+import { veiculoModel } from '../models/veiculoModel';
 
 describe('abastecimentoService', () => {
   beforeEach(() => {
@@ -115,6 +122,9 @@ describe('abastecimentoService', () => {
     dbState.motoristas.clear();
     dbState.motoristasPorUsuario.clear();
     dbState.ultimoAbastecimento = null;
+    vi.mocked(veiculoModel.idsVinculadosAoUsuarioMotorista).mockImplementation(async (usuarioId: number) =>
+      usuarioId === 100 ? [1] : usuarioId === 200 ? [2] : []
+    );
 
     // Configuração padrão
     dbState.veiculos.set(1, {
@@ -264,6 +274,36 @@ describe('abastecimentoService', () => {
       );
     });
 
+    it('deve lançar 403 se o motorista abastecer veículo sem viagem dele agendada ou em andamento', async () => {
+      vi.mocked(veiculoModel.idsVinculadosAoUsuarioMotorista).mockResolvedValueOnce([]);
+      const autor = { id: 100, perfil: PERFIS.MOTORISTA_FROTA };
+
+      await expect(abastecimentoService.criar(dadosBase, autor)).rejects.toMatchObject({
+        statusCode: 403,
+        message: expect.stringContaining('não está vinculado a uma viagem sua'),
+      });
+      expect(abastecimentoModel.cadastrar).not.toHaveBeenCalled();
+    });
+
+    it('deve lançar 403 se o motorista trocar o veiculo_id para um veículo de outro motorista', async () => {
+      // Veículo 4 é da frota administrativa, mas está numa viagem de outro motorista
+      dbState.veiculos.set(4, { id: 4, placa: 'OUT-4444', tipo_frota: 'ADMINISTRATIVA', status: 'EM_USO' });
+      const autor = { id: 100, perfil: PERFIS.MOTORISTA_FROTA };
+
+      await expect(abastecimentoService.criar({ ...dadosBase, veiculo_id: 4 }, autor)).rejects.toMatchObject({
+        statusCode: 403,
+      });
+      expect(veiculoModel.idsVinculadosAoUsuarioMotorista).toHaveBeenCalledWith(100);
+    });
+
+    it('não exige vínculo de viagem do Gestor de Frota', async () => {
+      const autor = { id: 1, perfil: PERFIS.GESTOR_FROTA };
+
+      await abastecimentoService.criar(dadosBase, autor);
+
+      expect(veiculoModel.idsVinculadosAoUsuarioMotorista).not.toHaveBeenCalled();
+    });
+
     it('deve lançar 400 se o veículo estiver INATIVO', async () => {
       const autor = { id: 1, perfil: PERFIS.ADMINISTRADOR };
 
@@ -317,6 +357,20 @@ describe('abastecimentoService', () => {
         statusCode: 403,
         message: expect.stringContaining('Acesso não autorizado aos registros deste veículo'),
       });
+    });
+
+    it('deve permitir ao motorista listar os abastecimentos de veículo vinculado a ele', async () => {
+      const autor = { id: 100, perfil: PERFIS.MOTORISTA_FROTA };
+
+      await expect(abastecimentoService.listarPorVeiculo(1, autor)).resolves.toHaveLength(1);
+    });
+
+    it('deve lançar 403 se o motorista listar abastecimentos de veículo não vinculado a ele', async () => {
+      vi.mocked(veiculoModel.idsVinculadosAoUsuarioMotorista).mockResolvedValueOnce([]);
+      const autor = { id: 100, perfil: PERFIS.MOTORISTA_FROTA };
+
+      await expect(abastecimentoService.listarPorVeiculo(1, autor)).rejects.toMatchObject({ statusCode: 403 });
+      expect(abastecimentoModel.listarPorVeiculo).not.toHaveBeenCalled();
     });
 
     it('deve lançar 404 se o veículo não existir', async () => {

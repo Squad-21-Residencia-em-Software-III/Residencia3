@@ -5,8 +5,8 @@ import { criarVeiculoSchema, atualizarVeiculoSchema } from '../validators/veicul
 import { AppError } from '../errors/AppError';
 
 export const veiculoController = {
-  async listar(_req: Request, res: Response): Promise<void> {
-    res.json(await veiculoService.listar());
+  async listar(req: Request, res: Response): Promise<void> {
+    res.json(await veiculoService.listar(usuarioAutenticado(req)));
   },
 
   async listarVeiculosSvoDisponiveis(_req: Request, res: Response): Promise<void> {
