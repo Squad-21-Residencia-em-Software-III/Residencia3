@@ -8,6 +8,7 @@ import {
   type Veiculo,
   type VeiculoSvoDisponivel,
   type OcupacaoVeiculoSvo,
+  type VeiculoConsultaBasica,
 } from '../models/veiculoModel';
 import type { CriarVeiculoInput, AtualizarVeiculoInput } from '../validators/veiculoSchemas';
 
@@ -26,10 +27,12 @@ async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<nu
 
 export const veiculoService = {
   // Motoristas só enxergam os veículos vinculados a eles; os demais perfis, toda a frota
-  async listar(autor: { id: number; perfil: Perfil }): Promise<Veiculo[]> {
+  async listar(autor: { id: number; perfil: Perfil }): Promise<Array<Veiculo | VeiculoConsultaBasica>> {
     if (autor.perfil === PERFIS.MOTORISTA_FROTA || autor.perfil === PERFIS.MOTORISTA_SVO) {
       return veiculoModel.listarVeiculos(await veiculoModel.idsVinculadosAoUsuarioMotorista(autor.id));
     }
+    if (autor.perfil === PERFIS.GESTOR_SVO) return veiculoModel.listarParaGestorSvo();
+    if (autor.perfil === PERFIS.GESTOR_FROTA) return veiculoModel.listarFrotaAdministrativa();
     return veiculoModel.listarVeiculos();
   },
 
@@ -41,7 +44,12 @@ export const veiculoService = {
     return veiculoModel.listarOcupacaoSvo();
   },
 
-  async criar(dados: CriarVeiculoInput, autorId: number): Promise<Veiculo> {
+  async criar(dados: CriarVeiculoInput, autorId: number, perfilAutor: Perfil): Promise<Veiculo> {
+    if (perfilAutor !== PERFIS.ADMINISTRADOR &&
+      !((perfilAutor === PERFIS.GESTOR_SVO && dados.tipo_frota === 'SVO') ||
+        (perfilAutor === PERFIS.GESTOR_FROTA && dados.tipo_frota === 'ADMINISTRATIVA'))) {
+      throw new AppError('Você não tem permissão para cadastrar veículo nessa frota', 403);
+    }
     const veiculoExistente = await veiculoModel.buscarPorPlaca(dados.placa);
     if (veiculoExistente) {
       throw new AppError('Já existe um veículo cadastrado com essa placa', 409);
@@ -63,7 +71,7 @@ export const veiculoService = {
     });
   },
 
-  async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number): Promise<Veiculo> {
+  async atualizar(id: number, dados: AtualizarVeiculoInput, autorId: number, perfilAutor: Perfil): Promise<Veiculo> {
     return db.transaction(async (trx) => {
       // Lê o veículo já bloqueado: todas as validações usam o estado atual do banco
       const veiculo = await veiculoModel.buscarParaAtualizar(id, trx);
@@ -73,6 +81,12 @@ export const veiculoService = {
 
       const tipoFrotaFinal = dados.tipo_frota ?? veiculo.tipo_frota;
       const capacidadeFinal = dados.capacidade_maxima ?? veiculo.capacidade_maxima;
+
+      if (perfilAutor !== PERFIS.ADMINISTRADOR &&
+        !((perfilAutor === PERFIS.GESTOR_SVO && veiculo.tipo_frota === 'SVO' && tipoFrotaFinal === 'SVO') ||
+          (perfilAutor === PERFIS.GESTOR_FROTA && veiculo.tipo_frota === 'ADMINISTRATIVA' && tipoFrotaFinal === 'ADMINISTRATIVA'))) {
+        throw new AppError('Você não tem permissão para alterar veículo nessa frota', 403);
+      }
 
       if (veiculo.tipo_frota !== 'SVO' && tipoFrotaFinal === 'SVO') {
         const cabineFinal = dados.lotacao_cabine ?? veiculo.lotacao_cabine;

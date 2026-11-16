@@ -11,6 +11,7 @@ const { dbMock, criarChainMock } = vi.hoisted(() => {
       orderBy: vi.fn(),
       orderByRaw: vi.fn(),
       limit: vi.fn(),
+      modify: vi.fn(),
     };
     chain.where.mockReturnValue(chain);
     chain.whereIn.mockReturnValue(chain);
@@ -20,6 +21,7 @@ const { dbMock, criarChainMock } = vi.hoisted(() => {
     chain.orderBy.mockReturnValue(chain);
     chain.orderByRaw.mockReturnValue(chain);
     chain.limit.mockResolvedValue(dadosRetorno);
+    chain.modify.mockImplementation((callback: (consulta: typeof chain) => void) => { callback(chain); return chain; });
     return chain;
   };
 
@@ -103,6 +105,16 @@ describe('Limites explícitos em consultas históricas e integridade sob carga c
     expect(chain.orderBy).toHaveBeenNthCalledWith(1, 'data_infracao', 'desc');
     expect(chain.orderBy).toHaveBeenNthCalledWith(2, 'id', 'desc');
     expect(chain.limit).toHaveBeenCalledWith(LIMITE_MAXIMO_MULTAS);
+  });
+
+  it('multaModel restringe a consulta aos veículos administrativos quando solicitado', async () => {
+    const multas = criarChainMock([]);
+    const veiculos = criarChainMock([]);
+    dbMock.mockReturnValueOnce(multas).mockReturnValueOnce(veiculos);
+    await multaModel.listar(50, true);
+    expect(veiculos.where).toHaveBeenCalledWith('tipo_frota', 'ADMINISTRATIVA');
+    expect(multas.whereIn).toHaveBeenCalledWith('veiculo_id', veiculos);
+    expect(multas.limit).toHaveBeenCalledWith(50);
   });
 
   it('viagemModel.listar aplica limite explícito sobre a união de viagens administrativas e ordens SVO', async () => {

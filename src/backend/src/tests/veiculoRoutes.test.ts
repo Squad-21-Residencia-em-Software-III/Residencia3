@@ -83,6 +83,14 @@ describe('Rotas de Veículos (/api/veiculos)', () => {
       km_atual: 52000,
     };
 
+    it('encaminha o perfil do gestor SVO ao serviço de atualização', async () => {
+      autenticarComo(PERFIS.GESTOR_SVO, 3);
+      vi.mocked(veiculoService.atualizar).mockResolvedValueOnce({ id: 1, ...atualizacaoValida } as any);
+      const resposta = await request(app).put('/api/veiculos/1').set('Authorization', token).send(atualizacaoValida);
+      expect(resposta.status).toBe(200);
+      expect(veiculoService.atualizar).toHaveBeenCalledWith(1, atualizacaoValida, 3, PERFIS.GESTOR_SVO);
+    });
+
     it('deve atualizar dados permitidos do veículo e retornar 200', async () => {
       vi.mocked(veiculoService.atualizar).mockResolvedValueOnce({
         id: 1,
@@ -102,7 +110,7 @@ describe('Rotas de Veículos (/api/veiculos)', () => {
 
       expect(resposta.status).toBe(200);
       expect(resposta.body.modelo).toBe('Fiat Mobi Like 1.0');
-      expect(veiculoService.atualizar).toHaveBeenCalledWith(1, atualizacaoValida, 1);
+      expect(veiculoService.atualizar).toHaveBeenCalledWith(1, atualizacaoValida, 1, PERFIS.GESTOR_FROTA);
     });
 
     it('deve rejeitar capacidade superior a 4 para frota SVO', async () => {
@@ -289,5 +297,11 @@ describe('Rotas de Veículos (/api/veiculos)', () => {
       expect(resposta.status).toBe(403);
       expect(veiculoService.listarOcupacaoSvo).not.toHaveBeenCalled();
     });
+  });
+
+  it.each(['/api/veiculos/svo/ocupacao', '/api/veiculos/svo/disponiveis'])('impede Gestor Frota na rota SVO %s', async (rota) => {
+    autenticarComo(PERFIS.GESTOR_FROTA);
+    const resposta = await request(app).get(rota).set('Authorization', token);
+    expect(resposta.status).toBe(403);
   });
 });
