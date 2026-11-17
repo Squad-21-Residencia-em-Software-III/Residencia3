@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
+// Os serviços destas suítes são simulados; os registros consultados pelo controle de frota também.
+vi.mock('../config/database', () => ({ db: () => ({ where: () => ({ first: async () => ({ veiculo_id: 1, tipo_frota: 'ADMINISTRATIVA' }) }) }) }));
+
 // Matriz de acesso (docs/matriz-de-acesso.md) validada contra o app real: autenticação,
 // autorizar(...) e exigirAssociacaoSvo. Os services são substituídos por stubs que sempre
 // respondem, para que só a camada de permissão decida o resultado.
@@ -58,11 +61,11 @@ const MATRIZ: Regra[] = [
   ['patch', '/api/usuarios/1', [A]],
   ['patch', '/api/usuarios/1/senha', [A]],
 
-  ['get', '/api/veiculos/svo/disponiveis', [A, GF, GS], true],
-  ['get', '/api/veiculos/svo/ocupacao', [A, GF, GS], true],
+  ['get', '/api/veiculos/svo/disponiveis', [A, GS], true],
+  ['get', '/api/veiculos/svo/ocupacao', [A, GS], true],
   ['get', '/api/veiculos', [A, GF, GS, MF, MS], true],
-  ['post', '/api/veiculos', [A, GF]],
-  ['put', '/api/veiculos/1', [A, GF]],
+  ['post', '/api/veiculos', [A, GF, GS], true],
+  ['put', '/api/veiculos/1', [A, GF, GS], true],
 
   ['post', '/api/abastecimentos', [A, GF, MF, MS]],
   ['get', '/api/abastecimentos/veiculo/1', [A, GF, MF, MS]],
@@ -112,7 +115,7 @@ const MATRIZ: Regra[] = [
 ];
 
 const chamar = (metodo: Metodo, rota: string, token?: string) => {
-  const req = request(app)[metodo](rota);
+  const req = request(app)[metodo](rota).set('Origin', 'http://localhost:5173');
   return token ? req.set('Authorization', `Bearer ${token}`).send({}) : req.send({});
 };
 

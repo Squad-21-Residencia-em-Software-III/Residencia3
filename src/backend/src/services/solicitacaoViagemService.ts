@@ -121,10 +121,12 @@ export const solicitacaoViagemService = {
         );
       }
 
+      const { material_sensivel, ...campos } = dados;
       const solicitacao =
         await solicitacaoViagemModel.cadastrar(
           {
-            ...dados,
+            ...campos,
+            ...(material_sensivel ? { material_sensivel: true } : {}),
             solicitante_id: solicitanteId,
           },
           trx

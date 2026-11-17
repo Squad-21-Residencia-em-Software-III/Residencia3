@@ -12,6 +12,7 @@ import {
   MetricCard,
   Pagination,
   SearchInput,
+  SeletorOperacao,
   Table,
   TableFilterCollapse,
   TableToolbar,
@@ -29,6 +30,9 @@ import { LABELS_STATUS_SOLICITACAO } from '../types/solicitacao';
 import { usePermissao } from '../utils/permissoes';
 import { ModalAnaliseSolicitacao } from './solicitacoes/ModalAnaliseSolicitacao';
 import { ModalNovaSolicitacao } from './solicitacoes/ModalNovaSolicitacao';
+import TriagemSvoPage from './TriagemSvoPage';
+import { useAbaOperacao } from '../utils/abaOperacao';
+import type { TipoFrota } from '../types/veiculo';
 
 type FiltroStatusAba =
   'TODAS' | 'PENDENTES' | 'APROVADAS' | 'AGENDADAS' | 'CONCLUIDAS' | 'RECUSADAS';
@@ -67,6 +71,32 @@ function formatarDataHora(iso?: string | null): string {
 }
 
 export default function SolicitacoesPage() {
+  const { usuario } = useAuth();
+  const { pode } = usePermissao();
+  const abas: TipoFrota[] =
+    usuario?.perfil === 'GESTOR_SVO'
+      ? ['SVO', 'ADMINISTRATIVA']
+      : pode('triagemSvo.acessar')
+        ? ['ADMINISTRATIVA', 'SVO']
+        : ['ADMINISTRATIVA'];
+  const { ativa, mudar } = useAbaOperacao(abas);
+  if (!ativa) return null;
+  return (
+    <div className="grid w-full min-w-0 gap-5">
+      <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
+      <div hidden={ativa !== 'ADMINISTRATIVA'} className="animate-tab-fade">
+        <SolicitacoesAdministrativas />
+      </div>
+      {pode('triagemSvo.acessar') && (
+        <div hidden={ativa !== 'SVO'} className="animate-tab-fade">
+          <TriagemSvoPage />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SolicitacoesAdministrativas() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
   const { pode } = usePermissao();
@@ -313,6 +343,7 @@ export default function SolicitacoesPage() {
                   </td>
                   <td>
                     <div className="text-[13px] font-medium text-slate-900">{s.destino}</div>
+                    {s.material_sensivel && <span className="text-xs font-semibold text-amber-700">Material sensível</span>}
                     <div className="text-[11px] text-slate-500">Origem: {s.origem}</div>
                   </td>
                   <td>

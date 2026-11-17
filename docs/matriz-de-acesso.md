@@ -79,3 +79,7 @@ Outras proteções que já existiam:
 | Vínculo motorista–veículo | Pelas viagens e ordens ativas | DVP: "consulta dos veículos a ele vinculados". Não há tabela de vínculo fixo. |
 | Gestor SVO | Exige associação à unidade SVO em todas as operações SVO | Consistência com o encaminhamento por unidade (BL15) |
 | Disponibilidade | Gestor de Frota e Administrador | RF16 |
+
+### Navegação da SCRUM-166
+
+O seletor não concede acesso à API. Em Solicitações, Administrador vê Administrativo e SVO; Gestor SVO vê SVO e Administrativo, nesta ordem; Gestor de Frota e Solicitante veem Administrativo. A triagem e o cadastro SVO exigem Administrador ou Gestor SVO, com a associação SVO exigida pelo servidor. O Gestor SVO acompanha suas solicitações administrativas por `/minhas`, sem ações de aprovação ou agendamento; consulta de viagens administrativas próprias depende da SCRUM-179. A consulta administrativa de veículos para Gestor SVO deve limitar os campos a modelo, placa, status/disponibilidade e capacidade de ocupantes. A validação por perfil, registro e campo é responsabilidade do servidor.

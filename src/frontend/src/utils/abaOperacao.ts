@@ -34,7 +34,9 @@ export function useAbaOperacao(permitidas: TipoFrota[]) {
 
   const mudar = (operacao: TipoFrota) => {
     if (permitidas.includes(operacao)) {
-      setSearchParams({ aba: ABA_DA_OPERACAO[operacao] }, { replace: true });
+      const proximos = new URLSearchParams(searchParams);
+      proximos.set('aba', ABA_DA_OPERACAO[operacao]);
+      setSearchParams(proximos);
     }
   };
 

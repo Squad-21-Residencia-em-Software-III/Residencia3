@@ -22,6 +22,7 @@ import { motoristasApi } from '../services/api/motoristasApi';
 import { documentosApi, type DocumentoComAlerta } from '../services/api/documentosApi';
 import { mensagemDeErro } from '../services/api/http';
 import { ModalMulta } from './multas/ModalMulta';
+import { BotaoExportarRelatorio } from '../components/relatorios/BotaoExportarRelatorio';
 import { usePermissao } from '../utils/permissoes';
 
 function formatarDataHora(iso: string): string {
@@ -248,6 +249,7 @@ export default function MultasPage() {
               ? 'Carregando autuações...'
               : `${filtradas.length} ${filtradas.length === 1 ? 'registro' : 'registros'}`
           }
+          actions={<BotaoExportarRelatorio tipo="multas" />}
           newLabel={podeRegistrar ? 'Registrar multa' : undefined}
           onNew={podeRegistrar ? abrirNova : undefined}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}

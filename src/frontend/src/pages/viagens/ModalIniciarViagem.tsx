@@ -36,7 +36,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
   };
 
   return (
-    <Modal title={`Iniciar Viagem #${viagem.id}`} onClose={onClose}>
+    <Modal title={`Iniciar Viagem #${viagem.id}`} onClose={onClose} telaInteira>
       <form onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">

@@ -15,6 +15,7 @@ export const LABELS_STATUS_VIAGEM: Record<StatusViagem, string> = {
 };
 
 export interface Viagem {
+  material_sensivel?: boolean | null;
   id: number;
   solicitacao_id: number; // FK solicitacoes_viagem.id (ou solicitacoes_svo.id)
   tipo_operacao: TipoOperacaoViagem; // ADMINISTRATIVA (viagens_frota) ou SVO (ordens_svo)
@@ -29,6 +30,9 @@ export interface Viagem {
   veiculo_placa: string; // join veiculos.placa
   motorista_id: number; // FK motoristas.id
   motorista_nome: string; // join usuarios.nome via motoristas.usuario_id
+  equipe_id?: number | null;
+  liberada_em?: string | null;
+  capacidade_utilizada?: number | null;
   km_inicial: number | null; // odômetro de saída (inteiro), informado ao iniciar a viagem
   km_final?: number | null; // odômetro de retorno (inteiro)
   data_hora_efetiva_saida?: string | null; // timestamp ISO (ex: 2026-10-19T08:00:00)
@@ -63,6 +67,8 @@ export interface OrdemPendenteSvo {
  * (SCRUM-182); antes disso o servidor os ignoraria.
  */
 export interface AgendamentoColetaSvoInput {
+  equipe_id?: number;
+  capacidade_utilizada?: number;
   solicitacao_id: number;
   veiculo_id: number;
   motorista_id: number;
@@ -70,6 +76,7 @@ export interface AgendamentoColetaSvoInput {
   fim_previsto?: string; // ISO 8601, depois do início
   /** Segundo passo, depois de o servidor pedir confirmação do intervalo menor que 20 min. */
   confirmar_intervalo_reduzido?: boolean;
+  token_confirmacao?: string;
 }
 
 /** Recurso em conflito informado pelo servidor ao pedir confirmação de intervalo curto. */

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CalendarClock, CheckCircle2 } from 'lucide-react';
+import { CalendarClock, CheckCircle2 } from 'lucide-react';
 import { Alert, Badge, Button, ConfirmDialog, Drawer, IdBadge, Textarea } from '../../components/ui';
 import { recursoAtivo } from '../../config/recursosBackend';
 import { solicitacoesSvoApi } from '../../services/api/solicitacoesSvoApi';
 import { ApiError, mensagemDeErro } from '../../services/api/http';
 import type { SolicitacaoSvoDetalhada } from '../../types/solicitacaoSvo';
 import { LABELS_STATUS_ORDEM_SVO, LABELS_STATUS_SOLICITACAO_SVO } from '../../types/solicitacaoSvo';
-import { erroDaJustificativa, MAX_JUSTIFICATIVA_RECUSA } from '../../utils/justificativaRecusa';
+import { erroDaJustificativa, MAX_JUSTIFICATIVA_RECUSA_SVO } from '../../utils/justificativaRecusa';
 import { usePermissao } from '../../utils/permissoes';
 import { formatarDataHora, toneStatusOrdem, toneStatusSolicitacao } from './formatacao';
 
@@ -121,7 +121,7 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
 
   async function recusar() {
     if (!detalhe || enviando) return;
-    const erroJustificativa = erroDaJustificativa(motivo);
+    const erroJustificativa = erroDaJustificativa(motivo, MAX_JUSTIFICATIVA_RECUSA_SVO);
     if (erroJustificativa) {
       setErroMotivo(erroJustificativa);
       return;
@@ -252,15 +252,6 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                   <Campo rotulo="Observações">{detalhe.observacoes}</Campo>
                 </div>
               )}
-              <Campo rotulo="Material sensível">
-                {detalhe.material_sensivel ? (
-                  <span className="inline-flex items-center gap-1.5 font-semibold text-amber-700">
-                    <AlertTriangle size={14} /> Sim, exige protocolo específico
-                  </span>
-                ) : (
-                  'Não'
-                )}
-              </Campo>
               <Campo rotulo="Registrada por">{usuario(detalhe.registrante_id)}</Campo>
               {detalhe.status === 'RECUSADA' && detalhe.motivo_recusa && (
                 <div className="sm:col-span-2">
@@ -324,7 +315,7 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                 </h3>
                 <Textarea
                   id="motivo-recusa-svo"
-                  label={`Justificativa da recusa * (máx. ${MAX_JUSTIFICATIVA_RECUSA} caracteres):`}
+                  label={`Justificativa da recusa * (máx. ${MAX_JUSTIFICATIVA_RECUSA_SVO} caracteres):`}
                   value={motivo}
                   onChange={(e) => {
                     setMotivo(e.target.value);
@@ -333,7 +324,7 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                   required
                   aria-invalid={Boolean(erroMotivo)}
                   aria-describedby={erroMotivo ? 'motivo-recusa-svo-erro' : undefined}
-                  maxLength={MAX_JUSTIFICATIVA_RECUSA}
+                  maxLength={MAX_JUSTIFICATIVA_RECUSA_SVO}
                   rows={3}
                   className="bg-white text-[13px]"
                   disabled={enviando}
@@ -349,7 +340,7 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                 )}
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[11px] text-slate-500">
-                    {motivo.length}/{MAX_JUSTIFICATIVA_RECUSA} caracteres
+                    {motivo.length}/{MAX_JUSTIFICATIVA_RECUSA_SVO} caracteres
                   </span>
                   <div className="flex gap-2">
                     <Button

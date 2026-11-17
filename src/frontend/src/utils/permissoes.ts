@@ -89,6 +89,9 @@ export const PERMISSOES = {
 
   // Auditoria
   'auditoria.acessar': [ADMINISTRADOR],
+
+  // Relatórios gerenciais (BL35 / RF18 / RN20)
+  'relatorios.exportar': [ADMINISTRADOR, GESTOR_FROTA],
 } as const satisfies Record<string, readonly Perfil[]>;
 
 export type Permissao = keyof typeof PERMISSOES;
@@ -160,12 +163,13 @@ export function abasDeViagens(
   return FROTA_DO_PERFIL[perfil as Perfil] === 'SVO' ? abas.reverse() : abas;
 }
 
-/** Abas de Veículos: todos consultam as duas frotas; a do próprio perfil vem primeiro. */
+/** Abas disponíveis para cada perfil, sem conceder autorização no backend. */
 export function abasDeVeiculos(perfil: Perfil | null | undefined): TipoFrota[] {
-  if (!perfilPode(perfil, 'veiculos.detalhes')) return [];
-  return FROTA_DO_PERFIL[perfil as Perfil] === 'SVO'
-    ? ['SVO', 'ADMINISTRATIVA']
-    : ['ADMINISTRATIVA', 'SVO'];
+  if (perfil === ADMINISTRADOR) return ['ADMINISTRATIVA', 'SVO'];
+  if (perfil === GESTOR_SVO) return ['SVO', 'ADMINISTRATIVA'];
+  if (perfil === GESTOR_FROTA || perfil === MOTORISTA_FROTA) return ['ADMINISTRATIVA'];
+  if (perfil === MOTORISTA_SVO) return ['SVO'];
+  return [];
 }
 
 /** `const { pode, podeNaFrota } = usePermissao()` → `pode('viagens.agendar')`. */

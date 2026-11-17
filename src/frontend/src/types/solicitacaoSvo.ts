@@ -57,7 +57,7 @@ export interface ConfirmacaoSvo {
 }
 
 export const LABELS_STATUS_SOLICITACAO_SVO: Record<StatusSolicitacaoSvo, string> = {
-  EM_TRIAGEM: 'Em triagem',
+  EM_TRIAGEM: 'Aguardando análise',
   CONFIRMADA: 'Confirmada',
   EM_ANDAMENTO: 'Em andamento',
   CONCLUIDA: 'Concluída',

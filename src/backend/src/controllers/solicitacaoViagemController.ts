@@ -7,6 +7,7 @@ import {
 } from '../validators/solicitacaoViagemSchemas';
 import { idParamSchema } from '../validators/comuns';
 import { usuarioAutenticado } from '../middlewares/autenticar';
+import { PERFIS } from '../constants/perfis';
 
 export const solicitacaoViagemController = {
   async criar(req: Request, res: Response): Promise<void> {
@@ -39,7 +40,32 @@ export const solicitacaoViagemController = {
     const filtros = listarSolicitacoesViagemSchema.parse(req.query);
     const solicitante = usuarioAutenticado(req);
 
-    res.json(await solicitacaoViagemService.listarMinhas(solicitante.id, filtros));
+    const resultado = await solicitacaoViagemService.listarMinhas(solicitante.id, filtros);
+    if (solicitante.perfil === PERFIS.GESTOR_SVO) {
+      // A consulta própria não autoriza a divulgação de dados pessoais do motorista.
+      res.json({
+        ...resultado,
+        dados: resultado.dados.map((s) => ({
+          id: s.id,
+          solicitante_id: s.solicitante_id,
+          unidade_id: s.unidade_id,
+          unidade_nome: s.unidade_nome,
+          origem: s.origem,
+          destino: s.destino,
+          finalidade: s.finalidade,
+          data_saida_desejada: s.data_saida_desejada,
+          data_chegada_desejada: s.data_chegada_desejada,
+          status: s.status,
+          motivo_recusa: s.motivo_recusa,
+          viagem_id: s.viagem_id,
+          viagem_status: s.viagem_status,
+          veiculo_placa: s.veiculo_placa,
+          veiculo_modelo: s.veiculo_modelo,
+        })),
+      });
+      return;
+    }
+    res.json(resultado);
   },
 
   async aprovar(req: Request, res: Response): Promise<void> {

@@ -35,10 +35,15 @@ export const criarViagemSchema = z.discriminatedUnion(
       tipo_operacao: z.literal('SVO'),
       ...recursosViagem,
       equipe_id: idSchema('equipe_id').nullish(),
+      inicio_previsto: z.iso.datetime({ offset: true }),
+      fim_previsto: z.iso.datetime({ offset: true }),
+      confirmar_intervalo_reduzido: z.boolean().optional(),
+      token_confirmacao: z.string().max(8192).optional(),
       capacidade_utilizada: z
         .number({ error: 'A capacidade utilizada deve ser um número' })
         .int('A capacidade utilizada deve ser um número inteiro')
         .min(1, 'A capacidade utilizada deve ser de no mínimo 1')
+        .max(4, 'A capacidade utilizada deve ser de no máximo 4')
         .default(1),
     }),
   ],

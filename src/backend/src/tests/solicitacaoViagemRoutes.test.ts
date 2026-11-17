@@ -20,6 +20,22 @@ vi.mock('../services/solicitacaoViagemService', () => ({
   },
 }));
 
+describe('GET /api/solicitacoes-viagem/minhas', () => {
+  it('usa a identidade autenticada e omite o motorista para Gestor SVO', async () => {
+    vi.mocked(authService.usuarioDoToken).mockResolvedValueOnce({ id: 42, perfil: 'GESTOR_SVO' } as never);
+    vi.mocked(solicitacaoViagemService.listarMinhas).mockResolvedValueOnce({
+      dados: [{ id: 1, solicitante_id: 42, destino: 'Hospital', motorista_nome: 'Nome reservado' }],
+      paginacao: { pagina: 1, limite: 20, total: 1, totalPaginas: 1 },
+    } as never);
+    const resposta = await request(app).get('/api/solicitacoes-viagem/minhas')
+      .set('Authorization', 'Bearer token-teste');
+    expect(resposta.status).toBe(200);
+    expect(solicitacaoViagemService.listarMinhas).toHaveBeenCalledWith(42, expect.anything());
+    expect(resposta.body.dados[0]).toMatchObject({ solicitante_id: 42, destino: 'Hospital' });
+    expect(resposta.body.dados[0]).not.toHaveProperty('motorista_nome');
+  });
+});
+
 describe('POST /api/solicitacoes-viagem', () => {
   const endpoint = '/api/solicitacoes-viagem';
 

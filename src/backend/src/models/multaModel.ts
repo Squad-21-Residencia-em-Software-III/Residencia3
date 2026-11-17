@@ -77,9 +77,12 @@ export const multaModel = {
     return rows > 0;
   },
 
-  async listar(limite = LIMITE_MAXIMO_MULTAS): Promise<Multa[]> {
+  async listar(limite = LIMITE_MAXIMO_MULTAS, apenasAdministrativa = false): Promise<Multa[]> {
     const multas: Multa[] = await db('multas')
       .select('*')
+      .modify((q) => {
+        if (apenasAdministrativa) q.whereIn('veiculo_id', db('veiculos').select('id').where('tipo_frota', 'ADMINISTRATIVA'));
+      })
       .orderBy('data_infracao', 'desc')
       .orderBy('id', 'desc')
       .limit(normalizarLimite(limite));

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
+// Os serviços destas suítes são simulados; os registros consultados pelo controle de frota também.
+vi.mock('../config/database', () => ({ db: () => ({ where: () => ({ first: async () => ({ veiculo_id: 1, tipo_frota: 'ADMINISTRATIVA' }) }) }) }));
+
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
 

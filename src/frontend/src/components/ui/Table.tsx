@@ -32,6 +32,7 @@ type TableToolbarProps = {
   onNew?: () => void;
   onFilter?: () => void;
   isFilterActive?: boolean;
+  actions?: ReactNode;
 };
 
 export function TableToolbar({
@@ -41,6 +42,7 @@ export function TableToolbar({
   onNew,
   onFilter,
   isFilterActive,
+  actions,
 }: TableToolbarProps) {
   return (
     <div className="flex flex-col items-stretch justify-between gap-3 border-b border-divider px-3.5 py-3 md:flex-row md:flex-wrap md:items-center md:px-6 md:py-4">
@@ -49,6 +51,7 @@ export function TableToolbar({
         {subtitle && <p className="mt-0.5 text-xs text-text-muted">{subtitle}</p>}
       </div>
       <div className="flex w-full items-center justify-stretch gap-3 md:w-auto [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
+        {actions}
         {onFilter && (
           <Button
             variant="outline"

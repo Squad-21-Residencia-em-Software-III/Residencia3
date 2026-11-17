@@ -109,11 +109,28 @@ vi.mock('../config/database', () => {
             filtros.push((l) => !Object.entries(criterio).every(([c, v]) => l[c] === v));
             return consulta;
           },
+          andWhere(callback: (grupo: Linha) => void) {
+            const alternativas: Filtro[] = [];
+            const grupo: Linha = {
+              where(campo: string, valor: unknown) { alternativas.push((l) => l[campo] === valor); return grupo; },
+              orWhere(campo: string, valor: unknown) { alternativas.push((l) => l[campo] === valor); return grupo; },
+            };
+            callback(grupo);
+            filtros.push((l) => alternativas.some((f) => f(l)));
+            return consulta;
+          },
+          modify(callback: (q: Linha) => void) { callback(consulta); return consulta; },
+          join() { return consulta; },
+          whereRaw() { return consulta; },
+          orderBy() { return consulta; },
           forUpdate() {
             paraAtualizar = true;
             return consulta;
           },
-          select() {
+          select(...colunas: string[]) {
+            if (tabela === 'ordens_svo' && colunas.includes('capacidade_utilizada')) {
+              banco.eventos.push(`${nome}:soma ${tabela}`);
+            }
             return consulta;
           },
           insert(valores: Linha) {
@@ -208,6 +225,7 @@ vi.mock('../models/viagemModel', () => ({
     }),
   },
 }));
+vi.mock('../services/filaSvoService', () => ({ reavaliarFilaSvo: vi.fn() }));
 
 import { veiculoService } from '../services/veiculoService';
 import { viagemService } from '../services/viagemService';
@@ -226,11 +244,11 @@ const darVez = () => new Promise((resolve) => setTimeout(resolve, 20));
 const ocupacao = () =>
   banco.tabelas.ordens_svo
     .filter((o) => o.veiculo_id === 10 && ['ALOCADA', 'EM_DESLOCAMENTO'].includes(o.status))
-    .reduce((total, o) => total + o.capacidade_utilizada, 0);
+    .reduce((maximo, o) => Math.max(maximo, o.capacidade_utilizada), 0);
 
 const capacidade = () => banco.tabelas.veiculos.find((v) => v.id === 10)!.capacidade_maxima;
 
-const novaAlocacao = () =>
+const novaAlocacao = (capacidade = 2) =>
   viagemService.criar(
     {
       tipo_operacao: 'SVO',
@@ -238,7 +256,9 @@ const novaAlocacao = () =>
       veiculo_id: 10,
       motorista_id: 20,
       equipe_id: null,
-      capacidade_utilizada: 2,
+      inicio_previsto: '2099-11-20T14:00:00Z',
+      fim_previsto: '2099-11-20T16:00:00Z',
+      capacidade_utilizada: capacidade,
     },
     gestorSvo
   );
@@ -268,7 +288,8 @@ beforeEach(() => {
     ],
     // 2 das 4 vagas já ocupadas
     ordens_svo: [
-      { id: 1, solicitacao_id: 7, veiculo_id: 10, motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA' },
+      { id: 1, solicitacao_id: 7, veiculo_id: 10, motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA',
+        inicio_previsto: '2099-11-20T12:00:00Z', fim_previsto: '2099-11-20T13:00:00Z' },
       {
         id: 2,
         solicitacao_id: 8,
@@ -289,12 +310,12 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     const { promessa, liberar } = pausa();
     pausas.alocacao = promessa;
 
-    // 1. A alocação (+2 vagas) trava o veículo e fica parada antes do commit
-    const alocacao = novaAlocacao();
+    // 1. A alocação de 3 vagas trava o veículo e fica parada antes do commit
+    const alocacao = novaAlocacao(3);
     await darVez();
 
     // 2. Ao mesmo tempo, a edição tenta reduzir a capacidade para 2
-    const edicao = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1);
+    const edicao = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1, "ADMINISTRADOR");
     const resultadoEdicao = edicao.catch((erro) => erro);
     await darVez();
 
@@ -302,16 +323,16 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     expect(banco.eventos).toEqual(['trx1:travou veiculo 10', 'trx1:update ordens_svo', 'trx1:update veiculos', 'trx1:update motoristas', 'trx1:update solicitacoes_svo']);
     expect(capacidade()).toBe(4);
 
-    // 3. A alocação termina; a edição prossegue com o estado atual (4 vagas ocupadas)
+    // 3. A edição precisa respeitar o compromisso de 3 vagas confirmado.
     liberar();
     await expect(alocacao).resolves.toMatchObject({ tipo_operacao: 'SVO' });
     await expect(resultadoEdicao).resolves.toMatchObject({
       statusCode: 409,
-      message: 'A capacidade não pode ser menor que a ocupação atual do veículo (4)',
+      message: 'A capacidade não pode ser menor que a ocupação atual do veículo (3)',
     });
 
     expect(capacidade()).toBe(4);
-    expect(ocupacao()).toBe(4);
+    expect(ocupacao()).toBe(3);
     expect(ocupacao()).toBeLessThanOrEqual(capacidade());
   });
 
@@ -320,23 +341,23 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     pausas.edicao = promessa;
 
     // 1. A edição reduz a capacidade para 2 e fica parada antes do commit
-    const edicao = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1);
+    const edicao = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1, "ADMINISTRADOR");
     await darVez();
 
-    // 2. Ao mesmo tempo, chega uma alocação de +2 vagas
-    const alocacao = novaAlocacao().catch((erro) => erro);
+    // 2. Ao mesmo tempo, chega uma alocação de 3 vagas
+    const alocacao = novaAlocacao(3).catch((erro) => erro);
     await darVez();
 
     // A alocação (trx2) está bloqueada na trava do veículo: a ordem segue aguardando alocação
     expect(banco.eventos).toEqual(['trx1:travou veiculo 10', 'trx1:soma ordens_svo', 'trx1:update veiculos']);
     expect(banco.tabelas.ordens_svo.find((o) => o.id === 2)).toMatchObject({ status: 'AGUARDANDO_ALOCACAO', veiculo_id: null });
 
-    // 3. A edição termina; a alocação vê capacidade 2 com 2 vagas já ocupadas
+    // 3. A edição termina; a nova alocação excede a capacidade reduzida.
     liberar();
     await expect(edicao).resolves.toMatchObject({ capacidade_maxima: 2 });
     await expect(alocacao).resolves.toMatchObject({
       statusCode: 409,
-      message: 'O veículo não tem capacidade suficiente (vagas disponíveis: 0)',
+      message: 'O veículo não tem capacidade suficiente',
     });
 
     expect(capacidade()).toBe(2);
@@ -352,27 +373,27 @@ describe('Concorrência entre edição da capacidade e alocação SVO (BL30)', (
     pausas.edicao = promessa;
 
     // 1. Edição A aumenta a capacidade para 4 e fica parada com a trava
-    const edicaoA = veiculoService.atualizar(10, { capacidade_maxima: 4 }, 1);
+    const edicaoA = veiculoService.atualizar(10, { capacidade_maxima: 4 }, 1, "ADMINISTRADOR");
     await darVez();
 
-    // 2. Chega uma alocação de +2 (contando com a capacidade 4) e entra na fila
-    const alocacao = novaAlocacao();
+    // 2. Chega uma alocação de 3 vagas e entra na fila
+    const alocacao = novaAlocacao(3);
     await darVez();
 
     // 3. Edição B, de quem ainda vê a capacidade 2, reenvia capacidade 2 e entra na fila
-    const edicaoB = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1).catch((erro) => erro);
+    const edicaoB = veiculoService.atualizar(10, { capacidade_maxima: 2 }, 1, "ADMINISTRADOR").catch((erro) => erro);
     await darVez();
 
-    // 4. Libera: A confirma 4, a alocação ocupa as 4 vagas e B precisa ver isso
+    // 4. Libera: A confirma 4 e B precisa respeitar o compromisso de 3 vagas.
     liberar();
     await expect(edicaoA).resolves.toMatchObject({ capacidade_maxima: 4 });
     await expect(alocacao).resolves.toMatchObject({ tipo_operacao: 'SVO' });
     await expect(edicaoB).resolves.toMatchObject({
       statusCode: 409,
-      message: 'A capacidade não pode ser menor que a ocupação atual do veículo (4)',
+      message: 'A capacidade não pode ser menor que a ocupação atual do veículo (3)',
     });
 
-    expect(ocupacao()).toBe(4);
+    expect(ocupacao()).toBe(3);
     expect(capacidade()).toBe(4);
     expect(ocupacao()).toBeLessThanOrEqual(capacidade());
   });

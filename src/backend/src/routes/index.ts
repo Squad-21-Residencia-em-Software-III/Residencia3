@@ -17,6 +17,7 @@ import { solicitacaoSvoRoutes } from './solicitacaoSvoRoutes';
 import { auditoriaRoutes } from './auditoriaRoutes';
 import { equipeSvoRoutes } from './equipeSvoRoutes';
 import { relatorioRoutes } from './relatorioRoutes';
+import { logFalha } from '../middlewares/logRequisicao';
 
 export const routes = Router();
 
@@ -24,8 +25,8 @@ routes.get('/status', async (_req, res) => {
   try {
     const { rows } = await db.raw<{ rows: { now: Date }[] }>('SELECT NOW()');
     res.json({ status: 'API funcionando perfeitamente!', banco_conectado: true, horario_banco: rows[0]?.now });
-  } catch (erro) {
-    console.error('Erro ao conectar ao banco:', erro);
+  } catch {
+    logFalha(res, 'STATUS_BANCO');
     res.status(500).json({ status: 'Erro', banco_conectado: false });
   }
 });

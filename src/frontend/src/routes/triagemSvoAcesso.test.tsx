@@ -61,12 +61,18 @@ describe('Acesso à tela de Triagem SVO', () => {
     expect(listar).not.toHaveBeenCalled();
   });
 
-  it.each(comAcesso)('%s vê o item no menu e consulta as solicitações', async (perfil) => {
-    logarComo(perfil);
-    abrir('/triagem-svo');
+  it.each(comAcesso)(
+    '%s é redirecionado para Solicitações SVO sem item separado',
+    async (perfil) => {
+      logarComo(perfil);
+      abrir('/triagem-svo');
 
-    expect(screen.getAllByRole('link', { name: /Triagem SVO/ }).length).toBeGreaterThan(0);
-    expect(await screen.findByText('Nenhuma solicitação aguardando triagem.')).toBeInTheDocument();
-    expect(listar).toHaveBeenCalledWith({ pagina: 1, limite: 20, status: 'EM_TRIAGEM' });
-  });
+      expect(screen.queryByRole('link', { name: /Triagem SVO/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'SVO' })).toHaveAttribute('aria-selected', 'true');
+      expect(
+        await screen.findByText('Nenhuma solicitação aguardando triagem.'),
+      ).toBeInTheDocument();
+      expect(listar).toHaveBeenCalledWith({ pagina: 1, limite: 20, status: 'EM_TRIAGEM' });
+    },
+  );
 });

@@ -5,6 +5,7 @@ import { LABELS_STATUS_VIAGEM, type StatusViagem, type Viagem } from '../../type
 
 interface DrawerDetalhesViagemProps {
   viagem: Viagem | null;
+  somentePropria?: boolean;
   onClose: () => void;
   onIniciar?: (viagem: Viagem) => void;
   onFinalizar?: (viagem: Viagem) => void;
@@ -59,6 +60,7 @@ export function DrawerDetalhesViagem({
   onIniciar,
   onFinalizar,
   onCancelar,
+  somentePropria = false,
 }: DrawerDetalhesViagemProps) {
   const [viagemState, setViagemState] = useState<Viagem | null>(viagemProp);
 
@@ -94,6 +96,7 @@ export function DrawerDetalhesViagem({
 
   return (
     <Drawer
+      telaInteira
       isOpen={Boolean(viagemProp)}
       onClose={onClose}
       width="max-w-[460px]"
@@ -108,7 +111,7 @@ export function DrawerDetalhesViagem({
       subtitle={subtitulo}
       footer={
         <div className="flex items-center justify-between gap-3">
-          {viagem.status === 'AGENDADA' && onCancelar ? (
+          {viagem.status === 'AGENDADA' && onCancelar && !somentePropria ? (
             <Button
               variant="danger-outline"
               size="sm"
@@ -124,7 +127,7 @@ export function DrawerDetalhesViagem({
           )}
 
           <div className="flex items-center gap-2.5">
-            <Button
+            {!somentePropria && <Button
               variant="outline"
               size="sm"
               onClick={() => {
@@ -133,7 +136,7 @@ export function DrawerDetalhesViagem({
               title="Baixar Ficha da Viagem em PDF"
             >
               <Download size={13} className="mr-1" /> Baixar Ficha
-            </Button>
+            </Button>}
 
             {viagem.status === 'AGENDADA' && onIniciar && (
               <Button
@@ -205,7 +208,7 @@ export function DrawerDetalhesViagem({
         </div>
 
         {/* 2. Equipe e Veículo */}
-        <div>
+        {!somentePropria && <div>
           <h3 className="mb-3 font-display text-xs font-bold tracking-wider text-slate-400 uppercase">
             Equipe e Veículo
           </h3>
@@ -253,9 +256,10 @@ export function DrawerDetalhesViagem({
               </div>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* 3. Finalidade Institucional (se houver) */}
+        {viagem.tipo_operacao === 'ADMINISTRATIVA' && viagem.material_sensivel && <p className="text-sm font-semibold text-amber-700">Material sensível</p>}
         {viagem.finalidade && (
           <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
             <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
@@ -267,10 +271,10 @@ export function DrawerDetalhesViagem({
           </div>
         )}
 
-        <div className="h-px w-full bg-slate-100" />
+        {!somentePropria && <div className="h-px w-full bg-slate-100" />}
 
         {/* 4. Odômetro e Duração */}
-        <div>
+        {!somentePropria && <div>
           <h3 className="mb-3 font-display text-xs font-bold tracking-wider text-slate-400 uppercase">
             Odômetro e Duração
           </h3>
@@ -310,7 +314,7 @@ export function DrawerDetalhesViagem({
               </div>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </Drawer>
   );

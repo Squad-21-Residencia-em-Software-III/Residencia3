@@ -1,4 +1,4 @@
-import { act, render as renderBase, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render as renderBase, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -77,10 +77,11 @@ describe('TriagemSvoPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     sessao.perfil = 'GESTOR_SVO';
+    RECURSOS_BACKEND.recusaSvo = false;
   });
 
   afterEach(() => {
-    RECURSOS_BACKEND.recusaSvo = false;
+    RECURSOS_BACKEND.recusaSvo = true;
   });
 
   it('lista as solicitações em triagem por padrão', async () => {
@@ -92,8 +93,8 @@ describe('TriagemSvoPage', () => {
 
     expect(await screen.findByText('Rua 2, Aracaju')).toBeInTheDocument();
     expect(api.listar).toHaveBeenCalledWith({ pagina: 1, limite: 20, status: 'EM_TRIAGEM' });
-    expect(screen.getByText('Material sensível')).toBeInTheDocument();
-    expect(screen.getAllByText('Em triagem').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Material sensível')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Aguardando análise').length).toBeGreaterThan(0);
   });
 
   it('informa quando não há solicitações aguardando triagem', async () => {
@@ -158,7 +159,7 @@ describe('TriagemSvoPage', () => {
 
     expect(await within(painel).findByText('Familiar 7 - (79) 99999-0000')).toBeInTheDocument();
     expect(within(painel).getByText('Óbito em domicílio')).toBeInTheDocument();
-    expect(within(painel).getByText(/exige protocolo específico/)).toBeInTheDocument();
+    expect(within(painel).queryByText('Material sensível')).not.toBeInTheDocument();
     expect(
       within(painel).getByText('A ordem é gerada pelo servidor quando a solicitação é confirmada.'),
     ).toBeInTheDocument();
@@ -388,6 +389,30 @@ describe('TriagemSvoPage', () => {
       expect(
         within(painel).queryByRole('button', { name: 'Confirmar e gerar ordem' }),
       ).not.toBeInTheDocument();
+    });
+
+    it('aceita justificativa SVO de 500 caracteres, respeitando o limite da API', async () => {
+      RECURSOS_BACKEND.recusaSvo = true;
+      const painel = await abrirEmTriagem();
+      api.recusar.mockResolvedValue(undefined);
+      await userEvent.click(within(painel).getByRole('button', { name: 'Recusar' }));
+      const campo = within(painel).getByLabelText(/Justificativa da recusa/);
+      expect(campo).toHaveAttribute('maxLength', '500');
+      fireEvent.change(campo, { target: { value: 'a'.repeat(500) } });
+      await userEvent.click(within(painel).getByRole('button', { name: 'Confirmar recusa' }));
+      expect(api.recusar).toHaveBeenCalledWith(5, 'a'.repeat(500));
+    });
+
+    it('rejeita mais de 500 caracteres mesmo se o limite do campo for contornado', async () => {
+      RECURSOS_BACKEND.recusaSvo = true;
+      const painel = await abrirEmTriagem();
+      await userEvent.click(within(painel).getByRole('button', { name: 'Recusar' }));
+      fireEvent.change(within(painel).getByLabelText(/Justificativa da recusa/), {
+        target: { value: 'a'.repeat(501) },
+      });
+      await userEvent.click(within(painel).getByRole('button', { name: 'Confirmar recusa' }));
+      expect(within(painel).getByText(/no máximo 500 caracteres/)).toBeInTheDocument();
+      expect(api.recusar).not.toHaveBeenCalled();
     });
 
     it('em falha da API não mostra sucesso', async () => {

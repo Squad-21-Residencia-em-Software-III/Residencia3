@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../errors/AppError';
+import { logFalha } from './logRequisicao';
 
 const VIOLACAO_UNIQUE_POSTGRES = '23505';
 // statement_timeout atingido: o PostgreSQL cancelou a consulta
@@ -17,8 +18,8 @@ function tempoEsgotadoNoBanco(err: object): string | undefined {
   return undefined;
 }
 
-export function rotaNaoEncontrada(req: Request, res: Response): void {
-  res.status(404).json({ erro: `Rota não encontrada: ${req.method} ${req.originalUrl}` });
+export function rotaNaoEncontrada(_req: Request, res: Response): void {
+  res.status(404).json({ erro: 'Rota não encontrada' });
 }
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
@@ -28,7 +29,16 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
 
   if (err instanceof AppError) {
-    res.status(err.statusCode).json({ erro: err.message });
+    if (err.statusCode >= 500) {
+      logFalha(res, 'ERRO_INTERNO');
+      res.status(err.statusCode).json({ erro: 'Erro interno do servidor' });
+      return;
+    }
+    res.status(err.statusCode).json({
+      erro: err.message,
+      ...(err.codigo ? { codigo: err.codigo } : {}),
+      ...(err.contexto === undefined ? {} : { contexto: err.contexto }),
+    });
     return;
   }
 
@@ -40,6 +50,19 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
         mensagem: issue.message,
       })),
     });
+    return;
+  }
+
+  // O banco pode ainda aguardar a migration da agenda; não expor SQL nem prometer operação parcial.
+  if (typeof err === 'object' && err !== null && 'code' in err && err.code === '42703' &&
+      'message' in err && String(err.message).includes('material_sensivel')) {
+    res.status(503).json({ erro: 'O registro de material sensível ainda não está disponível: o banco precisa ser atualizado.' });
+    return;
+  }
+  if (typeof err === 'object' && err !== null && 'code' in err && 'message' in err &&
+      ((err.code === '42703' && String(err.message).includes('liberada_em')) ||
+       (err.code === '42P01' && String(err.message).includes('alertas_atraso_svo')))) {
+    res.status(503).json({ erro: 'A agenda SVO ainda não está disponível: a estrutura do banco precisa ser atualizada pela equipe responsável.' });
     return;
   }
 
@@ -61,12 +84,11 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   const tempoEsgotado = typeof err === 'object' && err !== null ? tempoEsgotadoNoBanco(err) : undefined;
   if (tempoEsgotado) {
-    // Registra só o tipo do erro, sem SQL nem parâmetros
-    console.error('Tempo limite no banco de dados:', (err as Error).name, (err as { code?: string }).code ?? '');
+    logFalha(res, 'BANCO_TIMEOUT');
     res.set('Retry-After', '5').status(503).json({ erro: tempoEsgotado });
     return;
   }
 
-  console.error('Erro inesperado:', err);
+  logFalha(res, 'ERRO_INTERNO');
   res.status(500).json({ erro: 'Erro interno do servidor' });
 }

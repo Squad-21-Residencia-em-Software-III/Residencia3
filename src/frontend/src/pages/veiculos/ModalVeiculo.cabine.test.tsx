@@ -12,7 +12,7 @@ function preencherSvo(corpos: string) {
 
 describe('ModalVeiculo: duas capacidades SVO (SCRUM-173)', () => {
   afterEach(() => {
-    RECURSOS_BACKEND.lotacaoCabine = false;
+    RECURSOS_BACKEND.lotacaoCabine = true;
   });
 
   it('separa os rótulos: passageiros no administrativo, corpos no SVO', () => {
@@ -25,6 +25,7 @@ describe('ModalVeiculo: duas capacidades SVO (SCRUM-173)', () => {
   });
 
   it('sem a coluna do backend, não pede nem envia a lotação da cabine', async () => {
+    RECURSOS_BACKEND.lotacaoCabine = false;
     const onSalvar = vi.fn().mockResolvedValue(undefined);
     render(<ModalVeiculo onClose={vi.fn()} onSalvar={onSalvar} apenasFrota="SVO" />);
 
@@ -63,5 +64,45 @@ describe('ModalVeiculo: duas capacidades SVO (SCRUM-173)', () => {
     RECURSOS_BACKEND.lotacaoCabine = true;
     render(<ModalVeiculo onClose={vi.fn()} onSalvar={vi.fn()} apenasFrota="ADMINISTRATIVA" />);
     expect(screen.queryByLabelText(/Lotação da cabine/)).not.toBeInTheDocument();
+  });
+
+  it('permite editar veículo legado sem preencher cabine desconhecida', async () => {
+    const onSalvar = vi.fn().mockResolvedValue(undefined);
+    render(<ModalVeiculo onClose={vi.fn()} onSalvar={onSalvar} veiculoParaEditar={{
+      id: 1, placa: 'SVO1A23', modelo: 'Rabecão', tipo_frota: 'SVO', capacidade_maxima: 4,
+      lotacao_cabine: null, km_atual: 0, status: 'DISPONIVEL',
+    }} />);
+    fireEvent.change(screen.getByLabelText(/Capacidade Máxima/i), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar Alterações/i }));
+    await waitFor(() => expect(onSalvar).toHaveBeenCalled());
+    expect(onSalvar.mock.calls[0][0]).toMatchObject({ capacidade_maxima: 2 });
+    expect(onSalvar.mock.calls[0][0]).not.toHaveProperty('lotacao_cabine');
+  });
+
+  it('permite editar a cabine sem alterar a capacidade de corpos', async () => {
+    const onSalvar = vi.fn().mockResolvedValue(undefined);
+    render(<ModalVeiculo onClose={vi.fn()} onSalvar={onSalvar} veiculoParaEditar={{
+      id: 1, placa: 'SVO1A23', modelo: 'Rabecão', tipo_frota: 'SVO', capacidade_maxima: 4,
+      lotacao_cabine: 2, km_atual: 0, status: 'DISPONIVEL',
+    }} />);
+    fireEvent.change(screen.getByLabelText(/Lotação da cabine/), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar Alterações/i }));
+    await waitFor(() => expect(onSalvar).toHaveBeenCalled());
+    expect(onSalvar.mock.calls[0][0]).toMatchObject({ capacidade_maxima: 4, lotacao_cabine: 3 });
+  });
+
+  it('exige cabine ao converter veículo administrativo para SVO', async () => {
+    const onSalvar = vi.fn().mockResolvedValue(undefined);
+    render(<ModalVeiculo onClose={vi.fn()} onSalvar={onSalvar} veiculoParaEditar={{
+      id: 1, placa: 'ABC1D23', modelo: 'Van', tipo_frota: 'ADMINISTRATIVA', capacidade_maxima: 4,
+      lotacao_cabine: null, km_atual: 0, status: 'DISPONIVEL',
+    }} />);
+    fireEvent.change(screen.getByLabelText(/Tipo de Frota/), { target: { value: 'SVO' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar Alterações/i }));
+    expect(onSalvar).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Informe a lotação da cabine/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Lotação da cabine/), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /Salvar Alterações/i }));
+    await waitFor(() => expect(onSalvar).toHaveBeenCalledWith(expect.objectContaining({ tipo_frota: 'SVO', lotacao_cabine: 2 })));
   });
 });
