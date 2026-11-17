@@ -1,10 +1,10 @@
 # SCRUM-166: o que o backend e o banco precisam entregar para o front
 
-Este documento acompanha o PR do front das subtarefas **SCRUM-170, 171, 172, 173 e 174**. A integração do front ainda depende das entregas indicadas abaixo. As partes que ainda dependem do backend estão desligadas em [`src/frontend/src/config/recursosBackend.ts`](../src/frontend/src/config/recursosBackend.ts).
+Este documento descreve os contratos da SCRUM-166. As consultas de viagens próprias e ordens pendentes foram integradas nesta branch; a agenda temporal e o tratamento de atrasos permanecem pendentes.
 
 **Como ligar:** quando o PR do back de um item for aprovado, basta mudar o valor correspondente para `true`. Com o item desligado, a tela usa só a API atual e não envia campos que o servidor ignoraria.
 
-Os nomes de rotas e campos abaixo são **propostas** do front. Se o back preferir outros nomes, a troca fica em um único serviço do front (indicado em cada item). Combine antes de implementar.
+Os contratos de agendamento descritos abaixo permanecem propostas até sua implementação e validação no servidor.
 
 Matriz de acesso usada em todo o documento (HU SCRUM-166):
 
@@ -49,7 +49,7 @@ Content-Type: application/json
 
 **Interruptor:** `minhasViagensAdministrativas`. **Serviço do front:** `viagensApi.listarMinhasAdministrativas`.
 
-**Hoje:** para o GESTOR_SVO, `GET /viagens` devolve só ordens SVO (`TIPOS_POR_PERFIL`), então a aba Administrativo fica escondida para ele.
+**Hoje:** para o GESTOR_SVO, `GET /viagens` devolve só ordens SVO. A aba Administrativo usa a consulta própria paginada descrita abaixo.
 
 **O que o front chama:**
 
@@ -59,7 +59,7 @@ GET /api/viagens/minhas
 
 **Regras esperadas:**
 - Devolve só as viagens **ADMINISTRATIVA** cujas solicitações têm `solicitacoes_viagem.solicitante_id = id do JWT`. O filtro é feito no SQL, nunca depois de buscar tudo.
-- **Formato:** o mesmo de `GET /viagens` (`Viagem[]`, com `tipo_operacao: 'ADMINISTRATIVA'`). Se o DTO for reduzido, manter pelo menos os campos que a tabela usa: `id`, `tipo_operacao`, `origem`, `destino`, `inicio_previsto`, `data_hora_efetiva_saida`, `data_hora_efetiva_chegada`, `veiculo_modelo`, `veiculo_placa`, `status`; os campos devem ser limitados aos dados operacionais autorizados. Não exigir nome do motorista nem quilometragem.
+- **Formato:** objeto paginado `{ dados, paginacao }` com DTO reduzido, incluindo identificadores, trajeto, finalidade, horários e status, sem nome do motorista nem quilometragem. A interface percorre as páginas e apresenta apenas os campos recebidos.
 - **Ações:** nessa visão o front não mostra iniciar, finalizar nem cancelar. Mesmo assim, o back deve barrar essas ações do GESTOR_SVO em viagens administrativas (o `garantirAcesso` atual já faz isso).
 - **Detalhe por ID:** consultar diretamente uma viagem de outra pessoa deve devolver 403 ou 404 (sem IDOR/BOLA).
 - **Pedidos:** o GESTOR_SVO continua usando `GET /solicitacoes-viagem/minhas`, que o front já usa no PR #115.
@@ -199,6 +199,14 @@ O front desta entrega **não depende** da 183. Ela só muda o status que a lista
 
 ## 7. Checklist para ligar cada interruptor
 
+### Consulta própria administrativa
+
+`GET /api/viagens/minhas?pagina=1&limite=20` é restrito a GESTOR_SVO associado. O servidor usa o ID do JWT no vínculo `viagens_frota.solicitacao_id → solicitacoes_viagem.solicitante_id`, antes de ordenar e paginar. A resposta contém `dados` e `paginacao` (pagina, limite, total, totalPaginas). O DTO reduzido não contém dados de motorista, veículo, custos ou quilometragem. Parâmetros desconhecidos são rejeitados. O frontend consome as páginas e mostra detalhes reduzidos. A consulta de solicitações próprias também restringe os campos para esse perfil. Falta comprovar isolamento e paginação em PostgreSQL de testes.
+
+### Listagem de ordens pendentes
+
+`GET /api/viagens/ordens-svo/pendentes?pagina=1&limite=20` é restrito a Administrador e Gestor SVO associado. Retorna ordens em `AGUARDANDO_ALOCACAO` ligadas a solicitações confirmadas, ordenadas por confirmação e ID, com identificadores distintos e recursos da ordem. O frontend consome as páginas. Falta verificar o contrato e a paginação em PostgreSQL isolado. O endpoint não implementa agendamento temporal.
+
 1. O PR do back e o do banco estão na `develop`, com testes.
 2. Rodar o cenário do item no ambiente de teste com o perfil indicado.
 3. Mudar o interruptor para `true` em `recursosBackend.ts` (PR de uma linha).
@@ -206,7 +214,7 @@ O front desta entrega **não depende** da 183. Ela só muda o status que a lista
 
 ## 8. Estado da integração e roteiro de homologação
 
-Na base `373686f73fd4668ab539560f4c41c6c49165f3b1`, SCRUM-179, SCRUM-182 e SCRUM-183 permanecem abertas. A migration de horários não comprova implementação transacional da agenda. Não ligar os recursos de viagens próprias, ordens paginadas ou agendamento temporal sem verificar os endpoints reais e sua autorização no servidor. Alterações de banco cabem à frente DB.
+Na base `efaad5af84ec0499dd0c6b53b3b4aee47485799f`, SCRUM-179, SCRUM-182 e SCRUM-183 permanecem abertas. Esta branch implementa as consultas próprias e de ordens pendentes e seus consumidores, ainda sem homologação com PostgreSQL. A migration de horários não comprova implementação transacional da agenda. O agendamento temporal continua desligado. Alterações de banco cabem à frente DB.
 
 Para demonstrar em ambiente autorizado, registrar evidência, resultado observado e conclusão em cada passo:
 

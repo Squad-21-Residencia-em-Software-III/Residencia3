@@ -18,6 +18,26 @@ describe('viagensApi (SCRUM-171/172)', () => {
     RECURSOS_BACKEND.ordensPendentesSvo = false;
   });
 
+  it('percorre as páginas das viagens próprias e adapta o DTO reduzido', async () => {
+    req.mockResolvedValueOnce({
+      dados: [{ id: 7, solicitacao_id: 9, tipo_operacao: 'ADMINISTRATIVA', destino: 'Hospital', status: 'AGENDADA' }],
+      paginacao: { pagina: 1, totalPaginas: 2 },
+    }).mockResolvedValueOnce({
+      dados: [{ id: 8, solicitacao_id: 10, tipo_operacao: 'ADMINISTRATIVA', destino: 'Unidade', status: 'CONCLUIDA' }],
+      paginacao: { pagina: 2, totalPaginas: 2 },
+    });
+    const resultado = await viagensApi.listarMinhasAdministrativas();
+    expect(resultado.map((v) => v.id)).toEqual([7, 8]);
+    expect(resultado[0]).toMatchObject({ motorista_nome: '', km_inicial: null });
+    expect(req).toHaveBeenNthCalledWith(2, 'GET', '/viagens/minhas', { query: { pagina: 2, limite: 100 } });
+  });
+
+  it('propaga erro ao consultar páginas das viagens próprias', async () => {
+    req.mockResolvedValueOnce({ dados: [], paginacao: { pagina: 1, totalPaginas: 2 } })
+      .mockRejectedValueOnce(new Error('Falha na segunda página'));
+    await expect(viagensApi.listarMinhasAdministrativas()).rejects.toThrow('Falha na segunda página');
+  });
+
   it('sem o agendamento temporal, não envia campos que o servidor ignoraria', async () => {
     req.mockResolvedValue({});
     await viagensApi.agendarColetaSvo({

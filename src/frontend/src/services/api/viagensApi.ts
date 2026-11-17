@@ -27,7 +27,7 @@ async function todasAsPaginas<T>(buscar: (pagina: number) => Promise<Paginada<T>
     itens.push(...resposta.dados)
     if (pagina >= resposta.paginacao.totalPaginas) return itens
   }
-  throw new Error('Há ordens demais para listar de uma vez. Contate o suporte.')
+  throw new Error('Há registros demais para listar de uma vez. Contate o suporte.')
 }
 
 export const viagensApi = {
@@ -37,7 +37,20 @@ export const viagensApi = {
    * Viagens administrativas das solicitações do próprio usuário (SCRUM-179). Usado pelo Gestor
    * SVO, que acompanha só o que pediu; só é chamado com `minhasViagensAdministrativas` ligado.
    */
-  listarMinhasAdministrativas: () => request<Viagem[]>('GET', '/viagens/minhas'),
+  listarMinhasAdministrativas: async (): Promise<Viagem[]> => {
+    type ViagemPropria = Pick<Viagem, 'id' | 'solicitacao_id' | 'tipo_operacao' | 'origem' |
+      'destino' | 'finalidade' | 'inicio_previsto' | 'fim_previsto' | 'status' |
+      'data_hora_efetiva_saida' | 'data_hora_efetiva_chegada'>;
+    const viagens = await todasAsPaginas((pagina) =>
+      request<Paginada<ViagemPropria>>('GET', '/viagens/minhas', {
+        query: { pagina, limite: LIMITE_PAGINA },
+      }),
+    );
+    return viagens.map((v) => ({
+      ...v, solicitante_nome: null, veiculo_id: 0, veiculo_modelo: '',
+      veiculo_placa: '', motorista_id: 0, motorista_nome: '', km_inicial: null,
+    }));
+  },
 
   /**
    * Ordens de coleta aguardando alocação. Com a consulta do backend (SCRUM-182) vem de

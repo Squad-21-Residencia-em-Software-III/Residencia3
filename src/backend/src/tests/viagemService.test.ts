@@ -58,6 +58,7 @@ vi.mock('../models/auditoriaModel', () => ({
 vi.mock('../models/viagemModel', () => ({
   viagemModel: {
     listar: vi.fn().mockResolvedValue([]),
+    listarAdministrativasDoSolicitante: vi.fn().mockResolvedValue({ dados: [], paginacao: {} }),
     buscarPorId: vi.fn(async (tipo: string, id: number) => ({
       id,
       tipo_operacao: tipo,
@@ -70,6 +71,19 @@ import { veiculoModel } from '../models/veiculoModel';
 import { motoristaModel } from '../models/motoristaModel';
 import { auditoriaModel } from '../models/auditoriaModel';
 import { viagemModel } from '../models/viagemModel';
+
+describe('Consulta própria administrativa', () => {
+  it('repassa ao modelo o ID autenticado e a paginação', async () => {
+    await viagemService.listarMinhasAdministrativas({ id: 42, perfil: PERFIS.GESTOR_SVO }, 2, 10);
+    expect(viagemModel.listarAdministrativasDoSolicitante).toHaveBeenCalledWith(42, 2, 10);
+  });
+
+  it('nega outros perfis mesmo se o serviço for chamado diretamente', async () => {
+    await expect(viagemService.listarMinhasAdministrativas(
+      { id: 42, perfil: PERFIS.GESTOR_FROTA }, 1, 20,
+    )).rejects.toMatchObject({ statusCode: 403 });
+  });
+});
 
 const temChamada = (
   chamadas: Chamada[],

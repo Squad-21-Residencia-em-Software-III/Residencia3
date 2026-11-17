@@ -544,7 +544,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           <SearchInput
             value={busca}
             onChange={setBusca}
-            placeholder="Buscar por trajeto, condutor ou placa..."
+            placeholder={somenteProprias ? 'Buscar por trajeto...' : 'Buscar por trajeto, condutor ou placa...'}
           />
 
           {/* Filtros em dropdown na sequência */}
@@ -561,7 +561,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
             ]}
           />
 
-          <FilterSelect
+          {!somenteProprias && <FilterSelect
             aria-label="Filtrar por motorista"
             value={filtroMotorista}
             onChange={setFiltroMotorista}
@@ -569,9 +569,9 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
               { value: 'TODOS', label: 'Todos os motoristas' },
               ...opcoesMotoristas,
             ]}
-          />
+          />}
 
-          <FilterSelect
+          {!somenteProprias && <FilterSelect
             aria-label="Filtrar por veículo"
             value={filtroVeiculo}
             onChange={setFiltroVeiculo}
@@ -579,7 +579,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
               { value: 'TODOS', label: 'Todos os veículos' },
               ...opcoesVeiculos,
             ]}
-          />
+          />}
 
           {(filtroStatus !== 'TODOS' ||
             filtroMotorista !== 'TODOS' ||
@@ -606,9 +606,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
             <col className="w-[85px]" />
             <col className="w-auto" />
             <col className="w-[140px]" />
-            <col className="w-[160px]" />
-            <col className="w-[120px]" />
-            <col className="w-[130px]" />
+            {!somenteProprias && <><col className="w-[160px]" /><col className="w-[120px]" /><col className="w-[130px]" /></>}
             <col className="w-[120px]" />
             <col className="w-[200px]" />
           </colgroup>
@@ -618,9 +616,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
               <th className="px-1.5 pr-3">Operação</th>
               <th>Origem / Destino</th>
               <th>Horários</th>
-              <th>Motorista</th>
-              <th>Veículo</th>
-              <th>Odômetro / Km</th>
+              {!somenteProprias && <><th>Motorista</th><th>Veículo</th><th>Odômetro / Km</th></>}
               <th>Status</th>
               <th className="text-right">Ações</th>
             </tr>
@@ -628,7 +624,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           <tbody>
             {filtradas.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-9 text-center text-slate-500">
+                <td colSpan={somenteProprias ? 6 : 9} className="p-9 text-center text-slate-500">
                   {carregando ? textos.carregando : (erroCarga ?? textos.vazio)}
                 </td>
               </tr>
@@ -719,7 +715,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                           )}
                         </div>
                       </td>
-                      <td>
+                      {!somenteProprias && <><td>
                         <span
                           className="block max-w-[170px] truncate text-[13px] font-medium text-slate-900"
                           title={v.motorista_nome}
@@ -763,7 +759,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                             </>
                           )}
                         </div>
-                      </td>
+                      </td></>}
                       <td>
                         <Badge tone={obterBadgeToneStatus(v.status)}>
                           {LABELS_STATUS_VIAGEM[v.status]}
@@ -865,6 +861,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       {/* Drawer de Detalhes da Viagem */}
       <DrawerDetalhesViagem
         viagem={viagemDetalhes}
+        somentePropria={somenteProprias}
         onClose={() => setViagemDetalhes(null)}
         onIniciar={
           podeExecutar

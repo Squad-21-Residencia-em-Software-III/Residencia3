@@ -18,7 +18,7 @@ export const RECURSOS_BACKEND = {
    * SCRUM-179: `GET /viagens/minhas`, viagens administrativas das solicitações do próprio usuário
    * (Gestor SVO acompanha só as próprias). Serviço: `viagensApi.listarMinhasAdministrativas`.
    */
-  minhasViagensAdministrativas: false,
+  minhasViagensAdministrativas: true,
 
   /**
    * SCRUM-175 (banco) + SCRUM-181 (back): coluna `veiculos.lotacao_cabine` (pessoas na cabine,
@@ -37,7 +37,7 @@ export const RECURSOS_BACKEND = {
    * SCRUM-182: `GET /viagens/ordens-svo/pendentes`, ordens AGUARDANDO_ALOCACAO paginadas.
    * Desligado, a lista verifica o estado real da ordem no detalhe de cada solicitação confirmada. Serviço: `viagensApi.listarOrdensPendentesSvo`.
    */
-  ordensPendentesSvo: false,
+  ordensPendentesSvo: true,
 };
 
 export type RecursoBackend = keyof typeof RECURSOS_BACKEND;

@@ -367,6 +367,16 @@ async function detalhar(trx: Knex.Transaction, tipo: TipoOperacao, id: number): 
 }
 
 export const viagemService = {
+  async listarOrdensPendentesSvo(autor: Autor, pagina: number, limite: number) {
+    garantirAcesso(autor.perfil, 'SVO');
+    return viagemModel.listarOrdensPendentesSvo(pagina, limite);
+  },
+  async listarMinhasAdministrativas(autor: Autor, pagina: number, limite: number) {
+    if (autor.perfil !== PERFIS.GESTOR_SVO) {
+      throw new AppError('Você não tem permissão para esta consulta', 403);
+    }
+    return viagemModel.listarAdministrativasDoSolicitante(autor.id, pagina, limite);
+  },
   async listar(autor: Autor): Promise<ViagemDetalhada[]> {
   if (autor.perfil === PERFIS.MOTORISTA_FROTA) {
     return viagemModel.listar(['ADMINISTRATIVA'], autor.id);

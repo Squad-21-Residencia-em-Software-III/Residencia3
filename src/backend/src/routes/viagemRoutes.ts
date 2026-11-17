@@ -29,6 +29,10 @@ const gestoresEMotoristas = autorizar(
 // conforme o filtro aplicado no service.
 viagemRoutes.get('/', gestoresEMotoristas, viagemController.listar);
 
+// Consulta reduzida das viagens administrativas vinculadas às solicitações do JWT.
+viagemRoutes.get('/minhas', autorizar(PERFIS.GESTOR_SVO), viagemController.listarMinhasAdministrativas);
+viagemRoutes.get('/ordens-svo/pendentes', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.listarOrdensPendentesSvo);
+
 viagemRoutes.post('/', gestores, viagemController.criar);
 
 viagemRoutes.patch('/:id/iniciar', gestoresEMotoristas, viagemController.iniciar);

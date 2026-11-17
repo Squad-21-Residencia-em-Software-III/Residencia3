@@ -146,6 +146,7 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     const linha = screen.getByText('Secretaria de Saúde').closest('tr')!;
     expect(within(linha).queryByRole('button', { name: /Iniciar|Cancelar/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Agendar Viagem/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Motorista|Veículo|Odômetro/ })).not.toBeInTheDocument();
   });
 
   it('Motorista SVO vê as próprias coletas, sem ordens pendentes', async () => {

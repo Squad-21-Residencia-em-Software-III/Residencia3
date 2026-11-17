@@ -23,6 +23,8 @@ vi.mock('../services/authService', () => ({
 vi.mock('../services/viagemService', () => ({
   viagemService: {
     listar: vi.fn().mockResolvedValue([]),
+    listarMinhasAdministrativas: vi.fn().mockResolvedValue({ dados: [], paginacao: { pagina: 1, limite: 20, total: 0, totalPaginas: 0 } }),
+    listarOrdensPendentesSvo: vi.fn().mockResolvedValue({ dados: [], paginacao: { pagina: 1, limite: 20, total: 0, totalPaginas: 0 } }),
     criar: vi.fn().mockResolvedValue({ id: 1 }),
     iniciarViagem: vi.fn().mockResolvedValue({ id: 1 }),
     finalizarViagem: vi.fn().mockResolvedValue({ id: 1 }),
@@ -42,6 +44,48 @@ describe('Rotas de viagens', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     autenticarComo(PERFIS.GESTOR_FROTA);
+  });
+
+  it('consulta viagens próprias usando apenas a identidade autenticada', async () => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    const resposta = await request(app).get('/api/viagens/minhas?pagina=2&limite=10')
+      .set('Authorization', token);
+    expect(resposta.status).toBe(200);
+    expect(viagemService.listarMinhasAdministrativas).toHaveBeenCalledWith(
+      { id: 3, perfil: PERFIS.GESTOR_SVO }, 2, 10,
+    );
+  });
+
+  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO])('permite %s consultar ordens pendentes paginadas', async (perfil) => {
+    autenticarComo(perfil);
+    const resposta = await request(app).get('/api/viagens/ordens-svo/pendentes?pagina=2&limite=10').set('Authorization', token);
+    expect(resposta.status).toBe(200);
+    expect(viagemService.listarOrdensPendentesSvo).toHaveBeenCalledWith({ id: 3, perfil }, 2, 10);
+  });
+
+  it.each([PERFIS.GESTOR_FROTA, PERFIS.SOLICITANTE, PERFIS.MOTORISTA_SVO])('nega ordens pendentes a %s', async (perfil) => {
+    autenticarComo(perfil);
+    const resposta = await request(app).get('/api/viagens/ordens-svo/pendentes').set('Authorization', token);
+    expect(resposta.status).toBe(403);
+    expect(viagemService.listarOrdensPendentesSvo).not.toHaveBeenCalled();
+  });
+
+  it('rejeita filtros arbitrários de usuário e paginação inválida', async () => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    for (const query of ['usuario_id=99', 'pagina=0', 'limite=101']) {
+      const resposta = await request(app).get(`/api/viagens/minhas?${query}`)
+        .set('Authorization', token);
+      expect(resposta.status).toBe(400);
+    }
+    expect(viagemService.listarMinhasAdministrativas).not.toHaveBeenCalled();
+  });
+
+  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.SOLICITANTE,
+    PERFIS.MOTORISTA_FROTA, PERFIS.MOTORISTA_SVO])('bloqueia perfil %s na consulta própria', async (perfil) => {
+    autenticarComo(perfil);
+    const resposta = await request(app).get('/api/viagens/minhas').set('Authorization', token);
+    expect(resposta.status).toBe(403);
+    expect(viagemService.listarMinhasAdministrativas).not.toHaveBeenCalled();
   });
 
   it('deve retornar 401 sem autenticação', async () => {
