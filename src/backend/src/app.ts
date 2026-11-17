@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { env } from './config/env';
 import { cabecalhosDeSeguranca, corsPorAmbiente } from './config/segurancaHttp';
 import { errorHandler, rotaNaoEncontrada } from './middlewares/errorHandler';
+import { logRequisicao } from './middlewares/logRequisicao';
 import { limitarConcorrencia } from './middlewares/limitarConcorrencia';
 import { limitarConsultasPesadas, limitarPorTipoDeOperacao } from './middlewares/limitarTentativasLogin';
 import { limitarTempoRequisicao } from './middlewares/limitarTempoRequisicao';
@@ -16,6 +17,7 @@ export const app = express();
 app.disable('x-powered-by');
 // Somente os proxies declarados em TRUST_PROXY: define req.ip (rate limit) e req.protocol
 app.set('trust proxy', env.trustProxy);
+app.use(logRequisicao);
 // Antes das rotas, para valer também nas respostas de erro e no 404
 app.use(cabecalhosDeSeguranca());
 app.use(corsPorAmbiente());
