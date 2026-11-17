@@ -81,7 +81,7 @@ describe('Limites por tipo de operação (app real)', () => {
   it('não conta o login no limite geral de escrita (ele tem limite próprio)', async () => {
     vi.mocked(authService.login).mockResolvedValue({ resposta: {}, refreshToken: 'r', sessaoExp: 9999999999 } as never);
     const respostas = await repetir(5, () =>
-      request(app).post('/api/auth/login').set('X-Forwarded-For', ip).send({ email: 'a@b.com', senha: 'x' })
+      request(app).post('/api/auth/login').set('Origin', 'http://localhost:5173').set('X-Forwarded-For', ip).send({ email: 'a@b.com', senha: 'x' })
     );
 
     expect(respostas.every((r) => r.status === 200)).toBe(true);

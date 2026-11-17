@@ -115,7 +115,7 @@ const MATRIZ: Regra[] = [
 ];
 
 const chamar = (metodo: Metodo, rota: string, token?: string) => {
-  const req = request(app)[metodo](rota);
+  const req = request(app)[metodo](rota).set('Origin', 'http://localhost:5173');
   return token ? req.set('Authorization', `Bearer ${token}`).send({}) : req.send({});
 };
 
