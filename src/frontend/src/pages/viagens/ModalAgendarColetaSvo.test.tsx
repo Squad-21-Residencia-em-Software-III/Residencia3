@@ -12,7 +12,7 @@ import type { Veiculo } from '../../types/veiculo';
 import { CODIGO_CONFIRMAR_INTERVALO } from '../../types/viagem';
 import { ModalAgendarColetaSvo } from './ModalAgendarColetaSvo';
 
-vi.mock('../../services/api/equipesSvoApi', () => ({ equipesSvoApi: { listarDisponiveis: vi.fn() } }));
+vi.mock('../../services/api/equipesSvoApi', () => ({ equipesSvoApi: { listarDisponiveis: vi.fn(), integrantesEquipe: vi.fn() } }));
 vi.mock('../../services/api/viagensApi', () => ({ viagensApi: { agendarColetaSvo: vi.fn(), reprogramarColetaSvo: vi.fn() } }));
 vi.mock('../../services/api/veiculosApi', () => ({
   veiculosApi: { listarOcupacaoSvo: vi.fn() },
@@ -20,7 +20,7 @@ vi.mock('../../services/api/veiculosApi', () => ({
 
 const veiculos: Veiculo[] = [
   { id: 1, placa: 'ADM1A11', modelo: 'Van Adm', tipo_frota: 'ADMINISTRATIVA', capacidade_maxima: 8, km_atual: 0, status: 'DISPONIVEL' },
-  { id: 2, placa: 'SVO2B22', modelo: 'Rabecão', tipo_frota: 'SVO', capacidade_maxima: 4, km_atual: 0, status: 'DISPONIVEL' },
+  { id: 2, placa: 'SVO2B22', modelo: 'Rabecão', tipo_frota: 'SVO', capacidade_maxima: 4, lotacao_cabine: 3, km_atual: 0, status: 'DISPONIVEL' },
 ];
 const motoristas: Motorista[] = [
   { id: 5, usuario_id: 5, nome: 'Ana SVO', numero_cnh: '1', categoria_cnh: 'D', validade_cnh: '2030-01-01', tipo_motorista: 'SVO', status: 'DISPONIVEL' },
@@ -64,6 +64,7 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
     vi.clearAllMocks();
     vi.mocked(veiculosApi.listarOcupacaoSvo).mockResolvedValue([]);
     vi.mocked(equipesSvoApi.listarDisponiveis).mockResolvedValue({ periodo: { inicio: '', fim: '' }, equipes: [{ id: 12, nome_equipe: 'Equipe 12' }] });
+    vi.mocked(equipesSvoApi.integrantesEquipe).mockResolvedValue([{ id: 22, nome: 'Maria', email: 'maria@exemplo.com' }]);
   });
 
   afterEach(() => {
@@ -99,8 +100,27 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
     api.agendarColetaSvo.mockResolvedValue({} as never);
     abrir();
     await userEvent.selectOptions(await screen.findByLabelText('Equipe SVO (opcional)'), '12');
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Maria' }));
     await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
-    expect(api.agendarColetaSvo).toHaveBeenCalledWith(expect.objectContaining({ equipe_id: 12 }));
+    expect(api.agendarColetaSvo).toHaveBeenCalledWith(expect.objectContaining({ equipe_id: 12, integrantes_ids: [22] }));
+  });
+
+  it('impede agendamento com equipe sem integrante designado', async () => {
+    abrir();
+    await userEvent.selectOptions(await screen.findByLabelText('Equipe SVO (opcional)'), '12');
+    await screen.findByRole('checkbox', { name: 'Maria' });
+    await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
+    expect(screen.getByText('Selecione pelo menos um integrante da equipe.')).toBeInTheDocument();
+    expect(api.agendarColetaSvo).not.toHaveBeenCalled();
+  });
+
+  it('não permite selecionar integrante em cabine de um lugar', async () => {
+    render(<ModalAgendarColetaSvo ordem={ordem} veiculos={[{ ...veiculos[1], lotacao_cabine: 1 }]} motoristas={motoristas}
+      onClose={vi.fn()} onAgendada={vi.fn()} />);
+    await userEvent.selectOptions(await screen.findByLabelText('Equipe SVO (opcional)'), '12');
+    expect(await screen.findByRole('checkbox', { name: 'Maria' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
+    expect(api.agendarColetaSvo).not.toHaveBeenCalled();
   });
 
   it('permite alocar sem equipe quando a consulta falha', async () => {
@@ -160,6 +180,7 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
       render(<ModalAgendarColetaSvo ordem={ordem} viagemReprogramar={viagem} veiculos={veiculos}
         motoristas={motoristas} onClose={vi.fn()} onAgendada={vi.fn()} />);
       await screen.findByRole('option', { name: 'Equipe 12' });
+      await userEvent.click(await screen.findByRole('checkbox', { name: 'Maria' }));
       await userEvent.click(screen.getByRole('button', { name: 'Reagendar coleta' }));
       await waitFor(() => expect(api.reprogramarColetaSvo).toHaveBeenCalledWith(40,
         expect.objectContaining({ solicitacao_id: 31, equipe_id: 12, capacidade_utilizada: 2 })));

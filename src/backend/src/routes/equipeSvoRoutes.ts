@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PERFIS } from '../constants/perfis';
 import { equipeSvoController } from '../controllers/equipeSvoController';
 import { gestaoEquipesSvoController } from '../controllers/gestaoEquipesSvoController';
+import { integrantesSvoController } from '../controllers/integrantesSvoController';
 import { autenticar } from '../middlewares/autenticar';
 import { autorizar } from '../middlewares/autorizar';
 
@@ -21,5 +22,10 @@ equipeSvoRoutes.get(
 
 equipeSvoRoutes.get('/', gestaoEquipesSvoController.listar);
 equipeSvoRoutes.post('/', gestaoEquipesSvoController.criar);
+equipeSvoRoutes.get('/integrantes', integrantesSvoController.listar);
+equipeSvoRoutes.post('/integrantes', integrantesSvoController.criar);
+equipeSvoRoutes.get('/:id/integrantes', integrantesSvoController.listarEquipe);
+equipeSvoRoutes.put('/:id/integrantes/:usuarioId', integrantesSvoController.vincular);
+equipeSvoRoutes.delete('/:id/integrantes/:usuarioId', integrantesSvoController.desvincular);
 equipeSvoRoutes.get('/:id', gestaoEquipesSvoController.buscar);
 equipeSvoRoutes.patch('/:id', gestaoEquipesSvoController.atualizar);

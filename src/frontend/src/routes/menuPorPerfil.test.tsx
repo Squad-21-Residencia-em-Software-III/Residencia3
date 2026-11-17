@@ -63,6 +63,7 @@ const MENU_POR_PERFIL: Record<Perfil, Tela[]> = {
   [PERFIS.SOLICITANTE]: ['Início', 'Solicitações', 'Veículos'],
   [PERFIS.MOTORISTA_FROTA]: ['Início', 'Viagens', 'Veículos', 'Abastecimento'],
   [PERFIS.MOTORISTA_SVO]: ['Início', 'Viagens', 'Veículos', 'Abastecimento'],
+  [PERFIS.INTEGRANTE_SVO]: ['Início'],
 };
 
 const PERFIS_TESTADOS = Object.keys(MENU_POR_PERFIL) as Perfil[];

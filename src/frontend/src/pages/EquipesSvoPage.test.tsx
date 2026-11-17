@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { equipesSvoApi } from '../services/api/equipesSvoApi';
 import EquipesSvoPage from './EquipesSvoPage';
 
-vi.mock('../services/api/equipesSvoApi', () => ({ equipesSvoApi: { listar: vi.fn(), criar: vi.fn(), atualizar: vi.fn() } }));
+vi.mock('../services/api/equipesSvoApi', () => ({ equipesSvoApi: { listar: vi.fn(), criar: vi.fn(), atualizar: vi.fn(), integrantes: vi.fn() } }));
 
 describe('Equipes SVO', () => {
-  beforeEach(() => { vi.resetAllMocks(); vi.mocked(equipesSvoApi.listar).mockResolvedValue([]); });
+  beforeEach(() => { vi.resetAllMocks(); vi.mocked(equipesSvoApi.listar).mockResolvedValue([]); vi.mocked(equipesSvoApi.integrantes).mockResolvedValue([]); });
   it('carrega lista e cadastra equipe', async () => {
     vi.mocked(equipesSvoApi.criar).mockResolvedValue({ id: 3, nome_equipe: 'Alfa' });
     render(<EquipesSvoPage />);

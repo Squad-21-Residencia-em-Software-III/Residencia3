@@ -68,6 +68,7 @@ export interface OrdemPendenteSvo {
  */
 export interface AgendamentoColetaSvoInput {
   equipe_id?: number;
+  integrantes_ids?: number[];
   capacidade_utilizada?: number;
   solicitacao_id: number;
   veiculo_id: number;

@@ -4,6 +4,7 @@ import { Alert, Button, Card, Input } from '../components/ui';
 import { equipesSvoApi } from '../services/api/equipesSvoApi';
 import { mensagemDeErro } from '../services/api/http';
 import type { EquipeSvo } from '../types/equipeSvo';
+import { IntegrantesSvo } from './IntegrantesSvo';
 
 export default function EquipesSvoPage() {
   const [equipes, setEquipes] = useState<EquipeSvo[]>([]);
@@ -56,5 +57,6 @@ export default function EquipesSvoPage() {
           <Button type="button" variant="outline" size="sm" aria-label={`Editar ${equipe.nome_equipe}`} onClick={() => { setEditando(equipe.id); setNome(equipe.nome_equipe); setSucesso(null); }}>Editar</Button>
         </li>)}</ul>}
     </Card>
+    <IntegrantesSvo equipes={equipes} />
   </div>;
 }

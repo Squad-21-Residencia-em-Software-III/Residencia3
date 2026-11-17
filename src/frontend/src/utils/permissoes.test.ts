@@ -26,7 +26,7 @@ const ordenar = (perfis: Perfil[]) => [...perfis].sort();
 describe('matriz de permissões por perfil', () => {
   it('Administrador tem acesso a tudo', () => {
     for (const permissao of Object.keys(PERMISSOES) as Permissao[]) {
-      expect(perfilPode(ADMINISTRADOR, permissao), permissao).toBe(true);
+      expect(perfilPode(ADMINISTRADOR, permissao), permissao).toBe(!['coletasProprias.acessar', 'viagens.executarSvo'].includes(permissao));
     }
   });
 
@@ -106,7 +106,7 @@ describe('matriz de permissões por perfil', () => {
   });
 
   it('Veículos: todos consultam; o Solicitante não vê detalhes; gestores cadastram', () => {
-    expect(quemPode('veiculos.acessar')).toEqual(LISTA_PERFIS);
+    expect(quemPode('veiculos.acessar')).toEqual(LISTA_PERFIS.filter((perfil) => perfil !== PERFIS.INTEGRANTE_SVO));
     expect(perfilPode(SOLICITANTE, 'veiculos.detalhes')).toBe(false);
     expect(ordenar(quemPode('veiculos.cadastrar'))).toEqual(
       ordenar([ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO]),

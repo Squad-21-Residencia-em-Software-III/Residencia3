@@ -17,6 +17,8 @@ export const criarUsuarioSchema = z.object({
   perfil: perfilSchema,
 });
 
+export const criarIntegranteSvoSchema = criarUsuarioSchema.omit({ perfil: true }).strict();
+
 export const atualizarUsuarioSchema = z
   .strictObject(
     {

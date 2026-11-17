@@ -4,7 +4,7 @@ import { AlertTriangle } from 'lucide-react';
 import { Alert, Button, IdBadge, Input, Modal, Select } from '../../components/ui';
 import { recursoAtivo } from '../../config/recursosBackend';
 import { ApiError, mensagemDeErro } from '../../services/api/http';
-import { equipesSvoApi } from '../../services/api/equipesSvoApi';
+import { equipesSvoApi, type IntegranteSvo } from '../../services/api/equipesSvoApi';
 import type { EquipeSvo } from '../../types/equipeSvo';
 import { periodoConsultaEquipes } from '../../utils/periodoEquipesSvo';
 import { SeletorEquipeSvo } from './SeletorEquipeSvo';
@@ -92,6 +92,10 @@ export function ModalAgendarColetaSvo({
   const [equipes, setEquipes] = useState<EquipeSvo[]>([]);
   const [revisaoEquipes, setRevisaoEquipes] = useState(0);
   const [equipeId, setEquipeId] = useState(viagemReprogramar?.equipe_id ? String(viagemReprogramar.equipe_id) : '');
+  const [integrantes, setIntegrantes] = useState<IntegranteSvo[]>([]);
+  const [selecionados, setSelecionados] = useState<number[]>([]);
+  const [erroIntegrantes, setErroIntegrantes] = useState<string | null>(null);
+  const [carregandoIntegrantes, setCarregandoIntegrantes] = useState(false);
   const [erroEquipes, setErroEquipes] = useState<string | null>(null);
   const [carregandoEquipes, setCarregandoEquipes] = useState(false);
   const [ocupacoes, setOcupacoes] = useState<OcupacaoVeiculoSvo[]>([]);
@@ -133,6 +137,20 @@ export function ModalAgendarColetaSvo({
   }, [comPeriodo, inicio, fim, viagemReprogramar, revisaoEquipes]);
 
   const ocupacaoDoVeiculo = ocupacoes.find((o) => String(o.id) === veiculoId);
+  const lotacaoCabine = veiculosSvo.find((v) => String(v.id) === veiculoId)?.lotacao_cabine;
+  const maxIntegrantes = Math.max(0, (lotacaoCabine ?? 0) - 1);
+
+  useEffect(() => {
+    let ativo = true;
+    setIntegrantes([]); setSelecionados([]); setErroIntegrantes(null);
+    if (!equipeId) { setCarregandoIntegrantes(false); return () => { ativo = false; }; }
+    setCarregandoIntegrantes(true);
+    equipesSvoApi.integrantesEquipe(Number(equipeId))
+      .then((itens) => { if (ativo) setIntegrantes(itens); })
+      .catch((e) => { if (ativo) setErroIntegrantes(mensagemDeErro(e)); })
+      .finally(() => { if (ativo) setCarregandoIntegrantes(false); });
+    return () => { ativo = false; };
+  }, [equipeId]);
   const bloqueio = !comPeriodo && ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
 
   // Qualquer mudança invalida a confirmação anterior: o servidor precisa validar de novo
@@ -148,6 +166,9 @@ export function ModalAgendarColetaSvo({
     if (!veiculosSvo.some((v) => String(v.id) === veiculoId) || !motoristasSvo.some((m) => String(m.id) === motoristaId)) return 'Selecione o veículo e o motorista da coleta.';
     if (bloqueio) return bloqueio;
     if (equipeId && !equipes.some((e) => String(e.id) === equipeId)) return 'A equipe selecionada não está mais disponível.';
+    if (equipeId && (carregandoIntegrantes || erroIntegrantes)) return 'Não foi possível confirmar os integrantes da equipe.';
+    if (equipeId && selecionados.length < 1) return 'Selecione pelo menos um integrante da equipe.';
+    if (equipeId && selecionados.length > maxIntegrantes) return 'A lotação da cabine não comporta os integrantes selecionados.';
     if (!comPeriodo) return null;
     if (!inicio || !fim) return 'Informe o início e o término previstos da coleta.';
     if (new Date(fim) <= new Date(inicio)) return 'O término previsto deve ser depois do início.';
@@ -165,6 +186,7 @@ export function ModalAgendarColetaSvo({
       ...(viagemReprogramar?.capacidade_utilizada
         ? { capacidade_utilizada: viagemReprogramar.capacidade_utilizada } : {}),
       ...(equipeId ? { equipe_id: Number(equipeId) } : {}),
+      ...(equipeId ? { integrantes_ids: selecionados } : {}),
       ...(comPeriodo
         ? {
             inicio_previsto: paraIso(inicio),
@@ -295,6 +317,20 @@ export function ModalAgendarColetaSvo({
 
         <SeletorEquipeSvo equipes={equipes} carregando={carregandoEquipes} erro={erroEquipes}
           valor={equipeId} onChange={alterar(setEquipeId)} />
+
+        {equipeId && <fieldset className="mt-4 space-y-2">
+          <legend className="font-semibold">Integrantes da coleta</legend>
+          <p className="text-sm text-slate-600">Vagas para integrantes: {maxIntegrantes} (uma vaga é reservada ao motorista).</p>
+          {carregandoIntegrantes && <p>Carregando integrantes...</p>}
+          {erroIntegrantes && <Alert tone="danger">{erroIntegrantes}</Alert>}
+          {!carregandoIntegrantes && !erroIntegrantes && integrantes.length === 0 && <p>Nenhum integrante vinculado à equipe.</p>}
+          {integrantes.map((item) => <label key={item.id} className="flex items-center gap-2">
+            <input type="checkbox" checked={selecionados.includes(item.id)}
+              disabled={!selecionados.includes(item.id) && selecionados.length >= maxIntegrantes}
+              onChange={(e) => { setSelecionados((atual) => e.target.checked ? [...atual, item.id] : atual.filter((id) => id !== item.id)); setConflitos(null); setTokenConfirmacao(null); setCiente(false); }} />
+            {item.nome}
+          </label>)}
+        </fieldset>}
 
         {erroOcupacao && (
           <Alert tone="warning" className="mt-3.5">

@@ -30,6 +30,7 @@ export interface DadosAgendaSvo {
   veiculoId: number;
   motoristaId: number;
   equipeId?: number | null;
+  integrantesIds?: number[];
   inicio: Date;
   fim: Date;
   confirmar?: boolean;
@@ -54,7 +55,7 @@ export async function travarAgendaSvo(trx: Knex.Transaction): Promise<void> {
 function assinatura(dados: DadosAgendaSvo, conflitos: Conflito[]): string {
   return createHash('sha256').update(JSON.stringify({
     ordem: dados.ordemId, autor: dados.autorId, veiculo: dados.veiculoId,
-    motorista: dados.motoristaId, equipe: dados.equipeId ?? null,
+    motorista: dados.motoristaId, equipe: dados.equipeId ?? null, integrantes: [...(dados.integrantesIds ?? [])].sort((a, b) => a - b),
     inicio: dados.inicio.toISOString(), fim: dados.fim.toISOString(), conflitos,
   })).digest('hex');
 }

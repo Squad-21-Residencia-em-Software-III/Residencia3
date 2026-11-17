@@ -1,6 +1,6 @@
 import { recursoAtivo } from '../config/recursosBackend';
 import { useAuth } from '../contexts/AuthContext';
-import { LISTA_PERFIS, PERFIS } from '../types/usuario';
+import { PERFIS } from '../types/usuario';
 import type { Perfil } from '../types/usuario';
 import type { TipoFrota } from '../types/veiculo';
 
@@ -46,6 +46,7 @@ export const PERMISSOES = {
 
   // Viagens e quilometragem
   'viagens.acessar': [...GESTORES, ...MOTORISTAS],
+  'coletasProprias.acessar': [PERFIS.INTEGRANTE_SVO],
   /** Agendar viagem administrativa a partir de solicitação aprovada (sem o Gestor SVO). */
   'viagens.agendar': [ADMINISTRADOR, GESTOR_FROTA],
   /** Alocar veículo e equipe numa ordem de coleta SVO (RF22/RF23). */
@@ -62,12 +63,13 @@ export const PERMISSOES = {
   'viagens.acompanharProprias': [ADMINISTRADOR, GESTOR_SVO],
   /** Registrar saída e retorno (iniciar e finalizar com quilometragem). */
   'viagens.executar': [...GESTORES, ...MOTORISTAS],
+  'viagens.executarSvo': [MOTORISTA_SVO],
 
   // Disponibilidade da frota por data e horário
   'agenda.acessar': GESTORES,
 
   // Veículos: consulta para todos (Solicitante em versão reduzida); cadastro para os gestores
-  'veiculos.acessar': LISTA_PERFIS,
+  'veiculos.acessar': [...GESTORES, SOLICITANTE, ...MOTORISTAS],
   /** Placa, km, histórico e demais dados do veículo. */
   'veiculos.detalhes': [...GESTORES, ...MOTORISTAS],
   /** Cadastrar e editar: cada gestor só na própria frota (`podeNaFrota`). */

@@ -1,19 +1,18 @@
-# SCRUM-196: progresso e pendências
+# SCRUM-196: implementação e pendências
 
-Base analisada: `develop` no commit `ea08d75`. Esta implementação está incompleta e não deve ser homologada ou integrada como entrega da história.
+Base de desenvolvimento: `develop` no commit `ea08d75`. A integração PostgreSQL e a homologação desta história permanecem pendentes; manter o PR em rascunho até revisar e testar o contrato da SCRUM-198.
 
-## Alteração em andamento
+## Implementado na branch
 
-A consulta de disponibilidade, a validação do agendamento e a reavaliação da fila deixam de exigir registros em `escalas_svo`. As consultas existentes de reservas e de ocupação de equipe, veículo e motorista permanecem. A tabela de escalas e seus dados não foram alterados. A verificação PostgreSQL está pendente.
+- Consulta de disponibilidade, agendamento e reavaliação da fila não exigem escala. `escalas_svo` e seu histórico não são alterados. São preservados os bloqueios existentes de equipe, veículo e motorista; a fila também considera integrantes comuns a equipes diferentes.
+- Administrador e Gestor SVO podem listar, criar e renomear equipes. `GET /api/equipes-svo`, `GET /api/equipes-svo/:id`, `POST /api/equipes-svo` e `PATCH /api/equipes-svo/:id` recebem ou retornam `id` e `nome_equipe`. Escritas têm auditoria e trava transacional entre operações da aplicação. A unicidade contra outros clientes depende de índice no banco.
+- Perfil individual `INTEGRANTE_SVO` usa autenticação existente. APIs específicas em `/api/equipes-svo/integrantes` criam e listam integrantes sem dar ao Gestor SVO acesso à gestão geral de usuários. As rotas `/:id/integrantes` e `/:id/integrantes/:usuarioId` listam, vinculam e desvinculam; a desvinculação é recusada enquanto houver designação futura pendente. Há auditoria e preservação do histórico de vínculo.
+- Agendamento e reprogramação recebem `integrantes_ids`. Equipe é opcional; com equipe exige-se ao menos um integrante elegível e no máximo lotação da cabine menos um. A seleção é nominal. A validação, auditoria e persistência usam a transação e trava global da agenda; alterações são bloqueadas após início real. O conflito individual considera reservas, múltiplas equipes e atraso de coleta em andamento. A confirmação de intervalo reduzido é vinculada aos integrantes selecionados.
+- `GET /api/viagens/coletas-svo/minhas` aceita somente paginação e filtra pelo usuário do token e designação ativa, sem conceder acesso pela simples vinculação à equipe. Retorna identificador, status, local de ocorrência, veículo, motorista e horários, sem corpo completo da solicitação. O cadastro atual não fornece destino SVO separado em coluna estruturada; esse campo ainda não é apresentado.
+- A interface inclui a aba Equipes SVO, cadastro e vínculo de integrantes, escolha nominal no agendamento e consulta pessoal paginada. O início e a finalização de coleta SVO são restritos ao motorista SVO associado à ordem.
 
-A área Equipe permite ao Administrador e ao Gestor SVO listar, criar e renomear equipes existentes, com validação de nome, resposta de conflito e auditoria. As APIs são `GET /api/equipes-svo`, `GET /api/equipes-svo/:id`, `POST /api/equipes-svo` e `PATCH /api/equipes-svo/:id`; criação e edição recebem `{ "nome_equipe": "..." }`. As operações de escrita usam uma trava transacional compartilhada entre essas rotas para verificar duplicidade, mas isso não substitui um índice único no banco para garantir integridade diante de outros clientes. Não há remoção de equipe.
+## Dependências e limites
 
-## Trabalho ainda necessário
-
-- Contas individuais `INTEGRANTE_SVO`, vínculos múltiplos, autorização específica e auditoria das operações de integrantes.
-- Designação por coleta, limite da cabine, verificações de vínculo, conflitos individuais e concorrência, modificações antes do início real e preservação do histórico.
-- Consulta restrita das próprias coletas e interface correspondente.
-- Modelagem e migration de vínculos e designações, definição de índices e constraints, integração com schema existente e testes em PostgreSQL isolado. A estrutura ainda não foi definida nem implementada.
-- Integração dos conflitos individuais também com a liberação da fila, além de testes de regressão e homologação de ponta a ponta. Até isso estar pronto a alteração de disponibilidade não satisfaz todos os critérios da SCRUM-196.
-
-Não foi executado SQL, migration ou alteração em banco compartilhado. A validação completa depende também das demais alterações da história e de suas dependências de agenda e fila SVO.
+- O contrato proposto está em `docs/scrum-196-contrato-banco.md`. As tabelas `equipes_svo_integrantes` e `ordens_svo_integrantes`, o perfil na constraint de usuários e o índice único de nomes ainda dependem da SCRUM-198. Nenhum DDL ou migration foi criado ou executado aqui. Antes dessa entrega, funcionalidades dependentes dessas estruturas não estão disponíveis e a reavaliação de ordens com equipe pode falhar; não publicar ou integrar isoladamente.
+- Os testes unitários e de rotas não substituem execução em PostgreSQL. Permanecem pendentes testes de persistência, rollback, concorrência real, integração de migração, regressão de dados legados e homologação ponta a ponta. O contrato e o comportamento de destinos precisam de revisão na integração.
+- A separação entre lotação da cabine e capacidade de corpos é mantida; com lotação ausente, a designação com equipe é bloqueada. Nenhum calendário de escala é criado.

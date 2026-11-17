@@ -9,6 +9,7 @@ import { viagemModel, type ViagemDetalhada } from '../models/viagemModel';
 import type { CriarViagemInput, TipoOperacao } from '../validators/viagemSchemas';
 import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
 import { reavaliarFilaSvo } from './filaSvoService';
+import { atualizarDesignacoesSvo } from './designacoesSvoService';
 import {
   periodoDaSolicitacao,
   STATUS_MOTORISTA_BLOQUEADO,
@@ -316,9 +317,14 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
   if (conflitoAdministrativo) throw new AppError('Um recurso já está reservado no período solicitado', 409, 'CONFLITO_AGENDA');
   const conflitos = await validarAgendaSvo(trx, {
     ordemId: ordemPendente.id, autorId, veiculoId: dados.veiculo_id,
-    motoristaId: dados.motorista_id, equipeId: dados.equipe_id, inicio, fim,
+    motoristaId: dados.motorista_id, equipeId: dados.equipe_id, integrantesIds: dados.integrantes_ids, inicio, fim,
     confirmar: dados.confirmar_intervalo_reduzido, token: dados.token_confirmacao,
   });
+
+  if (dados.equipe_id || dados.integrantes_ids?.length || ordemReprogramada) {
+    await atualizarDesignacoesSvo(trx, { ordemId: ordemPendente.id, equipeId: dados.equipe_id ?? null,
+      integrantes: dados.integrantes_ids ?? [], lotacao: veiculo.lotacao_cabine, inicio, fim, autorId });
+  }
 
   // 5. Aloca a ordem gerada na confirmação, preservando seu identificador.
   await trx('ordens_svo')
@@ -463,6 +469,7 @@ export const viagemService = {
   },
 
   async iniciarViagem(tipo: TipoOperacao, viagemId: number, kmInicial: number, autor: Autor) {
+    if (tipo === 'SVO' && autor.perfil !== PERFIS.MOTORISTA_SVO) throw new AppError('Apenas o motorista SVO pode iniciar a coleta', 403);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
@@ -528,6 +535,7 @@ export const viagemService = {
   },
 
   async finalizarViagem(tipo: TipoOperacao, viagemId: number, kmFinal: number, autor: Autor) {
+    if (tipo === 'SVO' && autor.perfil !== PERFIS.MOTORISTA_SVO) throw new AppError('Apenas o motorista SVO pode finalizar a coleta', 403);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {

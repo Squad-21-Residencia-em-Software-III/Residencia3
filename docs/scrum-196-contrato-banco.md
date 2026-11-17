@@ -1,6 +1,6 @@
 # SCRUM-196: contrato proposto para persistência
 
-Proposta para revisão de Gabriel Arruda na SCRUM-198. Este documento não representa uma migration aplicada nem um contrato já integrado ao backend. A nomenclatura e os detalhes devem ser confirmados com a frente de banco antes da integração. Não alterar o banco compartilhado por este PR.
+Proposta para revisão de Gabriel Arruda na SCRUM-198. Este documento não representa uma migration aplicada. O backend desta branch utiliza os nomes abaixo; a nomenclatura e os detalhes devem ser confirmados com a frente de banco antes da integração. Não alterar o banco compartilhado por este PR.
 
 ## Estruturas existentes
 
@@ -11,7 +11,7 @@ Proposta para revisão de Gabriel Arruda na SCRUM-198. Este documento não repre
 
 ## Vínculos de equipe (proposta)
 
-Tabela `equipes_svo_integrantes`: chave primária gerada; `equipe_id` e `usuario_id` obrigatórios com FKs para `equipes_svo` e `usuarios`, exclusão restrita; `vinculado_em` obrigatório com fuso, `desvinculado_em` anulável com verificação de ordem temporal; referência a autores de vinculação e desvinculação, quando disponíveis. Índice único parcial por `(equipe_id, usuario_id)` para vínculo ativo e índices de pesquisa por usuário e equipe. O mesmo usuário pode ter vínculos simultâneos com equipes distintas. Evitar exclusão física de vínculos históricos.
+Tabela `equipes_svo_integrantes`: chave primária gerada `id`; `equipe_id` e `usuario_id` obrigatórios com FKs para `equipes_svo` e `usuarios`, exclusão restrita; `vinculado_em` obrigatório com fuso, `desvinculado_em` anulável com verificação de ordem temporal. As operações registram autor e ação em `auditorias`. Índice único parcial por `(equipe_id, usuario_id)` para vínculo ativo e índices de pesquisa por usuário e equipe. O mesmo usuário pode ter vínculos simultâneos com equipes distintas. Evitar exclusão física de vínculos históricos.
 
 ## Designações (proposta)
 
@@ -23,4 +23,4 @@ As designações válidas no início real constituem histórico de participaçã
 
 O backend deverá executar designação, reprogramação, alteração de veículo e desvinculação relevantes sob o mesmo `pg_advisory_xact_lock(166, 182)` já usado na agenda, com transação e bloqueios de linha na ordem consistente. Validar usuário ativo e perfil, vínculo ativo com equipe, intervalo e lotação antes de persistir. Uma ordem em deslocamento ocupa seus integrantes até `data_hora_conclusao`, mesmo após o fim previsto. A reavaliação da fila deverá reconhecer disputas entre equipes diferentes pelo mesmo integrante. Verificar também permissões de aplicação, migrations reversíveis sem apagar histórico e testes de concorrência em PostgreSQL isolado, antes de disponibilizar a funcionalidade.
 
-A aplicação existente ainda não implementa essas operações nem consome as tabelas propostas. Devem ser combinados nomes definitivos, regras de compatibilidade, tratamento de dados legados, privilégios e sequência de deploy antes de integrar. Nenhum DDL, seed ou dado foi alterado neste trabalho.
+A aplicação da branch consome os campos descritos, mas a compatibilidade real ainda não foi validada em PostgreSQL. Devem ser combinados nomes definitivos, regras de compatibilidade, tratamento de dados legados, privilégios e sequência de deploy antes de integrar. Nenhum DDL, seed ou dado foi alterado neste trabalho.

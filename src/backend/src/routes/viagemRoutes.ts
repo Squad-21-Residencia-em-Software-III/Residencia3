@@ -7,6 +7,7 @@ import { autorizar, exigirAssociacaoSvo } from '../middlewares/autorizar';
 export const viagemRoutes = Router();
 
 viagemRoutes.use(autenticar);
+viagemRoutes.get('/coletas-svo/minhas', autorizar(PERFIS.INTEGRANTE_SVO), viagemController.listarMinhasColetasSvo);
 // A consulta administrativa é limitada ao titular pelo service e não é operação SVO.
 viagemRoutes.get('/minhas', autorizar(PERFIS.GESTOR_SVO), viagemController.listarMinhasAdministrativas);
 // O Gestor SVO só opera viagens SVO se estiver associado à unidade SVO
