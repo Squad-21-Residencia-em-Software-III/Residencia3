@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
-import { ClipboardCheck, ClipboardList, ScrollText, Wrench } from 'lucide-react'
+import { ClipboardCheck, ScrollText, Wrench } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
 import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
@@ -18,7 +18,6 @@ import NotFoundPage from '../pages/NotFoundPage'
 import ServerErrorPage from '../pages/ServerErrorPage'
 import SobreNosPage from '../pages/SobreNosPage'
 import SolicitacoesPage from '../pages/SolicitacoesPage'
-import TriagemSvoPage from '../pages/TriagemSvoPage'
 import VeiculosPage from '../pages/VeiculosPage'
 import ViagensPage from '../pages/ViagensPage'
 import { LABELS_PERFIS } from '../types/usuario'
@@ -40,13 +39,6 @@ export const navItems: NavItemComPermissao[] = [
     icon: ClipboardCheck,
     section: 'Operação',
     permissao: 'solicitacoes.acessar',
-  },
-  {
-    path: '/triagem-svo',
-    label: 'Triagem SVO',
-    icon: ClipboardList,
-    section: 'Operação',
-    permissao: 'triagemSvo.acessar',
   },
   { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação', permissao: 'viagens.acessar' },
   { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação', permissao: 'agenda.acessar' },
@@ -98,7 +90,7 @@ function LayoutRoute() {
 
 const ROTAS_COM_PERMISSAO: { path: string; permissao: Permissao; elemento: ReactElement }[] = [
   { path: '/solicitacoes', permissao: 'solicitacoes.acessar', elemento: <SolicitacoesPage /> },
-  { path: '/triagem-svo', permissao: 'triagemSvo.acessar', elemento: <TriagemSvoPage /> },
+  { path: '/triagem-svo', permissao: 'triagemSvo.acessar', elemento: <Navigate to="/solicitacoes?aba=svo" replace /> },
   { path: '/viagens', permissao: 'viagens.acessar', elemento: <ViagensPage /> },
   { path: '/agenda', permissao: 'agenda.acessar', elemento: <AgendaPage /> },
   { path: '/abastecimento', permissao: 'abastecimentos.acessar', elemento: <AbastecimentoPage /> },
