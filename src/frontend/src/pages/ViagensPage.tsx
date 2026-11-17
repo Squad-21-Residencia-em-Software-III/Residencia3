@@ -886,6 +886,10 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           motoristas={dadosAgendarColeta.motoristas}
           onClose={() => { setOrdemAgendar(null); setViagemReprogramar(null); }}
           onAgendada={handleColetaAgendada}
+          onAtualizarRecursos={async () => {
+            const [veiculos, motoristas] = await Promise.all([veiculosApi.listar(), motoristasApi.listar()]);
+            setDadosAgendarColeta((atual) => atual?.ordem === dadosAgendarColeta.ordem ? { ...atual, veiculos, motoristas } : atual);
+          }}
         />
       )}
 

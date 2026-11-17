@@ -33,9 +33,3 @@ export interface OcupacaoVeiculoSvo {
   capacidade_utilizada: number; // soma das ordens SVO ALOCADA/EM_DESLOCAMENTO
   vagas_disponiveis: number; // capacidade_maxima - capacidade_utilizada
 }
-
-/**
- * Resposta de GET /veiculos/svo/disponiveis (BL28): veículos SVO elegíveis à alocação
- * (DISPONIVEL ou RESERVADO, com vagas livres). Mesmo formato da ocupação (BL30).
- */
-export type VeiculoSvoDisponivel = OcupacaoVeiculoSvo;
