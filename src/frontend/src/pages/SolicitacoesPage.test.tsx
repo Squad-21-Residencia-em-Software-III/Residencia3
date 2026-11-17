@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SolicitacoesPage from './SolicitacoesPage';
@@ -67,6 +68,8 @@ describe('SolicitacoesPage por perfil', () => {
 
     abrir();
 
+    expect(screen.getByRole('tab', { name: 'SVO' })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.click(screen.getByRole('tab', { name: 'Administrativo' }));
     expect(await screen.findAllByText('Hospital Regional')).toHaveLength(2);
     expect(api.listarMinhas).toHaveBeenCalled();
     expect(api.listar).not.toHaveBeenCalled();

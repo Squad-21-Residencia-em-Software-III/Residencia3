@@ -12,6 +12,7 @@ import {
   MetricCard,
   Pagination,
   SearchInput,
+  SeletorOperacao,
   Table,
   TableFilterCollapse,
   TableToolbar,
@@ -29,6 +30,9 @@ import { LABELS_STATUS_SOLICITACAO } from '../types/solicitacao';
 import { usePermissao } from '../utils/permissoes';
 import { ModalAnaliseSolicitacao } from './solicitacoes/ModalAnaliseSolicitacao';
 import { ModalNovaSolicitacao } from './solicitacoes/ModalNovaSolicitacao';
+import TriagemSvoPage from './TriagemSvoPage';
+import { useAbaOperacao } from '../utils/abaOperacao';
+import type { TipoFrota } from '../types/veiculo';
 
 type FiltroStatusAba =
   'TODAS' | 'PENDENTES' | 'APROVADAS' | 'AGENDADAS' | 'CONCLUIDAS' | 'RECUSADAS';
@@ -67,6 +71,32 @@ function formatarDataHora(iso?: string | null): string {
 }
 
 export default function SolicitacoesPage() {
+  const { usuario } = useAuth();
+  const { pode } = usePermissao();
+  const abas: TipoFrota[] =
+    usuario?.perfil === 'GESTOR_SVO'
+      ? ['SVO', 'ADMINISTRATIVA']
+      : pode('triagemSvo.acessar')
+        ? ['ADMINISTRATIVA', 'SVO']
+        : ['ADMINISTRATIVA'];
+  const { ativa, mudar } = useAbaOperacao(abas);
+  if (!ativa) return null;
+  return (
+    <div className="grid w-full min-w-0 gap-5">
+      <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
+      <div hidden={ativa !== 'ADMINISTRATIVA'} className="animate-tab-fade">
+        <SolicitacoesAdministrativas />
+      </div>
+      {pode('triagemSvo.acessar') && (
+        <div hidden={ativa !== 'SVO'} className="animate-tab-fade">
+          <TriagemSvoPage />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SolicitacoesAdministrativas() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
   const { pode } = usePermissao();

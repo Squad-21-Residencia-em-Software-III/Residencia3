@@ -17,6 +17,7 @@ import { LABELS_STATUS_SOLICITACAO_SVO } from '../types/solicitacaoSvo';
 import { cn } from '../utils/cn';
 import { DrawerTriagemSvo } from './triagemSvo/DrawerTriagemSvo';
 import { formatarDataHora, toneStatusSolicitacao } from './triagemSvo/formatacao';
+import { ModalNovaSolicitacaoSvo } from './triagemSvo/ModalNovaSolicitacaoSvo';
 
 const ITENS_POR_PAGINA = 20;
 
@@ -46,6 +47,8 @@ export default function TriagemSvoPage() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<{ mensagem: string; podeTentarDeNovo: boolean } | null>(null);
   const [selecionada, setSelecionada] = useState<number | null>(null);
+  const [novaAberta, setNovaAberta] = useState(false);
+  const [criadaId, setCriadaId] = useState<number | null>(null);
 
   // Só a resposta da última consulta é aplicada (troca rápida de página ou filtro)
   const ultimaConsulta = useRef(0);
@@ -94,6 +97,9 @@ export default function TriagemSvoPage() {
 
   return (
     <div className="grid gap-6">
+      {criadaId !== null && (
+        <Alert tone="success">Solicitação SVO #{criadaId} registrada e aguardando análise.</Alert>
+      )}
       {erro && (
         <Alert tone="danger">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -121,6 +127,9 @@ export default function TriagemSvoPage() {
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button size="sm" onClick={() => setNovaAberta(true)}>
+              Nova solicitação SVO
+            </Button>
             <FilterSelect
               aria-label="Filtrar por status"
               value={status}
@@ -218,6 +227,17 @@ export default function TriagemSvoPage() {
         onClose={() => setSelecionada(null)}
         onAtualizada={() => void carregar(pagina, status)}
       />
+      {novaAberta && (
+        <ModalNovaSolicitacaoSvo
+          onClose={() => setNovaAberta(false)}
+          onCriada={(id) => {
+            setNovaAberta(false);
+            setCriadaId(id);
+            if (status === 'EM_TRIAGEM') void carregar(1, 'EM_TRIAGEM');
+            else setStatus('EM_TRIAGEM');
+          }}
+        />
+      )}
     </div>
   );
 }

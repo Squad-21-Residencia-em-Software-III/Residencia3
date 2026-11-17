@@ -31,7 +31,6 @@ function abrir(caminho: string) {
 const TELAS = {
   Início: '/inicio',
   Solicitações: '/solicitacoes',
-  'Triagem SVO': '/triagem-svo',
   Viagens: '/viagens',
   Agenda: '/agenda',
   Veículos: '/veiculos',
@@ -60,15 +59,7 @@ const MENU_POR_PERFIL: Record<Perfil, Tela[]> = {
     'Equipe',
   ],
   // Manutenções, multas e abastecimentos: o documento só lista Administrador e Gestor de Frota
-  [PERFIS.GESTOR_SVO]: [
-    'Início',
-    'Solicitações',
-    'Triagem SVO',
-    'Viagens',
-    'Agenda',
-    'Veículos',
-    'Equipe',
-  ],
+  [PERFIS.GESTOR_SVO]: ['Início', 'Solicitações', 'Viagens', 'Agenda', 'Veículos', 'Equipe'],
   [PERFIS.SOLICITANTE]: ['Início', 'Solicitações', 'Veículos'],
   [PERFIS.MOTORISTA_FROTA]: ['Início', 'Viagens', 'Veículos', 'Abastecimento'],
   [PERFIS.MOTORISTA_SVO]: ['Início', 'Viagens', 'Veículos', 'Abastecimento'],
