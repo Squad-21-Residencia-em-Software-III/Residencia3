@@ -203,3 +203,17 @@ O front desta entrega **não depende** da 183. Ela só muda o status que a lista
 2. Rodar o cenário do item no ambiente de teste com o perfil indicado.
 3. Mudar o interruptor para `true` em `recursosBackend.ts` (PR de uma linha).
 4. Rodar `npx vitest run`. Os testes do front já cobrem os dois estados de cada interruptor.
+
+## 8. Estado da integração e roteiro de homologação
+
+Na base `373686f73fd4668ab539560f4c41c6c49165f3b1`, SCRUM-179, SCRUM-182 e SCRUM-183 permanecem abertas. A migration de horários não comprova implementação transacional da agenda. Não ligar os recursos de viagens próprias, ordens paginadas ou agendamento temporal sem verificar os endpoints reais e sua autorização no servidor. Alterações de banco cabem à frente DB.
+
+Para demonstrar em ambiente autorizado, registrar evidência, resultado observado e conclusão em cada passo:
+
+1. Administrador abre Solicitações, alterna as abas e usa um link direto. Esperado: Administrativo inicial, SVO autorizado, histórico e filtros independentes. Observado: pendente de homologação.
+2. Gestor SVO associado abre Solicitações e registra uma chamada interna. Esperado: SVO inicial, ID retornado e chamada em triagem; confirmação gera uma única ordem e recusa exige justificativa. Observado: pendente de homologação.
+3. Gestor de Frota e Solicitante tentam `?aba=svo` e `/triagem-svo`. Esperado: sem acesso à triagem; testar também 401/403 e IDs de terceiros na API. Observado: pendente de homologação.
+4. Gestor SVO acessa Administrativo e veículos. Esperado: apenas solicitações próprias, sem gestão administrativa e sem campos sensíveis; viagens próprias aguardam SCRUM-179. Observado: pendente de homologação.
+5. Após SCRUM-182/183, testar 0, 10, 19, 20 e 30 minutos, sobreposição, todos os recursos, concorrência e fuso America/Maceio; testar atraso, conclusão real e prioridade. Esperado: conflito bloqueado, exceção curta revalidada, recursos ocupados até conclusão e nenhuma saída fictícia. Observado: bloqueado pelas dependências.
+
+Testes simulados não substituem testes autenticados de API, banco ou interface de homologação. Revisão independente de QA e aprovação de merge permanecem necessárias.

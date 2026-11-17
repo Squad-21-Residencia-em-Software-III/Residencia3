@@ -446,3 +446,11 @@ A tela de Agenda passou a consumir diretamente os dados reais da API REST, elimi
 3. **Push em tempo real (SSE / WebSocket):** avaliar apenas se surgir demanda de atualização em sub-segundo (considerando que rewrites HTTP da Vercel não fazem proxy de WebSocket e exigem endpoint direto no Render autenticado por Bearer token).
 4. **Bloqueios de manutenção:** avaliar exibição de janelas de manutenção programada diretamente na grade horária dos veículos.
 
+## 22. Solicitações Administrativo e SVO
+
+Em Solicitações, Administrador entra em Administrativo e Gestor SVO entra em SVO; ambos podem alternar nas abas autorizadas. Gestor de Frota e Solicitante acessam somente Administrativo. O parâmetro `?aba=administrativo|svo` seleciona uma aba permitida; valores inválidos ou proibidos retornam à primeira opção permitida. A alternância cria entradas no histórico do navegador. A rota antiga `/triagem-svo` exige a permissão de triagem e redireciona para `/solicitacoes?aba=svo`; não há item separado no menu.
+
+O cadastro interno SVO envia somente `dados_solicitante`, `local_ocorrencia` e `material_sensivel` para `POST /api/solicitacoes-svo`. O servidor define registrante e status. Após resposta de sucesso, a tela mostra o ID retornado e atualiza a fila em triagem. Confirmação e recusa reutilizam o drawer existente; a ordem mostrada é a resposta do servidor. O link para Viagens abre SVO.
+
+Em Viagens, a consulta de viagens administrativas próprias do Gestor SVO continua bloqueada pela SCRUM-179. A listagem provisória de ordens verifica detalhes de solicitações confirmadas e falha explicitamente se exceder uma página de 100; não é a paginação definitiva da SCRUM-182. A alocação atual não comprova agendamento temporal, conflitos de horário ou exceção de 20 minutos. SCRUM-182 e SCRUM-183 continuam pendentes. A capacidade de corpos SVO e a lotação da cabine são campos independentes; a última inclui o motorista.
+
