@@ -20,12 +20,16 @@ import { abastecimentosApi } from '../services/api/abastecimentosApi';
 import { mensagemDeErro } from '../services/api/http';
 import { cn } from '../utils/cn';
 import { ModalAbastecimento } from './abastecimento/ModalAbastecimento';
+import { BotaoExportarRelatorio } from '../components/relatorios/BotaoExportarRelatorio';
+import { usePermissao } from '../utils/permissoes';
 
 interface AbastecimentoEnriquecido extends Abastecimento {
   veiculo_tipo_frota?: 'ADMINISTRATIVA' | 'SVO';
 }
 
 export default function AbastecimentoPage() {
+  const { pode, podeNaFrota } = usePermissao();
+  const podeRegistrar = pode('abastecimentos.registrar');
   const [abastecimentos, setAbastecimentos] = useState<AbastecimentoEnriquecido[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -297,8 +301,9 @@ export default function AbastecimentoPage() {
                 ? 'Carregando dados...'
                 : `${abastecimentosFiltrados.length} abastecimento${abastecimentosFiltrados.length === 1 ? '' : 's'}`
             }
-            newLabel="Novo Abastecimento"
-            onNew={() => setModalAberto(true)}
+            actions={<BotaoExportarRelatorio tipo="abastecimentos" />}
+            newLabel={podeRegistrar ? 'Novo Abastecimento' : undefined}
+            onNew={podeRegistrar ? () => setModalAberto(true) : undefined}
             onFilter={() => setFiltrosAbertosMobile((f) => !f)}
             isFilterActive={Boolean(busca) || filtrosAbertosMobile}
           />
@@ -469,6 +474,8 @@ export default function AbastecimentoPage() {
       {/* Modal de Novo Abastecimento */}
       {modalAberto && (
         <ModalAbastecimento
+          // Cada perfil só abastece veículos da própria frota (o Administrador, nas duas)
+          filtrarVeiculo={(v) => podeNaFrota('abastecimentos.registrar', v.tipo_frota)}
           onClose={() => setModalAberto(false)}
           onSalvar={handleSalvarAbastecimento}
         />

@@ -14,6 +14,11 @@ export interface Veiculo {
   capacidade_maxima: number; // inteiro >= 0
   km_atual: number; // odômetro atual, atualizado ao finalizar viagem
   status: StatusVeiculo; // padrão no banco: DISPONIVEL
+  /**
+   * Pessoas na cabine, motorista incluído (só SVO). Coluna nova da SCRUM-175; nula em veículos
+   * antigos sem lotação conhecida. Só é lida e enviada com `RECURSOS_BACKEND.lotacaoCabine`.
+   */
+  lotacao_cabine?: number | null;
 }
 
 export type NovoVeiculoInput = Omit<Veiculo, 'id' | 'status'>;

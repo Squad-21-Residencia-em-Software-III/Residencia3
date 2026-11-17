@@ -2,7 +2,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 import { authApi } from '../services/api/authApi'
 import { EVENTO_SESSAO_EXPIRADA, tokenStorage } from '../services/api/http'
-import { storageService } from '../services/storageService'
 import type { Perfil, Usuario } from '../types/usuario'
 
 const CANAL_AUTENTICACAO = 'fsph_auth'
@@ -57,7 +56,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const limparEstadoLocal = useCallback(() => {
     tokenStorage.clear()
-    storageService.clear()
     setUsuario(null)
   }, [])
 

@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 import { LISTA_STATUS_SOLICITACAO_VIAGEM } from '../constants/solicitacoesViagem';
 
@@ -14,6 +13,7 @@ export const criarSolicitacaoViagemSchema = z.object({
   destino: z.string().trim().min(1, 'Informe o destino').max(255),
 
   finalidade: z.string().trim().min(1, 'Informe a finalidade'),
+  material_sensivel: z.boolean().optional(),
 
   data_saida_desejada: z.string().datetime({
     offset: true,
@@ -25,8 +25,12 @@ export const criarSolicitacaoViagemSchema = z.object({
 });
 
 export const recusarSolicitacaoViagemSchema = z.object({
-  // Limitado para caber no campo de ação da auditoria (255 caracteres)
-  motivo: z.string().trim().min(1, 'Informe o motivo').max(200, 'O motivo deve ter no máximo 200 caracteres').optional(),
+  // Justificativa obrigatória; limitada para caber no campo de ação da auditoria (255 caracteres)
+  motivo: z
+    .string({ error: 'Informe o motivo da recusa' })
+    .trim()
+    .min(1, 'Informe o motivo da recusa')
+    .max(200, 'O motivo deve ter no máximo 200 caracteres'),
 });
 
 export const listarSolicitacoesViagemSchema = z.object({
@@ -43,4 +47,8 @@ export type ListarSolicitacoesViagemInput = z.infer<typeof listarSolicitacoesVia
 
 export type CriarSolicitacaoViagemInput = z.infer<
   typeof criarSolicitacaoViagemSchema
+>;
+
+export type RecusarSolicitacaoViagemInput = z.infer<
+  typeof recusarSolicitacaoViagemSchema
 >;

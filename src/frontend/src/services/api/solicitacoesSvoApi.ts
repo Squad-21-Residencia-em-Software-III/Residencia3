@@ -19,6 +19,11 @@ interface FiltrosSolicitacoesSvo {
 
 /** Solicitações SVO. Somente Administrador e Gestor SVO (o backend responde 403 aos demais). */
 export const solicitacoesSvoApi = {
+  criar: (dados: {
+    dados_solicitante: string;
+    local_ocorrencia: string;
+    material_sensivel?: boolean;
+  }) => request<SolicitacaoSvo>('POST', '/solicitacoes-svo', { body: dados }),
   /** Uma página das solicitações, da mais recente para a mais antiga. */
   listar: ({ pagina = 1, limite = 20, status }: FiltrosSolicitacoesSvo = {}) =>
     request<ListaSolicitacoesSvo>('GET', '/solicitacoes-svo', {
@@ -51,4 +56,11 @@ export const solicitacoesSvoApi = {
    * Repetir a confirmação devolve a ordem já gerada, sem duplicar.
    */
   confirmar: (id: number) => request<ConfirmacaoSvo>('PATCH', `/solicitacoes-svo/${id}/confirmar`),
+
+  /**
+   * Recusa a solicitação em triagem com justificativa obrigatória (SCRUM-178). Só é chamado
+   * com `RECURSOS_BACKEND.recusaSvo` ligado; a tela recarrega o detalhe depois da resposta.
+   */
+  recusar: (id: number, motivo_recusa: string) =>
+    request<unknown>('PATCH', `/solicitacoes-svo/${id}/recusar`, { body: { motivo_recusa } }),
 };

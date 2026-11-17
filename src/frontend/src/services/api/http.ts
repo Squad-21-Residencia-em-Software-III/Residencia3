@@ -94,6 +94,10 @@ export class ApiError extends Error {
     message: string,
     public readonly status: number,
     public readonly detalhes: DetalheErro[] = [],
+    /** Código de negócio enviado pela API (`codigo`), quando houver. */
+    public readonly codigo?: string,
+    /** Dados extras do erro (`contexto`), ex.: conflitos de agenda. */
+    public readonly contexto?: unknown,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -123,6 +127,83 @@ interface Opcoes {
 
 export async function request<T>(metodo: Metodo, caminho: string, opcoes: Opcoes = {}): Promise<T> {
   return executar<T>(metodo, caminho, opcoes, true)
+}
+
+export interface ResultadoDownload {
+  blob: Blob
+  filename: string | null
+}
+
+function extrairNomeArquivo(contentDisposition: string | null): string | null {
+  if (!contentDisposition) return null
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim())
+    } catch {
+      return utf8Match[1].trim()
+    }
+  }
+  const simpleMatch = /filename="?([^";]+)"?/i.exec(contentDisposition)
+  return simpleMatch?.[1]?.trim() ?? null
+}
+
+export async function downloadBlob(
+  caminho: string,
+  query?: Record<string, string | number | boolean | undefined>,
+): Promise<ResultadoDownload> {
+  return executarDownload(caminho, query, true)
+}
+
+async function executarDownload(
+  caminho: string,
+  query: Record<string, string | number | boolean | undefined> | undefined,
+  podeRenovar: boolean,
+): Promise<ResultadoDownload> {
+  const url = new URL(`${BASE_URL}${caminho}`, window.location.origin)
+  for (const [chave, valor] of Object.entries(query ?? {})) {
+    if (valor !== undefined && valor !== '') url.searchParams.set(chave, String(valor))
+  }
+
+  const headers: Record<string, string> = {}
+  const token = tokenStorage.get()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let resposta: Response
+  try {
+    resposta = await fetch(url, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+    })
+  } catch {
+    throw new ApiError('Não foi possível conectar ao servidor. Verifique sua conexão.', 0)
+  }
+
+  if (!resposta.ok) {
+    const dados = await resposta.json().catch(() => null)
+    if (resposta.status === 401) {
+      if (podeRenovar && (await renovarUmaVez())) {
+        return executarDownload(caminho, query, false)
+      }
+      tokenStorage.clear()
+      window.dispatchEvent(new Event(EVENTO_SESSAO_EXPIRADA))
+    }
+    const semCorpo = dados === null && resposta.status >= 500
+    throw new ApiError(
+      dados?.erro ??
+        (semCorpo ? 'Servidor indisponível. Tente novamente em instantes.' : 'Erro inesperado. Tente novamente.'),
+      resposta.status,
+      dados?.detalhes ?? [],
+      typeof dados?.codigo === 'string' ? dados.codigo : undefined,
+      dados?.contexto,
+    )
+  }
+
+  return {
+    blob: await resposta.blob(),
+    filename: extrairNomeArquivo(resposta.headers.get('Content-Disposition')),
+  }
 }
 
 async function executar<T>(
@@ -171,6 +252,8 @@ async function executar<T>(
         (semCorpo ? 'Servidor indisponível. Tente novamente em instantes.' : 'Erro inesperado. Tente novamente.'),
       resposta.status,
       dados?.detalhes ?? [],
+      typeof dados?.codigo === 'string' ? dados.codigo : undefined,
+      dados?.contexto,
     )
   }
 

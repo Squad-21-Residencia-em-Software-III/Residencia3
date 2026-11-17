@@ -1,6 +1,17 @@
 import { z } from 'zod';
 import { STATUS_SOLICITACAO_SVO } from '../models/solicitacaoSvoModel';
 
+export const TAMANHO_MAXIMO_MOTIVO_RECUSA_SVO = 500;
+
+const textoMotivoSchema = z
+  .string({ error: 'O motivo da recusa é obrigatório' })
+  .trim()
+  .min(1, 'O motivo da recusa é obrigatório')
+  .max(
+    TAMANHO_MAXIMO_MOTIVO_RECUSA_SVO,
+    `O motivo da recusa deve ter no máximo ${TAMANHO_MAXIMO_MOTIVO_RECUSA_SVO} caracteres`,
+  );
+
 // status e registrante_id são definidos pelo servidor; campos extras são rejeitados
 export const criarSolicitacaoSvoSchema = z.strictObject(
   {
@@ -40,5 +51,35 @@ export const confirmarSolicitacaoSvoSchema = z.strictObject(
   { error: 'A confirmação não aceita campos no corpo da requisição' },
 );
 
+// Aceita motivo_recusa (contrato SVO) ou motivo (padrão compartilhado), normalizando em motivo_recusa
+export const recusarSolicitacaoSvoSchema = z
+  .strictObject(
+    {
+      motivo_recusa: textoMotivoSchema.optional(),
+      motivo: textoMotivoSchema.optional(),
+    },
+    { error: 'Campo não permitido na recusa da solicitação SVO' },
+  )
+  .superRefine((dados, ctx) => {
+    if (!dados.motivo_recusa && !dados.motivo) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['motivo_recusa'],
+        message: 'O motivo da recusa é obrigatório',
+      });
+    }
+    if (dados.motivo_recusa && dados.motivo && dados.motivo_recusa !== dados.motivo) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['motivo_recusa'],
+        message: 'Informe apenas um campo de motivo da recusa',
+      });
+    }
+  })
+  .transform((dados) => ({
+    motivo_recusa: (dados.motivo_recusa ?? dados.motivo)!,
+  }));
+
 export type CriarSolicitacaoSvoInput = z.infer<typeof criarSolicitacaoSvoSchema>;
 export type ListarSolicitacoesSvoInput = z.infer<typeof listarSolicitacoesSvoQuerySchema>;
+export type RecusarSolicitacaoSvoInput = z.infer<typeof recusarSolicitacaoSvoSchema>;

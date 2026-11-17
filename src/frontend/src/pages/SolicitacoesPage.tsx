@@ -12,6 +12,7 @@ import {
   MetricCard,
   Pagination,
   SearchInput,
+  SeletorOperacao,
   Table,
   TableFilterCollapse,
   TableToolbar,
@@ -26,9 +27,12 @@ import type {
   StatusSolicitacao,
 } from '../types/solicitacao';
 import { LABELS_STATUS_SOLICITACAO } from '../types/solicitacao';
-import { PERFIS } from '../types/usuario';
+import { usePermissao } from '../utils/permissoes';
 import { ModalAnaliseSolicitacao } from './solicitacoes/ModalAnaliseSolicitacao';
 import { ModalNovaSolicitacao } from './solicitacoes/ModalNovaSolicitacao';
+import TriagemSvoPage from './TriagemSvoPage';
+import { useAbaOperacao } from '../utils/abaOperacao';
+import type { TipoFrota } from '../types/veiculo';
 
 type FiltroStatusAba =
   'TODAS' | 'PENDENTES' | 'APROVADAS' | 'AGENDADAS' | 'CONCLUIDAS' | 'RECUSADAS';
@@ -67,13 +71,44 @@ function formatarDataHora(iso?: string | null): string {
 }
 
 export default function SolicitacoesPage() {
+  const { usuario } = useAuth();
+  const { pode } = usePermissao();
+  const abas: TipoFrota[] =
+    usuario?.perfil === 'GESTOR_SVO'
+      ? ['SVO', 'ADMINISTRATIVA']
+      : pode('triagemSvo.acessar')
+        ? ['ADMINISTRATIVA', 'SVO']
+        : ['ADMINISTRATIVA'];
+  const { ativa, mudar } = useAbaOperacao(abas);
+  if (!ativa) return null;
+  return (
+    <div className="grid w-full min-w-0 gap-5">
+      <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
+      <div hidden={ativa !== 'ADMINISTRATIVA'} className="animate-tab-fade">
+        <SolicitacoesAdministrativas />
+      </div>
+      {pode('triagemSvo.acessar') && (
+        <div hidden={ativa !== 'SVO'} className="animate-tab-fade">
+          <TriagemSvoPage />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SolicitacoesAdministrativas() {
   const navigate = useNavigate();
-  const { temPerfil } = useAuth();
-  // A API só libera a listagem para quem analisa solicitações
-  const podeListar = temPerfil(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO);
+  const { usuario } = useAuth();
+  const { pode } = usePermissao();
+  // Gestores veem as solicitações encaminhadas; os demais, só as próprias (GET /minhas)
+  const verTodas = pode('solicitacoes.listarTodas');
+  const podeCriar = pode('solicitacoes.criar');
+  const podeAnalisar = pode('solicitacoes.analisar');
+  const podeAgendar = pode('solicitacoes.agendar');
+  const nomeUsuario = usuario?.nome ?? '';
 
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoViagem[]>([]);
-  const [carregando, setCarregando] = useState(podeListar);
+  const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [filtroAba, setFiltroAba] = useState<FiltroStatusAba>('TODAS');
   const [busca, setBusca] = useState('');
@@ -100,16 +135,23 @@ export default function SolicitacoesPage() {
   };
 
   const recarregar = useCallback(async () => {
-    if (!podeListar) return;
     try {
-      setSolicitacoes(await solicitacoesApi.listar());
+      setSolicitacoes(
+        verTodas
+          ? await solicitacoesApi.listar()
+          : // /minhas não devolve o nome do solicitante: é o próprio usuário
+            (await solicitacoesApi.listarMinhas()).map((s) => ({
+              ...s,
+              solicitante_nome: s.solicitante_nome ?? nomeUsuario,
+            })),
+      );
       setErroCarga(null);
     } catch (error) {
       setErroCarga(mensagemDeErro(error));
     } finally {
       setCarregando(false);
     }
-  }, [podeListar]);
+  }, [verTodas, nomeUsuario]);
 
   useEffect(() => {
     void recarregar();
@@ -157,7 +199,7 @@ export default function SolicitacoesPage() {
     exibirFeedback(`Solicitação #${id} aprovada com sucesso! Liberada para agendamento.`);
   };
 
-  const handleRecusar = async (id: number, motivo?: string) => {
+  const handleRecusar = async (id: number, motivo: string) => {
     await solicitacoesApi.recusar(id, motivo);
     await recarregar();
     exibirFeedback(`Solicitação #${id} foi recusada.`);
@@ -169,11 +211,9 @@ export default function SolicitacoesPage() {
     exibirFeedback(`Solicitação #${criada.id} cadastrada com sucesso! Aguardando análise.`);
   };
 
-  const mensagemTabela = !podeListar
-    ? 'A consulta das suas solicitações ainda não está disponível. Use "Nova Solicitação" para registrar um pedido.'
-    : carregando
-      ? 'Carregando solicitações...'
-      : (erroCarga ?? 'Nenhuma solicitação encontrada para os filtros selecionados.');
+  const mensagemTabela = carregando
+    ? 'Carregando solicitações...'
+    : (erroCarga ?? 'Nenhuma solicitação encontrada para os filtros selecionados.');
 
   const handleAgendar = (solicitacao: SolicitacaoViagem) => {
     navigate('/viagens', { state: { solicitacaoId: solicitacao.id } });
@@ -187,36 +227,39 @@ export default function SolicitacoesPage() {
       {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
 
       {/* Cards de Métricas Superiores */}
-      {podeListar && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-          <MetricCard label="Total de Solicitações" value={totais.total} tone="neutral" />
 
-          <MetricCard label="Pendentes de Decisão" value={totais.pendentes} tone="warning" />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <MetricCard label="Total de Solicitações" value={totais.total} tone="neutral" />
 
-          <MetricCard
-            label="Aprovadas (Aguard. Agendamento)"
-            value={totais.aprovadas}
-            tone="success"
-          />
+        <MetricCard label="Pendentes de Decisão" value={totais.pendentes} tone="warning" />
 
-          <MetricCard label="Viagens Agendadas" value={totais.agendadas} tone="primary" />
+        <MetricCard
+          label="Aprovadas (Aguard. Agendamento)"
+          value={totais.aprovadas}
+          tone="success"
+        />
 
-          <MetricCard
-            label="Solicitações Recusadas"
-            value={totais.recusadas}
-            tone="danger"
-            className="col-span-2 lg:col-span-1"
-          />
-        </div>
-      )}
+        <MetricCard label="Viagens Agendadas" value={totais.agendadas} tone="primary" />
+
+        <MetricCard
+          label="Solicitações Recusadas"
+          value={totais.recusadas}
+          tone="danger"
+          className="col-span-2 lg:col-span-1"
+        />
+      </div>
 
       {/* Tabela e Filtros Principais */}
       <Card>
         <TableToolbar
-          title="Gestão de Solicitações de Viagem"
-          subtitle={`${filtradas.length} de ${solicitacoes.length} solicitações cadastradas no sistema`}
-          newLabel="Nova Solicitação"
-          onNew={() => setModalNovaAberto(true)}
+          title={verTodas ? 'Gestão de Solicitações de Viagem' : 'Minhas Solicitações de Viagem'}
+          subtitle={
+            verTodas
+              ? `${filtradas.length} de ${solicitacoes.length} solicitações cadastradas no sistema`
+              : `${filtradas.length} de ${solicitacoes.length} solicitações feitas por você`
+          }
+          newLabel={podeCriar ? 'Nova Solicitação' : undefined}
+          onNew={podeCriar ? () => setModalNovaAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
           isFilterActive={filtroAba !== 'TODAS' || Boolean(busca) || filtrosAbertos}
         />
@@ -300,6 +343,7 @@ export default function SolicitacoesPage() {
                   </td>
                   <td>
                     <div className="text-[13px] font-medium text-slate-900">{s.destino}</div>
+                    {s.material_sensivel && <span className="text-xs font-semibold text-amber-700">Material sensível</span>}
                     <div className="text-[11px] text-slate-500">Origem: {s.origem}</div>
                   </td>
                   <td>
@@ -326,7 +370,7 @@ export default function SolicitacoesPage() {
                     </Badge>
                   </td>
                   <td className="text-right">
-                    {s.status === 'PENDENTE_APROVACAO' ? (
+                    {s.status === 'PENDENTE_APROVACAO' && podeAnalisar ? (
                       <Button
                         size="sm"
                         variant="primary"
@@ -334,7 +378,7 @@ export default function SolicitacoesPage() {
                       >
                         Analisar
                       </Button>
-                    ) : s.status === 'APROVADA' ? (
+                    ) : s.status === 'APROVADA' && podeAgendar ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -367,9 +411,10 @@ export default function SolicitacoesPage() {
         <ModalAnaliseSolicitacao
           solicitacao={solicitacaoEmAnalise}
           onClose={() => setSolicitacaoEmAnalise(null)}
+          podeDecidir={podeAnalisar}
           onAprovar={handleAprovar}
           onRecusar={handleRecusar}
-          onAgendar={handleAgendar}
+          onAgendar={podeAgendar ? handleAgendar : undefined}
         />
       )}
 

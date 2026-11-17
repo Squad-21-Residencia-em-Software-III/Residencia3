@@ -53,6 +53,8 @@
   --shadow-menu: 0 8px 24px rgba(13, 27, 53, 0.14), 0 1px 4px rgba(13, 27, 53, 0.06);
   --shadow-modal: 0 24px 60px rgba(13, 27, 53, 0.18);
 
+  --animate-agenda-fade: agendaFadeSlide 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+
   --background-image-sidebar:
     radial-gradient(ellipse 90% 50% at 50% 0%, rgba(21, 84, 184, 0.25), transparent 75%),
     linear-gradient(180deg, #0e172e 0%, #080e1d 100%);
@@ -175,5 +177,16 @@
   ::-webkit-scrollbar-thumb {
     background: var(--color-border-strong);
     border-radius: 3px;
+  }
+}
+
+@keyframes agendaFadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

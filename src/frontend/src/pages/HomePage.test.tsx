@@ -4,6 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import HomePage from './HomePage';
 import { dashboardApi } from '../services/api/dashboardApi';
 import { solicitacoesApi } from '../services/api/solicitacoesApi';
+import { useAuth } from '../contexts/AuthContext';
+import { PERFIS } from '../types/usuario';
+import type { Perfil, Usuario } from '../types/usuario';
+
+vi.mock('../contexts/AuthContext', () => ({ useAuth: vi.fn() }));
+
+function logarComo(perfil: Perfil) {
+  vi.mocked(useAuth).mockReturnValue({
+    usuario: { id: 1, nome: 'Ana Paula Lima', email: 'ana@exemplo.com', perfil } as Usuario,
+    carregando: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    temPerfil: (...perfis: Perfil[]) => perfis.includes(perfil),
+  });
+}
 
 vi.mock('../services/api/dashboardApi', () => ({
   dashboardApi: {
@@ -21,6 +36,7 @@ vi.mock('../services/api/solicitacoesApi', () => ({
 describe('HomePage (Central de Operações)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    logarComo(PERFIS.GESTOR_FROTA);
     vi.mocked(dashboardApi.consultar).mockResolvedValue({
       periodo: { inicio: null, fim: null },
       solicitacoes_pendentes: 3,
@@ -112,6 +128,55 @@ describe('HomePage (Central de Operações)', () => {
       ).toBeInTheDocument();
       expect(screen.getAllByRole('button', { name: /Tentar novamente/i }).length).toBeGreaterThan(0);
     });
+  });
+
+  it('Solicitante não vê o painel gerencial nem consulta o dashboard', async () => {
+    logarComo(PERFIS.SOLICITANTE);
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Olá, Ana')).toBeInTheDocument();
+    expect(screen.queryByText('Central de Operações da Frota')).not.toBeInTheDocument();
+    expect(screen.queryByText('Solicitações pendentes')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fila de Aprovação')).not.toBeInTheDocument();
+    expect(dashboardApi.consultar).not.toHaveBeenCalled();
+    expect(solicitacoesApi.listar).not.toHaveBeenCalled();
+    // Só os atalhos do perfil
+    expect(screen.getByText('Nova Solicitação')).toBeInTheDocument();
+    expect(screen.queryByText('Registrar Abastecimento')).not.toBeInTheDocument();
+    expect(screen.queryByText('Gestão de Veículos')).not.toBeInTheDocument();
+  });
+
+  it('Gestor SVO vê os indicadores, mas não a fila de aprovação da frota administrativa', async () => {
+    logarComo(PERFIS.GESTOR_SVO);
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Central de Operações da Frota')).toBeInTheDocument();
+    await waitFor(() => expect(dashboardApi.consultar).toHaveBeenCalled());
+    expect(screen.queryByText('Fila de Aprovação')).not.toBeInTheDocument();
+    expect(solicitacoesApi.listar).not.toHaveBeenCalled();
+  });
+
+  it('Motorista vê só os atalhos que pode usar', async () => {
+    logarComo(PERFIS.MOTORISTA_FROTA);
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Registrar Abastecimento')).toBeInTheDocument();
+    expect(screen.getByText('Gestão de Veículos')).toBeInTheDocument();
+    expect(screen.queryByText('Nova Solicitação')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ver Agenda')).not.toBeInTheDocument();
+    expect(dashboardApi.consultar).not.toHaveBeenCalled();
   });
 });
 

@@ -5,8 +5,8 @@ import { criarVeiculoSchema, atualizarVeiculoSchema } from '../validators/veicul
 import { AppError } from '../errors/AppError';
 
 export const veiculoController = {
-  async listar(_req: Request, res: Response): Promise<void> {
-    res.json(await veiculoService.listar());
+  async listar(req: Request, res: Response): Promise<void> {
+    res.json(await veiculoService.listar(usuarioAutenticado(req)));
   },
 
   async listarVeiculosSvoDisponiveis(_req: Request, res: Response): Promise<void> {
@@ -21,7 +21,7 @@ export const veiculoController = {
     const dados = criarVeiculoSchema.parse(req.body);
     const autor = usuarioAutenticado(req);
 
-    const veiculo = await veiculoService.criar(dados, autor.id);
+    const veiculo = await veiculoService.criar(dados, autor.id, autor.perfil);
 
     res.status(201).location(`/api/veiculos/${veiculo.id}`).json(veiculo);
   },
@@ -34,7 +34,7 @@ export const veiculoController = {
     const dados = atualizarVeiculoSchema.parse(req.body);
     const autor = usuarioAutenticado(req);
 
-    const veiculo = await veiculoService.atualizar(id, dados, autor.id);
+    const veiculo = await veiculoService.atualizar(id, dados, autor.id, autor.perfil);
     res.json(veiculo);
   },
 };

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Button } from './Button';
 import { CloseIcon } from './icons';
+import { createPortal } from 'react-dom';
 
 type ModalProps = {
   isOpen?: boolean;
@@ -12,6 +13,7 @@ type ModalProps = {
   hideFooter?: boolean;
   maxWidth?: string | number;
   children: ReactNode;
+  telaInteira?: boolean;
 };
 
 export function Modal({
@@ -23,6 +25,7 @@ export function Modal({
   hideFooter = false,
   maxWidth,
   children,
+  telaInteira = false,
 }: ModalProps) {
   useEffect(() => {
     if (isOpen === false) return;
@@ -35,7 +38,7 @@ export function Modal({
 
   const showFooter = !hideFooter && onConfirm !== undefined;
 
-  return (
+  const conteudo = (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#0d1b35]/45 backdrop-blur-[3px]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -70,4 +73,5 @@ export function Modal({
       </div>
     </div>
   );
+  return telaInteira ? createPortal(conteudo, document.body) : conteudo;
 }

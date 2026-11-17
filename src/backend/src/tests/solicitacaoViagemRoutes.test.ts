@@ -20,6 +20,22 @@ vi.mock('../services/solicitacaoViagemService', () => ({
   },
 }));
 
+describe('GET /api/solicitacoes-viagem/minhas', () => {
+  it('usa a identidade autenticada e omite o motorista para Gestor SVO', async () => {
+    vi.mocked(authService.usuarioDoToken).mockResolvedValueOnce({ id: 42, perfil: 'GESTOR_SVO' } as never);
+    vi.mocked(solicitacaoViagemService.listarMinhas).mockResolvedValueOnce({
+      dados: [{ id: 1, solicitante_id: 42, destino: 'Hospital', motorista_nome: 'Nome reservado' }],
+      paginacao: { pagina: 1, limite: 20, total: 1, totalPaginas: 1 },
+    } as never);
+    const resposta = await request(app).get('/api/solicitacoes-viagem/minhas')
+      .set('Authorization', 'Bearer token-teste');
+    expect(resposta.status).toBe(200);
+    expect(solicitacaoViagemService.listarMinhas).toHaveBeenCalledWith(42, expect.anything());
+    expect(resposta.body.dados[0]).toMatchObject({ solicitante_id: 42, destino: 'Hospital' });
+    expect(resposta.body.dados[0]).not.toHaveProperty('motorista_nome');
+  });
+});
+
 describe('POST /api/solicitacoes-viagem', () => {
   const endpoint = '/api/solicitacoes-viagem';
 
@@ -37,6 +53,7 @@ describe('POST /api/solicitacoes-viagem', () => {
 
     vi.mocked(authService.usuarioDoToken).mockResolvedValue({
       id: 1,
+      perfil: 'SOLICITANTE',
     } as Awaited<ReturnType<typeof authService.usuarioDoToken>>);
 
     vi.mocked(solicitacaoViagemService.criar).mockResolvedValue({
@@ -45,6 +62,23 @@ describe('POST /api/solicitacoes-viagem', () => {
       ...dadosValidos,
       status: 'PENDENTE_APROVACAO',
     });
+  });
+
+  it.each(['MOTORISTA_FROTA', 'MOTORISTA_SVO'])('deve retornar 403 quando um %s tentar solicitar viagem', async (perfil) => {
+    vi.mocked(authService.usuarioDoToken).mockResolvedValueOnce({ id: 1, perfil } as never);
+
+    const resposta = await request(app).post(endpoint).set('Authorization', 'Bearer token-teste').send(dadosValidos);
+
+    expect(resposta.status).toBe(403);
+    expect(solicitacaoViagemService.criar).not.toHaveBeenCalled();
+  });
+
+  it.each(['SOLICITANTE', 'GESTOR_FROTA', 'GESTOR_SVO', 'ADMINISTRADOR'])('deve permitir que %s solicite viagem', async (perfil) => {
+    vi.mocked(authService.usuarioDoToken).mockResolvedValueOnce({ id: 1, perfil } as never);
+
+    const resposta = await request(app).post(endpoint).set('Authorization', 'Bearer token-teste').send(dadosValidos);
+
+    expect(resposta.status).toBe(201);
   });
 
   it('deve retornar 201 para uma solicitação válida', async () => {
