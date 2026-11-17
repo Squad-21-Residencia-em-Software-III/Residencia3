@@ -899,7 +899,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         somentePropria={somenteProprias}
         onClose={() => setViagemDetalhes(null)}
         onIniciar={
-          podeExecutar
+          podeExecutar && (!isSvo || agendaSvoAtiva)
             ? (v) => {
                 setViagemDetalhes(null);
                 setViagemIniciar(v);
@@ -907,7 +907,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
             : undefined
         }
         onFinalizar={
-          podeExecutar
+          podeExecutar && (!isSvo || agendaSvoAtiva)
             ? (v) => {
                 setViagemDetalhes(null);
                 setViagemFinalizar(v);
@@ -915,7 +915,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
             : undefined
         }
         onCancelar={
-          podeCancelar
+          podeCancelar && (!isSvo || agendaSvoAtiva)
             ? (v) => {
                 setViagemDetalhes(null);
                 setViagemCancelar(v);

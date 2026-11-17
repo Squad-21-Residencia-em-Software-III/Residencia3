@@ -94,7 +94,7 @@ describe('TriagemSvoPage', () => {
     expect(await screen.findByText('Rua 2, Aracaju')).toBeInTheDocument();
     expect(api.listar).toHaveBeenCalledWith({ pagina: 1, limite: 20, status: 'EM_TRIAGEM' });
     expect(screen.getByText('Material sensível')).toBeInTheDocument();
-    expect(screen.getAllByText('Em triagem').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Aguardando análise').length).toBeGreaterThan(0);
   });
 
   it('informa quando não há solicitações aguardando triagem', async () => {

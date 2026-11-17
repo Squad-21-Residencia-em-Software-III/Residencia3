@@ -105,6 +105,15 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     expect(api.listarAlertasSvo).not.toHaveBeenCalled();
   });
 
+  it.each(['AGENDADA', 'EM_ANDAMENTO'] as const)('não oferece ações no drawer SVO %s com agenda desativada', async (status) => {
+    RECURSOS_BACKEND.agendamentoTemporalSvo = false;
+    api.listar.mockResolvedValue([{ ...viagem(7, 'SVO', 'Rua das Flores'), status }]);
+    abrir('/viagens?aba=svo');
+    await userEvent.click(await screen.findByText('Rua das Flores'));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).queryByRole('button', { name: /Iniciar viagem|Finalizar viagem|Cancelar viagem/ })).not.toBeInTheDocument();
+  });
+
   it('Administrador alterna entre as abas sem misturar registros de mesmo id', async () => {
     abrir();
 
