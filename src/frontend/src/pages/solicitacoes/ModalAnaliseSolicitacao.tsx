@@ -187,6 +187,7 @@ export function ModalAnaliseSolicitacao({
             <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase">
               <MapPin size={13} className="text-primary" /> Trajeto Solicitado
             </div>
+            {solicitacao.material_sensivel && <p className="text-sm font-semibold text-amber-700">Material sensível</p>}
             <div className="text-[13px] font-semibold text-slate-900">{solicitacao.origem}</div>
             <div className="my-0.5 text-[11px] font-semibold text-primary">↓ destino</div>
             <div className="text-[13px] font-semibold text-slate-900">{solicitacao.destino}</div>

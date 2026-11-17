@@ -44,12 +44,14 @@ describe('equipeSvoService.consultarDisponibilidade', () => {
         'whereRaw',
         'whereExists',
         'whereNotExists',
+        'whereNot',
       ]) {
         query[metodo] = (...argumentos: unknown[]) => {
           consultas.push({ tabela, metodo, argumentos });
           return query;
         };
       }
+      query.modify = (callback: (q: unknown) => void) => { callback(query); return query; };
 
       query.orderBy = vi.fn().mockResolvedValue([
         { id: 1, nome_equipe: 'Equipe Alfa' },
@@ -87,12 +89,14 @@ describe('equipeSvoService.consultarDisponibilidade', () => {
         'whereRaw',
         'whereExists',
         'whereNotExists',
+        'whereNot',
       ]) {
         query[metodo] = (...argumentos: unknown[]) => {
           consultas.push({ tabela, metodo, argumentos });
           return query;
         };
       }
+      query.modify = (callback: (q: unknown) => void) => { callback(query); return query; };
 
       query.orderBy = vi.fn().mockResolvedValue([]);
       return query;
@@ -145,18 +149,12 @@ describe('equipeSvoService.consultarDisponibilidade', () => {
     expect(resultado.equipes).toHaveLength(1);
   });
 
-  it('rejeita início futuro, mesmo próximo do horário atual', async () => {
-    await expect(
-      equipeSvoService.consultarDisponibilidade({
-        inicio: '2026-11-13T08:00:01-03:00',
-        fim: '2026-11-13T08:00:30-03:00',
-      }),
-    ).rejects.toMatchObject({
-      statusCode: 400,
-      message: expect.stringMatching(/Período não suportado/i),
+  it('aceita início futuro e consulta a disponibilidade para o período', async () => {
+    const resultado = await equipeSvoService.consultarDisponibilidade({
+      inicio: '2026-11-13T08:00:01-03:00',
+      fim: '2026-11-13T08:00:30-03:00',
     });
-
-    expect(mockDb).not.toHaveBeenCalled();
+    expect(resultado.equipes).toHaveLength(1);
   });
 
   it('rejeita intervalo inteiramente no passado', async () => {
@@ -183,31 +181,20 @@ describe('equipeSvoService.consultarDisponibilidade', () => {
     expect(mockDb).not.toHaveBeenCalled();
   });
 
-  it('rejeita término distante do horário atual', async () => {
-    await expect(
-      equipeSvoService.consultarDisponibilidade({
-        inicio: '2026-11-13T08:00:00-03:00',
-        fim: '2026-11-13T09:00:00-03:00',
-      }),
-    ).rejects.toMatchObject({
-      statusCode: 400,
-      message: expect.stringMatching(/Período não suportado/i),
+  it('aceita período futuro de longa duração', async () => {
+    const resultado = await equipeSvoService.consultarDisponibilidade({
+      inicio: '2026-11-13T08:00:00-03:00',
+      fim: '2026-11-13T09:00:00-03:00',
     });
-
-    expect(mockDb).not.toHaveBeenCalled();
+    expect(resultado.equipes).toHaveLength(1);
   });
 
-  it('rejeita término acima do limite por um segundo', async () => {
-    await expect(
-      equipeSvoService.consultarDisponibilidade({
-        inicio: '2026-11-13T08:00:00-03:00',
-        fim: '2026-11-13T08:01:01-03:00',
-      }),
-    ).rejects.toMatchObject({
-      statusCode: 400,
+  it('aceita período futuro acima da janela imediata', async () => {
+    const resultado = await equipeSvoService.consultarDisponibilidade({
+      inicio: '2026-11-13T08:00:00-03:00',
+      fim: '2026-11-13T08:01:01-03:00',
     });
-
-    expect(mockDb).not.toHaveBeenCalled();
+    expect(resultado.equipes).toHaveLength(1);
   });
 
   it('rejeita início igual ao término', async () => {

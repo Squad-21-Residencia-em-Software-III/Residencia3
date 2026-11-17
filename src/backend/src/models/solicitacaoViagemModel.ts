@@ -11,6 +11,7 @@ export interface NovaSolicitacaoViagem {
   origem: string;
   destino: string;
   finalidade: string;
+  material_sensivel?: boolean;
   data_saida_desejada: string;
   data_chegada_desejada?: string | null;
 }

@@ -1,11 +1,6 @@
 /**
- * Partes do front da SCRUM-166 que dependem de entregas do backend ou do banco ainda não
- * integradas na develop.
- *
- * Com o recurso desligado, a tela usa só o que a API atual oferece e não envia campos que o
- * servidor ainda ignoraria (nada de sucesso falso). Quando o PR do back correspondente for
- * aprovado, basta mudar o valor para `true` aqui; o contrato esperado está em cada item e no
- * serviço indicado.
+ * Contratos da SCRUM-166. A implantação do frontend e do backend deve acompanhar a migration
+ * de estado da agenda revisada pela frente DB, conforme docs/scrum-166-contrato-backend.md.
  */
 export const RECURSOS_BACKEND = {
   /**
@@ -18,7 +13,7 @@ export const RECURSOS_BACKEND = {
    * SCRUM-179: `GET /viagens/minhas`, viagens administrativas das solicitações do próprio usuário
    * (Gestor SVO acompanha só as próprias). Serviço: `viagensApi.listarMinhasAdministrativas`.
    */
-  minhasViagensAdministrativas: false,
+  minhasViagensAdministrativas: true,
 
   /**
    * SCRUM-175 (banco) + SCRUM-181 (back): coluna `veiculos.lotacao_cabine` (pessoas na cabine,
@@ -31,13 +26,13 @@ export const RECURSOS_BACKEND = {
    * `fim_previsto`, bloqueio de sobreposição (409) e confirmação de intervalo menor que 20 min.
    * Serviço: `viagensApi.agendarColetaSvo`.
    */
-  agendamentoTemporalSvo: false,
+  agendamentoTemporalSvo: import.meta.env.VITE_AGENDA_SVO_ATIVA === 'true',
 
   /**
    * SCRUM-182: `GET /viagens/ordens-svo/pendentes`, ordens AGUARDANDO_ALOCACAO paginadas.
    * Desligado, a lista verifica o estado real da ordem no detalhe de cada solicitação confirmada. Serviço: `viagensApi.listarOrdensPendentesSvo`.
    */
-  ordensPendentesSvo: false,
+  ordensPendentesSvo: true,
 };
 
 export type RecursoBackend = keyof typeof RECURSOS_BACKEND;

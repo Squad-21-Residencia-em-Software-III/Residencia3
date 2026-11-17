@@ -17,4 +17,5 @@ export interface DisponibilidadeEquipesSvo {
 export interface PeriodoEquipesSvo {
   inicio: string;
   fim: string;
+  ignorar_ordem_id?: number;
 }

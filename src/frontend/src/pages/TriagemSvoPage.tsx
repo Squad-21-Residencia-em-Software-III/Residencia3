@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -183,11 +183,6 @@ export default function TriagemSvoPage() {
                       >
                         {s.local_ocorrencia}
                       </span>
-                      {s.material_sensivel && (
-                        <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
-                          <AlertTriangle size={12} /> Material sensível
-                        </span>
-                      )}
                     </td>
                     <td className="whitespace-nowrap">
                       <Badge tone={toneStatusSolicitacao(s.status)}>

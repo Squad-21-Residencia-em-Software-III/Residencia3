@@ -343,6 +343,7 @@ function SolicitacoesAdministrativas() {
                   </td>
                   <td>
                     <div className="text-[13px] font-medium text-slate-900">{s.destino}</div>
+                    {s.material_sensivel && <span className="text-xs font-semibold text-amber-700">Material sensível</span>}
                     <div className="text-[11px] text-slate-500">Origem: {s.origem}</div>
                   </td>
                   <td>
