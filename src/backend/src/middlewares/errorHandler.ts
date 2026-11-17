@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../errors/AppError';
+import { logFalha } from './logRequisicao';
 
 const VIOLACAO_UNIQUE_POSTGRES = '23505';
 // statement_timeout atingido: o PostgreSQL cancelou a consulta
@@ -17,8 +18,8 @@ function tempoEsgotadoNoBanco(err: object): string | undefined {
   return undefined;
 }
 
-export function rotaNaoEncontrada(req: Request, res: Response): void {
-  res.status(404).json({ erro: `Rota não encontrada: ${req.method} ${req.originalUrl}` });
+export function rotaNaoEncontrada(_req: Request, res: Response): void {
+  res.status(404).json({ erro: 'Rota não encontrada' });
 }
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
@@ -28,6 +29,11 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
 
   if (err instanceof AppError) {
+    if (err.statusCode >= 500) {
+      logFalha(res, 'ERRO_INTERNO');
+      res.status(err.statusCode).json({ erro: 'Erro interno do servidor' });
+      return;
+    }
     res.status(err.statusCode).json({
       erro: err.message,
       ...(err.codigo ? { codigo: err.codigo } : {}),
@@ -78,12 +84,11 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   const tempoEsgotado = typeof err === 'object' && err !== null ? tempoEsgotadoNoBanco(err) : undefined;
   if (tempoEsgotado) {
-    // Registra só o tipo do erro, sem SQL nem parâmetros
-    console.error('Tempo limite no banco de dados:', (err as Error).name, (err as { code?: string }).code ?? '');
+    logFalha(res, 'BANCO_TIMEOUT');
     res.set('Retry-After', '5').status(503).json({ erro: tempoEsgotado });
     return;
   }
 
-  console.error('Erro inesperado:', err);
+  logFalha(res, 'ERRO_INTERNO');
   res.status(500).json({ erro: 'Erro interno do servidor' });
 }

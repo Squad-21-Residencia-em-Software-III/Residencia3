@@ -124,12 +124,13 @@ describe('Auditoria de autenticação (RN18)', () => {
       const erroConsole = vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.mocked(usuarioModel.buscarPorEmailComSenha).mockResolvedValueOnce(usuario());
       vi.mocked(senhaService.comparar).mockResolvedValueOnce(false);
-      vi.mocked(auditoriaModel.registrar).mockRejectedValueOnce(new Error('banco indisponível'));
+      vi.mocked(auditoriaModel.registrar).mockRejectedValueOnce(new Error('SELECT senha secreta'));
 
       const erro = await capturarErro(authService.login(credenciais));
 
       expect(erro.statusCode).toBe(401);
       expect(erroConsole).toHaveBeenCalled();
+      expect(JSON.stringify(erroConsole.mock.calls)).not.toContain('SELECT senha secreta');
       erroConsole.mockRestore();
     });
   });
