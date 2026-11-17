@@ -95,7 +95,7 @@ export const VIAGENS_UNIFICADAS_SQL = `
     o.motorista_id,
     um.nome AS motorista_nome,
     o.equipe_id,
-    o.liberada_em,
+    (to_jsonb(o)->>'liberada_em')::timestamptz AS liberada_em,
     o.capacidade_utilizada,
     o.km_inicial,
     o.km_final,

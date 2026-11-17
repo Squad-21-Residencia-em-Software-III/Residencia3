@@ -47,6 +47,14 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return;
   }
 
+  // O banco pode ainda aguardar a migration da agenda; não expor SQL nem prometer operação parcial.
+  if (typeof err === 'object' && err !== null && 'code' in err && 'message' in err &&
+      ((err.code === '42703' && String(err.message).includes('liberada_em')) ||
+       (err.code === '42P01' && String(err.message).includes('alertas_atraso_svo')))) {
+    res.status(503).json({ erro: 'A agenda SVO ainda não está disponível: a estrutura do banco precisa ser atualizada pela equipe responsável.' });
+    return;
+  }
+
   if (typeof err === 'object' && err !== null && 'type' in err && err.type === 'entity.parse.failed') {
     res.status(400).json({ erro: 'JSON inválido no corpo da requisição' });
     return;

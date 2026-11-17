@@ -6,7 +6,7 @@ const { dbMock, consultas } = vi.hoisted(() => ({
   consultas: [] as Chamada[][],
 }));
 vi.mock('../config/database', () => ({ db: dbMock }));
-import { viagemModel } from '../models/viagemModel';
+import { viagemModel, VIAGENS_UNIFICADAS_SQL } from '../models/viagemModel';
 
 function consulta() {
   const chamadas: Chamada[] = [];
@@ -23,6 +23,10 @@ function consulta() {
 
 describe('consultas restritas de viagens', () => {
   beforeEach(() => { consultas.length = 0; dbMock.mockReset().mockImplementation(consulta); });
+
+  it('mantém a listagem compatível quando a coluna de liberação ainda não existe', () => {
+    expect(VIAGENS_UNIFICADAS_SQL).toContain("(to_jsonb(o)->>'liberada_em')::timestamptz AS liberada_em");
+  });
 
   it('aplica titularidade antes da paginação e também à contagem', async () => {
     await viagemModel.listarAdministrativasDoSolicitante(42, 3, 10);
