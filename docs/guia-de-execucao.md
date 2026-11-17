@@ -64,7 +64,7 @@ Com o Docker Desktop aberto, na raiz do projeto:
 docker compose up -d
 ```
 
-O banco sobe **vazio**. As tabelas são criadas pelas migrations (passo 4).
+Na primeira criação do volume `pgdata`, o banco começa vazio. As tabelas são criadas pelas migrations (passo 4). Se o volume já existir, o PostgreSQL reutiliza os dados nele armazenados.
 
 Para conferir as tabelas depois das migrations (use os valores do seu `.env`):
 
@@ -79,7 +79,7 @@ docker compose down
 ```
 
 > [!WARNING]
-> O banco não tem volume persistente. Se o container for removido (`docker compose down`), os dados são apagados e é preciso rodar `npm run migrate` de novo.
+> O Compose usa o volume nomeado `pgdata` para persistir os dados. `docker compose down` remove os contêineres, mas preserva esse volume. Remover o volume, inclusive com `docker compose down --volumes`, apaga os dados armazenados nele. Não use essa opção em um ambiente com dados que precisam ser preservados.
 
 ## 4. Rodar o back-end (API)
 Em outro terminal:
@@ -213,4 +213,4 @@ npm run build
 ## Problemas comuns
 - **`docker compose` não encontra o `.env`**: o arquivo precisa estar na **raiz** do projeto, não dentro de `src/backend`.
 - **Porta 5432 ou 3000 em uso**: pare o serviço que está usando a porta ou ajuste a porta.
-- **Erro de autenticação no banco depois de trocar a senha**: recrie o container com `docker compose down` e `docker compose up -d`, pois a senha é definida só na primeira criação.
+- **Erro de autenticação no banco depois de trocar a senha**: as variáveis de inicialização do PostgreSQL são aplicadas quando o diretório de dados é criado. Recriar apenas o contêiner preserva o volume e não altera a senha existente. Em ambiente compartilhado, solicite a alteração ao responsável pelo banco; em ambiente local, confira as credenciais já configuradas antes de tomar qualquer medida sobre os dados.
