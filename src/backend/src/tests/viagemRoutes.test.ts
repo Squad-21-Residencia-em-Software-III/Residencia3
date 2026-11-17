@@ -25,6 +25,8 @@ vi.mock('../services/viagemService', () => ({
     listar: vi.fn().mockResolvedValue([]),
     listarMinhasAdministrativas: vi.fn().mockResolvedValue({ dados: [], paginacao: { pagina: 1, limite: 20, total: 0, totalPaginas: 0 } }),
     listarOrdensPendentesSvo: vi.fn().mockResolvedValue({ dados: [], paginacao: { pagina: 1, limite: 20, total: 0, totalPaginas: 0 } }),
+    consultarAlertasSvo: vi.fn().mockResolvedValue([]),
+    reprogramarOrdemSvo: vi.fn().mockResolvedValue({ id: 9 }),
     criar: vi.fn().mockResolvedValue({ id: 1 }),
     iniciarViagem: vi.fn().mockResolvedValue({ id: 1 }),
     finalizarViagem: vi.fn().mockResolvedValue({ id: 1 }),
@@ -44,6 +46,38 @@ describe('Rotas de viagens', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     autenticarComo(PERFIS.GESTOR_FROTA);
+  });
+
+  it.each([PERFIS.GESTOR_FROTA, PERFIS.SOLICITANTE, PERFIS.MOTORISTA_SVO])(
+    'nega alertas e reprogramação SVO ao perfil %s', async (perfil) => {
+      autenticarComo(perfil);
+      const alertas = await request(app).get('/api/viagens/ordens-svo/alertas').set('Authorization', token);
+      const reagendar = await request(app).post('/api/viagens/ordens-svo/9/reprogramar').set('Authorization', token).send({});
+      expect(alertas.status).toBe(403);
+      expect(reagendar.status).toBe(403);
+      expect(viagemService.consultarAlertasSvo).not.toHaveBeenCalled();
+      expect(viagemService.reprogramarOrdemSvo).not.toHaveBeenCalled();
+    },
+  );
+
+  it('permite reprogramação SVO autenticada com período e impede dados administrativos', async () => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    const corpo = { tipo_operacao: 'SVO', solicitacao_id: 5, veiculo_id: 2, motorista_id: 3,
+      inicio_previsto: '2099-11-20T14:00:00Z', fim_previsto: '2099-11-20T16:00:00Z' };
+    const resultado = await request(app).post('/api/viagens/ordens-svo/9/reprogramar').set('Authorization', token).send(corpo);
+    expect(resultado.status).toBe(200);
+    expect(viagemService.reprogramarOrdemSvo).toHaveBeenCalledWith(9, expect.objectContaining(corpo), { id: 3, perfil: PERFIS.GESTOR_SVO });
+    const administrativo = await request(app).post('/api/viagens/ordens-svo/9/reprogramar').set('Authorization', token)
+      .send({ ...corpo, tipo_operacao: 'ADMINISTRATIVA' });
+    expect(administrativo.status).toBe(400);
+  });
+
+  it('não aceita agendamento SVO sem período', async () => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    const resposta = await request(app).post('/api/viagens').set('Authorization', token)
+      .send({ tipo_operacao: 'SVO', solicitacao_id: 1, veiculo_id: 2, motorista_id: 3 });
+    expect(resposta.status).toBe(400);
+    expect(viagemService.criar).not.toHaveBeenCalled();
   });
 
   it('consulta viagens próprias usando apenas a identidade autenticada', async () => {
@@ -182,6 +216,8 @@ describe('Rotas de viagens', () => {
         solicitacao_id: 1,
         veiculo_id: 2,
         motorista_id: 3,
+        inicio_previsto: '2099-11-20T14:00:00Z',
+        fim_previsto: '2099-11-20T16:00:00Z',
       });
 
     expect(resposta.status).toBe(200);

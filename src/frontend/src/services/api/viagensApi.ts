@@ -98,6 +98,7 @@ export const viagensApi = {
     inicio_previsto,
     fim_previsto,
     confirmar_intervalo_reduzido,
+    token_confirmacao,
     ...recursos
   }: AgendamentoColetaSvoInput) =>
     request<Viagem>('POST', '/viagens', {
@@ -105,10 +106,21 @@ export const viagensApi = {
         tipo_operacao: 'SVO',
         ...recursos,
         ...(recursoAtivo('agendamentoTemporalSvo')
-          ? { inicio_previsto, fim_previsto, confirmar_intervalo_reduzido }
+          ? { inicio_previsto, fim_previsto, confirmar_intervalo_reduzido, token_confirmacao }
           : {}),
       },
     }),
+
+  reprogramarColetaSvo: (id: number, dados: AgendamentoColetaSvoInput) =>
+    request<Viagem>('POST', `/viagens/ordens-svo/${id}/reprogramar`, {
+      body: { tipo_operacao: 'SVO', ...dados },
+    }),
+
+  listarAlertasSvo: () => todasAsPaginas((pagina) =>
+    request<Paginada<{ id: number; ordem_em_atraso_id: number; ordem_afetada_id: number;
+      inicio_previsto_afetada: string }>>('GET', '/viagens/ordens-svo/alertas', {
+      query: { pagina, limite: LIMITE_PAGINA },
+    })),
 
   iniciar: ({ id, tipo_operacao }: ReferenciaViagem, km_inicial: number) =>
     request<Viagem>('PATCH', `/viagens/${id}/iniciar`, { body: { tipo_operacao, km_inicial } }),

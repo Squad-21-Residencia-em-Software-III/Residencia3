@@ -17,6 +17,7 @@ import {
   type AgendamentoColetaSvoInput,
   type ConflitoIntervaloSvo,
   type OrdemPendenteSvo,
+  type Viagem,
 } from '../../types/viagem';
 import { motivoBloqueioSvo, OcupacaoVeiculoSvoPainel, rotuloOcupacao } from './OcupacaoVeiculoSvo';
 
@@ -27,6 +28,7 @@ interface ModalAgendarColetaSvoProps {
   onClose: () => void;
   /** Chamado só depois que a API confirma o agendamento. */
   onAgendada: () => Promise<void> | void;
+  viagemReprogramar?: Viagem;
 }
 
 const MOTORISTA_BLOQUEADO: StatusMotorista[] = ['AFASTADO', 'INATIVO'];
@@ -46,6 +48,13 @@ const horario = (iso: string) =>
 
 /** `datetime-local` (horário local do navegador) para ISO 8601 em UTC. */
 const paraIso = (valor: string) => new Date(valor).toISOString();
+const paraCampoLocal = (valor?: string | null) => {
+  if (!valor) return '';
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return '';
+  const local = new Date(data.getTime() - data.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
 
 function conflitosDoErro(error: ApiError): ConflitoIntervaloSvo[] {
   const contexto = error.contexto as { conflitos?: ConflitoIntervaloSvo[] } | undefined;
@@ -64,6 +73,7 @@ export function ModalAgendarColetaSvo({
   motoristas,
   onClose,
   onAgendada,
+  viagemReprogramar,
 }: ModalAgendarColetaSvoProps) {
   const comPeriodo = recursoAtivo('agendamentoTemporalSvo');
   const veiculosSvo = veiculos.filter((v) => v.tipo_frota === 'SVO' && v.status !== 'MANUTENCAO');
@@ -71,14 +81,14 @@ export function ModalAgendarColetaSvo({
     (m) => m.tipo_motorista === 'SVO' && !MOTORISTA_BLOQUEADO.includes(m.status),
   );
 
-  const [inicio, setInicio] = useState('');
-  const [fim, setFim] = useState('');
-  const [veiculoId, setVeiculoId] = useState(veiculosSvo[0] ? String(veiculosSvo[0].id) : '');
+  const [inicio, setInicio] = useState(() => paraCampoLocal(viagemReprogramar?.inicio_previsto));
+  const [fim, setFim] = useState(() => paraCampoLocal(viagemReprogramar?.fim_previsto));
+  const [veiculoId, setVeiculoId] = useState(viagemReprogramar ? String(viagemReprogramar.veiculo_id) : veiculosSvo[0] ? String(veiculosSvo[0].id) : '');
   const [motoristaId, setMotoristaId] = useState(
-    motoristasSvo[0] ? String(motoristasSvo[0].id) : '',
+    viagemReprogramar ? String(viagemReprogramar.motorista_id) : motoristasSvo[0] ? String(motoristasSvo[0].id) : '',
   );
   const [equipes, setEquipes] = useState<EquipeSvo[]>([]);
-  const [equipeId, setEquipeId] = useState('');
+  const [equipeId, setEquipeId] = useState(viagemReprogramar?.equipe_id ? String(viagemReprogramar.equipe_id) : '');
   const [erroEquipes, setErroEquipes] = useState<string | null>(null);
   const [carregandoEquipes, setCarregandoEquipes] = useState(false);
   const [ocupacoes, setOcupacoes] = useState<OcupacaoVeiculoSvo[]>([]);
@@ -88,6 +98,7 @@ export function ModalAgendarColetaSvo({
   // Pedido de segunda confirmação devolvido pelo servidor (intervalo menor que 20 min)
   const [conflitos, setConflitos] = useState<ConflitoIntervaloSvo[] | null>(null);
   const [ciente, setCiente] = useState(false);
+  const [tokenConfirmacao, setTokenConfirmacao] = useState<string | null>(null);
 
   useEffect(() => {
     let ativo = true;
@@ -102,29 +113,30 @@ export function ModalAgendarColetaSvo({
 
   useEffect(() => {
     let ativo = true;
-    setEquipeId('');
     setEquipes([]);
     setErroEquipes(null);
     if (comPeriodo && (!inicio || !fim || new Date(fim) <= new Date(inicio))) {
       setCarregandoEquipes(false);
       return () => { ativo = false; };
     }
-    const periodo = comPeriodo ? { inicio: paraIso(inicio), fim: paraIso(fim) } : periodoConsultaEquipes();
+    const periodo = comPeriodo ? { inicio: paraIso(inicio), fim: paraIso(fim),
+      ...(viagemReprogramar ? { ignorar_ordem_id: viagemReprogramar.id } : {}) } : periodoConsultaEquipes();
     setCarregandoEquipes(true);
     equipesSvoApi.listarDisponiveis(periodo)
       .then((resposta) => { if (ativo) setEquipes(resposta.equipes); })
       .catch((error) => { if (ativo) setErroEquipes(mensagemDeErro(error)); })
       .finally(() => { if (ativo) setCarregandoEquipes(false); });
     return () => { ativo = false; };
-  }, [comPeriodo, inicio, fim]);
+  }, [comPeriodo, inicio, fim, viagemReprogramar]);
 
   const ocupacaoDoVeiculo = ocupacoes.find((o) => String(o.id) === veiculoId);
-  const bloqueio = ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
+  const bloqueio = !comPeriodo && ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
 
   // Qualquer mudança invalida a confirmação anterior: o servidor precisa validar de novo
   const alterar = (setter: (valor: string) => void) => (valor: string) => {
     setter(valor);
     setConflitos(null);
+    setTokenConfirmacao(null);
     setCiente(false);
     setErro(null);
   };
@@ -147,12 +159,15 @@ export function ModalAgendarColetaSvo({
       solicitacao_id: ordem.solicitacao_id,
       veiculo_id: Number(veiculoId),
       motorista_id: Number(motoristaId),
+      ...(viagemReprogramar?.capacidade_utilizada
+        ? { capacidade_utilizada: viagemReprogramar.capacidade_utilizada } : {}),
       ...(equipeId ? { equipe_id: Number(equipeId) } : {}),
       ...(comPeriodo
         ? {
             inicio_previsto: paraIso(inicio),
             fim_previsto: paraIso(fim),
-            ...(confirmarIntervalo ? { confirmar_intervalo_reduzido: true } : {}),
+            ...(confirmarIntervalo && tokenConfirmacao
+              ? { confirmar_intervalo_reduzido: true, token_confirmacao: tokenConfirmacao } : {}),
           }
         : {}),
     };
@@ -160,18 +175,20 @@ export function ModalAgendarColetaSvo({
     setSalvando(true);
     setErro(null);
     try {
-      await viagensApi.agendarColetaSvo(dados);
+      if (viagemReprogramar) await viagensApi.reprogramarColetaSvo(viagemReprogramar.id, dados);
+      else await viagensApi.agendarColetaSvo(dados);
       await onAgendada();
       onClose();
     } catch (error) {
       setSalvando(false);
       if (
         comPeriodo &&
-        !confirmarIntervalo &&
         error instanceof ApiError &&
         error.codigo === CODIGO_CONFIRMAR_INTERVALO
       ) {
         setConflitos(conflitosDoErro(error));
+        const contexto = error.contexto as { token_confirmacao?: unknown } | undefined;
+        setTokenConfirmacao(typeof contexto?.token_confirmacao === 'string' ? contexto.token_confirmacao : null);
         setCiente(false);
         return;
       }
@@ -192,7 +209,7 @@ export function ModalAgendarColetaSvo({
   };
 
   return (
-    <Modal title="Agendar coleta SVO" onClose={salvando ? () => {} : onClose} maxWidth="600px">
+    <Modal title={viagemReprogramar ? 'Reagendar coleta SVO' : 'Agendar coleta SVO'} onClose={salvando ? () => {} : onClose} maxWidth="600px">
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
           <Alert tone="danger" className="mb-4">
@@ -324,13 +341,13 @@ export function ModalAgendarColetaSvo({
             <Button
               type="button"
               onClick={() => void enviar(true)}
-              disabled={!ciente || salvando}
+              disabled={!ciente || !tokenConfirmacao || salvando}
             >
               {salvando ? 'Agendando...' : 'Confirmar agendamento'}
             </Button>
           ) : (
             <Button type="submit" disabled={salvando || Boolean(bloqueio)}>
-              {salvando ? 'Agendando...' : 'Agendar coleta'}
+              {salvando ? 'Agendando...' : viagemReprogramar ? 'Reagendar coleta' : 'Agendar coleta'}
             </Button>
           )}
         </div>

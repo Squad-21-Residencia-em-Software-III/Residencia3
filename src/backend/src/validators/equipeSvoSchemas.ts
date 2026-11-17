@@ -7,6 +7,7 @@ export const consultarDisponibilidadeEquipesQuerySchema = z
   .object({
     inicio: dataComFuso,
     fim: dataComFuso,
+    ignorar_ordem_id: z.coerce.number().int().positive().optional(),
   })
   .strict()
   .refine(

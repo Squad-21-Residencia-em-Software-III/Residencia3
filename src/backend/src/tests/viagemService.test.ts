@@ -27,7 +27,7 @@ interface Estado {
 }
 
 const { mockDb, mockTrx, ref } = vi.hoisted(() => {
-  const trx = Object.assign(vi.fn(), { raw: vi.fn() });
+  const trx = Object.assign(vi.fn(), { raw: vi.fn(), fn: { now: () => new Date('2099-01-01T00:00:00Z') } });
 
   return {
     mockTrx: trx,
@@ -41,6 +41,7 @@ const { mockDb, mockTrx, ref } = vi.hoisted(() => {
 vi.mock('../config/database', () => ({
   db: mockDb,
 }));
+vi.mock('../services/filaSvoService', () => ({ reavaliarFilaSvo: vi.fn() }));
 
 vi.mock('../models/veiculoModel', () => ({
   veiculoModel: { atualizarStatus: vi.fn() },
@@ -130,6 +131,8 @@ function responder(
 
     case 'equipes_svo':
       return estado.equipe;
+    case 'escalas_svo':
+      return { id: 1 };
 
     case 'veiculos':
       return estado.veiculo;
@@ -198,6 +201,9 @@ function criarConsulta(tabela: string) {
     'where',
     'whereIn',
     'whereNot',
+    'orWhere',
+    'whereNull',
+    'orderBy',
     'whereRaw',
     'join',
     'select',
@@ -211,6 +217,8 @@ function criarConsulta(tabela: string) {
       return consulta;
     };
   }
+  consulta.modify = (callback: (q: unknown) => void) => { callback(consulta); return consulta; };
+  consulta.andWhere = (callback: (q: unknown) => void) => { callback(consulta); return consulta; };
 
   consulta.first = async () =>
     responder(tabela, chamadas, 'first');
@@ -573,6 +581,8 @@ describe('viagemService.criar (SVO)', () => {
     veiculo_id: 10,
     motorista_id: 20,
     equipe_id: 2,
+    inicio_previsto: '2099-11-20T14:00:00Z',
+    fim_previsto: '2099-11-20T16:00:00Z',
     capacidade_utilizada: 2,
   };
 
@@ -618,8 +628,7 @@ describe('viagemService.criar (SVO)', () => {
       viagemService.criar(dados, gestorSvo)
     ).rejects.toMatchObject({
       statusCode: 409,
-      message:
-        'O veículo não tem capacidade suficiente (vagas disponíveis: 1)',
+      codigo: 'CONFLITO_AGENDA',
     });
   });
 
@@ -633,7 +642,7 @@ describe('viagemService.criar (SVO)', () => {
       viagemService.criar({ ...dados, capacidade_utilizada: 1 }, gestorSvo)
     ).rejects.toMatchObject({
       statusCode: 409,
-      message: 'O veículo não tem capacidade suficiente (vagas disponíveis: 0)',
+      codigo: 'CONFLITO_AGENDA',
     });
     expect(ref.estado.inserts).toEqual([]);
     expect(auditoriaModel.registrar).not.toHaveBeenCalled();
@@ -668,7 +677,7 @@ describe('viagemService.criar (SVO)', () => {
   });
 
   it('deve rejeitar motorista alocado em outro veículo', async () => {
-    ref.estado.ordemEmOutroVeiculo = { id: 3 };
+    ref.estado.ordensDoVeiculo = [{ id: 3, motorista_id: 20, veiculo_id: 11, inicio_previsto: null }];
 
     await expect(
       viagemService.criar(dados, gestorSvo)
@@ -684,7 +693,7 @@ describe('viagemService.criar (SVO)', () => {
   });
 
   it('deve alocar a ordem existente com a capacidade informada sem criar outra', async () => {
-    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA' }];
+    ref.estado.ordensDoVeiculo = [];
 
     await expect(viagemService.criar(dados, gestorSvo)).resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
     expect(ref.estado.inserts).toEqual([]);

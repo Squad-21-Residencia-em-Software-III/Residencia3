@@ -13,7 +13,8 @@ const { mockDb, mockTrx, estado } = vi.hoisted(() => {
       consulta[metodo] = () => consulta;
     }
     consulta.first = async () => ({ id: 10 });
-    consulta.sum = async () => [{ ocupacao: estado.ocupacao }];
+    consulta.select = async () => estado.ocupacao == null ? [] :
+      [{ status: 'ALOCADA', inicio_previsto: null, fim_previsto: null, capacidade_utilizada: Number(estado.ocupacao) }];
     return consulta;
   });
 

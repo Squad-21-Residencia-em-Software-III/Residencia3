@@ -43,14 +43,10 @@ export const equipeSvoService = {
     const limiteInferior = agora.getTime() - JANELA_CONSULTA_IMEDIATA_MS;
     const limiteSuperior = agora.getTime() + JANELA_CONSULTA_IMEDIATA_MS;
 
-    if (
-      inicio.getTime() < limiteInferior ||
-      inicio.getTime() > agora.getTime() ||
-      fim.getTime() <= agora.getTime() ||
-      fim.getTime() > limiteSuperior
-    ) {
+    if (inicio.getTime() < limiteInferior || fim.getTime() <= agora.getTime() ||
+        (inicio.getTime() < agora.getTime() && fim.getTime() > limiteSuperior)) {
       throw criarErroPeriodoNaoSuportado(
-        'Período não suportado: a consulta de disponibilidade atende apenas à operação imediata.'
+        'Período não suportado: informe uma consulta atual ou futura.'
       );
     }
 
@@ -68,6 +64,8 @@ export const equipeSvoService = {
           .select(db.raw('1'))
           .whereRaw('o.equipe_id = e.id')
           .whereIn('o.status', ORDENS_OCUPANDO_EQUIPE)
+          .modify((q) => { if (filtros.ignorar_ordem_id) q.whereNot('o.id', filtros.ignorar_ordem_id); })
+          .whereRaw('(o.inicio_previsto IS NULL OR o.fim_previsto IS NULL OR (o.inicio_previsto < ? AND o.fim_previsto > ?))', [fim, inicio])
       )
       .orderBy('e.id', 'asc');
 

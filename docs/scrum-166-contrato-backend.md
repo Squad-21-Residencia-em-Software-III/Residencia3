@@ -1,10 +1,10 @@
 # SCRUM-166: o que o backend e o banco precisam entregar para o front
 
-Este documento descreve os contratos da SCRUM-166. As consultas de viagens próprias e ordens pendentes foram integradas nesta branch; a agenda temporal e o tratamento de atrasos permanecem pendentes.
+Este documento descreve os contratos da SCRUM-166: consultas próprias, ordens pendentes, agenda temporal, alertas e liberação de coletas.
 
-**Como ligar:** quando o PR do back de um item for aprovado, basta mudar o valor correspondente para `true`. Com o item desligado, a tela usa só a API atual e não envia campos que o servidor ignoraria.
+As integrações são controladas em `recursosBackend.ts`. O frontend temporal e o backend desta entrega devem ser implantados juntos, depois da migration de banco.
 
-Os contratos de agendamento descritos abaixo permanecem propostas até sua implementação e validação no servidor.
+Os contratos de agendamento descritos abaixo correspondem à implementação desta branch e exigem a migration de estado e alertas revisada pela frente DB.
 
 Matriz de acesso usada em todo o documento (HU SCRUM-166):
 
@@ -114,9 +114,9 @@ Há dois interruptores: `ordensPendentesSvo` (listagem) e `agendamentoTemporalSv
 
 ### 5.1 Listar ordens aguardando alocação
 
-**Hoje:**
+**Comportamento:**
 - `GET /viagens` exclui as ordens `AGUARDANDO_ALOCACAO` (`viagemModel`: `WHERE o.status <> 'AGUARDANDO_ALOCACAO'`).
-- Enquanto a SCRUM-182 não estiver integrada, o front consulta as solicitações confirmadas e verifica a ordem ativa em cada detalhe. Apenas ordens AGUARDANDO_ALOCACAO aparecem, com seu id real. Para limitar a carga, mais de 100 solicitações confirmadas geram uma mensagem de dependência da SCRUM-182; falhas de consulta não produzem uma lista parcial.
+- O front usa a listagem paginada definitiva. O caminho alternativo mantido no código verifica detalhes das solicitações confirmadas e apresenta erro explícito caso ultrapasse o limite de 100 ou uma consulta falhe.
 
 **O que o front chama:**
 
@@ -176,20 +176,27 @@ GET /api/viagens/ordens-svo/pendentes?pagina=1&limite=100
 | Perfil sem permissão | 403 | |
 
 **A segunda confirmação:**
-- Depois que o gestor marca a ciência, o front reenvia **o mesmo corpo** com `"confirmar_intervalo_reduzido": true`.
-- **Revalidar tudo sob lock** nesse momento. A flag só autoriza a folga curta, nunca uma sobreposição real. Um replay sem nova validação não pode passar.
+- O aviso devolve `contexto.token_confirmacao`. Depois da ciência do gestor, o front reenvia **o mesmo corpo** com `"confirmar_intervalo_reduzido": true` e o token recebido.
+- O token assinado vincula ator, ordem, recursos, horários e conflitos e expira em cinco minutos. O servidor reconsulta e revalida tudo sob lock. Um token de outro ator, expirado ou com reservas alteradas exige novo aviso. A confirmação nunca autoriza sobreposição.
 
 **Regras do agendamento (DVP e HU):**
 - **Intervalo:** usar intervalos `[inicio, fim)`.
 - **Recursos verificados:** veículo, motorista e equipe (se for informada), incluindo reservas futuras.
 - **Também validar:** CNH, veículo em manutenção e capacidade de corpos.
+- A ocupação operacional não soma reservas de períodos futuros; uma coleta em deslocamento continua ocupando o veículo mesmo após o término previsto. Ao reduzir a capacidade, o servidor considera o maior compromisso simultâneo dos períodos e a ocupação ativa, sob lock do veículo.
 - **Equipe:** opcional; só reservar o que for informado.
 - **Fuso:** o front envia ISO em UTC, a partir do horário local do navegador (America/Maceio).
 - **Auditoria:** registrar autor, horários e recursos da exceção de intervalo curto.
 
 ### 5.3 Atrasos e liberação da próxima coleta (SCRUM-183)
 
-O front desta entrega **não depende** da 183. Ela só muda o status que a listagem devolve. Quando houver um status novo, como "liberada para iniciar" ou "bloqueada por coleta em curso", avisar o front para incluir o rótulo e a cor.
+A migration `20261117120000_estado_e_alertas_agenda_svo.js` adiciona `ordens_svo.liberada_em` e `alertas_atraso_svo`. Deve ser revisada e aplicada pela frente DB **antes da implantação do backend**. Nenhuma migration deve ser aplicada diretamente em produção por esta entrega.
+
+Uma ordem temporal continua `ALOCADA` até a saída real. `liberada_em = null` significa que ainda não foi liberada para iniciar; uma data indica liberação. A fila é reavaliada na alocação, no reagendamento, no cancelamento, na consulta de alertas e na conclusão. A prioridade é `inicio_previsto`, depois ID; a liberação verifica veículo, motorista, CNH e equipe/escala quando indicada. Um recurso em `EM_DESLOCAMENTO` permanece ocupado até a conclusão efetiva. A liberação não altera quilometragem, horário de saída ou status para deslocamento.
+
+O lock transacional PostgreSQL da agenda serializa agendamentos e transições SVO; as linhas de veículo, motorista, equipe e escala são bloqueadas ao validar. Alertas de atraso são criados ou reabertos sem duplicidade durante a reavaliação, e resolvidos após conclusão ou reprogramação. A consulta autenticada e paginada é `GET /api/viagens/ordens-svo/alertas?pagina=1&limite=100`, acessível a Administrador e Gestor SVO associado. A resposta usa `{ dados, paginacao }`. O frontend consulta ao carregar a aba e mostra os alertas, sem polling contínuo.
+
+`POST /api/viagens/ordens-svo/:id/reprogramar` aceita o mesmo corpo SVO da alocação, exige a solicitação da própria ordem e somente aceita ordem `ALOCADA`. Usa os mesmos locks, verificações e confirmação de intervalo; registra autor, recursos e horários e reavalia a fila. Perfis sem gestão SVO recebem 403.
 
 ---
 
@@ -201,27 +208,26 @@ O front desta entrega **não depende** da 183. Ela só muda o status que a lista
 
 ### Consulta própria administrativa
 
-`GET /api/viagens/minhas?pagina=1&limite=20` é restrito a GESTOR_SVO associado. O servidor usa o ID do JWT no vínculo `viagens_frota.solicitacao_id → solicitacoes_viagem.solicitante_id`, antes de ordenar e paginar. A resposta contém `dados` e `paginacao` (pagina, limite, total, totalPaginas). O DTO reduzido não contém dados de motorista, veículo, custos ou quilometragem. Parâmetros desconhecidos são rejeitados. O frontend consome as páginas e mostra detalhes reduzidos. A consulta de solicitações próprias também restringe os campos para esse perfil. Falta comprovar isolamento e paginação em PostgreSQL de testes.
+`GET /api/viagens/minhas?pagina=1&limite=20` é restrito a GESTOR_SVO associado. O servidor usa o ID do JWT no vínculo `viagens_frota.solicitacao_id → solicitacoes_viagem.solicitante_id`, antes de ordenar e paginar. A resposta contém `dados` e `paginacao` (pagina, limite, total, totalPaginas). O DTO reduzido não contém dados de motorista, veículo, custos ou quilometragem. Parâmetros desconhecidos são rejeitados. O frontend consome as páginas e mostra detalhes reduzidos. A consulta de solicitações próprias também restringe os campos para esse perfil. O isolamento entre dois gestores e a tentativa de acesso por ID de terceiro foram verificados em PostgreSQL isolado.
 
 ### Listagem de ordens pendentes
 
-`GET /api/viagens/ordens-svo/pendentes?pagina=1&limite=20` é restrito a Administrador e Gestor SVO associado. Retorna ordens em `AGUARDANDO_ALOCACAO` ligadas a solicitações confirmadas, ordenadas por confirmação e ID, com identificadores distintos e recursos da ordem. O frontend consome as páginas. Falta verificar o contrato e a paginação em PostgreSQL isolado. O endpoint não implementa agendamento temporal.
+`GET /api/viagens/ordens-svo/pendentes?pagina=1&limite=20` é restrito a Administrador e Gestor SVO associado. Retorna ordens em `AGUARDANDO_ALOCACAO` ligadas a solicitações confirmadas, ordenadas por confirmação e ID, com identificadores distintos e recursos da ordem. O frontend consome as páginas. A confirmação idempotente e a paginação foram verificadas em PostgreSQL isolado. O agendamento usa a rota descrita no item 5.2.
 
-1. O PR do back e o do banco estão na `develop`, com testes.
-2. Rodar o cenário do item no ambiente de teste com o perfil indicado.
-3. Mudar o interruptor para `true` em `recursosBackend.ts` (PR de uma linha).
-4. Rodar `npx vitest run`. Os testes do front já cobrem os dois estados de cada interruptor.
+Antes da implantação, validar a migration pela frente DB, executar o cenário de cada perfil no ambiente de homologação e rodar os testes de backend e frontend. A alteração de interface e API deve seguir a migration na mesma entrega coordenada.
 
 ## 8. Estado da integração e roteiro de homologação
 
-Na base `efaad5af84ec0499dd0c6b53b3b4aee47485799f`, SCRUM-179, SCRUM-182 e SCRUM-183 permanecem abertas. Esta branch implementa as consultas próprias e de ordens pendentes e seus consumidores, ainda sem homologação com PostgreSQL. A migration de horários não comprova implementação transacional da agenda. O agendamento temporal continua desligado. Alterações de banco cabem à frente DB.
+Na base `efaad5af84ec0499dd0c6b53b3b4aee47485799f`, esta branch implementa consultas próprias, ordens pendentes, agenda temporal e fila de atrasos. A migration nova foi exercitada em PostgreSQL isolado, mas precisa de revisão e execução pela frente DB nos ambientes do projeto. A homologação autenticada no ambiente da equipe e a revisão independente de QA continuam necessárias.
 
 Para demonstrar em ambiente autorizado, registrar evidência, resultado observado e conclusão em cada passo:
 
 1. Administrador abre Solicitações, alterna as abas e usa um link direto. Esperado: Administrativo inicial, SVO autorizado, histórico e filtros independentes. Observado: pendente de homologação.
 2. Gestor SVO associado abre Solicitações e registra uma chamada interna. Esperado: SVO inicial, ID retornado e chamada em triagem; confirmação gera uma única ordem e recusa exige justificativa. Observado: pendente de homologação.
 3. Gestor de Frota e Solicitante tentam `?aba=svo` e `/triagem-svo`. Esperado: sem acesso à triagem; testar também 401/403 e IDs de terceiros na API. Observado: pendente de homologação.
-4. Gestor SVO acessa Administrativo e veículos. Esperado: apenas solicitações próprias, sem gestão administrativa e sem campos sensíveis; viagens próprias aguardam SCRUM-179. Observado: pendente de homologação.
-5. Após SCRUM-182/183, testar 0, 10, 19, 20 e 30 minutos, sobreposição, todos os recursos, concorrência e fuso America/Maceio; testar atraso, conclusão real e prioridade. Esperado: conflito bloqueado, exceção curta revalidada, recursos ocupados até conclusão e nenhuma saída fictícia. Observado: bloqueado pelas dependências.
+4. Gestor SVO acessa Administrativo e veículos. Esperado: apenas solicitações e viagens próprias, sem gestão administrativa e sem campos sensíveis. Observado: isolamento de dois usuários verificado no PostgreSQL isolado; homologação do ambiente da equipe pendente.
+5. Testar 0, 10, 19, 20 e 30 minutos, sobreposição, todos os recursos, concorrência e fuso America/Maceio; testar atraso, conclusão real e prioridade. Esperado: conflito bloqueado, exceção curta revalidada, recursos ocupados até conclusão e nenhuma saída fictícia. Observado: regras de intervalo em testes unitários; concorrência de reserva, 10/20 minutos, atraso e conclusão simultânea em PostgreSQL isolado.
+
+Para repetir a suíte de banco, crie e migre **somente** um banco descartável local chamado `fsph_scrum166_teste`, escutando em `127.0.0.1:55432`. Configure as variáveis `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, credenciais locais, `POSTGRES_SSL=false`, `JWT_SECRET` de teste e `SCRUM166_POSTGRES_TESTS=1`, depois execute `npx vitest run src/tests/agendaSvoPostgres.test.ts`. O teste verifica host, porta e nome do banco antes de inserir dados; não deve ser executado apontando para Neon ou banco compartilhado.
 
 Testes simulados não substituem testes autenticados de API, banco ou interface de homologação. Revisão independente de QA e aprovação de merge permanecem necessárias.

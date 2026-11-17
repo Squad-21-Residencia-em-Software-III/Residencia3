@@ -1,11 +1,6 @@
 /**
- * Partes do front da SCRUM-166 que dependem de entregas do backend ou do banco ainda não
- * integradas na develop.
- *
- * Com o recurso desligado, a tela usa só o que a API atual oferece e não envia campos que o
- * servidor ainda ignoraria (nada de sucesso falso). Quando o PR do back correspondente for
- * aprovado, basta mudar o valor para `true` aqui; o contrato esperado está em cada item e no
- * serviço indicado.
+ * Contratos da SCRUM-166. A implantação do frontend e do backend deve acompanhar a migration
+ * de estado da agenda revisada pela frente DB, conforme docs/scrum-166-contrato-backend.md.
  */
 export const RECURSOS_BACKEND = {
   /**
@@ -31,7 +26,7 @@ export const RECURSOS_BACKEND = {
    * `fim_previsto`, bloqueio de sobreposição (409) e confirmação de intervalo menor que 20 min.
    * Serviço: `viagensApi.agendarColetaSvo`.
    */
-  agendamentoTemporalSvo: false,
+  agendamentoTemporalSvo: true,
 
   /**
    * SCRUM-182: `GET /viagens/ordens-svo/pendentes`, ordens AGUARDANDO_ALOCACAO paginadas.

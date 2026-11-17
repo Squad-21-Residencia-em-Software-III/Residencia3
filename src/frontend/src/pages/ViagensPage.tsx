@@ -173,6 +173,9 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const [carregandoPendentes, setCarregandoPendentes] = useState(podeAlocarSvo);
   const [erroPendentes, setErroPendentes] = useState<string | null>(null);
   const [ordemAgendar, setOrdemAgendar] = useState<OrdemPendenteSvo | null>(null);
+  const [viagemReprogramar, setViagemReprogramar] = useState<Viagem | null>(null);
+  const [alertasSvo, setAlertasSvo] = useState<Awaited<ReturnType<typeof viagensApi.listarAlertasSvo>>>([]);
+  const [erroAlertas, setErroAlertas] = useState<string | null>(null);
   const [dadosAgendarColeta, setDadosAgendarColeta] = useState<DadosAgendarColeta | null>(null);
 
   useEffect(() => {
@@ -203,6 +206,14 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   };
 
   const carregarViagens = useCallback(async () => {
+    if (podeAlocarSvo) {
+      try {
+        setAlertasSvo(await viagensApi.listarAlertasSvo());
+        setErroAlertas(null);
+      } catch (error) {
+        setErroAlertas(mensagemDeErro(error));
+      }
+    }
     try {
       const lista = somenteProprias
         ? await viagensApi.listarMinhasAdministrativas()
@@ -215,7 +226,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
     } finally {
       setCarregando(false);
     }
-  }, [operacao, somenteProprias]);
+  }, [operacao, somenteProprias, podeAlocarSvo]);
 
   useEffect(() => {
     carregarViagens();
@@ -419,6 +430,13 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
 
   return (
     <div className="grid w-full min-w-0 gap-5">
+      {erroAlertas && <Alert tone="warning">Não foi possível atualizar os alertas SVO: {erroAlertas}</Alert>}
+      {alertasSvo.map((alerta) => (
+        <Alert key={alerta.id} tone="warning">
+          A coleta #{alerta.ordem_em_atraso_id} está atrasada e afeta a coleta #{alerta.ordem_afetada_id},
+          prevista para {formatarDataHora(alerta.inicio_previsto_afetada)}.
+        </Alert>
+      ))}
       {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
 
       {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
@@ -764,11 +782,24 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                         <Badge tone={obterBadgeToneStatus(v.status)}>
                           {LABELS_STATUS_VIAGEM[v.status]}
                         </Badge>
+                        {isSvo && v.status === 'AGENDADA' && v.inicio_previsto && (
+                          <span className="block text-xs text-slate-500">
+                            {v.liberada_em ? 'Liberada para saída' : 'Aguardando liberação'}
+                          </span>
+                        )}
                       </td>
                       <td className="text-right whitespace-nowrap">
                         <div className="inline-flex items-center justify-end gap-2">
                           {v.status === 'AGENDADA' && (
                             <>
+                              {podeAlocarSvo && (
+                                <Button variant="outline" size="sm" onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViagemReprogramar(v);
+                                  setOrdemAgendar({ ordem_id: v.id, solicitacao_id: v.solicitacao_id,
+                                    local_ocorrencia: v.destino ?? '', material_sensivel: false, confirmado_em: null });
+                                }}>Reagendar coleta</Button>
+                              )}
                               {podeExecutar && (
                                 <Button
                                   variant="primary"
@@ -851,9 +882,10 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       {dadosAgendarColeta && (
         <ModalAgendarColetaSvo
           ordem={dadosAgendarColeta.ordem}
+          viagemReprogramar={viagemReprogramar ?? undefined}
           veiculos={dadosAgendarColeta.veiculos}
           motoristas={dadosAgendarColeta.motoristas}
-          onClose={() => setOrdemAgendar(null)}
+          onClose={() => { setOrdemAgendar(null); setViagemReprogramar(null); }}
           onAgendada={handleColetaAgendada}
         />
       )}

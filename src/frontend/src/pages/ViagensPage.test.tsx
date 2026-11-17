@@ -15,7 +15,9 @@ vi.mock('../services/api/viagensApi', () => ({
     listar: vi.fn(),
     listarMinhasAdministrativas: vi.fn(),
     listarOrdensPendentesSvo: vi.fn(),
+    listarAlertasSvo: vi.fn(),
     agendarColetaSvo: vi.fn(),
+    reprogramarColetaSvo: vi.fn(),
     criar: vi.fn(),
     iniciar: vi.fn(),
     finalizar: vi.fn(),
@@ -69,6 +71,7 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessao.perfil = 'ADMINISTRADOR';
+    api.listarAlertasSvo.mockResolvedValue([]);
     // Viagem administrativa e ordem SVO com o mesmo id: cada uma só na sua aba
     api.listar.mockResolvedValue([
       viagem(7, 'ADMINISTRATIVA', 'Hospital de Lagarto'),
@@ -118,6 +121,16 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     expect(await screen.findByText('Hospital de Lagarto')).toBeInTheDocument();
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     expect(api.listarOrdensPendentesSvo).not.toHaveBeenCalled();
+  });
+
+  it('apresenta alertas de atraso e oferece reprogramação ao gestor SVO', async () => {
+    sessao.perfil = 'GESTOR_SVO';
+    api.listar.mockResolvedValue([viagem(7, 'SVO', 'Rua das Flores, 10')]);
+    api.listarAlertasSvo.mockResolvedValue([{ id: 1, ordem_em_atraso_id: 6, ordem_afetada_id: 7,
+      inicio_previsto_afetada: '2099-01-01T16:20:00Z' }]);
+    abrir();
+    expect(await screen.findByText(/coleta #6 está atrasada e afeta a coleta #7/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reagendar coleta' })).toBeInTheDocument();
   });
 
   it('Gestor SVO vê as coletas e as ordens pendentes, sem agendar viagem administrativa', async () => {

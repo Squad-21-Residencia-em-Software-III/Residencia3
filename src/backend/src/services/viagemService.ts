@@ -7,6 +7,8 @@ import { motoristaModel } from '../models/motoristaModel';
 import { veiculoModel } from '../models/veiculoModel';
 import { viagemModel, type ViagemDetalhada } from '../models/viagemModel';
 import type { CriarViagemInput, TipoOperacao } from '../validators/viagemSchemas';
+import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
+import { reavaliarFilaSvo } from './filaSvoService';
 import {
   periodoDaSolicitacao,
   STATUS_MOTORISTA_BLOQUEADO,
@@ -69,8 +71,6 @@ async function atualizarSolicitacao(
       .update(limparConfirmacao ? { status, confirmado_por: null, confirmado_em: null } : { status });
   }
 }
-
-const ORDENS_SVO_ALOCADAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
 
 // Tipos de operação que cada perfil pode consultar e gerenciar
 export const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacao[]>> = {
@@ -261,18 +261,19 @@ async function criarViagemFrota(trx: Knex.Transaction, dados: CriarViagemFrotaIn
   return viagem.id as number;
 }
 
-async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput) {
+async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput, autorId: number, ordemReprogramada?: number) {
   // 1. Valida a solicitação SVO
   const solicitacao = await trx('solicitacoes_svo').where({ id: dados.solicitacao_id }).forUpdate().first();
   if (!solicitacao) {
     throw new AppError('Solicitação SVO não encontrada', 404);
   }
-  if (solicitacao.status !== 'CONFIRMADA') {
+  if (solicitacao.status !== (ordemReprogramada ? 'EM_ANDAMENTO' : 'CONFIRMADA')) {
     throw new AppError('A solicitação SVO deve estar confirmada antes da alocação', 409);
   }
   const ordemPendente = await trx('ordens_svo')
     .where({ solicitacao_id: dados.solicitacao_id })
-    .where({ status: 'AGUARDANDO_ALOCACAO' })
+    .where({ status: ordemReprogramada ? 'ALOCADA' : 'AGUARDANDO_ALOCACAO' })
+    .modify((q) => { if (ordemReprogramada) q.where('id', ordemReprogramada); })
     .forUpdate()
     .first('id');
   if (!ordemPendente) {
@@ -284,21 +285,9 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput)
   if (veiculo.tipo_frota !== 'SVO') {
     throw new AppError('O veículo não pertence à frota SVO', 400);
   }
-  const ordensDoVeiculo: { motorista_id: number; capacidade_utilizada: number; status: string }[] =
-    await trx('ordens_svo')
-      .where({ veiculo_id: dados.veiculo_id })
-      .whereIn('status', ORDENS_SVO_ALOCADAS)
-      .select('motorista_id', 'capacidade_utilizada', 'status');
-  if (ordensDoVeiculo.some((ordem) => ordem.status === 'EM_DESLOCAMENTO')) {
-    throw new AppError('O veículo está em deslocamento', 409);
-  }
-  if (ordensDoVeiculo.some((ordem) => ordem.motorista_id !== dados.motorista_id)) {
-    throw new AppError('O veículo já está alocado a outro motorista', 409);
-  }
-  const vagas =
-    veiculo.capacidade_maxima - ordensDoVeiculo.reduce((total, ordem) => total + ordem.capacidade_utilizada, 0);
-  if (dados.capacidade_utilizada > vagas) {
-    throw new AppError(`O veículo não tem capacidade suficiente (vagas disponíveis: ${Math.max(vagas, 0)})`, 409);
+  if (!Number.isInteger(dados.capacidade_utilizada) || dados.capacidade_utilizada < 1 ||
+      dados.capacidade_utilizada > 4 || dados.capacidade_utilizada > veiculo.capacidade_maxima) {
+    throw new AppError('O veículo não tem capacidade suficiente', 409);
   }
 
   // 3. Valida motorista
@@ -306,24 +295,32 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput)
   if (motorista.tipo_motorista !== 'SVO') {
     throw new AppError('O motorista não pertence ao SVO', 400);
   }
-  // A ordem SVO é atendida no mesmo dia: a CNH precisa estar válida hoje
-  await garantirCnhValida(trx, dados.motorista_id, ultimoDiaDaSolicitacao({ data_saida_desejada: new Date() }));
-  const ordemEmOutroVeiculo = await trx('ordens_svo')
-    .where({ motorista_id: dados.motorista_id })
-    .whereIn('status', ORDENS_SVO_ALOCADAS)
-    .whereNot({ veiculo_id: dados.veiculo_id })
-    .first('id');
-  if (ordemEmOutroVeiculo) {
-    throw new AppError('O motorista já está alocado em outro veículo', 409);
-  }
+  const inicio = new Date(dados.inicio_previsto);
+  const fim = new Date(dados.fim_previsto);
+  await garantirCnhValida(trx, dados.motorista_id, ultimoDiaDaSolicitacao({
+    data_saida_desejada: inicio, data_chegada_desejada: fim,
+  }));
 
   // 4. Valida a equipe, se informada
   if (dados.equipe_id) {
-    const equipe = await trx('equipes_svo').where({ id: dados.equipe_id }).first('id');
+    const equipe = await trx('equipes_svo').where({ id: dados.equipe_id }).forUpdate().first('id');
     if (!equipe) {
       throw new AppError('Equipe SVO não encontrada', 404);
     }
+    const escala = await trx('escalas_svo').where({ equipe_id: dados.equipe_id })
+      .where('data_inicio', '<=', inicio).where('data_fim', '>=', fim).forUpdate().first('id');
+    if (!escala) throw new AppError('Equipe sem escala para todo o período', 409);
   }
+
+  const conflitoAdministrativo = await viagensConflitantes(trx, inicio, fim)
+    .andWhere((q) => q.where('vf.veiculo_id', dados.veiculo_id).orWhere('vf.motorista_id', dados.motorista_id))
+    .first('vf.id');
+  if (conflitoAdministrativo) throw new AppError('Um recurso já está reservado no período solicitado', 409, 'CONFLITO_AGENDA');
+  const conflitos = await validarAgendaSvo(trx, {
+    ordemId: ordemPendente.id, autorId, veiculoId: dados.veiculo_id,
+    motoristaId: dados.motorista_id, equipeId: dados.equipe_id, inicio, fim,
+    confirmar: dados.confirmar_intervalo_reduzido, token: dados.token_confirmacao,
+  });
 
   // 5. Aloca a ordem gerada na confirmação, preservando seu identificador.
   await trx('ordens_svo')
@@ -333,9 +330,18 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput)
       motorista_id: dados.motorista_id,
       equipe_id: dados.equipe_id ?? null,
       capacidade_utilizada: dados.capacidade_utilizada,
+      inicio_previsto: inicio,
+      fim_previsto: fim,
+      liberada_em: null,
       status: 'ALOCADA',
     });
 
+  if (conflitos.length) {
+    await registrarAuditoria(trx, autorId, `CONFIRMOU_INTERVALO_SVO ordem=${ordemPendente.id} inicio=${inicio.toISOString()} fim=${fim.toISOString()}`);
+    for (const conflito of conflitos) {
+      await registrarAuditoria(trx, autorId, `INTERVALO_SVO ordem=${ordemPendente.id} recurso=${conflito.recurso}${conflito.descricao} reserva=${conflito.ordem_id} inicio=${conflito.inicio} fim=${conflito.fim} minutos=${conflito.intervalo_minutos}`);
+    }
+  }
   return ordemPendente.id as number;
 }
 
@@ -367,6 +373,45 @@ async function detalhar(trx: Knex.Transaction, tipo: TipoOperacao, id: number): 
 }
 
 export const viagemService = {
+  async reprogramarOrdemSvo(id: number, dados: AlocarOrdemSvoInput, autor: Autor) {
+    garantirAcesso(autor.perfil, 'SVO');
+    return db.transaction(async (trx) => {
+      await travarAgendaSvo(trx);
+      const anterior = await buscarParaAtualizar(trx, 'SVO', id);
+      if (anterior.status !== 'ALOCADA') throw new AppError('Apenas coletas agendadas podem ser reprogramadas', 409);
+      if (dados.solicitacao_id !== anterior.solicitacao_id) throw new AppError('Solicitação não corresponde à ordem', 409);
+      await alocarOrdemSvo(trx, dados, autor.id, id);
+      await trx('alertas_atraso_svo').where({ ordem_afetada_id: id }).whereNull('resolvido_em')
+        .update({ resolvido_em: trx.fn.now() });
+      await sincronizarStatus(trx, anterior.veiculo_id, anterior.motorista_id);
+      await sincronizarStatus(trx, dados.veiculo_id, dados.motorista_id);
+      await reavaliarFilaSvo(trx, autor.id);
+      await registrarAuditoria(trx, autor.id,
+        `REPROGRAMOU_SVO id=${id} inicio=${dados.inicio_previsto} fim=${dados.fim_previsto} veiculo=${dados.veiculo_id} motorista=${dados.motorista_id} equipe=${dados.equipe_id ?? 'nenhuma'}`);
+      return detalhar(trx, 'SVO', id);
+    });
+  },
+  async consultarAlertasSvo(autor: Autor, pagina: number, limite: number) {
+    garantirAcesso(autor.perfil, 'SVO');
+    return db.transaction(async (trx) => {
+      await travarAgendaSvo(trx);
+      await reavaliarFilaSvo(trx, autor.id);
+      const consulta = () => trx('alertas_atraso_svo as a')
+        .join('ordens_svo as anterior', 'anterior.id', 'a.ordem_em_atraso_id')
+        .join('ordens_svo as afetada', 'afetada.id', 'a.ordem_afetada_id')
+        .whereNull('a.resolvido_em');
+      const [dados, contagem] = await Promise.all([
+        consulta()
+        .select('a.id', 'a.ordem_em_atraso_id', 'a.ordem_afetada_id', 'a.criado_em',
+          'anterior.fim_previsto as fim_previsto_anterior', 'afetada.inicio_previsto as inicio_previsto_afetada')
+        .orderBy('afetada.inicio_previsto').orderBy('afetada.id').orderBy('a.id')
+        .limit(limite).offset((pagina - 1) * limite),
+        consulta().count<{ total: string }[]>({ total: 'a.id' }).first(),
+      ]);
+      const total = Number(contagem?.total ?? 0);
+      return { dados, paginacao: { pagina, limite, total, totalPaginas: Math.ceil(total / limite) } };
+    });
+  },
   async listarOrdensPendentesSvo(autor: Autor, pagina: number, limite: number) {
     garantirAcesso(autor.perfil, 'SVO');
     return viagemModel.listarOrdensPendentesSvo(pagina, limite);
@@ -395,7 +440,9 @@ export const viagemService = {
 
     return db.transaction(async (trx) => {
       const id =
-        dados.tipo_operacao === 'SVO' ? await alocarOrdemSvo(trx, dados) : await criarViagemFrota(trx, dados);
+        dados.tipo_operacao === 'SVO'
+          ? (await travarAgendaSvo(trx), await alocarOrdemSvo(trx, dados, autor.id))
+          : await criarViagemFrota(trx, dados);
 
       // Veículo → RESERVADO e motorista → DESIGNADO
       await sincronizarStatus(trx, dados.veiculo_id, dados.motorista_id);
@@ -405,6 +452,7 @@ export const viagemService = {
         dados.solicitacao_id,
         OPERACOES[dados.tipo_operacao].solicitacaoAtendida
       );
+      if (dados.tipo_operacao === 'SVO') await reavaliarFilaSvo(trx, autor.id);
 
       await registrarAuditoria(
         trx,
@@ -420,10 +468,17 @@ export const viagemService = {
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
+      if (tipo === 'SVO') {
+        await travarAgendaSvo(trx);
+        await reavaliarFilaSvo(trx, autor.id);
+      }
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
       if (viagem.status !== operacao.agendada) {
         throw new AppError('Apenas viagens agendadas podem ser iniciadas', 400);
+      }
+      if (tipo === 'SVO' && viagem.inicio_previsto && !viagem.liberada_em) {
+        throw new AppError('Coleta ainda não liberada: verifique prioridade e disponibilidade dos recursos', 409);
       }
 
       // A saída só pode ser registrada com destino definido (BL18), independentemente da interface
@@ -478,6 +533,7 @@ export const viagemService = {
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
+      if (tipo === 'SVO') await travarAgendaSvo(trx);
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
       if (viagem.status !== operacao.emAndamento) {
@@ -509,6 +565,11 @@ export const viagemService = {
       // Veículo e motorista voltam para DISPONIVEL (ou RESERVADO/DESIGNADO, se houver outra viagem agendada)
       await sincronizarStatus(trx, viagem.veiculo_id, viagem.motorista_id);
       await atualizarSolicitacao(trx, tipo, viagem.solicitacao_id, operacao.solicitacaoConcluida);
+      if (tipo === 'SVO') {
+        await trx('alertas_atraso_svo').where({ ordem_em_atraso_id: viagemId })
+          .whereNull('resolvido_em').update({ resolvido_em: trx.fn.now() });
+        await reavaliarFilaSvo(trx, autor.id);
+      }
 
       await registrarAuditoria(trx, autor.id, `FINALIZOU_VIAGEM tipo=${tipo} id=${viagemId} km_final=${kmFinal}`);
 
@@ -522,6 +583,7 @@ export const viagemService = {
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
+      if (tipo === 'SVO') await travarAgendaSvo(trx);
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       // Ordem SVO confirmada e ainda sem recursos (BL27) também pode ser cancelada,
       // senão a solicitação ficaria presa em CONFIRMADA
@@ -548,6 +610,11 @@ export const viagemService = {
         viagem.solicitacao_id,
         cancelarSolicitacao ? 'CANCELADA' : operacao.solicitacaoReaberta
       );
+      if (tipo === 'SVO') {
+        await trx('alertas_atraso_svo').where({ ordem_afetada_id: viagemId })
+          .whereNull('resolvido_em').update({ resolvido_em: trx.fn.now() });
+        await reavaliarFilaSvo(trx, autor.id);
+      }
 
       await registrarAuditoria(
         trx,

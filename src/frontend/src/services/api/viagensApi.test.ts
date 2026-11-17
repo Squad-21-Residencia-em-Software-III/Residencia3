@@ -38,6 +38,18 @@ describe('viagensApi (SCRUM-171/172)', () => {
     await expect(viagensApi.listarMinhasAdministrativas()).rejects.toThrow('Falha na segunda página');
   });
 
+  it('envia reprogramação para a ordem específica com o desafio recebido', async () => {
+    req.mockResolvedValue({});
+    await viagensApi.reprogramarColetaSvo(9, {
+      solicitacao_id: 31, veiculo_id: 2, motorista_id: 5,
+      inicio_previsto: '2099-01-01T16:10:00Z', fim_previsto: '2099-01-01T17:10:00Z',
+      confirmar_intervalo_reduzido: true, token_confirmacao: 'desafio',
+    });
+    expect(req).toHaveBeenCalledWith('POST', '/viagens/ordens-svo/9/reprogramar', {
+      body: expect.objectContaining({ tipo_operacao: 'SVO', confirmar_intervalo_reduzido: true, token_confirmacao: 'desafio' }),
+    });
+  });
+
   it('sem o agendamento temporal, não envia campos que o servidor ignoraria', async () => {
     req.mockResolvedValue({});
     await viagensApi.agendarColetaSvo({

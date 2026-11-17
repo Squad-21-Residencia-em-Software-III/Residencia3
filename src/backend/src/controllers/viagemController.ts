@@ -16,6 +16,19 @@ const paginacaoSchema = z.object({
 }).strict();
 
 export const viagemController = {
+  async reprogramarOrdemSvo(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    const dados = criarViagemSchema.parse(req.body);
+    if (dados.tipo_operacao !== 'SVO') {
+      res.status(400).json({ erro: 'Apenas coletas SVO podem ser reprogramadas nesta rota' });
+      return;
+    }
+    res.json(await viagemService.reprogramarOrdemSvo(id, dados, usuarioAutenticado(req)));
+  },
+  async consultarAlertasSvo(req: Request, res: Response): Promise<void> {
+    const { pagina, limite } = paginacaoSchema.parse(req.query);
+    res.json(await viagemService.consultarAlertasSvo(usuarioAutenticado(req), pagina, limite));
+  },
   async listarOrdensPendentesSvo(req: Request, res: Response): Promise<void> {
     const { pagina, limite } = paginacaoSchema.parse(req.query);
     res.json(await viagemService.listarOrdensPendentesSvo(usuarioAutenticado(req), pagina, limite));

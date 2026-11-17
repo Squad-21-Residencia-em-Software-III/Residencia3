@@ -15,14 +15,33 @@ import type { CriarVeiculoInput, AtualizarVeiculoInput } from '../validators/vei
 // Ordens SVO que ocupam vagas no veículo
 const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
 
-// Soma das vagas ocupadas pelas ordens SVO ativas do veículo
+// Maior compromisso simultâneo. Ordens temporais consecutivas não somam vagas entre si.
 async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<number> {
-  const [linha] = await trx('ordens_svo')
+  const ordens: { status: string; inicio_previsto: Date | null; fim_previsto: Date | null; capacidade_utilizada: number }[] =
+    await trx('ordens_svo')
     .where({ veiculo_id: veiculoId })
     .whereIn('status', ORDENS_SVO_ATIVAS)
-    .sum<{ ocupacao: string | number | null }[]>({ ocupacao: 'capacidade_utilizada' });
-
-  return Number(linha?.ocupacao ?? 0);
+    .select('status', 'inicio_previsto', 'fim_previsto', 'capacidade_utilizada');
+  let ocupacaoAtual = 0;
+  const eventos: { instante: number; variacao: number }[] = [];
+  for (const ordem of ordens) {
+    const inicio = ordem.inicio_previsto && new Date(ordem.inicio_previsto).getTime();
+    const fim = ordem.fim_previsto && new Date(ordem.fim_previsto).getTime();
+    if (ordem.status === 'EM_DESLOCAMENTO' || inicio == null || fim == null || !Number.isFinite(inicio) || !Number.isFinite(fim)) {
+      ocupacaoAtual += Number(ordem.capacidade_utilizada);
+    } else {
+      eventos.push({ instante: inicio, variacao: Number(ordem.capacidade_utilizada) });
+      eventos.push({ instante: fim, variacao: -Number(ordem.capacidade_utilizada) });
+    }
+  }
+  eventos.sort((a, b) => a.instante - b.instante || a.variacao - b.variacao);
+  let acumulado = 0;
+  let maximo = ocupacaoAtual;
+  for (const evento of eventos) {
+    acumulado += evento.variacao;
+    maximo = Math.max(maximo, acumulado);
+  }
+  return maximo;
 }
 
 export const veiculoService = {

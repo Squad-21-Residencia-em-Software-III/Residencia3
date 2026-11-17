@@ -33,6 +33,9 @@ export interface ViagemDetalhada {
   veiculo_placa: string;
   motorista_id: number;
   motorista_nome: string;
+  equipe_id: number | null;
+  liberada_em: Date | null;
+  capacidade_utilizada: number | null;
   km_inicial: number | null;
   km_final: number | null;
   data_hora_efetiva_saida: Date | null;
@@ -58,6 +61,9 @@ export const VIAGENS_UNIFICADAS_SQL = `
     v.placa AS veiculo_placa,
     vf.motorista_id,
     um.nome AS motorista_nome,
+    NULL::integer AS equipe_id,
+    NULL::timestamptz AS liberada_em,
+    NULL::integer AS capacidade_utilizada,
     vf.km_inicial,
     vf.km_final,
     vf.data_hora_efetiva_saida,
@@ -81,13 +87,16 @@ export const VIAGENS_UNIFICADAS_SQL = `
     ss.local_ocorrencia AS destino,
     NULL AS finalidade,
     ur.nome AS solicitante_nome,
-    o.data_hora_chamado AS inicio_previsto,
-    NULL AS fim_previsto,
+    o.inicio_previsto,
+    o.fim_previsto,
     o.veiculo_id,
     v.modelo AS veiculo_modelo,
     v.placa AS veiculo_placa,
     o.motorista_id,
     um.nome AS motorista_nome,
+    o.equipe_id,
+    o.liberada_em,
+    o.capacidade_utilizada,
     o.km_inicial,
     o.km_final,
     o.data_hora_saida AS data_hora_efetiva_saida,
@@ -164,6 +173,9 @@ export const viagemModel = {
         'veiculo_placa',
         'motorista_id',
         'motorista_nome',
+        'equipe_id',
+        'liberada_em',
+        'capacidade_utilizada',
         'km_inicial',
         'km_final',
         'data_hora_efetiva_saida',
@@ -209,6 +221,9 @@ export const viagemModel = {
         'veiculo_placa',
         'motorista_id',
         'motorista_nome',
+        'equipe_id',
+        'liberada_em',
+        'capacidade_utilizada',
         'km_inicial',
         'km_final',
         'data_hora_efetiva_saida',
