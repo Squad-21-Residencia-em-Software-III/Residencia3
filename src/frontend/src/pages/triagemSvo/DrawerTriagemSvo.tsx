@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CalendarClock, CheckCircle2 } from 'lucide-react';
+import { CalendarClock, CheckCircle2 } from 'lucide-react';
 import { Alert, Badge, Button, ConfirmDialog, Drawer, IdBadge, Textarea } from '../../components/ui';
 import { recursoAtivo } from '../../config/recursosBackend';
 import { solicitacoesSvoApi } from '../../services/api/solicitacoesSvoApi';
@@ -252,15 +252,6 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                   <Campo rotulo="Observações">{detalhe.observacoes}</Campo>
                 </div>
               )}
-              <Campo rotulo="Material sensível">
-                {detalhe.material_sensivel ? (
-                  <span className="inline-flex items-center gap-1.5 font-semibold text-amber-700">
-                    <AlertTriangle size={14} /> Sim, exige protocolo específico
-                  </span>
-                ) : (
-                  'Não'
-                )}
-              </Campo>
               <Campo rotulo="Registrada por">{usuario(detalhe.registrante_id)}</Campo>
               {detalhe.status === 'RECUSADA' && detalhe.motivo_recusa && (
                 <div className="sm:col-span-2">

@@ -44,6 +44,9 @@ export function SeletorEquipeSvo({ equipes, carregando, erro, valor, onChange }:
         onChange={(e: ChangeEvent<HTMLSelectElement>) => onChange(e.target.value)}
       >
         <option value="">Sem equipe definida</option>
+        {valor && !equipes.some((equipe) => String(equipe.id) === valor) && (
+          <option value={valor} disabled>Equipe selecionada indisponível para este período</option>
+        )}
         {equipes.map((equipe) => (
           <option key={equipe.id} value={equipe.id}>
             {equipe.nome_equipe}

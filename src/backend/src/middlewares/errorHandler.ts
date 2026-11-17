@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../errors/AppError';
-import { sanitizeData } from '../utils/sanitizer';
+import { logFalha } from './logRequisicao';
 
 const VIOLACAO_UNIQUE_POSTGRES = '23505';
 // statement_timeout atingido: o PostgreSQL cancelou a consulta
@@ -18,25 +18,27 @@ function tempoEsgotadoNoBanco(err: object): string | undefined {
   return undefined;
 }
 
-function sanitizarTextoErro(texto: string): string {
-  return texto
-    .replace(/(senha|password|token|authorization|secret|cpf|cartao|credencial)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
-}
-
 export function rotaNaoEncontrada(_req: Request, res: Response): void {
   res.status(404).json({ erro: 'Rota não encontrada' });
 }
 
-export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
+export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   // A resposta já foi enviada (ex.: tempo limite da requisição); não há o que responder
   if (res.headersSent) {
     return;
   }
 
-  const requestId = (req.headers['x-request-id'] as string) || 'N/A';
-
   if (err instanceof AppError) {
-    res.status(err.statusCode).json({ erro: err.message });
+    if (err.statusCode >= 500) {
+      logFalha(res, 'ERRO_INTERNO');
+      res.status(err.statusCode).json({ erro: 'Erro interno do servidor' });
+      return;
+    }
+    res.status(err.statusCode).json({
+      erro: err.message,
+      ...(err.codigo ? { codigo: err.codigo } : {}),
+      ...(err.contexto === undefined ? {} : { contexto: err.contexto }),
+    });
     return;
   }
 
@@ -48,6 +50,19 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
         mensagem: issue.message,
       })),
     });
+    return;
+  }
+
+  // O banco pode ainda aguardar a migration da agenda; não expor SQL nem prometer operação parcial.
+  if (typeof err === 'object' && err !== null && 'code' in err && err.code === '42703' &&
+      'message' in err && String(err.message).includes('material_sensivel')) {
+    res.status(503).json({ erro: 'O registro de material sensível ainda não está disponível: o banco precisa ser atualizado.' });
+    return;
+  }
+  if (typeof err === 'object' && err !== null && 'code' in err && 'message' in err &&
+      ((err.code === '42703' && String(err.message).includes('liberada_em')) ||
+       (err.code === '42P01' && String(err.message).includes('alertas_atraso_svo')))) {
+    res.status(503).json({ erro: 'A agenda SVO ainda não está disponível: a estrutura do banco precisa ser atualizada pela equipe responsável.' });
     return;
   }
 
@@ -69,39 +84,11 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
 
   const tempoEsgotado = typeof err === 'object' && err !== null ? tempoEsgotadoNoBanco(err) : undefined;
   if (tempoEsgotado) {
-    console.error(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        requestId,
-        level: 'ERROR',
-        method: req.method,
-        path: req.path,
-        statusCode: 503,
-        errorName: (err as Error).name,
-        errorCode: (err as { code?: string }).code ?? '',
-        message: tempoEsgotado,
-      })
-    );
+    logFalha(res, 'BANCO_TIMEOUT');
     res.set('Retry-After', '5').status(503).json({ erro: tempoEsgotado });
     return;
   }
 
-  const mensagemOriginal = err instanceof Error ? err.message : String(err);
-  const stackOriginal = err instanceof Error ? err.stack : undefined;
-
-  console.error(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      requestId,
-      level: 'ERROR',
-      method: req.method,
-      path: req.path,
-      statusCode: 500,
-      message: sanitizarTextoErro(mensagemOriginal),
-      body: sanitizeData(req.body),
-      stack: process.env.NODE_ENV === 'production' ? '[REDACTED]' : stackOriginal ? sanitizarTextoErro(stackOriginal) : undefined,
-    })
-  );
-
+  logFalha(res, 'ERRO_INTERNO');
   res.status(500).json({ erro: 'Erro interno do servidor' });
 }

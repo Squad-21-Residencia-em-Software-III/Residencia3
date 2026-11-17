@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { CloseIcon } from './icons';
 import { cn } from '../../utils/cn';
+import { createPortal } from 'react-dom';
 
 export interface DrawerProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ export interface DrawerProps {
   footer?: ReactNode;
   className?: string;
   width?: string;
+  telaInteira?: boolean;
 }
 
 export function Drawer({
@@ -23,6 +25,7 @@ export function Drawer({
   footer,
   className,
   width = 'max-w-lg',
+  telaInteira = false,
 }: DrawerProps) {
   const [mounted, setMounted] = useState(isOpen);
   const [visible, setVisible] = useState(false);
@@ -69,12 +72,13 @@ export function Drawer({
 
   if (!mounted) return null;
 
-  return (
+  const conteudo = (
     <div className="fixed inset-0 z-50 flex justify-end overflow-hidden">
       {/* Backdrop com transição fade-in / fade-out suave */}
       <div
         className={cn(
-          'fixed inset-0 bg-slate-950/40 backdrop-blur-[2px] transition-opacity duration-300',
+          'fixed inset-0 transition-opacity duration-300',
+          telaInteira ? 'bg-[#0d1b35]/45 backdrop-blur-[3px]' : 'bg-slate-950/40 backdrop-blur-[2px]',
           visible ? 'opacity-100 ease-out' : 'opacity-0 ease-in pointer-events-none'
         )}
         onClick={onClose}
@@ -132,5 +136,6 @@ export function Drawer({
       </aside>
     </div>
   );
+  return telaInteira ? createPortal(conteudo, document.body) : conteudo;
 }
 

@@ -22,7 +22,7 @@ export const solicitacoesSvoApi = {
   criar: (dados: {
     dados_solicitante: string;
     local_ocorrencia: string;
-    material_sensivel: boolean;
+    material_sensivel?: boolean;
   }) => request<SolicitacaoSvo>('POST', '/solicitacoes-svo', { body: dados }),
   /** Uma página das solicitações, da mais recente para a mais antiga. */
   listar: ({ pagina = 1, limite = 20, status }: FiltrosSolicitacoesSvo = {}) =>

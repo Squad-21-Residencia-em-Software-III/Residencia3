@@ -15,7 +15,9 @@ vi.mock('../services/api/viagensApi', () => ({
     listar: vi.fn(),
     listarMinhasAdministrativas: vi.fn(),
     listarOrdensPendentesSvo: vi.fn(),
+    listarAlertasSvo: vi.fn(),
     agendarColetaSvo: vi.fn(),
+    reprogramarColetaSvo: vi.fn(),
     criar: vi.fn(),
     iniciar: vi.fn(),
     finalizar: vi.fn(),
@@ -68,7 +70,9 @@ function abrir(url = '/viagens') {
 describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    RECURSOS_BACKEND.agendamentoTemporalSvo = true;
     sessao.perfil = 'ADMINISTRADOR';
+    api.listarAlertasSvo.mockResolvedValue([]);
     // Viagem administrativa e ordem SVO com o mesmo id: cada uma só na sua aba
     api.listar.mockResolvedValue([
       viagem(7, 'ADMINISTRATIVA', 'Hospital de Lagarto'),
@@ -90,6 +94,24 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
 
   afterEach(() => {
     RECURSOS_BACKEND.minhasViagensAdministrativas = false;
+    RECURSOS_BACKEND.agendamentoTemporalSvo = false;
+  });
+
+  it('desativa operações de coleta e consulta de alertas enquanto o banco não estiver pronto', async () => {
+    RECURSOS_BACKEND.agendamentoTemporalSvo = false;
+    abrir('/viagens?aba=svo');
+    expect(await screen.findByText(/operações de coleta SVO indisponíveis/)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Agendar coleta/ })).toBeDisabled();
+    expect(api.listarAlertasSvo).not.toHaveBeenCalled();
+  });
+
+  it.each(['AGENDADA', 'EM_ANDAMENTO'] as const)('não oferece ações no drawer SVO %s com agenda desativada', async (status) => {
+    RECURSOS_BACKEND.agendamentoTemporalSvo = false;
+    api.listar.mockResolvedValue([{ ...viagem(7, 'SVO', 'Rua das Flores'), status }]);
+    abrir('/viagens?aba=svo');
+    await userEvent.click(await screen.findByText('Rua das Flores'));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).queryByRole('button', { name: /Iniciar viagem|Finalizar viagem|Cancelar viagem/ })).not.toBeInTheDocument();
   });
 
   it('Administrador alterna entre as abas sem misturar registros de mesmo id', async () => {
@@ -120,6 +142,16 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     expect(api.listarOrdensPendentesSvo).not.toHaveBeenCalled();
   });
 
+  it('apresenta alertas de atraso e oferece reprogramação ao gestor SVO', async () => {
+    sessao.perfil = 'GESTOR_SVO';
+    api.listar.mockResolvedValue([viagem(7, 'SVO', 'Rua das Flores, 10')]);
+    api.listarAlertasSvo.mockResolvedValue([{ id: 1, ordem_em_atraso_id: 6, ordem_afetada_id: 7,
+      inicio_previsto_afetada: '2099-01-01T16:20:00Z' }]);
+    abrir();
+    expect(await screen.findByText(/coleta #6 está atrasada e afeta a coleta #7/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reagendar coleta' })).toBeInTheDocument();
+  });
+
   it('Gestor SVO vê as coletas e as ordens pendentes, sem agendar viagem administrativa', async () => {
     sessao.perfil = 'GESTOR_SVO';
     api.listar.mockResolvedValue([viagem(7, 'SVO', 'Rua das Flores, 10')]);
@@ -146,6 +178,7 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     const linha = screen.getByText('Secretaria de Saúde').closest('tr')!;
     expect(within(linha).queryByRole('button', { name: /Iniciar|Cancelar/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Agendar Viagem/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Motorista|Veículo|Odômetro/ })).not.toBeInTheDocument();
   });
 
   it('Motorista SVO vê as próprias coletas, sem ordens pendentes', async () => {

@@ -93,8 +93,8 @@ describe('TriagemSvoPage', () => {
 
     expect(await screen.findByText('Rua 2, Aracaju')).toBeInTheDocument();
     expect(api.listar).toHaveBeenCalledWith({ pagina: 1, limite: 20, status: 'EM_TRIAGEM' });
-    expect(screen.getByText('Material sensível')).toBeInTheDocument();
-    expect(screen.getAllByText('Em triagem').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Material sensível')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Aguardando análise').length).toBeGreaterThan(0);
   });
 
   it('informa quando não há solicitações aguardando triagem', async () => {
@@ -159,7 +159,7 @@ describe('TriagemSvoPage', () => {
 
     expect(await within(painel).findByText('Familiar 7 - (79) 99999-0000')).toBeInTheDocument();
     expect(within(painel).getByText('Óbito em domicílio')).toBeInTheDocument();
-    expect(within(painel).getByText(/exige protocolo específico/)).toBeInTheDocument();
+    expect(within(painel).queryByText('Material sensível')).not.toBeInTheDocument();
     expect(
       within(painel).getByText('A ordem é gerada pelo servidor quando a solicitação é confirmada.'),
     ).toBeInTheDocument();

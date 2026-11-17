@@ -13,7 +13,7 @@ import { CODIGO_CONFIRMAR_INTERVALO } from '../../types/viagem';
 import { ModalAgendarColetaSvo } from './ModalAgendarColetaSvo';
 
 vi.mock('../../services/api/equipesSvoApi', () => ({ equipesSvoApi: { listarDisponiveis: vi.fn() } }));
-vi.mock('../../services/api/viagensApi', () => ({ viagensApi: { agendarColetaSvo: vi.fn() } }));
+vi.mock('../../services/api/viagensApi', () => ({ viagensApi: { agendarColetaSvo: vi.fn(), reprogramarColetaSvo: vi.fn() } }));
 vi.mock('../../services/api/veiculosApi', () => ({
   veiculosApi: { listarOcupacaoSvo: vi.fn() },
 }));
@@ -116,6 +116,26 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
       RECURSOS_BACKEND.agendamentoTemporalSvo = true;
     });
 
+    it('reprograma mantendo ordem, equipe e capacidade da coleta', async () => {
+      api.reprogramarColetaSvo.mockResolvedValue({} as never);
+      const viagem = {
+        id: 40, solicitacao_id: 31, tipo_operacao: 'SVO' as const, origem: null,
+        destino: 'Av. Beira Mar', finalidade: null, solicitante_nome: null,
+        veiculo_id: 2, veiculo_modelo: 'Rabecão', veiculo_placa: 'SVO2B22',
+        motorista_id: 5, motorista_nome: 'Ana', equipe_id: 12, capacidade_utilizada: 2,
+        km_inicial: null, status: 'AGENDADA' as const,
+        inicio_previsto: new Date(Date.now() + 7_200_000).toISOString(),
+        fim_previsto: new Date(Date.now() + 10_800_000).toISOString(),
+      };
+      render(<ModalAgendarColetaSvo ordem={ordem} viagemReprogramar={viagem} veiculos={veiculos}
+        motoristas={motoristas} onClose={vi.fn()} onAgendada={vi.fn()} />);
+      await screen.findByRole('option', { name: 'Equipe 12' });
+      await userEvent.click(screen.getByRole('button', { name: 'Reagendar coleta' }));
+      await waitFor(() => expect(api.reprogramarColetaSvo).toHaveBeenCalledWith(40,
+        expect.objectContaining({ solicitacao_id: 31, equipe_id: 12, capacidade_utilizada: 2 })));
+      expect(api.agendarColetaSvo).not.toHaveBeenCalled();
+    });
+
     it('exige término depois do início', async () => {
       abrir();
       fireEvent.change(screen.getByLabelText(/Início previsto/), { target: { value: daquiA(3) } });
@@ -130,6 +150,7 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
       api.agendarColetaSvo
         .mockRejectedValueOnce(
           new ApiError('Intervalo reduzido entre coletas.', 409, [], CODIGO_CONFIRMAR_INTERVALO, {
+            token_confirmacao: 'desafio-assinado',
             conflitos: [
               {
                 recurso: 'VEICULO',
@@ -162,13 +183,14 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
       expect(api.agendarColetaSvo.mock.calls[1][0]).toMatchObject({
         solicitacao_id: 31,
         confirmar_intervalo_reduzido: true,
+        token_confirmacao: 'desafio-assinado',
       });
       await waitFor(() => expect(onAgendada).toHaveBeenCalled());
     });
 
     it('alterar um campo depois do aviso exige nova validação do servidor', async () => {
       api.agendarColetaSvo.mockRejectedValueOnce(
-        new ApiError('Intervalo reduzido.', 409, [], CODIGO_CONFIRMAR_INTERVALO, { conflitos: [] }),
+        new ApiError('Intervalo reduzido.', 409, [], CODIGO_CONFIRMAR_INTERVALO, { conflitos: [], token_confirmacao: 'desafio-assinado' }),
       );
       abrir();
       fireEvent.change(screen.getByLabelText(/Início previsto/), { target: { value: daquiA(2) } });

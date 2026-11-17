@@ -138,6 +138,8 @@ export const veiculoModel = {
       LEFT JOIN ordens_svo o
         ON o.veiculo_id = v.id
         AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO')
+        AND (o.status = 'EM_DESLOCAMENTO' OR o.inicio_previsto IS NULL OR o.fim_previsto IS NULL
+          OR (o.inicio_previsto <= CURRENT_TIMESTAMP AND o.fim_previsto > CURRENT_TIMESTAMP))
       WHERE v.tipo_frota = 'SVO'
         -- RESERVADO: já tem ordem alocada, mas ainda pode ter vagas
         AND v.status IN ('DISPONIVEL', 'RESERVADO')
@@ -175,6 +177,8 @@ export const veiculoModel = {
       LEFT JOIN ordens_svo o
         ON o.veiculo_id = v.id
         AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO')
+        AND (o.status = 'EM_DESLOCAMENTO' OR o.inicio_previsto IS NULL OR o.fim_previsto IS NULL
+          OR (o.inicio_previsto <= CURRENT_TIMESTAMP AND o.fim_previsto > CURRENT_TIMESTAMP))
       WHERE v.tipo_frota = 'SVO'
       GROUP BY
         v.id,

@@ -141,6 +141,7 @@ export function DrawerDetalhesVeiculo({
 
   return (
     <Drawer
+      telaInteira
       isOpen={Boolean(veiculo)}
       onClose={onClose}
       title={

@@ -23,6 +23,7 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
   const [origem, setOrigem] = useState('');
   const [destino, setDestino] = useState('');
   const [finalidade, setFinalidade] = useState('');
+  const [materialSensivel, setMaterialSensivel] = useState(false);
   const [dataSaida, setDataSaida] = useState(padraoSaida);
   const [dataChegada, setDataChegada] = useState(padraoChegada);
   const [erro, setErro] = useState<string | null>(null);
@@ -81,6 +82,7 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
       origem: orig,
       destino: dest,
       finalidade: fin,
+      ...(materialSensivel ? { material_sensivel: true } : {}),
       data_saida_desejada: new Date(dataSaida).toISOString(),
       data_chegada_desejada: dataChegada ? new Date(dataChegada).toISOString() : undefined,
     };
@@ -96,7 +98,7 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
   };
 
   return (
-    <Modal onClose={onClose} title="Nova Solicitação de Viagem" maxWidth="560px">
+    <Modal onClose={onClose} title="Nova Solicitação de Viagem" maxWidth="560px" telaInteira>
       <form onSubmit={handleSubmit} className="grid gap-4">
         {erro && <Alert tone="danger">{erro}</Alert>}
 
@@ -167,6 +169,10 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
         />
 
         {/* Rodapé de Ações */}
+        <label className="flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" checked={materialSensivel} onChange={(e) => setMaterialSensivel(e.target.checked)} />
+          Transporte de material sensível
+        </label>
         <div className="mt-2 flex justify-end gap-2 border-t border-slate-100 pt-3">
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
