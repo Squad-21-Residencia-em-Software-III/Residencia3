@@ -33,7 +33,7 @@ async function provisionarUsuarioAplicacao() {
 
       const { rows: sqlRole } = await trx.raw(
         roleExistente
-          ? `SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', ?::text, ?::text) AS cmd`
+          ? `SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L NOCREATEDB NOCREATEROLE', ?::text, ?::text) AS cmd`
           : `SELECT format('CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', ?::text, ?::text) AS cmd`,
         [appUser, appPassword]
       );
