@@ -48,7 +48,7 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
   };
 
   return (
-    <Modal title={`Registrar Retorno da Viagem #${viagem.id}`} onClose={onClose}>
+    <Modal title={`Registrar Retorno da Viagem #${viagem.id}`} onClose={onClose} telaInteira>
       <form onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">

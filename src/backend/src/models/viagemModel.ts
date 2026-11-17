@@ -53,6 +53,7 @@ export const VIAGENS_UNIFICADAS_SQL = `
     sv.origem,
     sv.destino,
     sv.finalidade,
+    (to_jsonb(sv)->>'material_sensivel')::boolean AS material_sensivel,
     us.nome AS solicitante_nome,
     sv.data_saida_desejada AS inicio_previsto,
     sv.data_chegada_desejada AS fim_previsto,
@@ -86,6 +87,7 @@ export const VIAGENS_UNIFICADAS_SQL = `
     NULL AS origem,
     ss.local_ocorrencia AS destino,
     NULL AS finalidade,
+    NULL::boolean AS material_sensivel,
     ur.nome AS solicitante_nome,
     o.inicio_previsto,
     o.fim_previsto,
@@ -143,6 +145,7 @@ export const viagemModel = {
         .select('vf.id', 'vf.solicitacao_id', 'sv.origem', 'sv.destino', 'sv.finalidade',
           'vf.status', 'vf.data_hora_efetiva_saida', 'vf.data_hora_efetiva_chegada')
         .select(db.raw("'ADMINISTRATIVA' as tipo_operacao"))
+        .select(db.raw("(to_jsonb(sv)->>'material_sensivel')::boolean as material_sensivel"))
         .select('sv.data_saida_desejada as inicio_previsto', 'sv.data_chegada_desejada as fim_previsto')
         .orderBy('sv.data_saida_desejada', 'desc', 'last')
         .orderBy('vf.id', 'desc')
@@ -165,6 +168,7 @@ export const viagemModel = {
         'origem',
         'destino',
         'finalidade',
+        'material_sensivel',
         'solicitante_nome',
         'inicio_previsto',
         'fim_previsto',
@@ -213,6 +217,7 @@ export const viagemModel = {
         'origem',
         'destino',
         'finalidade',
+        'material_sensivel',
         'solicitante_nome',
         'inicio_previsto',
         'fim_previsto',

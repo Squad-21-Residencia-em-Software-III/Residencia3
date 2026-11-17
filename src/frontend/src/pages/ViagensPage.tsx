@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { AlertTriangle, CalendarClock, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
+import { CalendarClock, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -523,11 +523,6 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                       <span className="block max-w-xs truncate" title={o.local_ocorrencia}>
                         {o.local_ocorrencia}
                       </span>
-                      {o.material_sensivel && (
-                        <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
-                          <AlertTriangle size={12} /> Material sensível
-                        </span>
-                      )}
                     </td>
                     <td className="whitespace-nowrap">{formatarDataHora(o.confirmado_em)}</td>
                     <td className="text-right whitespace-nowrap">
@@ -697,6 +692,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                               title={v.destino ?? undefined}
                             >
                               {limitarTexto(v.destino, 26)}
+                              {v.tipo_operacao === 'ADMINISTRATIVA' && v.material_sensivel && <span className="block text-xs font-semibold text-amber-700">Material sensível</span>}
                             </span>
                           </div>
                         </div>

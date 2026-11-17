@@ -223,11 +223,6 @@ export function ModalAgendarColetaSvo({
             <span>Solicitação SVO #{ordem.solicitacao_id}</span>
           </div>
           <p className="mt-1 text-slate-600">{ordem.local_ocorrencia}</p>
-          {ordem.material_sensivel && (
-            <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
-              <AlertTriangle size={12} /> Material sensível
-            </p>
-          )}
         </div>
 
         {comPeriodo ? (

@@ -48,6 +48,11 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
 
   // O banco pode ainda aguardar a migration da agenda; não expor SQL nem prometer operação parcial.
+  if (typeof err === 'object' && err !== null && 'code' in err && err.code === '42703' &&
+      'message' in err && String(err.message).includes('material_sensivel')) {
+    res.status(503).json({ erro: 'O registro de material sensível ainda não está disponível: o banco precisa ser atualizado.' });
+    return;
+  }
   if (typeof err === 'object' && err !== null && 'code' in err && 'message' in err &&
       ((err.code === '42703' && String(err.message).includes('liberada_em')) ||
        (err.code === '42P01' && String(err.message).includes('alertas_atraso_svo')))) {

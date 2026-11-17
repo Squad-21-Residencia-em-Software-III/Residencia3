@@ -15,6 +15,7 @@ export const LABELS_STATUS_VIAGEM: Record<StatusViagem, string> = {
 };
 
 export interface Viagem {
+  material_sensivel?: boolean | null;
   id: number;
   solicitacao_id: number; // FK solicitacoes_viagem.id (ou solicitacoes_svo.id)
   tipo_operacao: TipoOperacaoViagem; // ADMINISTRATIVA (viagens_frota) ou SVO (ordens_svo)

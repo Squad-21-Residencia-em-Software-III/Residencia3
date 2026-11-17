@@ -96,6 +96,7 @@ export function DrawerDetalhesViagem({
 
   return (
     <Drawer
+      telaInteira
       isOpen={Boolean(viagemProp)}
       onClose={onClose}
       width="max-w-[460px]"
@@ -258,6 +259,7 @@ export function DrawerDetalhesViagem({
         </div>}
 
         {/* 3. Finalidade Institucional (se houver) */}
+        {viagem.tipo_operacao === 'ADMINISTRATIVA' && viagem.material_sensivel && <p className="text-sm font-semibold text-amber-700">Material sensível</p>}
         {viagem.finalidade && (
           <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
             <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">

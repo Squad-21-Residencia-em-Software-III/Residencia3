@@ -15,7 +15,12 @@ describe('Nova solicitação SVO', () => {
     render(<ModalNovaSolicitacaoSvo onClose={vi.fn()} onCriada={vi.fn()} />);
     expect(screen.getByLabelText('Registrado por')).toHaveValue('Gestor SVO');
     expect(screen.getByLabelText('Unidade')).toHaveValue('SVO');
+    expect(screen.getByLabelText('Unidade')).toHaveAttribute('readonly');
+    expect(screen.getByPlaceholderText('Informe o local de origem da ocorrência')).toHaveClass('text-ellipsis');
+    expect(screen.getByPlaceholderText('Informe o destino da ocorrência')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Descreva a finalidade da viagem')).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Material sensível')).not.toBeInTheDocument();
   });
   it('envia apenas campos autorizados, impede envio repetido e usa o id retornado', async () => {
     let resolver!: (valor: never) => void;
@@ -27,16 +32,17 @@ describe('Nova solicitação SVO', () => {
     const criada = vi.fn();
     render(<ModalNovaSolicitacaoSvo onClose={vi.fn()} onCriada={criada} />);
     await userEvent.type(screen.getByLabelText('Dados do solicitante *'), ' Pessoa ');
-    await userEvent.type(screen.getByLabelText('Local da ocorrência *'), ' Rua A ');
-    await userEvent.click(screen.getByLabelText('Material sensível'));
+    await userEvent.type(screen.getByLabelText('Local de origem da ocorrência *'), ' Rua A ');
+    await userEvent.type(screen.getByLabelText('Local de Destino *'), 'SVO');
+    fireEvent.change(screen.getByLabelText('Data/Hora de Saída Desejada *'), { target: { value: '2099-01-01T10:00' } });
+    await userEvent.type(screen.getByLabelText('Finalidade Institucional *'), 'Coleta');
     const form = screen.getByRole('button', { name: 'Registrar solicitação' }).closest('form')!;
     fireEvent.submit(form);
     fireEvent.submit(form);
     expect(solicitacoesSvoApi.criar).toHaveBeenCalledTimes(1);
     expect(solicitacoesSvoApi.criar).toHaveBeenCalledWith({
-      dados_solicitante: 'Pessoa',
+      dados_solicitante: 'Pessoa\nDestino: SVO\nSaída desejada: 2099-01-01T10:00\nFinalidade: Coleta',
       local_ocorrencia: 'Rua A',
-      material_sensivel: true,
     });
     resolver({ id: 42 } as never);
     await waitFor(() => expect(criada).toHaveBeenCalledWith(42));
@@ -51,7 +57,10 @@ describe('Nova solicitação SVO', () => {
       const criada = vi.fn();
       render(<ModalNovaSolicitacaoSvo onClose={vi.fn()} onCriada={criada} />);
       await userEvent.type(screen.getByLabelText('Dados do solicitante *'), 'Pessoa');
-      await userEvent.type(screen.getByLabelText('Local da ocorrência *'), 'Rua A');
+      await userEvent.type(screen.getByLabelText('Local de origem da ocorrência *'), 'Rua A');
+      await userEvent.type(screen.getByLabelText('Local de Destino *'), 'SVO');
+      fireEvent.change(screen.getByLabelText('Data/Hora de Saída Desejada *'), { target: { value: '2099-01-01T10:00' } });
+      await userEvent.type(screen.getByLabelText('Finalidade Institucional *'), 'Coleta');
       await userEvent.click(screen.getByRole('button', { name: 'Registrar solicitação' }));
       expect(await screen.findByText('Falha no servidor')).toBeInTheDocument();
       expect(criada).not.toHaveBeenCalled();

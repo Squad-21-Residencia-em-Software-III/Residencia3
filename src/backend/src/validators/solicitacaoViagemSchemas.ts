@@ -13,6 +13,7 @@ export const criarSolicitacaoViagemSchema = z.object({
   destino: z.string().trim().min(1, 'Informe o destino').max(255),
 
   finalidade: z.string().trim().min(1, 'Informe a finalidade'),
+  material_sensivel: z.boolean().optional(),
 
   data_saida_desejada: z.string().datetime({
     offset: true,
