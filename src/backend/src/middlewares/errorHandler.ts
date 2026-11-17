@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../errors/AppError';
+import { sanitizeData } from '../utils/sanitizer';
 
 const VIOLACAO_UNIQUE_POSTGRES = '23505';
 // statement_timeout atingido: o PostgreSQL cancelou a consulta
@@ -17,15 +18,22 @@ function tempoEsgotadoNoBanco(err: object): string | undefined {
   return undefined;
 }
 
-export function rotaNaoEncontrada(req: Request, res: Response): void {
-  res.status(404).json({ erro: `Rota não encontrada: ${req.method} ${req.originalUrl}` });
+function sanitizarTextoErro(texto: string): string {
+  return texto
+    .replace(/(senha|password|token|authorization|secret|cpf|cartao|credencial)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
 }
 
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
+export function rotaNaoEncontrada(_req: Request, res: Response): void {
+  res.status(404).json({ erro: 'Rota não encontrada' });
+}
+
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
   // A resposta já foi enviada (ex.: tempo limite da requisição); não há o que responder
   if (res.headersSent) {
     return;
   }
+
+  const requestId = (req.headers['x-request-id'] as string) || 'N/A';
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json({ erro: err.message });
@@ -61,12 +69,39 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   const tempoEsgotado = typeof err === 'object' && err !== null ? tempoEsgotadoNoBanco(err) : undefined;
   if (tempoEsgotado) {
-    // Registra só o tipo do erro, sem SQL nem parâmetros
-    console.error('Tempo limite no banco de dados:', (err as Error).name, (err as { code?: string }).code ?? '');
+    console.error(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        requestId,
+        level: 'ERROR',
+        method: req.method,
+        path: req.path,
+        statusCode: 503,
+        errorName: (err as Error).name,
+        errorCode: (err as { code?: string }).code ?? '',
+        message: tempoEsgotado,
+      })
+    );
     res.set('Retry-After', '5').status(503).json({ erro: tempoEsgotado });
     return;
   }
 
-  console.error('Erro inesperado:', err);
+  const mensagemOriginal = err instanceof Error ? err.message : String(err);
+  const stackOriginal = err instanceof Error ? err.stack : undefined;
+
+  console.error(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      requestId,
+      level: 'ERROR',
+      method: req.method,
+      path: req.path,
+      statusCode: 500,
+      message: sanitizarTextoErro(mensagemOriginal),
+      body: sanitizeData(req.body),
+      stack: process.env.NODE_ENV === 'production' ? '[REDACTED]' : stackOriginal ? sanitizarTextoErro(stackOriginal) : undefined,
+    })
+  );
+
   res.status(500).json({ erro: 'Erro interno do servidor' });
 }
