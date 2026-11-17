@@ -30,9 +30,10 @@ function toneOcupacao(veiculo: OcupacaoVeiculoSvo): BadgeTone {
 
 interface OcupacaoVeiculoSvoProps {
   veiculo: OcupacaoVeiculoSvo;
+  apenasInformativo?: boolean;
 }
 
-export function OcupacaoVeiculoSvoPainel({ veiculo }: OcupacaoVeiculoSvoProps) {
+export function OcupacaoVeiculoSvoPainel({ veiculo, apenasInformativo = false }: OcupacaoVeiculoSvoProps) {
   const bloqueio = motivoBloqueioSvo(veiculo);
   const percentual =
     veiculo.capacidade_maxima > 0
@@ -61,7 +62,7 @@ export function OcupacaoVeiculoSvoPainel({ veiculo }: OcupacaoVeiculoSvoProps) {
       <p className="mt-1.5 text-xs text-slate-500">
         {Math.max(veiculo.vagas_disponiveis, 0)} vaga(s) disponível(is)
       </p>
-      {bloqueio && (
+      {bloqueio && !apenasInformativo && (
         <Alert tone="danger" title="Alocação bloqueada" className="mt-3">
           {bloqueio}
         </Alert>

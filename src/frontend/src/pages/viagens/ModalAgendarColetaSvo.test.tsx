@@ -36,7 +36,7 @@ const ordem = {
 
 const api = vi.mocked(viagensApi);
 
-function abrir() {
+function abrir(onAtualizarRecursos = vi.fn().mockResolvedValue(undefined)) {
   const onAgendada = vi.fn();
   const onClose = vi.fn();
   render(
@@ -46,6 +46,7 @@ function abrir() {
       motoristas={motoristas}
       onClose={onClose}
       onAgendada={onAgendada}
+      onAtualizarRecursos={onAtualizarRecursos}
     />,
   );
   return { onAgendada, onClose };
@@ -114,6 +115,35 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
   describe('com o agendamento temporal (SCRUM-182)', () => {
     beforeEach(() => {
       RECURSOS_BACKEND.agendamentoTemporalSvo = true;
+    });
+
+    it('permite consultar um veículo ocupado agora para um período futuro', async () => {
+      vi.mocked(veiculosApi.listarOcupacaoSvo).mockResolvedValueOnce([{
+        id: 2, placa: 'SVO2B22', modelo: 'Rabecão', status: 'EM_USO',
+        capacidade_maxima: 4, capacidade_utilizada: 4, vagas_disponiveis: 0,
+      }]);
+      api.agendarColetaSvo.mockResolvedValueOnce({} as never);
+      const { onAgendada } = abrir();
+      await screen.findByText(/ocupação atual: 4\/4/);
+      expect(screen.queryByText('Alocação bloqueada')).not.toBeInTheDocument();
+      expect(screen.getByText(/disponibilidade para o período escolhido/)).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText(/Início previsto/), { target: { value: daquiA(24) } });
+      fireEvent.change(screen.getByLabelText(/Término previsto/), { target: { value: daquiA(25) } });
+      await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
+      await waitFor(() => expect(onAgendada).toHaveBeenCalled());
+    });
+
+    it('apresenta ausência de veículos e impede o envio', () => {
+      render(<ModalAgendarColetaSvo ordem={ordem} veiculos={[]} motoristas={motoristas} onClose={vi.fn()} onAgendada={vi.fn()} />);
+      expect(screen.getByText('Nenhum veículo SVO elegível cadastrado')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Agendar coleta' })).toBeDisabled();
+    });
+
+    it('avisa falha na ocupação sem impedir validação temporal pelo servidor', async () => {
+      vi.mocked(veiculosApi.listarOcupacaoSvo).mockRejectedValueOnce(new Error('Falha na consulta'));
+      abrir();
+      expect(await screen.findByText(/Não foi possível carregar a ocupação dos veículos/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Agendar coleta' })).toBeEnabled();
     });
 
     it('reprograma mantendo ordem, equipe e capacidade da coleta', async () => {
@@ -208,11 +238,14 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
       api.agendarColetaSvo.mockRejectedValueOnce(
         new ApiError('O veículo já está reservado nesse período.', 409, [], 'CONFLITO_AGENDA'),
       );
-      const { onAgendada } = abrir();
+      const atualizar = vi.fn().mockResolvedValue(undefined);
+      const { onAgendada } = abrir(atualizar);
       fireEvent.change(screen.getByLabelText(/Início previsto/), { target: { value: daquiA(2) } });
       fireEvent.change(screen.getByLabelText(/Término previsto/), { target: { value: daquiA(3) } });
       await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
 
+      await waitFor(() => expect(atualizar).toHaveBeenCalled());
+      expect(veiculosApi.listarOcupacaoSvo).toHaveBeenCalledTimes(2);
       expect(
         await screen.findByText('O veículo já está reservado nesse período.'),
       ).toBeInTheDocument();

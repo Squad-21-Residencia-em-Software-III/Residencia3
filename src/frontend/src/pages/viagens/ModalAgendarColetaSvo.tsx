@@ -28,6 +28,7 @@ interface ModalAgendarColetaSvoProps {
   onClose: () => void;
   /** Chamado só depois que a API confirma o agendamento. */
   onAgendada: () => Promise<void> | void;
+  onAtualizarRecursos?: () => Promise<void>;
   viagemReprogramar?: Viagem;
 }
 
@@ -73,6 +74,7 @@ export function ModalAgendarColetaSvo({
   motoristas,
   onClose,
   onAgendada,
+  onAtualizarRecursos,
   viagemReprogramar,
 }: ModalAgendarColetaSvoProps) {
   const comPeriodo = recursoAtivo('agendamentoTemporalSvo');
@@ -88,6 +90,7 @@ export function ModalAgendarColetaSvo({
     viagemReprogramar ? String(viagemReprogramar.motorista_id) : motoristasSvo[0] ? String(motoristasSvo[0].id) : '',
   );
   const [equipes, setEquipes] = useState<EquipeSvo[]>([]);
+  const [revisaoEquipes, setRevisaoEquipes] = useState(0);
   const [equipeId, setEquipeId] = useState(viagemReprogramar?.equipe_id ? String(viagemReprogramar.equipe_id) : '');
   const [erroEquipes, setErroEquipes] = useState<string | null>(null);
   const [carregandoEquipes, setCarregandoEquipes] = useState(false);
@@ -127,7 +130,7 @@ export function ModalAgendarColetaSvo({
       .catch((error) => { if (ativo) setErroEquipes(mensagemDeErro(error)); })
       .finally(() => { if (ativo) setCarregandoEquipes(false); });
     return () => { ativo = false; };
-  }, [comPeriodo, inicio, fim, viagemReprogramar]);
+  }, [comPeriodo, inicio, fim, viagemReprogramar, revisaoEquipes]);
 
   const ocupacaoDoVeiculo = ocupacoes.find((o) => String(o.id) === veiculoId);
   const bloqueio = !comPeriodo && ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
@@ -142,7 +145,7 @@ export function ModalAgendarColetaSvo({
   };
 
   function validar(): string | null {
-    if (!veiculoId || !motoristaId) return 'Selecione o veículo e o motorista da coleta.';
+    if (!veiculosSvo.some((v) => String(v.id) === veiculoId) || !motoristasSvo.some((m) => String(m.id) === motoristaId)) return 'Selecione o veículo e o motorista da coleta.';
     if (bloqueio) return bloqueio;
     if (equipeId && !equipes.some((e) => String(e.id) === equipeId)) return 'A equipe selecionada não está mais disponível.';
     if (!comPeriodo) return null;
@@ -195,6 +198,10 @@ export function ModalAgendarColetaSvo({
       // Sobreposição real, recurso ocupado, CNH ou capacidade: só a mensagem, sem forçar
       setConflitos(null);
       setErro(mensagemDeErro(error));
+      // Atualizações são informativas: o backend continua decidindo a disponibilidade temporal.
+      setRevisaoEquipes((valor) => valor + 1);
+      void veiculosApi.listarOcupacaoSvo().then((dados) => { setOcupacoes(dados); setErroOcupacao(null); }).catch((e) => setErroOcupacao(mensagemDeErro(e)));
+      if (onAtualizarRecursos) void onAtualizarRecursos().catch((e) => setErroOcupacao(`Não foi possível atualizar os recursos: ${mensagemDeErro(e)}`));
     }
   }
 
@@ -211,6 +218,7 @@ export function ModalAgendarColetaSvo({
   return (
     <Modal title={viagemReprogramar ? 'Reagendar coleta SVO' : 'Agendar coleta SVO'} onClose={salvando ? () => {} : onClose} maxWidth="600px">
       <form onSubmit={handleSubmit} noValidate>
+        <fieldset disabled={salvando}>
         {erro && (
           <Alert tone="danger" className="mb-4">
             {erro}
@@ -249,6 +257,7 @@ export function ModalAgendarColetaSvo({
           </Alert>
         )}
 
+        {comPeriodo && <Alert tone="info" className="mb-3.5">A ocupação exibida é atual. A disponibilidade para o período escolhido será validada pelo servidor ao agendar.</Alert>}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
             label="Veículo SVO *"
@@ -256,12 +265,12 @@ export function ModalAgendarColetaSvo({
             onChange={(e: ChangeEvent<HTMLSelectElement>) => alterar(setVeiculoId)(e.target.value)}
             required
           >
-            {veiculosSvo.length === 0 && <option value="">Nenhum veículo SVO disponível</option>}
+            {veiculosSvo.length === 0 && <option value="">Nenhum veículo SVO elegível cadastrado</option>}
             {veiculosSvo.map((v) => {
               const ocupacao = ocupacoes.find((o) => o.id === v.id);
               return (
                 <option key={v.id} value={v.id}>
-                  {v.modelo} ({v.placa}){ocupacao ? ` — ${rotuloOcupacao(ocupacao)}` : ''}
+                  {v.modelo} ({v.placa}){ocupacao ? ` — ocupação atual: ${rotuloOcupacao(ocupacao)}` : ''}
                 </option>
               );
             })}
@@ -292,7 +301,7 @@ export function ModalAgendarColetaSvo({
             Não foi possível carregar a ocupação dos veículos: {erroOcupacao}
           </Alert>
         )}
-        {ocupacaoDoVeiculo && <OcupacaoVeiculoSvoPainel veiculo={ocupacaoDoVeiculo} />}
+        {ocupacaoDoVeiculo && <OcupacaoVeiculoSvoPainel veiculo={ocupacaoDoVeiculo} apenasInformativo={comPeriodo} />}
 
         {conflitos && (
           <div
@@ -341,11 +350,12 @@ export function ModalAgendarColetaSvo({
               {salvando ? 'Agendando...' : 'Confirmar agendamento'}
             </Button>
           ) : (
-            <Button type="submit" disabled={salvando || Boolean(bloqueio)}>
+            <Button type="submit" disabled={salvando || Boolean(bloqueio) || veiculosSvo.length === 0 || motoristasSvo.length === 0}>
               {salvando ? 'Agendando...' : viagemReprogramar ? 'Reagendar coleta' : 'Agendar coleta'}
             </Button>
           )}
         </div>
+        </fieldset>
       </form>
     </Modal>
   );
