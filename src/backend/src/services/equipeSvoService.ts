@@ -52,13 +52,6 @@ export const equipeSvoService = {
 
     const equipes = await db('equipes_svo as e')
       .select('e.id', 'e.nome_equipe')
-      .whereExists(
-        db('escalas_svo as es')
-          .select(db.raw('1'))
-          .whereRaw('es.equipe_id = e.id')
-          .where('es.data_inicio', '<=', inicio)
-          .where('es.data_fim', '>=', fim)
-      )
       .whereNotExists(
         db('ordens_svo as o')
           .select(db.raw('1'))

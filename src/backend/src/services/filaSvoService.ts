@@ -56,10 +56,7 @@ export async function reavaliarFilaSvo(trx: Knex.Transaction, usuarioId: number)
         validade >= dataHoje);
       if (livre && ordem.equipe_id) {
         const equipe = await trx('equipes_svo').where({ id: ordem.equipe_id }).forUpdate().first('id');
-        const escala = await trx('escalas_svo').where({ equipe_id: ordem.equipe_id })
-          .where('data_inicio', '<=', agora).where('data_fim', '>', agora)
-          .where('data_fim', '>=', ordem.fim_previsto! > agora ? ordem.fim_previsto : agora).forUpdate().first('id');
-        livre = Boolean(equipe && escala);
+        livre = Boolean(equipe);
       }
     }
     if (livre) selecionadas.push(ordem);

@@ -12,7 +12,7 @@ equipeSvoRoutes.use(
   autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO)
 );
 
-// Consulta das equipes disponíveis conforme escala
+// Consulta das equipes disponíveis para o período
 equipeSvoRoutes.get(
   '/disponibilidade',
   equipeSvoController.consultarDisponibilidade

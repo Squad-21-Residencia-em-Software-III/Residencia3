@@ -107,27 +107,9 @@ describe('equipeSvoService.consultarDisponibilidade', () => {
     expect(resultado.equipes).toEqual([]);
   });
 
-  it('verifica se a escala cobre o período informado', async () => {
+  it('não exige escala cadastrada para consultar equipes', async () => {
     await equipeSvoService.consultarDisponibilidade(filtros);
-
-    expect(consultas).toContainEqual(
-      expect.objectContaining({
-        tabela: 'equipes_svo as e',
-        metodo: 'whereExists',
-      }),
-    );
-
-    expect(consultas).toContainEqual({
-      tabela: 'escalas_svo as es',
-      metodo: 'where',
-      argumentos: ['es.data_inicio', '<=', new Date(filtros.inicio)],
-    });
-
-    expect(consultas).toContainEqual({
-      tabela: 'escalas_svo as es',
-      metodo: 'where',
-      argumentos: ['es.data_fim', '>=', new Date(filtros.fim)],
-    });
+    expect(mockDb).not.toHaveBeenCalledWith('escalas_svo as es');
   });
 
   it('exclui equipes com ordens ativas', async () => {

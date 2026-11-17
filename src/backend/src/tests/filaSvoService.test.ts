@@ -72,7 +72,7 @@ describe('fila de coletas SVO', () => {
     await reavaliarFilaSvo(trx, 7);
     expect(tabelas.ordens_svo[2].liberada_em).toEqual(momento('16:40'));
   });
-  it('não libera quando falta escala válida para a equipe', async () => {
+  it('libera equipe existente sem escala cadastrada', async () => {
     const tabelas = {
       ordens_svo: [ordem(2, '16:20', '17:00')],
       veiculos: [{ id: 1, status: 'DISPONIVEL', tipo_frota: 'SVO', capacidade_maxima: 4 }],
@@ -80,7 +80,7 @@ describe('fila de coletas SVO', () => {
       equipes_svo: [{ id: 3 }], escalas_svo: [], alertas_atraso_svo: [],
     };
     await reavaliarFilaSvo(banco(tabelas, momento('16:40')), 7);
-    expect(tabelas.ordens_svo[0].liberada_em).toBeNull();
+    expect(tabelas.ordens_svo[0].liberada_em).toEqual(momento('16:40'));
   });
   it('não libera quando a capacidade disponível caiu abaixo da ordem', async () => {
     const tabelas = {

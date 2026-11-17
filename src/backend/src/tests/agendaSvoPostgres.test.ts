@@ -280,19 +280,19 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     expect(await db('auditorias').where('acao', 'like', `REPROGRAMOU_SVO id=${b.ordem.id} %`)).toHaveLength(1);
   });
 
-  it('recusa equipe fora da escala e capacidade acima do veículo', async () => {
+  it('aceita equipe sem escala e recusa capacidade acima do veículo', async () => {
     const r = await recursos();
     const ordem = await pendente(r.gestor.id);
-    await db('escalas_svo').where({ equipe_id: r.equipe.id }).update({ data_fim: instante(60) });
+    await db('escalas_svo').where({ equipe_id: r.equipe.id }).delete();
     const corpo = { tipo_operacao: 'SVO', solicitacao_id: ordem.solicitacao.id, veiculo_id: r.veiculo.id,
       motorista_id: r.motorista.id, equipe_id: r.equipe.id, inicio_previsto: instante(120).toISOString(),
       fim_previsto: instante(180).toISOString() };
-    const foraDaEscala = await request(app).post('/api/viagens').set('Authorization', r.gestor.token).send(corpo);
-    expect(foraDaEscala.status).toBe(409);
     const semCapacidade = await request(app).post('/api/viagens').set('Authorization', r.gestor.token)
       .send({ ...corpo, equipe_id: null, capacidade_utilizada: 5 });
     expect(semCapacidade.status).toBe(400);
     expect((await db('ordens_svo').where({ id: ordem.ordem.id }).first()).status).toBe('AGUARDANDO_ALOCACAO');
+    const semEscala = await request(app).post('/api/viagens').set('Authorization', r.gestor.token).send(corpo);
+    expect(semEscala.status).toBe(200);
   });
 
   it('não soma reservas futuras à ocupação atual e mantém coleta atrasada como ocupada', async () => {

@@ -307,9 +307,7 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
     if (!equipe) {
       throw new AppError('Equipe SVO não encontrada', 404);
     }
-    const escala = await trx('escalas_svo').where({ equipe_id: dados.equipe_id })
-      .where('data_inicio', '<=', inicio).where('data_fim', '>=', fim).forUpdate().first('id');
-    if (!escala) throw new AppError('Equipe sem escala para todo o período', 409);
+
   }
 
   const conflitoAdministrativo = await viagensConflitantes(trx, inicio, fim)
