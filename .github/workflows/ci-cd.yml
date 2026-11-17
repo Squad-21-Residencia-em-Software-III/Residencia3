@@ -48,7 +48,9 @@ jobs:
         run: npm ci
 
       - name: Auditar dependencias
-        run: npm audit --audit-level=high
+        run: |
+          node --test ../../scripts/audit-ci.test.cjs
+          node ../../scripts/audit-ci.cjs
 
       - name: Executar testes automatizados
         run: npm test
@@ -80,7 +82,9 @@ jobs:
         run: npm ci
 
       - name: Auditar dependencias
-        run: npm audit --audit-level=high
+        run: |
+          node --test ../../scripts/audit-ci.test.cjs
+          node ../../scripts/audit-ci.cjs
 
       - name: Executar testes automatizados
         run: npm test
