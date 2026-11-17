@@ -1,6 +1,6 @@
 # Segurança da integração contínua
 
-Este documento registra os controles do PR associado à SCRUM-162 e uma proposta de processo para análise de exceções. Uma configuração em branch de PR não significa que o controle já esteja ativo no repositório.
+Este documento registra os controles do PR associado à SCRUM-162 e o processo aprovado para análise de exceções. Uma configuração em branch de PR não significa que o controle já esteja ativo no repositório.
 
 ## Dependências e Dependabot
 
@@ -22,11 +22,13 @@ Um administrador deve configurar uma regra ativa para `develop` que exija PR e o
 
 O repositório é público e o GitHub oferece Secret Scanning e CodeQL para repositórios públicos elegíveis. Em 17/11/2026, o [painel de segurança](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/security) mostrava Secret scanning alerts como habilitado, e a [lista de alertas](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/security/secret-scanning) mostrava zero abertos e zero encerrados. Isso comprova o estado exibido, mas não uma detecção ponta a ponta nem entrega de notificações. Um administrador deve conferir push protection e permissões de leitura, e definir uma forma segura de validar o fluxo de alerta sem expor conteúdo de segredos. Não incluir credenciais reais no histórico para testar.
 
-CodeQL é tecnicamente aplicável ao JavaScript/TypeScript do frontend e backend. Em 17/11/2026, o painel de segurança mostrava Code scanning alerts como `Needs setup`. A configuração padrão do GitHub é uma opção de baixa manutenção; ela analisa PRs para a branch padrão ou branches protegidas, com limitações documentadas para forks. Um administrador deve avaliar habilitar a configuração padrão ou um workflow avançado conforme as permissões e necessidades do projeto, verificar cobertura e execuções e evitar configurações conflitantes. Não considerar a análise ativa até existir uma execução bem-sucedida e verificável.
+CodeQL é tecnicamente aplicável ao JavaScript/TypeScript do frontend e backend. Em 17/11/2026, o painel de segurança mostrava Code scanning alerts como `Needs setup`. Matheus Andrade autorizou a adoção da configuração padrão do GitHub em 17/11/2026. Ela analisa PRs para a branch padrão ou branches protegidas, com limitações documentadas para forks. Um administrador deve habilitá-la, verificar cobertura e execuções e evitar configurações conflitantes. Não considerar a análise ativa até existir uma execução bem-sucedida e verificável.
 
 Referências: [Secret Scanning](https://docs.github.com/en/code-security/how-tos/secure-your-secrets/detect-secret-leaks/enable-secret-scanning), [consultas CodeQL para JavaScript/TypeScript](https://docs.github.com/en/code-security/reference/code-scanning/codeql/codeql-queries/javascript-typescript-built-in-queries) e [configuração padrão do CodeQL](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types).
 
-## Tratamento proposto de exceções
+## Tratamento de exceções
+
+Matheus Andrade aprovou o processo abaixo em 17/11/2026. A aprovação do processo não aprova exceções individuais nem autoriza bypass de checks.
 
 O padrão é corrigir ou atualizar a dependência e repetir a auditoria. Se isso não for possível, registrar uma exceção antes de solicitar sua aceitação, incluindo:
 
