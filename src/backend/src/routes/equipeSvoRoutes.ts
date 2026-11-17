@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { PERFIS } from '../constants/perfis';
 import { equipeSvoController } from '../controllers/equipeSvoController';
+import { gestaoEquipesSvoController } from '../controllers/gestaoEquipesSvoController';
 import { autenticar } from '../middlewares/autenticar';
 import { autorizar } from '../middlewares/autorizar';
 
@@ -17,3 +18,8 @@ equipeSvoRoutes.get(
   '/disponibilidade',
   equipeSvoController.consultarDisponibilidade
 );
+
+equipeSvoRoutes.get('/', gestaoEquipesSvoController.listar);
+equipeSvoRoutes.post('/', gestaoEquipesSvoController.criar);
+equipeSvoRoutes.get('/:id', gestaoEquipesSvoController.buscar);
+equipeSvoRoutes.patch('/:id', gestaoEquipesSvoController.atualizar);

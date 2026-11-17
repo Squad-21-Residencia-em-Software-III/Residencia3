@@ -85,6 +85,7 @@ export const PERMISSOES = {
 
   // Equipe: motoristas (gestores) e usuários/perfis (só Administrador)
   'equipe.acessar': GESTORES,
+  'equipeSvo.gerenciar': [ADMINISTRADOR, GESTOR_SVO],
   'usuarios.gerenciar': [ADMINISTRADOR],
 
   // Auditoria
