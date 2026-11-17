@@ -24,12 +24,12 @@ vi.mock('../../services/api/equipesSvoApi', () => ({
   equipesSvoApi: { listarDisponiveis: vi.fn() },
 }));
 vi.mock('../../services/api/veiculosApi', () => ({
-  veiculosApi: { listarOcupacaoSvo: vi.fn() },
+  veiculosApi: { listarSvoDisponiveis: vi.fn() },
 }));
 
 const solicitacoesApi = vi.mocked(solicitacoesSvoApi);
 const equipesApi = vi.mocked(equipesSvoApi);
-const ocupacaoApi = vi.mocked(veiculosApi);
+const veiculosSvoApi = vi.mocked(veiculosApi);
 
 const solicitacao = (id: number): SolicitacaoSvo => ({
   id,
@@ -49,6 +49,8 @@ const veiculoSvo: Veiculo = {
   km_atual: 1000,
   status: 'DISPONIVEL',
 };
+// Existe na lista geral de veículos, mas a API de disponíveis não a devolve (ex.: lotado)
+const veiculoSvoIndisponivel: Veiculo = { ...veiculoSvo, id: 12, placa: 'MNO7P89', modelo: 'Mercedes Sprinter' };
 const veiculoFrota: Veiculo = { ...veiculoSvo, id: 11, placa: 'ABC1D23', modelo: 'Fiat Uno', tipo_frota: 'ADMINISTRATIVA' };
 
 const motoristaSvo: Motorista = {
@@ -74,7 +76,7 @@ function renderizar(perfil: Perfil | null = 'GESTOR_SVO') {
   render(
     <ModalNovaViagem
       solicitacoesAprovadas={[]}
-      veiculos={[veiculoSvo, veiculoFrota]}
+      veiculos={[veiculoSvo, veiculoSvoIndisponivel, veiculoFrota]}
       motoristas={[motoristaSvo]}
       onClose={onClose}
       onSalvar={onSalvar}
@@ -101,7 +103,7 @@ describe('ModalNovaViagem (operação SVO)', () => {
         { id: 2, nome_equipe: 'Equipe Plantão SVO - B' },
       ]),
     );
-    ocupacaoApi.listarOcupacaoSvo.mockResolvedValue([
+    veiculosSvoApi.listarSvoDisponiveis.mockResolvedValue([
       {
         id: 10,
         placa: 'JKL4G56',
@@ -143,6 +145,10 @@ describe('ModalNovaViagem (operação SVO)', () => {
       motorista_id: 20,
       equipe_id: 2,
     });
+    // SVO: depois da confirmação da API o modal mostra o resultado e só fecha em "Concluir"
+    expect(await screen.findByText(/Ordem da solicitação SVO #8 alocada ao veículo Fiat Ducato \(JKL4G56\)/)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Concluir' }));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -208,6 +214,66 @@ describe('ModalNovaViagem (operação SVO)', () => {
     expect(await screen.findByText(/Não foi possível carregar as solicitações SVO: Você não tem permissão/)).toBeInTheDocument();
     expect(botaoAgendar()).toBeDisabled();
   });
+
+  it('oferece somente os veículos que a API informa como disponíveis', async () => {
+    renderizar();
+    await aguardarDadosSvo();
+
+    expect(veiculosSvoApi.listarSvoDisponiveis).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('option', { name: /Fiat Ducato \(JKL4G56\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Mercedes Sprinter/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Fiat Uno/ })).not.toBeInTheDocument();
+  });
+
+  it('não mostra a alocação como concluída antes da confirmação da API', async () => {
+    const { onSalvar } = renderizar();
+    let confirmar: () => void = () => {};
+    onSalvar.mockReturnValue(new Promise<void>((resolve) => (confirmar = resolve)));
+    await aguardarDadosSvo();
+    await waitFor(() => expect(botaoAgendar()).toBeEnabled());
+
+    await userEvent.click(botaoAgendar());
+
+    expect(screen.queryByText(/Alocação confirmada/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agendando...' })).toBeDisabled();
+
+    confirmar();
+    expect(await screen.findByText(/Alocação confirmada/)).toBeInTheDocument();
+  });
+
+  it('comunica o motivo da recusa, não indica alocação concluída e reconsulta os disponíveis', async () => {
+    const { onSalvar, onClose } = renderizar();
+    onSalvar.mockRejectedValue(new ApiError('O veículo está lotado', 409));
+    await aguardarDadosSvo();
+    await waitFor(() => expect(botaoAgendar()).toBeEnabled());
+
+    await userEvent.click(botaoAgendar());
+
+    expect(await screen.findByText('O veículo está lotado')).toBeInTheDocument();
+    expect(screen.queryByText(/Alocação confirmada/)).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => expect(veiculosSvoApi.listarSvoDisponiveis).toHaveBeenCalledTimes(2));
+  });
+
+  it('avisa e bloqueia o envio quando nenhum veículo SVO está disponível', async () => {
+    veiculosSvoApi.listarSvoDisponiveis.mockResolvedValue([]);
+    renderizar();
+    await aguardarDadosSvo();
+
+    expect(await screen.findByText(/Nenhum veículo SVO disponível para alocação/)).toBeInTheDocument();
+    expect(botaoAgendar()).toBeDisabled();
+  });
+
+  it('explica a falha ao consultar os veículos disponíveis e bloqueia o envio', async () => {
+    veiculosSvoApi.listarSvoDisponiveis.mockRejectedValue(new ApiError('Erro interno do servidor', 500));
+    renderizar();
+    await aguardarDadosSvo();
+
+    expect(
+      await screen.findByText(/Não foi possível carregar os veículos SVO disponíveis: Erro interno do servidor/),
+    ).toBeInTheDocument();
+    expect(botaoAgendar()).toBeDisabled();
+  });
 });
 
 describe('ModalNovaViagem (tipos de operação por perfil)', () => {
@@ -215,7 +281,7 @@ describe('ModalNovaViagem (tipos de operação por perfil)', () => {
     vi.clearAllMocks();
     solicitacoesApi.listarTodas.mockResolvedValue([solicitacao(7)]);
     equipesApi.listarDisponiveis.mockResolvedValue(disponibilidade([]));
-    ocupacaoApi.listarOcupacaoSvo.mockResolvedValue([]);
+    veiculosSvoApi.listarSvoDisponiveis.mockResolvedValue([]);
   });
 
   it('Gestor SVO vê somente a operação SVO, já selecionada', async () => {
@@ -248,7 +314,7 @@ describe('ModalNovaViagem (tipos de operação por perfil)', () => {
       expect(screen.getAllByRole('button', { name: 'Fechar' })).toHaveLength(1); // X do próprio modal
       expect(solicitacoesApi.listarTodas).not.toHaveBeenCalled();
       expect(equipesApi.listarDisponiveis).not.toHaveBeenCalled();
-      expect(ocupacaoApi.listarOcupacaoSvo).not.toHaveBeenCalled();
+      expect(veiculosSvoApi.listarSvoDisponiveis).not.toHaveBeenCalled();
     },
   );
 

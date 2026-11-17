@@ -9,7 +9,7 @@ import { veiculosApi } from '../../services/api/veiculosApi';
 import type { EquipeSvo } from '../../types/equipeSvo';
 import type { SolicitacaoSvo } from '../../types/solicitacaoSvo';
 import type { Motorista, StatusMotorista } from '../../types/motorista';
-import type { OcupacaoVeiculoSvo, StatusVeiculo, Veiculo } from '../../types/veiculo';
+import type { StatusVeiculo, Veiculo, VeiculoSvoDisponivel } from '../../types/veiculo';
 import type { SolicitacaoViagem } from '../../types/solicitacao';
 import type { Perfil } from '../../types/usuario';
 import { periodoConsultaEquipes } from '../../utils/periodoEquipesSvo';
@@ -67,10 +67,11 @@ export function ModalNovaViagem({
   // Sem permissão nada é exibido nem consultado; o tipo inicial é só um valor de reserva
   const tipoInicial: TipoOperacaoViagem = tiposPermitidos[0] ?? 'ADMINISTRATIVA';
 
+  // Frota SVO: os veículos oferecidos vêm só da API de disponíveis (BL28), nunca da lista geral
   const veiculosDoTipo = (tipo: TipoOperacaoViagem) =>
-    veiculos.filter(
-      (v) => v.tipo_frota === tipo && (tipo === 'SVO' || !VEICULO_BLOQUEADO.includes(v.status)),
-    );
+    tipo === 'SVO'
+      ? []
+      : veiculos.filter((v) => v.tipo_frota === tipo && !VEICULO_BLOQUEADO.includes(v.status));
   const motoristasDoTipo = (tipo: TipoOperacaoViagem) =>
     motoristas.filter(
       (m) =>
@@ -95,9 +96,14 @@ export function ModalNovaViagem({
   });
   const [erro, setErro] = useState<string>('');
   const [salvando, setSalvando] = useState(false);
-  const [ocupacoes, setOcupacoes] = useState<OcupacaoVeiculoSvo[]>([]);
-  const [erroOcupacao, setErroOcupacao] = useState<string | null>(null);
-  const [carregandoOcupacao, setCarregandoOcupacao] = useState(tipoInicial === 'SVO');
+  // Alocação SVO (BL28): veículos que a API informa como disponíveis
+  const [veiculosSvo, setVeiculosSvo] = useState<VeiculoSvoDisponivel[]>([]);
+  const [erroVeiculosSvo, setErroVeiculosSvo] = useState<string | null>(null);
+  const [carregandoVeiculosSvo, setCarregandoVeiculosSvo] = useState(tipoInicial === 'SVO');
+  // Muda para pedir nova consulta dos disponíveis (ex.: após o backend recusar a alocação)
+  const [recargaVeiculosSvo, setRecargaVeiculosSvo] = useState(0);
+  // Texto mostrado só depois que a API confirma a alocação SVO
+  const [confirmacao, setConfirmacao] = useState<string | null>(null);
   // Alocação SVO (BL29): solicitações confirmadas aguardando alocação e equipes
   const [solicitacoesSvo, setSolicitacoesSvo] = useState<SolicitacaoSvo[]>([]);
   const [solicitacaoSvoId, setSolicitacaoSvoId] = useState('');
@@ -108,17 +114,24 @@ export function ModalNovaViagem({
   const [erroEquipes, setErroEquipes] = useState<string | null>(null);
   const [carregandoEquipes, setCarregandoEquipes] = useState(tipoInicial === 'SVO');
 
-  const veiculosFiltrados = veiculosDoTipo(tipoOperacao);
   const motoristasFiltrados = motoristasDoTipo(tipoOperacao);
   const isSvo = tipoOperacao === 'SVO';
-  const ocupacaoDoVeiculo = ocupacoes.find((o) => String(o.id) === veiculoId);
-  const ocupacaoPorId = (id: number) => ocupacoes.find((o) => o.id === id);
+  const ocupacaoDoVeiculo = veiculosSvo.find((o) => String(o.id) === veiculoId);
+  const opcoesVeiculo = isSvo
+    ? veiculosSvo.map((v) => ({
+        id: v.id,
+        rotulo: `${v.modelo} (${v.placa})${sufixoStatus(v.status)} — ${rotuloOcupacao(v)}`,
+      }))
+    : veiculosDoTipo(tipoOperacao).map((v) => ({
+        id: v.id,
+        rotulo: `${v.modelo} (${v.placa})${sufixoStatus(v.status)}`,
+      }));
   const bloqueioSvo = isSvo && ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
   // SVO: espera a lista de solicitações e a ocupação carregarem; a equipe é opcional, mas, se
   // escolhida, precisa estar entre as disponíveis devolvidas pela API.
   const solicitacaoSvoValida = solicitacoesSvo.some((s) => String(s.id) === solicitacaoSvoId);
   const equipeValida = !equipeId || equipes.some((e) => String(e.id) === equipeId);
-  const carregandoDadosSvo = carregandoSolicitacoesSvo || carregandoOcupacao;
+  const carregandoDadosSvo = carregandoSolicitacoesSvo || carregandoVeiculosSvo;
   const podeSalvar = isSvo
     ? !carregandoDadosSvo && solicitacaoSvoValida && equipeValida && Boolean(veiculoId && motoristaId)
     : Boolean(solicitacaoId && veiculoId && motoristaId);
@@ -135,31 +148,36 @@ export function ModalNovaViagem({
         ? 'Não há solicitações aprovadas aguardando agendamento.'
         : null;
 
-  // Ocupação atual dos veículos SVO (BL30): carregada ao escolher a operação SVO
+  // Veículos SVO disponíveis (BL28), com a ocupação de cada um (BL30): carregados ao escolher SVO.
+  // A regra de capacidade é do backend; aqui só se exibe o que a API devolve.
   useEffect(() => {
     if (!isSvo) return;
     let ativo = true;
-    setCarregandoOcupacao(true);
-    setErroOcupacao(null);
-    setOcupacoes([]);
+    setCarregandoVeiculosSvo(true);
+    setErroVeiculosSvo(null);
     veiculosApi
-      .listarOcupacaoSvo()
+      .listarSvoDisponiveis()
       .then((dados) => {
         if (!ativo) return;
-        setOcupacoes(dados);
+        setVeiculosSvo(dados);
+        // Mantém a escolha atual se ela ainda for elegível; senão, seleciona o primeiro disponível
+        setVeiculoId((atual) =>
+          dados.some((v) => String(v.id) === atual) ? atual : dados[0] ? String(dados[0].id) : '',
+        );
       })
       .catch((error) => {
         if (!ativo) return;
-        setOcupacoes([]);
-        setErroOcupacao(mensagemDeErro(error));
+        setVeiculosSvo([]);
+        setVeiculoId('');
+        setErroVeiculosSvo(mensagemDeErro(error));
       })
       .finally(() => {
-        if (ativo) setCarregandoOcupacao(false);
+        if (ativo) setCarregandoVeiculosSvo(false);
       });
     return () => {
       ativo = false;
     };
-  }, [isSvo]);
+  }, [isSvo, recargaVeiculosSvo]);
 
   // Solicitações SVO confirmadas (têm ordem aguardando alocação) e equipes: carregadas ao escolher SVO.
   // A equipe é opcional: se a lista falhar, a alocação continua possível sem equipe.
@@ -215,7 +233,7 @@ export function ModalNovaViagem({
     setErro('');
     // Marca o carregamento já na troca, para não piscar "sem solicitações" antes das consultas
     if (novoTipo === 'SVO') {
-      setCarregandoOcupacao(true);
+      setCarregandoVeiculosSvo(true);
       setCarregandoSolicitacoesSvo(true);
       setCarregandoEquipes(true);
     }
@@ -257,10 +275,22 @@ export function ModalNovaViagem({
         motorista_id: Number(motoristaId),
         ...(isSvo && equipeId ? { equipe_id: Number(equipeId) } : {}),
       });
-      onClose();
+      if (!isSvo) {
+        onClose();
+        return;
+      }
+      // SVO: a alocação só é apresentada depois que a API confirmou (onSalvar já atualizou a lista)
+      const veiculo = veiculosSvo.find((v) => String(v.id) === veiculoId);
+      const motorista = motoristasFiltrados.find((m) => String(m.id) === motoristaId);
+      setConfirmacao(
+        `Ordem da solicitação SVO #${solicitacaoSvoId} alocada ao veículo ${veiculo?.modelo ?? ''} (${veiculo?.placa ?? veiculoId}) com o motorista ${motorista?.nome ?? motoristaId}.`,
+      );
+      setSalvando(false);
     } catch (error) {
+      // Falha ou bloqueio: nada é dado como alocado. No SVO, reconsulta os disponíveis, que podem ter mudado.
       setErro(mensagemDeErro(error));
       setSalvando(false);
+      if (isSvo) setRecargaVeiculosSvo((n) => n + 1);
     }
   };
 
@@ -268,6 +298,21 @@ export function ModalNovaViagem({
     return (
       <Modal title="Agendar Viagem" onClose={onClose}>
         <Alert tone="warning">Seu perfil não tem permissão para agendar viagens.</Alert>
+      </Modal>
+    );
+  }
+
+  if (confirmacao) {
+    return (
+      <Modal title="Agendar Viagem" onClose={onClose}>
+        <Alert tone="success" title="Alocação confirmada">
+          {confirmacao}
+        </Alert>
+        <div className="mt-4 flex justify-end">
+          <Button type="button" onClick={onClose}>
+            Concluir
+          </Button>
+        </div>
       </Modal>
     );
   }
@@ -349,16 +394,12 @@ export function ModalNovaViagem({
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setVeiculoId(e.target.value)}
             required
           >
-            {veiculosFiltrados.length === 0 && <option value="">Nenhum veículo disponível</option>}
-            {veiculosFiltrados.map((v) => {
-              const ocupacao = isSvo ? ocupacaoPorId(v.id) : undefined;
-              return (
-                <option key={v.id} value={v.id}>
-                  {v.modelo} ({v.placa}){sufixoStatus(v.status)}
-                  {ocupacao ? ` — ${rotuloOcupacao(ocupacao)}` : ''}
-                </option>
-              );
-            })}
+            {opcoesVeiculo.length === 0 && <option value="">Nenhum veículo disponível</option>}
+            {opcoesVeiculo.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.rotulo}
+              </option>
+            ))}
           </Select>
 
           <Select
@@ -378,18 +419,24 @@ export function ModalNovaViagem({
           </Select>
         </div>
 
-        {isSvo && !carregandoOcupacao && erroOcupacao && (
+        {isSvo && !carregandoVeiculosSvo && erroVeiculosSvo && (
           <Alert tone="warning" className="mt-3.5">
-            Não foi possível carregar a ocupação dos veículos: {erroOcupacao}
+            Não foi possível carregar os veículos SVO disponíveis: {erroVeiculosSvo}
           </Alert>
         )}
-        {isSvo && carregandoOcupacao && (
+        {isSvo && !carregandoVeiculosSvo && !erroVeiculosSvo && veiculosSvo.length === 0 && (
+          <Alert tone="warning" className="mt-3.5">
+            Nenhum veículo SVO disponível para alocação: todos estão lotados, em deslocamento ou em
+            manutenção.
+          </Alert>
+        )}
+        {isSvo && carregandoVeiculosSvo && (
           <div className="mt-3.5 flex items-center gap-2 text-xs text-slate-500">
             <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
-            Carregando ocupação dos veículos SVO...
+            Carregando veículos SVO disponíveis...
           </div>
         )}
-        {isSvo && !carregandoOcupacao && !erroOcupacao && ocupacaoDoVeiculo && (
+        {isSvo && !carregandoVeiculosSvo && !erroVeiculosSvo && ocupacaoDoVeiculo && (
           <OcupacaoVeiculoSvoPainel veiculo={ocupacaoDoVeiculo} />
         )}
 
