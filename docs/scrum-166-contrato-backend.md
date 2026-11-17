@@ -2,7 +2,7 @@
 
 Este documento descreve os contratos da SCRUM-166: consultas próprias, ordens pendentes, agenda temporal, alertas e liberação de coletas.
 
-As integrações são controladas em `recursosBackend.ts`. O frontend temporal e o backend desta entrega devem ser implantados juntos, depois da migration de banco.
+As integrações são controladas em `recursosBackend.ts`. A agenda SVO fica desativada por padrão; `VITE_AGENDA_SVO_ATIVA=true` só pode ser configurado no build após a atualização e a validação do banco pela equipe responsável.
 
 Os contratos de agendamento descritos abaixo correspondem à implementação desta branch e exigem a migration de estado e alertas revisada pela frente DB.
 
@@ -190,7 +190,7 @@ GET /api/viagens/ordens-svo/pendentes?pagina=1&limite=100
 
 ### 5.3 Atrasos e liberação da próxima coleta (SCRUM-183)
 
-A migration `20261117120000_estado_e_alertas_agenda_svo.js` adiciona `ordens_svo.liberada_em` e `alertas_atraso_svo`. Deve ser revisada e aplicada pela frente DB **antes da implantação do backend**. Nenhuma migration deve ser aplicada diretamente em produção por esta entrega.
+As estruturas `ordens_svo.liberada_em` e `alertas_atraso_svo` são dependências a implementar pela frente DB, descritas em `scrum-166-mensagem-gabriel.md`. Esta branch não contém migration para essas estruturas. Sem elas, a listagem compatível permanece acessível e operações dependentes respondem com erro de indisponibilidade; não habilitar a agenda.
 
 Uma ordem temporal continua `ALOCADA` até a saída real. `liberada_em = null` significa que ainda não foi liberada para iniciar; uma data indica liberação. A fila é reavaliada na alocação, no reagendamento, no cancelamento, na consulta de alertas e na conclusão. A prioridade é `inicio_previsto`, depois ID; a liberação verifica veículo, motorista, CNH e equipe/escala quando indicada. Um recurso em `EM_DESLOCAMENTO` permanece ocupado até a conclusão efetiva. A liberação não altera quilometragem, horário de saída ou status para deslocamento.
 
@@ -218,7 +218,7 @@ Antes da implantação, validar a migration pela frente DB, executar o cenário 
 
 ## 8. Estado da integração e roteiro de homologação
 
-Na base `efaad5af84ec0499dd0c6b53b3b4aee47485799f`, esta branch implementa consultas próprias, ordens pendentes, agenda temporal e fila de atrasos. A migration nova foi exercitada em PostgreSQL isolado, mas precisa de revisão e execução pela frente DB nos ambientes do projeto. A homologação autenticada no ambiente da equipe e a revisão independente de QA continuam necessárias.
+Esta branch implementa consultas próprias, ordens pendentes, agenda temporal e fila de atrasos. A estrutura adicional precisa ser implementada e validada pela frente DB nos ambientes do projeto. A homologação autenticada e a revisão independente de QA continuam necessárias.
 
 Para demonstrar em ambiente autorizado, registrar evidência, resultado observado e conclusão em cada passo:
 

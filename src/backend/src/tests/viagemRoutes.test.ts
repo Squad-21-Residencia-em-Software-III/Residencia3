@@ -7,6 +7,7 @@ import { authService } from '../services/authService';
 import { viagemService } from '../services/viagemService';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
+import { unidadeModel } from '../models/unidadeModel';
 
 // Gestor SVO associado à unidade SVO (exigirAssociacaoSvo)
 vi.mock('../models/unidadeModel', async (importOriginal) => {
@@ -88,6 +89,16 @@ describe('Rotas de viagens', () => {
     expect(viagemService.listarMinhasAdministrativas).toHaveBeenCalledWith(
       { id: 3, perfil: PERFIS.GESTOR_SVO }, 2, 10,
     );
+  });
+
+  it('permite consulta administrativa própria sem associação SVO, mas mantém restrição nas operações SVO', async () => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValueOnce(false);
+    const minhas = await request(app).get('/api/viagens/minhas').set('Authorization', token);
+    const pendentes = await request(app).get('/api/viagens/ordens-svo/pendentes').set('Authorization', token);
+    expect(minhas.status).toBe(200);
+    expect(pendentes.status).toBe(403);
+    expect(viagemService.listarMinhasAdministrativas).toHaveBeenCalledWith({ id: 3, perfil: PERFIS.GESTOR_SVO }, 1, 20);
   });
 
   it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO])('permite %s consultar ordens pendentes paginadas', async (perfil) => {

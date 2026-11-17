@@ -4,7 +4,7 @@ vi.mock('../config/env', () => ({ env: { jwtSecret: 'segredo-local-de-teste-com-
 import { validarAgendaSvo, type DadosAgendaSvo, type ReservaSvo } from '../services/agendaSvoService';
 
 const reserva: ReservaSvo = {
-  id: 8, veiculo_id: 2, motorista_id: 3, equipe_id: 4,
+  id: 8, status: 'ALOCADA', veiculo_id: 2, motorista_id: 3, equipe_id: 4,
   inicio_previsto: '2099-01-01T14:00:00Z', fim_previsto: '2099-01-01T16:00:00Z',
 };
 const dados = (minutos: number): DadosAgendaSvo => ({
@@ -26,6 +26,16 @@ async function desafio(input: DadosAgendaSvo, reservas = [reserva]) {
 describe('agenda temporal SVO', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2099-01-01T12:00:00Z')); });
   afterEach(() => vi.useRealTimers());
+
+  it.each(['veiculo', 'motorista', 'equipe'])('bloqueia %s ocupado por coleta atrasada mesmo após o horário previsto', async (recurso) => {
+    vi.setSystemTime(new Date('2099-01-01T16:40:00Z'));
+    const ocupada = { ...reserva, status: 'EM_DESLOCAMENTO' as const,
+      veiculo_id: recurso === 'veiculo' ? 2 : 20,
+      motorista_id: recurso === 'motorista' ? 3 : 30,
+      equipe_id: recurso === 'equipe' ? 4 : 40 };
+    await expect(validarAgendaSvo(conexao([ocupada]), dados(45)))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+  });
 
   it.each([0, 10, 19])('exige confirmação para folga de %i minutos', async (minutos) => {
     const erro = await desafio(dados(minutos));

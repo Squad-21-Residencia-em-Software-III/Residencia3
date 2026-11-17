@@ -26,7 +26,7 @@ export const RECURSOS_BACKEND = {
    * `fim_previsto`, bloqueio de sobreposição (409) e confirmação de intervalo menor que 20 min.
    * Serviço: `viagensApi.agendarColetaSvo`.
    */
-  agendamentoTemporalSvo: true,
+  agendamentoTemporalSvo: import.meta.env.VITE_AGENDA_SVO_ATIVA === 'true',
 
   /**
    * SCRUM-182: `GET /viagens/ordens-svo/pendentes`, ordens AGUARDANDO_ALOCACAO paginadas.

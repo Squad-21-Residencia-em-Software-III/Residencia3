@@ -70,6 +70,7 @@ function abrir(url = '/viagens') {
 describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    RECURSOS_BACKEND.agendamentoTemporalSvo = true;
     sessao.perfil = 'ADMINISTRADOR';
     api.listarAlertasSvo.mockResolvedValue([]);
     // Viagem administrativa e ordem SVO com o mesmo id: cada uma só na sua aba
@@ -93,6 +94,15 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
 
   afterEach(() => {
     RECURSOS_BACKEND.minhasViagensAdministrativas = false;
+    RECURSOS_BACKEND.agendamentoTemporalSvo = false;
+  });
+
+  it('desativa operações de coleta e consulta de alertas enquanto o banco não estiver pronto', async () => {
+    RECURSOS_BACKEND.agendamentoTemporalSvo = false;
+    abrir('/viagens?aba=svo');
+    expect(await screen.findByText(/operações de coleta SVO indisponíveis/)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Agendar coleta/ })).toBeDisabled();
+    expect(api.listarAlertasSvo).not.toHaveBeenCalled();
   });
 
   it('Administrador alterna entre as abas sem misturar registros de mesmo id', async () => {

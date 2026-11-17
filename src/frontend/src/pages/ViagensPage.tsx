@@ -20,6 +20,7 @@ import {
 } from '../components/ui';
 import { BotaoExportarRelatorio } from '../components/relatorios/BotaoExportarRelatorio';
 import { mensagemDeErro } from '../services/api/http';
+import { recursoAtivo } from '../config/recursosBackend';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { solicitacoesApi } from '../services/api/solicitacoesApi';
 import { veiculosApi } from '../services/api/veiculosApi';
@@ -149,6 +150,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const location = useLocation();
   const { pode } = usePermissao();
   const isSvo = operacao === 'SVO';
+  const agendaSvoAtiva = recursoAtivo('agendamentoTemporalSvo');
   const textos = TEXTOS_OPERACAO[operacao];
   // Agendar viagem administrativa (Admin e Gestor de Frota); alocar coleta SVO (Admin e Gestor SVO)
   const podeAgendar = !isSvo && !somenteProprias && pode('viagens.agendar');
@@ -206,7 +208,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   };
 
   const carregarViagens = useCallback(async () => {
-    if (podeAlocarSvo) {
+    if (podeAlocarSvo && agendaSvoAtiva) {
       try {
         setAlertasSvo(await viagensApi.listarAlertasSvo());
         setErroAlertas(null);
@@ -226,7 +228,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
     } finally {
       setCarregando(false);
     }
-  }, [operacao, somenteProprias, podeAlocarSvo]);
+  }, [operacao, somenteProprias, podeAlocarSvo, agendaSvoAtiva]);
 
   useEffect(() => {
     carregarViagens();
@@ -254,11 +256,11 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const solicitacaoSvoDoAtalho: number | undefined = location.state?.agendarSolicitacaoSvoId;
   const [atalhoUsado, setAtalhoUsado] = useState(false);
   useEffect(() => {
-    if (atalhoUsado || !solicitacaoSvoDoAtalho || carregandoPendentes) return;
+    if (!agendaSvoAtiva || atalhoUsado || !solicitacaoSvoDoAtalho || carregandoPendentes) return;
     const ordem = pendentes.find((p) => p.solicitacao_id === solicitacaoSvoDoAtalho);
     if (ordem) setOrdemAgendar(ordem);
     setAtalhoUsado(true);
-  }, [atalhoUsado, solicitacaoSvoDoAtalho, carregandoPendentes, pendentes]);
+  }, [agendaSvoAtiva, atalhoUsado, solicitacaoSvoDoAtalho, carregandoPendentes, pendentes]);
 
   // Veículos e motoristas buscados a cada abertura, para refletir os status atuais
   useEffect(() => {
@@ -430,6 +432,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
 
   return (
     <div className="grid w-full min-w-0 gap-5">
+      {isSvo && !agendaSvoAtiva && <Alert tone="info">Agendamento e operações de coleta SVO indisponíveis até a atualização do banco de dados.</Alert>}
       {erroAlertas && <Alert tone="warning">Não foi possível atualizar os alertas SVO: {erroAlertas}</Alert>}
       {alertasSvo.map((alerta) => (
         <Alert key={alerta.id} tone="warning">
@@ -528,7 +531,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                     </td>
                     <td className="whitespace-nowrap">{formatarDataHora(o.confirmado_em)}</td>
                     <td className="text-right whitespace-nowrap">
-                      <Button size="sm" onClick={() => setOrdemAgendar(o)}>
+                      <Button size="sm" disabled={!agendaSvoAtiva} onClick={() => setOrdemAgendar(o)}>
                         <CalendarClock size={13} className="mr-1" /> Agendar coleta
                       </Button>
                     </td>
@@ -782,7 +785,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                         <Badge tone={obterBadgeToneStatus(v.status)}>
                           {LABELS_STATUS_VIAGEM[v.status]}
                         </Badge>
-                        {isSvo && v.status === 'AGENDADA' && v.inicio_previsto && (
+                        {isSvo && agendaSvoAtiva && v.status === 'AGENDADA' && v.inicio_previsto && (
                           <span className="block text-xs text-slate-500">
                             {v.liberada_em ? 'Liberada para saída' : 'Aguardando liberação'}
                           </span>
@@ -792,7 +795,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                         <div className="inline-flex items-center justify-end gap-2">
                           {v.status === 'AGENDADA' && (
                             <>
-                              {podeAlocarSvo && (
+                              {podeAlocarSvo && agendaSvoAtiva && (
                                 <Button variant="outline" size="sm" onClick={(e) => {
                                   e.stopPropagation();
                                   setViagemReprogramar(v);
@@ -800,7 +803,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                                     local_ocorrencia: v.destino ?? '', material_sensivel: false, confirmado_em: null });
                                 }}>Reagendar coleta</Button>
                               )}
-                              {podeExecutar && (
+                              {podeExecutar && (!isSvo || agendaSvoAtiva) && (
                                 <Button
                                   variant="primary"
                                   size="sm"
@@ -813,7 +816,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                                   <Play size={13} className="mr-1" /> Iniciar
                                 </Button>
                               )}
-                              {podeCancelar && (
+                              {podeCancelar && (!isSvo || agendaSvoAtiva) && (
                                 <Button
                                   variant="danger-outline"
                                   size="sm"
@@ -828,7 +831,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                               )}
                             </>
                           )}
-                          {v.status === 'EM_ANDAMENTO' && podeExecutar && (
+                          {v.status === 'EM_ANDAMENTO' && podeExecutar && (!isSvo || agendaSvoAtiva) && (
                             <Button
                               variant="primary"
                               size="sm"

@@ -16,6 +16,7 @@ export function classificarIntervalo(a: Periodo, b: Periodo): { sobrepoe: boolea
 
 export interface ReservaSvo {
   id: number;
+  status: 'ALOCADA' | 'EM_DESLOCAMENTO';
   veiculo_id: number | null;
   motorista_id: number | null;
   equipe_id: number | null;
@@ -72,7 +73,7 @@ export async function validarAgendaSvo(trx: Knex.Transaction, dados: DadosAgenda
       q.where('veiculo_id', dados.veiculoId).orWhere('motorista_id', dados.motoristaId);
       if (dados.equipeId) q.orWhere('equipe_id', dados.equipeId);
     })
-    .select('id', 'veiculo_id', 'motorista_id', 'equipe_id', 'inicio_previsto', 'fim_previsto')
+    .select('id', 'status', 'veiculo_id', 'motorista_id', 'equipe_id', 'inicio_previsto', 'fim_previsto')
     .orderBy('id');
 
   const conflitos: Conflito[] = [];
@@ -88,6 +89,9 @@ export async function validarAgendaSvo(trx: Knex.Transaction, dados: DadosAgenda
     const existente = { inicio: new Date(reserva.inicio_previsto), fim: new Date(reserva.fim_previsto) };
     if (!Number.isFinite(existente.inicio.getTime()) || !Number.isFinite(existente.fim.getTime()) || existente.fim <= existente.inicio) {
       throw new AppError('Há uma reserva ativa com período inválido', 409, 'CONFLITO_AGENDA');
+    }
+    if (reserva.status === 'EM_DESLOCAMENTO' && existente.fim.getTime() <= Date.now()) {
+      throw new AppError('Um recurso permanece ocupado por uma coleta em andamento e atrasada', 409, 'CONFLITO_AGENDA');
     }
     const resultado = classificarIntervalo({ inicio: dados.inicio, fim: dados.fim }, existente);
     if (resultado.sobrepoe) {

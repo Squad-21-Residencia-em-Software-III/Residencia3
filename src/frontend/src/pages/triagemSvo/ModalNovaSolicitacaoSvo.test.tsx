@@ -8,8 +8,15 @@ import { ApiError } from '../../services/api/http';
 vi.mock('../../services/api/solicitacoesSvoApi', () => ({
   solicitacoesSvoApi: { criar: vi.fn() },
 }));
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ usuario: { nome: 'Gestor SVO' } }) }));
 
 describe('Nova solicitação SVO', () => {
+  it('identifica o registrante e mostra a unidade SVO sem seletor', () => {
+    render(<ModalNovaSolicitacaoSvo onClose={vi.fn()} onCriada={vi.fn()} />);
+    expect(screen.getByLabelText('Registrado por')).toHaveValue('Gestor SVO');
+    expect(screen.getByLabelText('Unidade')).toHaveValue('SVO');
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
   it('envia apenas campos autorizados, impede envio repetido e usa o id retornado', async () => {
     let resolver!: (valor: never) => void;
     vi.mocked(solicitacoesSvoApi.criar).mockReturnValue(

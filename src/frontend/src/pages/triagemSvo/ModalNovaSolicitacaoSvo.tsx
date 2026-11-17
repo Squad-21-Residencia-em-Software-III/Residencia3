@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Alert, Button, Modal, Textarea } from '../../components/ui';
+import { Alert, Button, Input, Modal, Textarea } from '../../components/ui';
+import { useAuth } from '../../contexts/AuthContext';
 import { solicitacoesSvoApi } from '../../services/api/solicitacoesSvoApi';
 import { mensagemDeErro } from '../../services/api/http';
 
@@ -11,6 +12,7 @@ export function ModalNovaSolicitacaoSvo({
   onClose: () => void;
   onCriada: (id: number) => void;
 }) {
+  const { usuario } = useAuth();
   const [solicitante, setSolicitante] = useState('');
   const [local, setLocal] = useState('');
   const [sensivel, setSensivel] = useState(false);
@@ -43,9 +45,13 @@ export function ModalNovaSolicitacaoSvo({
   }
 
   return (
-    <Modal title="Nova solicitação SVO" onClose={enviando ? () => {} : onClose} hideFooter>
+    <Modal title="Nova solicitação SVO" maxWidth="560px" onClose={enviando ? () => {} : onClose} hideFooter>
       <form onSubmit={enviar} className="grid gap-4">
         {erro && <Alert tone="danger">{erro}</Alert>}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input label="Registrado por" value={usuario?.nome ?? ''} disabled />
+          <Input label="Unidade" value="SVO" readOnly />
+        </div>
         <Textarea
           id="dados-solicitante-svo"
           label="Dados do solicitante *"
@@ -53,6 +59,8 @@ export function ModalNovaSolicitacaoSvo({
           onChange={(e) => setSolicitante(e.target.value)}
           required
           maxLength={2000}
+          placeholder="Informe os dados do solicitante"
+          rows={3}
           disabled={enviando}
         />
         <Textarea
@@ -62,6 +70,8 @@ export function ModalNovaSolicitacaoSvo({
           onChange={(e) => setLocal(e.target.value)}
           required
           maxLength={255}
+          placeholder="Informe o local da ocorrência"
+          rows={3}
           disabled={enviando}
         />
         <label className="flex items-center gap-2 text-sm text-text">
@@ -73,7 +83,7 @@ export function ModalNovaSolicitacaoSvo({
           />
           Material sensível
         </label>
-        <div className="flex justify-end gap-2">
+        <div className="mt-2 flex justify-end gap-2 border-t border-slate-100 pt-3">
           <Button type="button" variant="ghost" onClick={onClose} disabled={enviando}>
             Cancelar
           </Button>

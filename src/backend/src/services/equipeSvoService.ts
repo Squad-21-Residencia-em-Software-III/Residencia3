@@ -65,7 +65,7 @@ export const equipeSvoService = {
           .whereRaw('o.equipe_id = e.id')
           .whereIn('o.status', ORDENS_OCUPANDO_EQUIPE)
           .modify((q) => { if (filtros.ignorar_ordem_id) q.whereNot('o.id', filtros.ignorar_ordem_id); })
-          .whereRaw('(o.inicio_previsto IS NULL OR o.fim_previsto IS NULL OR (o.inicio_previsto < ? AND o.fim_previsto > ?))', [fim, inicio])
+          .whereRaw("(o.inicio_previsto IS NULL OR o.fim_previsto IS NULL OR (o.status = 'EM_DESLOCAMENTO' AND o.fim_previsto <= CURRENT_TIMESTAMP) OR (o.inicio_previsto < ? AND o.fim_previsto > ?))", [fim, inicio])
       )
       .orderBy('e.id', 'asc');
 
