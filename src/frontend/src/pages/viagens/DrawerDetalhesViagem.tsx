@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, Flag, MapPin, Play } from 'lucide-react';
 import { Avatar, Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
-import { LABELS_STATUS_VIAGEM, type StatusViagem, type Viagem } from '../../types/viagem';
+import { rotuloStatusViagem, viagemEmCurso, type StatusViagem, type Viagem } from '../../types/viagem';
 
 interface DrawerDetalhesViagemProps {
   viagem: Viagem | null;
@@ -16,6 +16,8 @@ function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
     case 'EM_ANDAMENTO':
       return 'info';
+    case 'NO_LOCAL':
+      return 'warning';
     case 'AGENDADA':
       return 'purple';
     case 'CONCLUIDA':
@@ -104,7 +106,7 @@ export function DrawerDetalhesViagem({
         <div className="flex items-center gap-2.5">
           <span>Viagem #{viagem.id}</span>
           <Badge tone={obterBadgeToneStatus(viagem.status)}>
-            {LABELS_STATUS_VIAGEM[viagem.status]}
+            {rotuloStatusViagem(viagem)}
           </Badge>
         </div>
       }
@@ -151,7 +153,7 @@ export function DrawerDetalhesViagem({
               </Button>
             )}
 
-            {viagem.status === 'EM_ANDAMENTO' && onFinalizar && (
+            {viagemEmCurso(viagem.status) && onFinalizar && (
               <Button
                 variant="primary"
                 size="sm"
@@ -308,7 +310,9 @@ export function DrawerDetalhesViagem({
               <div className="mt-1 text-sm font-bold text-slate-900">
                 {duracao
                   ? duracao
-                  : viagem.status === 'EM_ANDAMENTO'
+                  : viagem.status === 'NO_LOCAL'
+                    ? 'No local da coleta'
+                    : viagem.status === 'EM_ANDAMENTO'
                     ? 'Em trânsito'
                     : 'Aguardando partida'}
               </div>

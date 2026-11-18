@@ -29,7 +29,8 @@ import type { Motorista } from '../types/motorista';
 import type { SolicitacaoViagem } from '../types/solicitacao';
 import type { Veiculo } from '../types/veiculo';
 import {
-  LABELS_STATUS_VIAGEM,
+  rotuloStatusViagem,
+  viagemEmCurso,
   type NovaViagemInput,
   type OrdemPendenteSvo,
   type StatusViagem,
@@ -45,7 +46,7 @@ import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
 import { usePermissao } from '../utils/permissoes';
 
-type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
 
 interface DadosNovaViagem {
   veiculos: Veiculo[];
@@ -87,6 +88,8 @@ function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
     case 'EM_ANDAMENTO':
       return 'info';
+    case 'NO_LOCAL':
+      return 'warning';
     case 'AGENDADA':
       return 'purple';
     case 'CONCLUIDA':
@@ -319,7 +322,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const totais = useMemo(
     () => ({
       total: viagens.length,
-      emAndamento: viagens.filter((v) => v.status === 'EM_ANDAMENTO').length,
+      emAndamento: viagens.filter((v) => viagemEmCurso(v.status)).length,
       agendadas: viagens.filter((v) => v.status === 'AGENDADA').length,
       concluidas: viagens.filter((v) => v.status === 'CONCLUIDA').length,
     }),
@@ -571,7 +574,8 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
             options={[
               { value: 'TODOS', label: 'Todos os status' },
               { value: 'AGENDADA', label: 'Agendadas' },
-              { value: 'EM_ANDAMENTO', label: 'Em Andamento' },
+              { value: 'EM_ANDAMENTO', label: isSvo ? 'A caminho' : 'Em Andamento' },
+              ...(isSvo ? [{ value: 'NO_LOCAL', label: 'No local' }] : []),
               { value: 'CONCLUIDA', label: 'Concluídas' },
               { value: 'CANCELADA', label: 'Canceladas' },
             ]}
@@ -721,10 +725,10 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                                   {formatarDataHora(v.data_hora_efetiva_chegada)}
                                 </span>
                               ) : (
-                                v.status === 'EM_ANDAMENTO' && (
+                                viagemEmCurso(v.status) && (
                                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
                                     <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                                    Em trânsito
+                                    {v.status === 'NO_LOCAL' ? 'No local da coleta' : 'Em trânsito'}
                                   </span>
                                 )
                               )}
@@ -779,7 +783,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                       </td></>}
                       <td>
                         <Badge tone={obterBadgeToneStatus(v.status)}>
-                          {LABELS_STATUS_VIAGEM[v.status]}
+                          {rotuloStatusViagem(v)}
                         </Badge>
                         {isSvo && agendaSvoAtiva && v.status === 'AGENDADA' && v.inicio_previsto && (
                           <span className="block text-xs text-slate-500">
@@ -827,7 +831,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                               )}
                             </>
                           )}
-                          {v.status === 'EM_ANDAMENTO' && podeExecutar && (!isSvo || agendaSvoAtiva) && (
+                          {viagemEmCurso(v.status) && podeExecutar && (!isSvo || agendaSvoAtiva) && (
                             <Button
                               variant="primary"
                               size="sm"
