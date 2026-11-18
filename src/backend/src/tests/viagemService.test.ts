@@ -653,6 +653,81 @@ describe('viagemService.criar (SVO)', () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
+  it.each(['EM_USO', 'INATIVO'])('deve rejeitar veículo com situação %s, sem alterar nada (RN10)', async (status) => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, status };
+
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({
+      statusCode: 409,
+      message: `O veículo não está disponível para alocação (situação atual: ${status})`,
+    });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(ref.estado.updates).toEqual([]);
+    expect(veiculoModel.atualizarStatus).not.toHaveBeenCalled();
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('deve rejeitar veículo em manutenção', async () => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, status: 'MANUTENCAO' };
+
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'O veículo está em manutenção',
+    });
+    expect(ref.estado.updates).toEqual([]);
+  });
+
+  it('deve informar o deslocamento, e não a situação do veículo, quando ele está em uso por uma ordem em deslocamento', async () => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, status: 'EM_USO' };
+    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 1, status: 'EM_DESLOCAMENTO' }];
+
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'O veículo está em deslocamento',
+    });
+  });
+
+  it('deve rejeitar veículo da frota administrativa', async () => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota: 'ADMINISTRATIVA' };
+
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'O veículo não pertence à frota SVO',
+    });
+    expect(ref.estado.updates).toEqual([]);
+  });
+
+  it('deve rejeitar capacidade utilizada acima de 4 óbitos (RN11)', async () => {
+    await expect(viagemService.criar({ ...dados, capacidade_utilizada: 5 }, gestorSvo)).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    expect(ref.estado.updates).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('deve aplicar o teto de 4 óbitos a veículo cadastrado com capacidade maior', async () => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, capacidade_maxima: 6 };
+    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 3, status: 'ALOCADA' }];
+
+    await expect(viagemService.criar({ ...dados, capacidade_utilizada: 2 }, gestorSvo)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'O veículo não tem capacidade suficiente (vagas disponíveis: 1)',
+    });
+  });
+
+  it('deve alocar em veículo RESERVADO que já tem ordem do mesmo motorista e ocupar a última vaga', async () => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, status: 'RESERVADO' };
+    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA' }];
+
+    await expect(viagemService.criar({ ...dados, capacidade_utilizada: 2 }, gestorSvo)).resolves.toEqual({
+      id: 99,
+      tipo_operacao: 'SVO',
+    });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({ veiculo_id: 10, motorista_id: 20, status: 'ALOCADA', capacidade_utilizada: 2 }),
+    });
+  });
+
   it('deve rejeitar motorista alocado em outro veículo', async () => {
     ref.estado.ordemEmOutroVeiculo = { id: 3 };
 

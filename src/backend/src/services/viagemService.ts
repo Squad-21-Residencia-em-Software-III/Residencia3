@@ -14,6 +14,7 @@ import {
   ultimoDiaDaSolicitacao,
   viagensConflitantes,
 } from './disponibilidadeService';
+import { validarVeiculoParaOrdemSvo, type OrdemDoVeiculo } from './alocacaoVeiculoSvo';
 
 interface Autor {
   id: number;
@@ -279,27 +280,17 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput)
     throw new AppError('A solicitação SVO não possui ordem aguardando alocação', 409);
   }
 
-  // 2. Valida veiculo e capacidade (RNF10)
+  // 2. Valida veículo, disponibilidade e capacidade (RN10, RN11 e RN12).
+  // O veículo fica bloqueado até o fim da transação; a regra está em alocacaoVeiculoSvo.ts.
   const veiculo = await bloquearVeiculo(trx, dados.veiculo_id);
-  if (veiculo.tipo_frota !== 'SVO') {
-    throw new AppError('O veículo não pertence à frota SVO', 400);
-  }
-  const ordensDoVeiculo: { motorista_id: number; capacidade_utilizada: number; status: string }[] =
-    await trx('ordens_svo')
-      .where({ veiculo_id: dados.veiculo_id })
-      .whereIn('status', ORDENS_SVO_ALOCADAS)
-      .select('motorista_id', 'capacidade_utilizada', 'status');
-  if (ordensDoVeiculo.some((ordem) => ordem.status === 'EM_DESLOCAMENTO')) {
-    throw new AppError('O veículo está em deslocamento', 409);
-  }
-  if (ordensDoVeiculo.some((ordem) => ordem.motorista_id !== dados.motorista_id)) {
-    throw new AppError('O veículo já está alocado a outro motorista', 409);
-  }
-  const vagas =
-    veiculo.capacidade_maxima - ordensDoVeiculo.reduce((total, ordem) => total + ordem.capacidade_utilizada, 0);
-  if (dados.capacidade_utilizada > vagas) {
-    throw new AppError(`O veículo não tem capacidade suficiente (vagas disponíveis: ${Math.max(vagas, 0)})`, 409);
-  }
+  const ordensDoVeiculo: OrdemDoVeiculo[] = await trx('ordens_svo')
+    .where({ veiculo_id: dados.veiculo_id })
+    .whereIn('status', ORDENS_SVO_ALOCADAS)
+    .select('motorista_id', 'capacidade_utilizada', 'status');
+  validarVeiculoParaOrdemSvo(veiculo, ordensDoVeiculo, {
+    motoristaId: dados.motorista_id,
+    capacidade: dados.capacidade_utilizada,
+  });
 
   // 3. Valida motorista
   const motorista = await bloquearMotorista(trx, dados.motorista_id);

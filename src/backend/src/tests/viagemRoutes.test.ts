@@ -144,6 +144,67 @@ describe('Rotas de viagens', () => {
     );
   });
 
+  it.each([1, 2, 3, 4])('POST /api/viagens deve aceitar capacidade utilizada de %i óbito(s) na ordem SVO', async (capacidade) => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+
+    const resposta = await request(app)
+      .post('/api/viagens')
+      .set('Authorization', token)
+      .send({ tipo_operacao: 'SVO', solicitacao_id: 1, veiculo_id: 2, motorista_id: 3, capacidade_utilizada: capacidade });
+
+    expect(resposta.status).toBe(200);
+    expect(viagemService.criar).toHaveBeenCalledWith(
+      expect.objectContaining({ capacidade_utilizada: capacidade }),
+      expect.anything()
+    );
+  });
+
+  it.each([0, 5, 10])('POST /api/viagens deve retornar 400 para capacidade utilizada %i na ordem SVO (RN11)', async (capacidade) => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+
+    const resposta = await request(app)
+      .post('/api/viagens')
+      .set('Authorization', token)
+      .send({ tipo_operacao: 'SVO', solicitacao_id: 1, veiculo_id: 2, motorista_id: 3, capacidade_utilizada: capacidade });
+
+    expect(resposta.status).toBe(400);
+    expect(viagemService.criar).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/viagens deve permitir o administrador alocar a ordem SVO', async () => {
+    autenticarComo(PERFIS.ADMINISTRADOR);
+
+    const resposta = await request(app)
+      .post('/api/viagens')
+      .set('Authorization', token)
+      .send({ tipo_operacao: 'SVO', solicitacao_id: 1, veiculo_id: 2, motorista_id: 3 });
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it.each([PERFIS.MOTORISTA_SVO, PERFIS.SOLICITANTE])('POST /api/viagens deve bloquear %s na alocação da ordem SVO', async (perfil) => {
+    autenticarComo(perfil);
+
+    const resposta = await request(app)
+      .post('/api/viagens')
+      .set('Authorization', token)
+      .send({ tipo_operacao: 'SVO', solicitacao_id: 1, veiculo_id: 2, motorista_id: 3 });
+
+    expect(resposta.status).toBe(403);
+    expect(viagemService.criar).not.toHaveBeenCalled();
+  });
+
+  it.each(['solicitacao_id', 'veiculo_id', 'motorista_id'])('POST /api/viagens deve exigir %s na ordem SVO', async (campo) => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    const corpo: Record<string, unknown> = { tipo_operacao: 'SVO', solicitacao_id: 1, veiculo_id: 2, motorista_id: 3 };
+    delete corpo[campo];
+
+    const resposta = await request(app).post('/api/viagens').set('Authorization', token).send(corpo);
+
+    expect(resposta.status).toBe(400);
+    expect(viagemService.criar).not.toHaveBeenCalled();
+  });
+
   it('POST /api/viagens deve retornar 400 sem tipo de operação', async () => {
     const resposta = await request(app)
       .post('/api/viagens')

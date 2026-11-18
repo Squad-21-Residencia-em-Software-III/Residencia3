@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CAPACIDADE_MAXIMA_SVO } from '../constants/veiculoSvo';
 
 const idSchema = (campo: string) =>
   z
@@ -39,6 +40,7 @@ export const criarViagemSchema = z.discriminatedUnion(
         .number({ error: 'A capacidade utilizada deve ser um número' })
         .int('A capacidade utilizada deve ser um número inteiro')
         .min(1, 'A capacidade utilizada deve ser de no mínimo 1')
+        .max(CAPACIDADE_MAXIMA_SVO, `A capacidade utilizada não pode passar de ${CAPACIDADE_MAXIMA_SVO} óbitos por veículo`)
         .default(1),
     }),
   ],
