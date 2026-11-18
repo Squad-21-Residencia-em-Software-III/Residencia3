@@ -37,6 +37,9 @@ describe('acesso de integrantes SVO', () => {
   it.each([PERFIS.MOTORISTA_SVO, PERFIS.SOLICITANTE, PERFIS.GESTOR_FROTA, PERFIS.INTEGRANTE_SVO])('nega gestão ao perfil %s', async (perfil) => {
     vi.mocked(authService.usuarioDoToken).mockResolvedValue({ id: 7, perfil } as never);
     expect((await request(app).put('/api/equipes-svo/2/integrantes/3').set('Authorization', 'Bearer token')).status).toBe(403);
+    const edicao = await request(app).patch('/api/equipes-svo/integrantes/3').set('Authorization', 'Bearer token').send({ nome: 'Nome válido' });
+    expect(edicao.status).toBe(403);
+    expect(integrantesSvoService.atualizar).not.toHaveBeenCalled();
   });
   it('consulta somente o usuário autenticado, sem aceitar ID na query', async () => {
     vi.mocked(authService.usuarioDoToken).mockResolvedValue({ id: 7, perfil: PERFIS.INTEGRANTE_SVO } as never);

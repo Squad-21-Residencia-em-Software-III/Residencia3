@@ -1,10 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
 import { db } from '../config/database';
 import { env } from '../config/env';
+import { auditoriaModel } from '../models/auditoriaModel';
 
 // Este arquivo só executa no banco descartável explicitamente identificado abaixo.
 const habilitado = process.env.SCRUM166_POSTGRES_TESTS === '1';
@@ -46,6 +47,12 @@ async function recursos() {
   await db('escalas_svo').insert({ equipe_id: equipe.id, data_inicio: instante(-1440), data_fim: instante(14400) });
   await db('equipes_svo_integrantes').insert({ equipe_id: equipe.id, usuario_id: integrante.id, vinculado_em: new Date() });
   return { gestor, condutor, integrante, veiculo, motorista, equipe };
+}
+
+function payloadSvo(r: Awaited<ReturnType<typeof recursos>>, solicitacaoId: number, integrantes = [r.integrante.id]) {
+  return { tipo_operacao: 'SVO', solicitacao_id: solicitacaoId, veiculo_id: r.veiculo.id,
+    motorista_id: r.motorista.id, equipe_id: r.equipe.id, integrantes_ids: integrantes,
+    inicio_previsto: instante(120).toISOString(), fim_previsto: instante(180).toISOString() };
 }
 
 async function pendente(autorId: number) {
@@ -210,8 +217,12 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
       status: 'EM_DESLOCAMENTO', inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
     await db('ordens_svo').where({ id: b.ordem.id }).update({ veiculo_id: r1.veiculo.id, motorista_id: r2.motorista.id,
       equipe_id: r1.equipe.id, status: 'ALOCADA', inicio_previsto: instante(-20), fim_previsto: instante(40) });
-    const respostas = await Promise.all([a, d].map((item) =>
-      request(app).patch(`/api/viagens/${item.ordem.id}/finalizar`).set('Authorization', r1.condutor.token)
+    const indevida = await request(app).patch(`/api/viagens/${d.ordem.id}/finalizar`)
+      .set('Authorization', r1.condutor.token).send({ tipo_operacao: 'SVO', km_final: 20 });
+    expect(indevida.status).toBe(403);
+    expect((await db('ordens_svo').where({ id: d.ordem.id }).first()).status).toBe('EM_DESLOCAMENTO');
+    const respostas = await Promise.all([{ item: a, token: r1.condutor.token }, { item: d, token: r2.condutor.token }].map(({ item, token }) =>
+      request(app).patch(`/api/viagens/${item.ordem.id}/finalizar`).set('Authorization', token)
         .send({ tipo_operacao: 'SVO', km_final: 20 })));
     expect(respostas.map((resp) => resp.status)).toEqual([200, 200]);
     const proxima = await db('ordens_svo').where({ id: b.ordem.id }).first();
@@ -322,5 +333,101 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     });
     resposta = await request(app).get('/api/veiculos/svo/ocupacao').set('Authorization', r.gestor.token);
     expect(resposta.body.find((v: { id: number }) => v.id === r.veiculo.id).capacidade_utilizada).toBe(2);
+  });
+
+  it('serializa designações do mesmo integrante com equipes, veículos e motoristas distintos', async () => {
+    const alfa = await recursos();
+    const beta = await recursos();
+    const vinculo = await request(app).put(`/api/equipes-svo/${beta.equipe.id}/integrantes/${alfa.integrante.id}`)
+      .set('Authorization', beta.gestor.token);
+    expect(vinculo.status).toBe(204);
+    const a = await pendente(alfa.gestor.id);
+    const b = await pendente(beta.gestor.id);
+    const respostas = await Promise.all([{ r: alfa, coleta: a }, { r: beta, coleta: b }].map(({ r, coleta }) =>
+      request(app).post('/api/viagens').set('Authorization', r.gestor.token)
+        .send(payloadSvo(r, coleta.solicitacao.id, [alfa.integrante.id]))));
+    expect(respostas.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(respostas.find((r) => r.status === 409)?.body.codigo).toBe('CONFLITO_AGENDA');
+    const designacoes = await db('ordens_svo_integrantes').whereIn('ordem_id', [a.ordem.id, b.ordem.id]);
+    expect(designacoes).toHaveLength(1);
+    expect(designacoes[0].usuario_id).toBe(alfa.integrante.id);
+  });
+
+  it('bloqueia desvinculação pendente e revogação após início, preservando a consulta pessoal após conclusão', async () => {
+    const r = await recursos();
+    const a = await pendente(r.gestor.id);
+    const dados = payloadSvo(r, a.solicitacao.id);
+    const agendada = await request(app).post('/api/viagens').set('Authorization', r.gestor.token).send(dados);
+    expect(agendada.status).toBe(200);
+    const desvincular = () => request(app).delete(`/api/equipes-svo/${r.equipe.id}/integrantes/${r.integrante.id}`).set('Authorization', r.gestor.token);
+    expect((await desvincular()).status).toBe(409);
+    await db('ordens_svo').where({ id: a.ordem.id }).update({ inicio_previsto: instante(-30), fim_previsto: instante(30) });
+    const iniciar = await request(app).patch(`/api/viagens/${a.ordem.id}/iniciar`)
+      .set('Authorization', r.condutor.token).send({ tipo_operacao: 'SVO', km_inicial: 10 });
+    expect(iniciar.status).toBe(200);
+    const revogar = await request(app).post(`/api/viagens/ordens-svo/${a.ordem.id}/reprogramar`)
+      .set('Authorization', r.gestor.token).send({ ...dados, equipe_id: null, integrantes_ids: [] });
+    expect(revogar.status).toBe(409);
+    const finalizar = await request(app).patch(`/api/viagens/${a.ordem.id}/finalizar`)
+      .set('Authorization', r.condutor.token).send({ tipo_operacao: 'SVO', km_final: 20 });
+    expect(finalizar.status).toBe(200);
+    expect((await desvincular()).status).toBe(204);
+    const minha = await request(app).get('/api/viagens/coletas-svo/minhas').set('Authorization', r.integrante.token);
+    expect(minha.status).toBe(200);
+    expect(minha.body.dados).toContainEqual(expect.objectContaining({ id: a.ordem.id, status: 'CONCLUIDA' }));
+    expect(await db('ordens_svo_integrantes').where({ ordem_id: a.ordem.id, usuario_id: r.integrante.id }).whereNull('revogado_em')).toHaveLength(1);
+  });
+
+  it('reverte a troca de participantes e o horário se a transação falhar após as gravações', async () => {
+    const r = await recursos();
+    const a = await pendente(r.gestor.id);
+    const outro = await usuario('INTEGRANTE_SVO');
+    expect((await request(app).put(`/api/equipes-svo/${r.equipe.id}/integrantes/${outro.id}`)
+      .set('Authorization', r.gestor.token)).status).toBe(204);
+    const dados = payloadSvo(r, a.solicitacao.id);
+    expect((await request(app).post('/api/viagens').set('Authorization', r.gestor.token).send(dados)).status).toBe(200);
+    const antes = await db('ordens_svo').where({ id: a.ordem.id }).first();
+    const registrar = auditoriaModel.registrar.bind(auditoriaModel);
+    const falha = vi.spyOn(auditoriaModel, 'registrar').mockImplementation((registro, conn) => {
+      if (registro.acao.startsWith(`REPROGRAMOU_SVO id=${a.ordem.id} `)) throw new Error('Falha induzida após gravações da reprogramação');
+      return registrar(registro, conn);
+    });
+    try {
+      const resposta = await request(app).post(`/api/viagens/ordens-svo/${a.ordem.id}/reprogramar`)
+        .set('Authorization', r.gestor.token).send({ ...dados, integrantes_ids: [outro.id],
+          inicio_previsto: instante(240).toISOString(), fim_previsto: instante(300).toISOString() });
+      expect(resposta.status).toBe(500);
+      expect(falha.mock.calls.some(([registro]) => registro.acao.startsWith(`REPROGRAMOU_SVO id=${a.ordem.id} `))).toBe(true);
+    } finally {
+      falha.mockRestore();
+    }
+    expect(await db('ordens_svo').where({ id: a.ordem.id }).first()).toMatchObject({ inicio_previsto: antes.inicio_previsto, fim_previsto: antes.fim_previsto });
+    expect(await db('ordens_svo_integrantes').where({ ordem_id: a.ordem.id })).toEqual([
+      expect.objectContaining({ usuario_id: r.integrante.id, revogado_em: null }),
+    ]);
+  });
+
+  it('permite concluir ordem legada de equipe sem atribuir participação individual', async () => {
+    const r = await recursos();
+    const a = await pendente(r.gestor.id);
+    await db('solicitacoes_svo').where({ id: a.solicitacao.id }).update({ status: 'EM_ANDAMENTO' });
+    await db('ordens_svo').where({ id: a.ordem.id }).update({
+      equipe_id: r.equipe.id, veiculo_id: r.veiculo.id, motorista_id: r.motorista.id,
+      status: 'ALOCADA', inicio_previsto: instante(-20), fim_previsto: instante(40),
+    });
+    const atual = await request(app).get(`/api/viagens/ordens-svo/${a.ordem.id}/designacoes`).set('Authorization', r.gestor.token);
+    expect(atual.status).toBe(200);
+    expect(atual.body).toEqual({ equipe_id: r.equipe.id, iniciada: false, integrantes_ids: [] });
+    const reprogramar = await request(app).post(`/api/viagens/ordens-svo/${a.ordem.id}/reprogramar`)
+      .set('Authorization', r.gestor.token).send(payloadSvo(r, a.solicitacao.id, []));
+    expect(reprogramar.status).toBe(400);
+    expect((await request(app).patch(`/api/viagens/${a.ordem.id}/iniciar`).set('Authorization', r.condutor.token)
+      .send({ tipo_operacao: 'SVO', km_inicial: 10 })).status).toBe(200);
+    expect((await request(app).patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.condutor.token)
+      .send({ tipo_operacao: 'SVO', km_final: 20 })).status).toBe(200);
+    const minhas = await request(app).get('/api/viagens/coletas-svo/minhas').set('Authorization', r.integrante.token);
+    expect(minhas.status).toBe(200);
+    expect(minhas.body.dados).not.toContainEqual(expect.objectContaining({ id: a.ordem.id }));
+    expect(await db('ordens_svo_integrantes').where({ ordem_id: a.ordem.id })).toEqual([]);
   });
 });

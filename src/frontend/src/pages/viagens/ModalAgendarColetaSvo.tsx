@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Alert, Button, IdBadge, Input, Modal, Select } from '../../components/ui';
@@ -94,7 +94,10 @@ export function ModalAgendarColetaSvo({
   const [equipeId, setEquipeId] = useState(viagemReprogramar?.equipe_id ? String(viagemReprogramar.equipe_id) : '');
   const [integrantes, setIntegrantes] = useState<IntegranteSvo[]>([]);
   const [selecionados, setSelecionados] = useState<number[]>([]);
-  const designacoesCarregadas = useRef(false);
+  const ordemReprogramadaId = viagemReprogramar?.id;
+  const equipeOriginalId = viagemReprogramar?.equipe_id ?? null;
+  const [designacoesOriginais, setDesignacoesOriginais] = useState<Awaited<ReturnType<typeof equipesSvoApi.designacoes>> | null>(null);
+  const [erroDesignacoes, setErroDesignacoes] = useState<string | null>(null);
   const [erroIntegrantes, setErroIntegrantes] = useState<string | null>(null);
   const [carregandoIntegrantes, setCarregandoIntegrantes] = useState(false);
   const [disponibilidade, setDisponibilidade] = useState<Record<number, boolean> | null>(null);
@@ -144,25 +147,33 @@ export function ModalAgendarColetaSvo({
   const maxIntegrantes = Math.max(0, (lotacaoCabine ?? 0) - 1);
 
   useEffect(() => {
+    if (!ordemReprogramadaId) return;
     let ativo = true;
-    setIntegrantes([]); setErroIntegrantes(null);
-    if (!equipeId) { setCarregandoIntegrantes(false); return () => { ativo = false; }; }
-    setCarregandoIntegrantes(true);
-    const inicial = Boolean(viagemReprogramar && !designacoesCarregadas.current && String(viagemReprogramar.equipe_id) === equipeId);
-    Promise.all([equipesSvoApi.integrantesEquipe(Number(equipeId)),
-      inicial ? equipesSvoApi.designacoes(viagemReprogramar!.id) : Promise.resolve(null)])
-      .then(([itens, designacoes]) => { if (ativo) {
-        setIntegrantes(itens);
-        if (designacoes) {
-          if (designacoes.iniciada || String(designacoes.equipe_id) !== equipeId || designacoes.integrantes_ids.some((id) => !itens.some((i) => i.id === id))) {
-            setErroIntegrantes('As designações atuais não podem ser editadas; atualize a coleta e verifique os vínculos.');
-            return;
-          }
-          setSelecionados(designacoes.integrantes_ids); designacoesCarregadas.current = true;
-        }
-      } })
-      .catch((e) => { if (ativo) setErroIntegrantes(mensagemDeErro(e)); })
-      .finally(() => { if (ativo) setCarregandoIntegrantes(false); });
+    setDesignacoesOriginais(null);
+    setErroDesignacoes(null);
+    equipesSvoApi.designacoes(ordemReprogramadaId).then((designacoes) => {
+      if (!ativo) return;
+      if (designacoes.iniciada || designacoes.equipe_id !== equipeOriginalId) {
+        setErroDesignacoes('A coleta já foi iniciada ou a equipe mudou. Feche o formulário e atualize a lista.');
+        return;
+      }
+      setSelecionados(designacoes.integrantes_ids);
+      setDesignacoesOriginais(designacoes);
+    }).catch((e) => { if (ativo) setErroDesignacoes(mensagemDeErro(e)); });
+    return () => { ativo = false; };
+  }, [ordemReprogramadaId, equipeOriginalId]);
+
+  useEffect(() => {
+    let ativo = true;
+    setIntegrantes([]);
+    setErroIntegrantes(null);
+    setCarregandoIntegrantes(Boolean(equipeId));
+    if (equipeId) {
+      equipesSvoApi.integrantesEquipe(Number(equipeId))
+        .then((itens) => { if (ativo) setIntegrantes(itens); })
+        .catch((e) => { if (ativo) setErroIntegrantes(mensagemDeErro(e)); })
+        .finally(() => { if (ativo) setCarregandoIntegrantes(false); });
+    }
     return () => { ativo = false; };
   }, [equipeId]);
   useEffect(() => {
@@ -185,12 +196,17 @@ export function ModalAgendarColetaSvo({
     setErro(null);
   };
 
+  const aguardandoDesignacoes = Boolean(ordemReprogramadaId && !designacoesOriginais);
+  const selecionadosSemVinculo = selecionados.filter((id) => !integrantes.some((item) => item.id === id));
+
   function validar(): string | null {
+    if (aguardandoDesignacoes) return erroDesignacoes ?? 'Aguarde o carregamento das designações atuais.';
     if (!veiculosSvo.some((v) => String(v.id) === veiculoId) || !motoristasSvo.some((m) => String(m.id) === motoristaId)) return 'Selecione o veículo e o motorista da coleta.';
     if (bloqueio) return bloqueio;
     if (equipeId && !equipes.some((e) => String(e.id) === equipeId)) return 'A equipe selecionada não está mais disponível.';
     if (equipeId && (carregandoIntegrantes || erroIntegrantes)) return 'Não foi possível confirmar os integrantes da equipe.';
     if (equipeId && (!disponibilidade || erroDisponibilidade)) return 'Aguarde ou verifique a disponibilidade dos integrantes.';
+    if (equipeId && selecionadosSemVinculo.length) return 'Remova os participantes que não têm mais vínculo ativo.';
     if (equipeId && selecionados.some((id) => disponibilidade?.[id] !== true)) return 'Um integrante selecionado está indisponível no período.';
     if (equipeId && selecionados.length < 1) return 'Selecione pelo menos um integrante da equipe.';
     if (equipeId && selecionados.length > maxIntegrantes) return 'A lotação da cabine não comporta os integrantes selecionados.';
@@ -204,6 +220,12 @@ export function ModalAgendarColetaSvo({
   }
 
   async function enviar(confirmarIntervalo: boolean) {
+    const problema = validar();
+    if (problema) {
+      setErro(problema);
+      return;
+    }
+    if (salvando) return;
     const dados: AgendamentoColetaSvoInput = {
       solicitacao_id: ordem.solicitacao_id,
       veiculo_id: Number(veiculoId),
@@ -254,18 +276,15 @@ export function ModalAgendarColetaSvo({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const problema = validar();
-    if (problema) {
-      setErro(problema);
-      return;
-    }
     void enviar(false);
   };
 
   return (
-    <Modal title={viagemReprogramar ? 'Reagendar coleta SVO' : 'Agendar coleta SVO'} onClose={salvando ? () => {} : onClose} maxWidth="600px">
+    <Modal gerenciarFoco title={viagemReprogramar ? 'Reagendar coleta SVO' : 'Agendar coleta SVO'} onClose={salvando ? () => {} : onClose} maxWidth="600px">
       <form onSubmit={handleSubmit} noValidate>
-        <fieldset disabled={salvando}>
+        <fieldset disabled={salvando || aguardandoDesignacoes}>
+        {erroDesignacoes && <Alert tone="danger" className="mb-4">{erroDesignacoes}</Alert>}
+        {aguardandoDesignacoes && !erroDesignacoes && <p role="status">Carregando participantes da coleta…</p>}
         {erro && (
           <Alert tone="danger" className="mb-4">
             {erro}
@@ -341,7 +360,10 @@ export function ModalAgendarColetaSvo({
         </div>
 
         <SeletorEquipeSvo equipes={equipes} carregando={carregandoEquipes} erro={erroEquipes}
-          valor={equipeId} onChange={(valor) => { setSelecionados([]); designacoesCarregadas.current = true; alterar(setEquipeId)(valor); }} />
+          valor={equipeId} onChange={(valor) => {
+            setSelecionados(designacoesOriginais && valor === String(designacoesOriginais.equipe_id) ? designacoesOriginais.integrantes_ids : []);
+            alterar(setEquipeId)(valor);
+          }} />
 
         {equipeId && <fieldset className="mt-4 space-y-2">
           <legend className="font-semibold">Integrantes da coleta</legend>
@@ -350,6 +372,15 @@ export function ModalAgendarColetaSvo({
           {erroIntegrantes && <Alert tone="danger">{erroIntegrantes}</Alert>}
           {erroDisponibilidade && <Alert tone="danger">{erroDisponibilidade}</Alert>}
           {!carregandoIntegrantes && !erroIntegrantes && integrantes.length === 0 && <p>Nenhum integrante vinculado à equipe.</p>}
+          {!carregandoIntegrantes && !erroIntegrantes && selecionadosSemVinculo.map((id) => (
+            <div key={id} className="flex flex-wrap items-center gap-2">
+              <span>Integrante #{id} sem vínculo ativo</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                setSelecionados((atual) => atual.filter((item) => item !== id));
+                setConflitos(null);
+              }}>Remover integrante #{id}</Button>
+            </div>
+          ))}
           {integrantes.map((item) => <label key={item.id} className="flex items-center gap-2">
             <input type="checkbox" checked={selecionados.includes(item.id)}
               disabled={!selecionados.includes(item.id) && (selecionados.length >= maxIntegrantes || disponibilidade?.[item.id] !== true)}
@@ -399,6 +430,7 @@ export function ModalAgendarColetaSvo({
           </div>
         )}
 
+        </fieldset>
         <div className="mt-4 flex flex-col-reverse justify-end gap-2 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
           <Button variant="ghost" type="button" onClick={onClose} disabled={salvando}>
             Cancelar
@@ -407,17 +439,16 @@ export function ModalAgendarColetaSvo({
             <Button
               type="button"
               onClick={() => void enviar(true)}
-              disabled={!ciente || !tokenConfirmacao || salvando}
+              disabled={!ciente || !tokenConfirmacao || salvando || aguardandoDesignacoes}
             >
               {salvando ? 'Agendando...' : 'Confirmar agendamento'}
             </Button>
           ) : (
-            <Button type="submit" disabled={salvando || Boolean(bloqueio) || veiculosSvo.length === 0 || motoristasSvo.length === 0}>
+            <Button type="submit" disabled={salvando || aguardandoDesignacoes || Boolean(bloqueio) || veiculosSvo.length === 0 || motoristasSvo.length === 0}>
               {salvando ? 'Agendando...' : viagemReprogramar ? 'Reagendar coleta' : 'Agendar coleta'}
             </Button>
           )}
         </div>
-        </fieldset>
       </form>
     </Modal>
   );

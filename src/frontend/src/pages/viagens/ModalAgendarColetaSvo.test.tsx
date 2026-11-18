@@ -169,37 +169,93 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
       expect(screen.getByRole('button', { name: 'Agendar coleta' })).toBeEnabled();
     });
 
-    it('reprograma mantendo ordem, equipe e capacidade da coleta', async () => {
-      api.reprogramarColetaSvo.mockResolvedValue({} as never);
-      const viagem = {
-        id: 40, solicitacao_id: 31, tipo_operacao: 'SVO' as const, origem: null,
-        destino: 'Av. Beira Mar', finalidade: null, solicitante_nome: null,
-        veiculo_id: 2, veiculo_modelo: 'Rabecão', veiculo_placa: 'SVO2B22',
-        motorista_id: 5, motorista_nome: 'Ana', equipe_id: 12, capacidade_utilizada: 2,
-        km_inicial: null, status: 'AGENDADA' as const,
-        inicio_previsto: new Date(Date.now() + 7_200_000).toISOString(),
-        fim_previsto: new Date(Date.now() + 10_800_000).toISOString(),
-      };
-      render(<ModalAgendarColetaSvo ordem={ordem} viagemReprogramar={viagem} veiculos={veiculos}
+    const viagem = {
+      id: 40, solicitacao_id: 31, tipo_operacao: 'SVO' as const, origem: null,
+      destino: 'Av. Beira Mar', finalidade: null, solicitante_nome: null,
+      veiculo_id: 2, veiculo_modelo: 'Rabecão', veiculo_placa: 'SVO2B22',
+      motorista_id: 5, motorista_nome: 'Ana', equipe_id: 12, capacidade_utilizada: 2,
+      km_inicial: null, status: 'AGENDADA' as const,
+      inicio_previsto: new Date(Date.now() + 7_200_000).toISOString(),
+      fim_previsto: new Date(Date.now() + 10_800_000).toISOString(),
+    };
+
+    function abrirReagendamento(veiculosDoTeste = veiculos) {
+      render(<ModalAgendarColetaSvo ordem={ordem} viagemReprogramar={viagem} veiculos={veiculosDoTeste}
         motoristas={motoristas} onClose={vi.fn()} onAgendada={vi.fn()} />);
+    }
+
+    const maria = { id: 22, nome: 'Maria', email: 'maria@exemplo.com' };
+    const joao = { id: 23, nome: 'João', email: 'joao@exemplo.com' };
+    const participante = (nome: string) => screen.getByRole('checkbox', { name: nome });
+    const confirmar = () => userEvent.click(screen.getByRole('button', { name: 'Reagendar coleta' }));
+
+    function carregarComposicao() {
+      vi.mocked(equipesSvoApi.designacoes).mockResolvedValue({ equipe_id: 12, iniciada: false, integrantes_ids: [22, 23] });
+      vi.mocked(equipesSvoApi.integrantesEquipe).mockResolvedValue([maria, joao]);
+      vi.mocked(equipesSvoApi.disponibilidadeIntegrantes).mockResolvedValue([maria, joao].map((i) => ({ ...i, disponivel: true })));
+    }
+
+    it('altera apenas o horário e preserva a composição persistida', async () => {
+      carregarComposicao();
+      api.reprogramarColetaSvo.mockResolvedValue({} as never);
+      abrirReagendamento();
+      await waitFor(() => expect(participante('Maria')).toBeChecked());
+      const novoFim = daquiA(5);
+      fireEvent.change(screen.getByLabelText(/Término previsto/), { target: { value: novoFim } });
       await screen.findByRole('option', { name: 'Equipe 12' });
-      await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Maria' })).toBeChecked());
-      await waitFor(() => expect(equipesSvoApi.disponibilidadeIntegrantes).toHaveBeenCalled());
-      await userEvent.click(screen.getByRole('button', { name: 'Reagendar coleta' }));
-      await waitFor(() => expect(api.reprogramarColetaSvo).toHaveBeenCalledWith(40,
-        expect.objectContaining({ solicitacao_id: 31, equipe_id: 12, capacidade_utilizada: 2 })));
+      expect(participante('João')).toBeChecked();
+      await confirmar();
+      expect(api.reprogramarColetaSvo).toHaveBeenCalledWith(40,
+        expect.objectContaining({ equipe_id: 12, capacidade_utilizada: 2, fim_previsto: new Date(novoFim).toISOString(), integrantes_ids: [22, 23] }));
       expect(api.agendarColetaSvo).not.toHaveBeenCalled();
     });
 
-    it('bloqueia reagendamento se falhar o carregamento das designações atuais', async () => {
-      vi.mocked(equipesSvoApi.designacoes).mockRejectedValueOnce(new Error('Falha ao carregar designações'));
-      const viagem = { id: 40, solicitacao_id: 31, tipo_operacao: 'SVO' as const, origem: null, destino: null,
-        finalidade: null, solicitante_nome: null, veiculo_id: 2, veiculo_modelo: 'Rabecão', veiculo_placa: 'SVO2B22',
-        motorista_id: 5, motorista_nome: 'Ana', equipe_id: 12, capacidade_utilizada: 1, km_inicial: null,
-        status: 'AGENDADA' as const, inicio_previsto: new Date(Date.now() + 7_200_000).toISOString(), fim_previsto: new Date(Date.now() + 10_800_000).toISOString() };
-      render(<ModalAgendarColetaSvo ordem={ordem} viagemReprogramar={viagem} veiculos={veiculos} motoristas={motoristas} onClose={vi.fn()} onAgendada={vi.fn()} />);
-      expect(await screen.findByText('Falha ao carregar designações')).toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Reagendar coleta' }));
+    it('seleciona a nova equipe sem herdar integrantes e restaura a composição ao voltar', async () => {
+      carregarComposicao();
+      vi.mocked(equipesSvoApi.listarDisponiveis).mockResolvedValue({ periodo: { inicio: '', fim: '' },
+        equipes: [{ id: 12, nome_equipe: 'Equipe 12' }, { id: 13, nome_equipe: 'Equipe 13' }] });
+      const lia = { id: 30, nome: 'Lia', email: 'lia@exemplo.com' };
+      vi.mocked(equipesSvoApi.integrantesEquipe).mockImplementation(async (id) => id === 12 ? [maria, joao] : [lia]);
+      vi.mocked(equipesSvoApi.disponibilidadeIntegrantes).mockImplementation(async (id) =>
+        (id === 12 ? [maria, joao] : [lia]).map((i) => ({ ...i, disponivel: true })));
+      abrirReagendamento();
+      await waitFor(() => expect(participante('Maria')).toBeChecked());
+      const seletor = await screen.findByLabelText('Equipe SVO (opcional)');
+      await userEvent.selectOptions(seletor, '13');
+      await waitFor(() => expect(participante('Lia')).toBeEnabled());
+      expect(participante('Lia')).not.toBeChecked();
+      expect(screen.queryByRole('checkbox', { name: 'Maria' })).not.toBeInTheDocument();
+      await confirmar();
+      expect(api.reprogramarColetaSvo).not.toHaveBeenCalled();
+      await userEvent.click(participante('Lia'));
+      await userEvent.selectOptions(seletor, '12');
+      await waitFor(() => expect(participante('Maria')).toBeChecked());
+      expect(participante('João')).toBeChecked();
+      expect(screen.queryByRole('checkbox', { name: 'Lia' })).not.toBeInTheDocument();
+    });
+
+    it('bloqueia cabine menor sem retirar ninguém da composição', async () => {
+      carregarComposicao();
+      abrirReagendamento([...veiculos, { ...veiculos[1], id: 99, modelo: 'Cabine menor', lotacao_cabine: 2 }]);
+      await waitFor(() => expect(participante('Maria')).toBeChecked());
+      await userEvent.selectOptions(screen.getByLabelText('Veículo SVO *'), '99');
+      await confirmar();
+      expect(await screen.findByText('A lotação da cabine não comporta os integrantes selecionados.')).toBeInTheDocument();
+      expect(participante('Maria')).toBeChecked();
+      expect(participante('João')).toBeChecked();
+      expect(api.reprogramarColetaSvo).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['consulta falhou', 'Falha ao carregar designações'],
+      ['coleta iniciada', 'A coleta já foi iniciada ou a equipe mudou.'],
+    ])('impede o envio se %s', async (situacao, mensagem) => {
+      if (situacao === 'consulta falhou') vi.mocked(equipesSvoApi.designacoes).mockRejectedValueOnce(new Error(mensagem));
+      else vi.mocked(equipesSvoApi.designacoes).mockResolvedValueOnce({ equipe_id: 12, iniciada: true, integrantes_ids: [22] });
+      abrirReagendamento();
+      expect(await screen.findByText(mensagem, { exact: false })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reagendar coleta' })).toBeDisabled();
+      await confirmar();
       expect(api.reprogramarColetaSvo).not.toHaveBeenCalled();
     });
 

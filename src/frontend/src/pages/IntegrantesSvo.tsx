@@ -14,6 +14,7 @@ export function IntegrantesSvo({ equipes }: { equipes: EquipeSvo[] }) {
   const [editando, setEditando] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [sucesso, setSucesso] = useState<string | null>(null);
   const [remover, setRemover] = useState<IntegranteSvo | null>(null);
   const [versao, setVersao] = useState(0);
   useEffect(() => {
@@ -26,9 +27,10 @@ export function IntegrantesSvo({ equipes }: { equipes: EquipeSvo[] }) {
     if (equipeId) equipesSvoApi.integrantesEquipe(Number(equipeId)).then((v) => { if (ativo) setMembros(v); }).catch((e) => { if (ativo) setErro(mensagemDeErro(e)); });
     return () => { ativo = false; };
   }, [equipeId, versao]);
-  async function executar(acao: () => Promise<unknown>) {
-    setOcupado(true); setErro(null);
-    try { await acao(); setVersao((v) => v + 1); } catch (e) { setErro(mensagemDeErro(e)); }
+  async function executar(acao: () => Promise<unknown>, mensagem: string) {
+    if (ocupado) return;
+    setOcupado(true); setErro(null); setSucesso(null);
+    try { await acao(); setSucesso(mensagem); setVersao((v) => v + 1); } catch (e) { setErro(mensagemDeErro(e)); }
     finally { setOcupado(false); }
   }
   async function criar(e: FormEvent) {
@@ -37,11 +39,12 @@ export function IntegrantesSvo({ equipes }: { equipes: EquipeSvo[] }) {
       if (editando === null) await equipesSvoApi.criarIntegrante({ nome, email, senha });
       else await equipesSvoApi.atualizarIntegrante(editando, { nome, email });
       setNome(''); setEmail(''); setSenha(''); setEditando(null);
-    });
+    }, editando === null ? 'Integrante cadastrado.' : 'Integrante atualizado.');
   }
   return <Card className="p-4 space-y-4">
     <h2 className="text-lg font-bold">Integrantes SVO</h2>
     {erro && <Alert tone="danger">{erro}</Alert>}
+    {sucesso && <p role="status">{sucesso}</p>}
     <form onSubmit={(e) => void criar(e)} className="space-y-2">
       <Input label="Nome completo" value={nome} onChange={(e) => setNome(e.target.value)} required />
       <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -59,13 +62,13 @@ export function IntegrantesSvo({ equipes }: { equipes: EquipeSvo[] }) {
       <Select label="Integrante para vincular" value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)}>
         <option value="">Selecione um integrante</option>{todos.filter((u) => !membros.some((m) => m.id === u.id)).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
       </Select>
-      <Button type="button" disabled={!usuarioId || ocupado} onClick={() => void executar(() => equipesSvoApi.vincular(Number(equipeId), Number(usuarioId)))}>Vincular</Button>
+      <Button type="button" disabled={!usuarioId || ocupado} onClick={() => void executar(() => equipesSvoApi.vincular(Number(equipeId), Number(usuarioId)), 'Integrante vinculado.')}>Vincular</Button>
       {membros.length === 0 ? <p>Nenhum integrante vinculado.</p> : <ul>{membros.map((m) => <li key={m.id} className="flex items-center justify-between gap-2 py-2">
         <span>{m.nome}</span><Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => setRemover(m)}>Desvincular</Button>
       </li>)}</ul>}
     </>}
-    <ConfirmDialog isOpen={remover !== null} title="Desvincular integrante" description={`Deseja desvincular ${remover?.nome ?? ''} desta equipe?`}
+    <ConfirmDialog gerenciarFoco isOpen={remover !== null} title="Desvincular integrante" description={`Deseja desvincular ${remover?.nome ?? ''} desta equipe?`}
       confirmLabel="Desvincular" isLoading={ocupado} onClose={() => setRemover(null)}
-      onConfirm={async () => { if (remover) await executar(() => equipesSvoApi.desvincular(Number(equipeId), remover.id)); setRemover(null); }} />
+      onConfirm={async () => { if (remover) await executar(() => equipesSvoApi.desvincular(Number(equipeId), remover.id), 'Integrante desvinculado.'); setRemover(null); }} />
   </Card>;
 }
