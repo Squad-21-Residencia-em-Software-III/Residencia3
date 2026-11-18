@@ -3,6 +3,22 @@ import { AppError } from '../errors/AppError';
 import { PERFIS } from '../constants/perfis';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 
+import { ORDENS_SVO_COM_RESERVA, ORDENS_SVO_EM_CURSO } from '../constants/statusOrdemSvo';
+
+export function consultarOcupacaoIndividualSvo(
+  conn: Knex, integrantes: number[], inicio: Date, fim: Date, ignorarOrdem?: number,
+) {
+  const consulta = conn('ordens_svo_integrantes as d').join('ordens_svo as o', 'o.id', 'd.ordem_id')
+    .whereIn('d.usuario_id', integrantes).whereNull('d.revogado_em')
+    .whereIn('o.status', ORDENS_SVO_COM_RESERVA)
+    .andWhere((q) => q.whereNull('o.inicio_previsto').orWhereNull('o.fim_previsto')
+      .orWhere((emCurso) => emCurso.whereIn('o.status', ORDENS_SVO_EM_CURSO).whereNull('o.data_hora_conclusao')
+        .andWhere((saida) => saida.whereNull('o.data_hora_saida').orWhere('o.data_hora_saida', '<', fim)))
+      .orWhere((prevista) => prevista.where('o.inicio_previsto', '<', fim).where('o.fim_previsto', '>', inicio)));
+  if (ignorarOrdem !== undefined) consulta.whereNot('o.id', ignorarOrdem);
+  return consulta;
+}
+
 interface Designacao {
   ordemId: number; equipeId: number | null; integrantes: number[]; lotacao: number | null;
   inicio: Date; fim: Date; autorId: number;
@@ -29,14 +45,7 @@ export async function atualizarDesignacoesSvo(trx: Knex.Transaction, dados: Desi
     if (new Set(vinculados.map((v: { id: number }) => v.id)).size !== integrantes.length) {
       throw new AppError('Todos os integrantes devem possuir vínculo ativo com a equipe', 409);
     }
-    const conflito = await trx('ordens_svo_integrantes as d').join('ordens_svo as o', 'o.id', 'd.ordem_id')
-      .whereIn('d.usuario_id', integrantes).whereNull('d.revogado_em').whereNot('o.id', ordemId)
-      .whereIn('o.status', ['ALOCADA', 'EM_DESLOCAMENTO'])
-      .andWhere((q) => q.whereNull('o.inicio_previsto').orWhereNull('o.fim_previsto')
-        .orWhere((q2) => q2.where('o.status', 'EM_DESLOCAMENTO').whereNull('o.data_hora_conclusao')
-          .andWhere((q3) => q3.whereNull('o.data_hora_saida').orWhere('o.data_hora_saida', '<', fim)))
-        .orWhere((q2) => q2.where('o.inicio_previsto', '<', fim).where('o.fim_previsto', '>', inicio)))
-      .first('d.id');
+    const conflito = await consultarOcupacaoIndividualSvo(trx, integrantes, inicio, fim, ordemId).first('d.id');
     if (conflito) throw new AppError('Um integrante já está ocupado no período solicitado', 409, 'CONFLITO_AGENDA');
   }
   for (const anterior of anteriores) {

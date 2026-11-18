@@ -1,4 +1,5 @@
 import type { Knex } from 'knex';
+import { ORDENS_SVO_COM_RESERVA, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { ultimoDiaDaSolicitacao } from './disponibilidadeService';
 
@@ -29,11 +30,11 @@ async function auditar(trx: Knex.Transaction, usuarioId: number, acao: string) {
 export async function reavaliarFilaSvo(trx: Knex.Transaction, usuarioId: number): Promise<void> {
   const [{ agora }] = await trx.raw<{ rows: { agora: Date }[] }>('SELECT CURRENT_TIMESTAMP AS agora').then((r) => r.rows);
   const ordens: OrdemFila[] = await trx('ordens_svo')
-    .whereIn('status', ['ALOCADA', 'EM_DESLOCAMENTO'])
+    .whereIn('status', ORDENS_SVO_COM_RESERVA)
     .select('id', 'status', 'veiculo_id', 'motorista_id', 'equipe_id', 'capacidade_utilizada',
       'inicio_previsto', 'fim_previsto', 'liberada_em')
     .orderBy('inicio_previsto', 'asc', 'last').orderBy('id');
-  const emCurso = ordens.filter((o) => o.status === 'EM_DESLOCAMENTO');
+  const emCurso = ordens.filter((o) => ordemSvoEmCurso(o.status));
   const candidatas = ordens.filter((o) => o.status === 'ALOCADA' && o.inicio_previsto && o.fim_previsto);
   const selecionadas: OrdemFila[] = [];
   const designacoes: { ordem_id: number; usuario_id: number }[] = ordens.some((o) => o.equipe_id)

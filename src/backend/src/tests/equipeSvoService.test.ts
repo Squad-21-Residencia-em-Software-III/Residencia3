@@ -118,7 +118,7 @@ describe('equipeSvoService.consultarDisponibilidade', () => {
     expect(consultas).toContainEqual({
       tabela: 'ordens_svo as o',
       metodo: 'whereIn',
-      argumentos: ['o.status', ['ALOCADA', 'EM_DESLOCAMENTO']],
+      argumentos: ['o.status', ['ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL']],
     });
   });
 

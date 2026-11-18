@@ -9,6 +9,7 @@ import { auditoriaModel } from '../models/auditoriaModel';
 
 // Este arquivo só executa no banco descartável explicitamente identificado abaixo.
 const habilitado = process.env.SCRUM166_POSTGRES_TESTS === '1';
+const bl31Habilitada = process.env.SCRUM196_BL31_POSTGRES_TESTS === '1';
 const instante = (minutos: number) => new Date(Date.now() + minutos * 60_000);
 const nonce = () => randomBytes(4).toString('hex');
 
@@ -429,5 +430,109 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     expect(minhas.status).toBe(200);
     expect(minhas.body.dados).not.toContainEqual(expect.objectContaining({ id: a.ordem.id }));
     expect(await db('ordens_svo_integrantes').where({ ordem_id: a.ordem.id })).toEqual([]);
+  });
+
+  it('rejeita cabine insuficiente e preserva apenas a nova designação após revogação pré-início', async () => {
+    const r = await recursos();
+    const maria = r.integrante;
+    const joao = await usuario('INTEGRANTE_SVO');
+    expect((await request(app).put(`/api/equipes-svo/${r.equipe.id}/integrantes/${joao.id}`)
+      .set('Authorization', r.gestor.token)).status).toBe(204);
+    const a = await pendente(r.gestor.id);
+    const dados = payloadSvo(r, a.solicitacao.id, [maria.id, joao.id]);
+    await db('veiculos').where({ id: r.veiculo.id }).update({ lotacao_cabine: 2 });
+    const agendar = () => request(app).post('/api/viagens').set('Authorization', r.gestor.token).send(dados);
+    expect((await agendar()).status).toBe(409);
+    expect(await db('ordens_svo_integrantes').where({ ordem_id: a.ordem.id })).toHaveLength(0);
+
+    await db('veiculos').where({ id: r.veiculo.id }).update({ lotacao_cabine: 3 });
+    expect((await agendar()).status).toBe(200);
+    const resposta = await request(app).post(`/api/viagens/ordens-svo/${a.ordem.id}/reprogramar`)
+      .set('Authorization', r.gestor.token).send({ ...dados, integrantes_ids: [joao.id] });
+    expect(resposta.status).toBe(200);
+    const designacoes = await db('ordens_svo_integrantes').where({ ordem_id: a.ordem.id });
+    expect(designacoes).toHaveLength(2);
+    expect(designacoes.find((d) => d.usuario_id === maria.id)).toMatchObject({
+      revogado_em: expect.any(Date), revogado_por: r.gestor.id,
+    });
+    expect(designacoes.find((d) => d.usuario_id === joao.id)).toMatchObject({ revogado_em: null });
+    const minhas = await request(app).get('/api/viagens/coletas-svo/minhas').set('Authorization', maria.token);
+    expect(minhas.status).toBe(200);
+    expect(minhas.body.dados).not.toContainEqual(expect.objectContaining({ id: a.ordem.id }));
+  });
+
+  it.skipIf(!bl31Habilitada)('mantém a coleta visível e Maria ocupada entre equipes após chegada e até conclusão real', async () => {
+    const alfa = await recursos();
+    const beta = await recursos();
+    const maria = alfa.integrante;
+    expect((await request(app).put(`/api/equipes-svo/${beta.equipe.id}/integrantes/${maria.id}`)
+      .set('Authorization', beta.gestor.token)).status).toBe(204);
+
+    const a = await pendente(alfa.gestor.id);
+    const b = await pendente(beta.gestor.id);
+    const c = await pendente(beta.gestor.id);
+    const dadosBeta = payloadSvo(beta, b.solicitacao.id, [maria.id]);
+    const agendar = (token: string, dados: ReturnType<typeof payloadSvo>) =>
+      request(app).post('/api/viagens').set('Authorization', token).send(dados);
+    expect((await agendar(alfa.gestor.token, payloadSvo(alfa, a.solicitacao.id))).status).toBe(200);
+    expect((await agendar(beta.gestor.token, { ...dadosBeta,
+      inicio_previsto: instante(240).toISOString(), fim_previsto: instante(300).toISOString() })).status).toBe(200);
+
+    await db('ordens_svo').where({ id: a.ordem.id }).update({
+      inicio_previsto: instante(-60), fim_previsto: instante(-5),
+    });
+    // A reserva B só vence após A iniciar, de modo que a fila não inverta a prioridade do cenário.
+    await db('ordens_svo').where({ id: b.ordem.id }).update({ inicio_previsto: instante(5), fim_previsto: instante(30) });
+    expect((await request(app).patch(`/api/viagens/${a.ordem.id}/iniciar`)
+      .set('Authorization', alfa.condutor.token).send({ tipo_operacao: 'SVO', km_inicial: 10 })).status).toBe(200);
+    await db('ordens_svo').where({ id: b.ordem.id }).update({ inicio_previsto: instante(-2) });
+
+    const minhas = () => request(app).get('/api/viagens/coletas-svo/minhas').set('Authorization', maria.token);
+    const emDeslocamento = await minhas();
+    expect(emDeslocamento.status).toBe(200);
+    expect(emDeslocamento.body.dados).toContainEqual(expect.objectContaining({ id: a.ordem.id, status: 'EM_DESLOCAMENTO' }));
+    const chegada = (token: string) => request(app).patch(`/api/viagens/ordens-svo/${a.ordem.id}/chegar-local`).set('Authorization', token);
+    expect((await chegada(maria.token)).status).toBe(403);
+    const noLocal = await chegada(alfa.condutor.token);
+    expect(noLocal.status).toBe(200);
+    expect(noLocal.body.status).toBe('NO_LOCAL');
+    const noLocalPessoal = await minhas();
+    expect(noLocalPessoal.status).toBe(200);
+    expect(noLocalPessoal.body.dados).toContainEqual(expect.objectContaining({
+      id: a.ordem.id, status: 'NO_LOCAL', data_hora_conclusao: null,
+    }));
+
+    const ocupacao = await request(app).get('/api/veiculos/svo/ocupacao').set('Authorization', alfa.gestor.token);
+    expect(ocupacao.status).toBe(200);
+    expect(ocupacao.body).toContainEqual(expect.objectContaining({ id: alfa.veiculo.id, capacidade_utilizada: 1 }));
+    const equipes = await request(app).get('/api/equipes-svo/disponibilidade')
+      .query({ inicio: instante(60).toISOString(), fim: instante(90).toISOString() }).set('Authorization', alfa.gestor.token);
+    expect(equipes.status).toBe(200);
+    expect(equipes.body.equipes).not.toContainEqual(expect.objectContaining({ id: alfa.equipe.id }));
+
+    const dadosC = payloadSvo(beta, c.solicitacao.id, [maria.id]);
+    const disponibilidade = await request(app).get(`/api/equipes-svo/${beta.equipe.id}/integrantes/disponibilidade`)
+      .query({ inicio: dadosC.inicio_previsto, fim: dadosC.fim_previsto }).set('Authorization', beta.gestor.token);
+    expect(disponibilidade.status).toBe(200);
+    expect(disponibilidade.body).toContainEqual(expect.objectContaining({ id: maria.id, disponivel: false }));
+    const conflito = await agendar(beta.gestor.token, dadosC);
+    expect(conflito.status).toBe(409);
+    expect(conflito.body).toMatchObject({ codigo: 'CONFLITO_AGENDA', erro: expect.stringContaining('integrante') });
+    const fila = await request(app).get('/api/viagens/ordens-svo/alertas').set('Authorization', beta.gestor.token);
+    expect(fila.status).toBe(200);
+    expect(await db('ordens_svo').where({ id: b.ordem.id }).first()).toMatchObject({ status: 'ALOCADA', liberada_em: null });
+
+    const finalizada = await request(app).patch(`/api/viagens/${a.ordem.id}/finalizar`)
+      .set('Authorization', alfa.condutor.token).send({ tipo_operacao: 'SVO', km_final: 20 });
+    expect(finalizada.status).toBe(200);
+    expect(await db('ordens_svo').where({ id: a.ordem.id }).first()).toMatchObject({
+      status: 'CONCLUIDA', data_hora_conclusao: expect.any(Date),
+    });
+    expect(await db('veiculos').where({ id: alfa.veiculo.id }).first()).toMatchObject({ status: 'DISPONIVEL' });
+    expect(await db('motoristas').where({ id: alfa.motorista.id }).first()).toMatchObject({ status: 'DISPONIVEL' });
+    expect(await db('ordens_svo').where({ id: b.ordem.id }).first()).toMatchObject({
+      status: 'ALOCADA', liberada_em: expect.any(Date), data_hora_saida: null,
+    });
+    expect((await agendar(beta.gestor.token, dadosC)).status).toBe(200);
   });
 });

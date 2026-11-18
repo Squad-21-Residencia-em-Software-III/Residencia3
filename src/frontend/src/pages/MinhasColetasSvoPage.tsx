@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card } from '../components/ui';
 import { mensagemDeErro, request } from '../services/api/http';
+import { LABELS_STATUS_ORDEM_SVO, type StatusOrdemSvo } from '../types/solicitacaoSvo';
 
-interface Coleta { id: number; status: string; origem: string | null; inicio_previsto: string | null;
+interface Coleta { id: number; status: StatusOrdemSvo; origem: string | null; inicio_previsto: string | null;
   fim_previsto: string | null; data_hora_saida: string | null; data_hora_conclusao: string | null;
   veiculo_modelo: string | null; veiculo_placa: string | null; motorista_nome: string | null }
 interface Resposta { dados: Coleta[]; paginacao: { pagina: number; totalPaginas: number } }
@@ -22,7 +23,7 @@ export default function MinhasColetasSvoPage() {
     {erro && <Alert tone="danger">{erro}</Alert>}
     {carregando ? <p>Carregando coletas...</p> : !erro && resultado?.dados.length === 0 ? <p>Nenhuma coleta designada.</p> :
       !erro && resultado?.dados.map((c) => <Card key={c.id} className="p-4 space-y-1">
-        <h2 className="font-bold">Coleta #{c.id} — {c.status}</h2>
+        <h2 className="font-bold">Coleta #{c.id} — {LABELS_STATUS_ORDEM_SVO[c.status] ?? c.status}</h2>
         <p>Origem: {c.origem ?? 'Não informada'}</p>
         <p>Veículo: {c.veiculo_modelo ?? 'Não informado'} {c.veiculo_placa ?? ''}</p>
         <p>Motorista: {c.motorista_nome ?? 'Não informado'}</p>

@@ -1,4 +1,5 @@
 import { db } from '../config/database';
+import { ORDENS_SVO_COM_RESERVA } from '../constants/statusOrdemSvo';
 
 export async function listarMinhasColetasSvo(usuarioId: number, pagina: number, limite: number) {
   const consulta = () => db('ordens_svo_integrantes as d')
@@ -8,7 +9,7 @@ export async function listarMinhasColetasSvo(usuarioId: number, pagina: number, 
     .leftJoin('motoristas as m', 'm.id', 'o.motorista_id')
     .leftJoin('usuarios as u', 'u.id', 'm.usuario_id')
     .where('d.usuario_id', usuarioId).whereNull('d.revogado_em')
-    .whereIn('o.status', ['ALOCADA', 'EM_DESLOCAMENTO', 'CONCLUIDA']);
+    .whereIn('o.status', [...ORDENS_SVO_COM_RESERVA, 'CONCLUIDA']);
   const [dados, contagem] = await Promise.all([
     consulta().select('o.id', 'o.status', 'o.inicio_previsto', 'o.fim_previsto', 'o.data_hora_saida',
       'o.data_hora_conclusao', 's.local_ocorrencia as origem', 'v.modelo as veiculo_modelo',

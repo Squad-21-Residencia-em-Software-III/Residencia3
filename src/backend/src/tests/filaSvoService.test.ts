@@ -48,9 +48,9 @@ const ordem = (id: number, inicio: string, fim: string, status = 'ALOCADA') => (
 
 describe('fila de coletas SVO', () => {
   beforeEach(() => auditoria.mockReset());
-  it('mantém recursos ocupados no atraso e libera somente a próxima elegível após a conclusão', async () => {
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('mantém recursos ocupados no atraso e libera somente a próxima elegível após a conclusão (%s)', async (status) => {
     const tabelas = {
-      ordens_svo: [ordem(1, '14:00', '16:00', 'EM_DESLOCAMENTO'), ordem(2, '16:20', '17:00'), ordem(3, '16:30', '17:30')],
+      ordens_svo: [ordem(1, '14:00', '16:00', status), ordem(2, '16:20', '17:00'), ordem(3, '16:30', '17:30')],
       veiculos: [{ id: 1, status: 'DISPONIVEL', tipo_frota: 'SVO', capacidade_maxima: 4 }],
       motoristas: [{ id: 2, status: 'DISPONIVEL', tipo_motorista: 'SVO', validade_cnh: '2099-12-31' }],
       equipes_svo: [{ id: 3 }],
@@ -83,9 +83,9 @@ describe('fila de coletas SVO', () => {
     await reavaliarFilaSvo(banco(tabelas, momento('16:40')), 7);
     expect(tabelas.ordens_svo[0].liberada_em).toEqual(momento('16:40'));
   });
-  it('mantém integrante ocupado entre equipes diferentes até a conclusão real', async () => {
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('mantém integrante ocupado entre equipes diferentes até a conclusão real (%s)', async (status) => {
     const tabelas = {
-      ordens_svo: [ordem(1, '14:00', '16:00', 'EM_DESLOCAMENTO'),
+      ordens_svo: [ordem(1, '14:00', '16:00', status),
         { ...ordem(2, '16:20', '17:00'), equipe_id: 4, veiculo_id: 5, motorista_id: 6 }],
       ordens_svo_integrantes: [{ ordem_id: 1, usuario_id: 9, revogado_em: null }, { ordem_id: 2, usuario_id: 9, revogado_em: null }],
       veiculos: [{ id: 5, status: 'DISPONIVEL', tipo_frota: 'SVO', capacidade_maxima: 4 }],

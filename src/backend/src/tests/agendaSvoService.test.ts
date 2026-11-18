@@ -27,9 +27,11 @@ describe('agenda temporal SVO', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2099-01-01T12:00:00Z')); });
   afterEach(() => vi.useRealTimers());
 
-  it.each(['veiculo', 'motorista', 'equipe'])('bloqueia %s ocupado por coleta atrasada mesmo após o horário previsto', async (recurso) => {
+  it.each((['EM_DESLOCAMENTO', 'NO_LOCAL'] as const).flatMap((status) =>
+    ['veiculo', 'motorista', 'equipe'].map((recurso) => ({ status, recurso })),
+  ))('bloqueia $recurso ocupado em $status mesmo após o horário previsto', async ({ status, recurso }) => {
     vi.setSystemTime(new Date('2099-01-01T16:40:00Z'));
-    const ocupada = { ...reserva, status: 'EM_DESLOCAMENTO' as const,
+    const ocupada = { ...reserva, status,
       veiculo_id: recurso === 'veiculo' ? 2 : 20,
       motorista_id: recurso === 'motorista' ? 3 : 30,
       equipe_id: recurso === 'equipe' ? 4 : 40 };

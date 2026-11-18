@@ -3,6 +3,7 @@ import { PERFIS } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { travarAgendaSvo } from './agendaSvoService';
+import { consultarOcupacaoIndividualSvo } from './designacoesSvoService';
 import { usuarioService } from './usuarioService';
 import type { CriarUsuarioInput } from '../validators/usuarioSchemas';
 import { usuarioModel } from '../models/usuarioModel';
@@ -46,15 +47,8 @@ export const integrantesSvoService = {
   async disponibilidade(equipeId: number, inicio: Date, fim: Date, ignorarId?: number) {
     const integrantes = await this.listarEquipe(equipeId);
     if (!integrantes.length) return [];
-    const ocupados = await db('ordens_svo_integrantes as d').join('ordens_svo as o', 'o.id', 'd.ordem_id')
-      .whereIn('d.usuario_id', integrantes.map((i: { id: number }) => i.id)).whereNull('d.revogado_em')
-      .whereIn('o.status', ['ALOCADA', 'EM_DESLOCAMENTO'])
-      .modify((q) => { if (ignorarId) q.whereNot('o.id', ignorarId); })
-      .andWhere((q) => q.whereNull('o.inicio_previsto').orWhereNull('o.fim_previsto')
-        .orWhere((q2) => q2.where('o.status', 'EM_DESLOCAMENTO').whereNull('o.data_hora_conclusao')
-          .andWhere((q3) => q3.whereNull('o.data_hora_saida').orWhere('o.data_hora_saida', '<', fim)))
-        .orWhere((q2) => q2.where('o.inicio_previsto', '<', fim).where('o.fim_previsto', '>', inicio)))
-      .distinct('d.usuario_id');
+    const idsDaEquipe = integrantes.map((i: { id: number }) => i.id);
+    const ocupados = await consultarOcupacaoIndividualSvo(db, idsDaEquipe, inicio, fim, ignorarId).distinct('d.usuario_id');
     const ids = new Set(ocupados.map((o: { usuario_id: number }) => o.usuario_id));
     return integrantes.map((i: { id: number; nome: string; email: string }) => ({ ...i, disponivel: !ids.has(i.id) }));
   },

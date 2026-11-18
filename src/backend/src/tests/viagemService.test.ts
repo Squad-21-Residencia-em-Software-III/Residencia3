@@ -1057,11 +1057,11 @@ describe('viagemService.finalizarViagem', () => {
     );
   });
 
-  it('deve concluir a solicitação SVO junto com a ordem', async () => {
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('deve concluir a solicitação SVO junto com a ordem em %s', async (status) => {
     ref.estado.viagem = {
       id: 5,
       solicitacao_id: 7,
-      status: 'EM_DESLOCAMENTO',
+      status,
       km_inicial: 1000,
       veiculo_id: 10,
       motorista_id: 20,

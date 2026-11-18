@@ -30,6 +30,10 @@ const GANTT_STATUS_STYLES: Record<StatusViagem, { block: string; dot: string }> 
     block: 'border-[#93c5fd] bg-[#eff6ff] text-[#1d4ed8] hover:border-[#2563eb]',
     dot: 'bg-[#1d4ed8]',
   },
+  NO_LOCAL: {
+    block: 'border-[#93c5fd] bg-[#eff6ff] text-[#1d4ed8] hover:border-[#2563eb]',
+    dot: 'bg-[#1d4ed8]',
+  },
   AGENDADA: {
     block: 'border-[#c4b5fd] bg-[#faf5ff] text-[#6d28d9] hover:border-[#7c3aed]',
     dot: 'bg-[#7c3aed]',
@@ -170,7 +174,7 @@ export function AgendaGanttHoje({
         >
           {linhasComLayout.map(({ linha, alturaLinha }) => {
             const emViagem =
-              linha.blocos.some((b) => b.viagem.status === 'EM_ANDAMENTO') ||
+              linha.blocos.some((b) => b.viagem.status === 'EM_ANDAMENTO' || b.viagem.status === 'NO_LOCAL') ||
               (ehHoje && linha.statusVeiculo === 'EM_USO');
             const subtituloSecundario = emViagem ? 'Em viagem' : 'No pátio';
 

@@ -1,6 +1,7 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { PERFIS, type Perfil } from '../constants/perfis';
+import { ORDENS_SVO_EM_CURSO, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { motoristaModel } from '../models/motoristaModel';
@@ -138,7 +139,7 @@ async function situacaoDoRecurso(
   const { rows } = await trx.raw<{ rows: { em_andamento: boolean | null; agendada: boolean | null }[] }>(
     `
     SELECT
-      bool_or(status IN ('EM_ANDAMENTO', 'EM_DESLOCAMENTO')) AS em_andamento,
+      bool_or(status IN ('EM_ANDAMENTO', ?, ?)) AS em_andamento,
       bool_or(status IN ('AGENDADA', 'ALOCADA')) AS agendada
     FROM (
       SELECT status FROM viagens_frota WHERE ${coluna} = ?
@@ -146,7 +147,7 @@ async function situacaoDoRecurso(
       SELECT status FROM ordens_svo WHERE ${coluna} = ?
     ) AS viagens
     `,
-    [id, id]
+    [...ORDENS_SVO_EM_CURSO, id, id]
   );
 
   return {
@@ -542,7 +543,8 @@ export const viagemService = {
       if (tipo === 'SVO') await travarAgendaSvo(trx);
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
-      if (viagem.status !== operacao.emAndamento) {
+      const emAndamento = tipo === 'SVO' ? ordemSvoEmCurso(viagem.status) : viagem.status === operacao.emAndamento;
+      if (!emAndamento) {
         throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
       }
 

@@ -16,6 +16,7 @@ const TOTAL_MINUTOS_DIA = 24 * 60; // Grade 24h
 const SEMANA_BAR_STYLES: Record<StatusViagem, string> = {
   CONCLUIDA: 'bg-[#94a3b8]',
   EM_ANDAMENTO: 'bg-[#2563eb]',
+  NO_LOCAL: 'bg-[#2563eb]',
   AGENDADA: 'bg-[#7c3aed]',
   CANCELADA: 'bg-[#dc2626] opacity-75',
 };
