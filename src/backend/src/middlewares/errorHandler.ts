@@ -29,7 +29,8 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
 
   if (err instanceof AppError) {
-    if (err.statusCode >= 500) {
+    // 503 é indisponibilidade prevista (ex.: armazenamento das fotos não configurado): a mensagem é para o usuário
+    if (err.statusCode >= 500 && err.statusCode !== 503) {
       logFalha(res, 'ERRO_INTERNO');
       res.status(err.statusCode).json({ erro: 'Erro interno do servidor' });
       return;
