@@ -66,7 +66,7 @@ describe('veiculoModel.listarOcupacaoSvo', () => {
     const sql = mockRaw.mock.calls[0][0] as string;
 
     expect(sql).toContain("WHERE v.tipo_frota = 'SVO'");
-    expect(sql).toContain("o.status IN ('ALOCADA', 'EM_DESLOCAMENTO')");
+    expect(sql).toContain("o.status IN ('ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL')");
     expect(sql).toContain('COALESCE(SUM(o.capacidade_utilizada), 0)');
     expect(sql).not.toMatch(/\bHAVING\b/i);
   });

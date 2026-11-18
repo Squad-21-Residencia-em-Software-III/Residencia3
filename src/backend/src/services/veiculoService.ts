@@ -13,7 +13,7 @@ import {
 import type { CriarVeiculoInput, AtualizarVeiculoInput } from '../validators/veiculoSchemas';
 
 // Ordens SVO que ocupam vagas no veículo
-const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
+const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'];
 
 // Maior compromisso simultâneo. Ordens temporais consecutivas não somam vagas entre si.
 async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<number> {
@@ -27,7 +27,7 @@ async function ocupacaoSvo(trx: Knex.Transaction, veiculoId: number): Promise<nu
   for (const ordem of ordens) {
     const inicio = ordem.inicio_previsto && new Date(ordem.inicio_previsto).getTime();
     const fim = ordem.fim_previsto && new Date(ordem.fim_previsto).getTime();
-    if (ordem.status === 'EM_DESLOCAMENTO' || inicio == null || fim == null || !Number.isFinite(inicio) || !Number.isFinite(fim)) {
+    if (ordem.status === 'EM_DESLOCAMENTO' || ordem.status === 'NO_LOCAL' || inicio == null || fim == null || !Number.isFinite(inicio) || !Number.isFinite(fim)) {
       ocupacaoAtual += Number(ordem.capacidade_utilizada);
     } else {
       eventos.push({ instante: inicio, variacao: Number(ordem.capacidade_utilizada) });

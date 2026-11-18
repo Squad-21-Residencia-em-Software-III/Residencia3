@@ -56,7 +56,8 @@ export async function recalcularStatusVeiculo(
     .first();
 
   const ordemEmAndamento = await trx('ordens_svo')
-    .where({ veiculo_id: veiculoId, status: 'EM_DESLOCAMENTO' })
+    .where({ veiculo_id: veiculoId })
+    .whereIn('status', ['EM_DESLOCAMENTO', 'NO_LOCAL'])
     .first();
 
   if (viagemEmAndamento || ordemEmAndamento) {

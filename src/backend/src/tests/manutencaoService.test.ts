@@ -32,6 +32,10 @@ const mockTrx = Object.assign(
         whereClause = { ...whereClause, ...arg };
         return builder;
       },
+      whereIn: (campo: string, valores: string[]) => {
+        whereClause = { ...whereClause, [campo]: valores[0], [`${campo}_lista`]: valores };
+        return builder;
+      },
       update: async (valores: any) => {
         if (tabela === 'veiculos') {
           estado.veiculoAtualizado = { ...valores };
@@ -157,6 +161,15 @@ describe('manutencaoService e recalcularStatusVeiculo', () => {
     it('deve atualizar para EM_USO se houver ordem SVO em deslocamento', async () => {
       estado.veiculo = { id: 1, status: 'MANUTENCAO' };
       estado.ordemEmAndamento = { id: 200, status: 'EM_DESLOCAMENTO' };
+
+      await recalcularStatusVeiculo(mockTrx as any, 1);
+
+      expect(estado.veiculoAtualizado).toEqual({ status: 'EM_USO' });
+    });
+
+    it('deve atualizar para EM_USO se houver ordem SVO no local da coleta', async () => {
+      estado.veiculo = { id: 1, status: 'MANUTENCAO' };
+      estado.ordemEmAndamento = { id: 201, status: 'NO_LOCAL' };
 
       await recalcularStatusVeiculo(mockTrx as any, 1);
 

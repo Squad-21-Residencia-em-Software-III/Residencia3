@@ -37,7 +37,7 @@ const COLUNAS_VEICULO = ['id', 'placa', 'modelo', 'tipo_frota', 'capacidade_maxi
 
 // Status em que a viagem (frota) ou a ordem (SVO) mantém o veículo vinculado ao motorista
 const VIAGENS_ATIVAS = ['AGENDADA', 'EM_ANDAMENTO'];
-const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO'];
+const ORDENS_SVO_ATIVAS = ['ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'];
 
 export const veiculoModel = {
   async listarParaGestorSvo(): Promise<Array<Veiculo | VeiculoConsultaBasica>> {
@@ -137,8 +137,8 @@ export const veiculoModel = {
       FROM veiculos v
       LEFT JOIN ordens_svo o
         ON o.veiculo_id = v.id
-        AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO')
-        AND (o.status = 'EM_DESLOCAMENTO' OR o.inicio_previsto IS NULL OR o.fim_previsto IS NULL
+        AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL')
+        AND (o.status IN ('EM_DESLOCAMENTO', 'NO_LOCAL') OR o.inicio_previsto IS NULL OR o.fim_previsto IS NULL
           OR (o.inicio_previsto <= CURRENT_TIMESTAMP AND o.fim_previsto > CURRENT_TIMESTAMP))
       WHERE v.tipo_frota = 'SVO'
         -- RESERVADO: já tem ordem alocada, mas ainda pode ter vagas
@@ -176,8 +176,8 @@ export const veiculoModel = {
       FROM veiculos v
       LEFT JOIN ordens_svo o
         ON o.veiculo_id = v.id
-        AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO')
-        AND (o.status = 'EM_DESLOCAMENTO' OR o.inicio_previsto IS NULL OR o.fim_previsto IS NULL
+        AND o.status IN ('ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL')
+        AND (o.status IN ('EM_DESLOCAMENTO', 'NO_LOCAL') OR o.inicio_previsto IS NULL OR o.fim_previsto IS NULL
           OR (o.inicio_previsto <= CURRENT_TIMESTAMP AND o.fim_previsto > CURRENT_TIMESTAMP))
       WHERE v.tipo_frota = 'SVO'
       GROUP BY
