@@ -16,6 +16,9 @@ interface Paginada<T> {
   paginacao: { pagina: number; totalPaginas: number }
 }
 
+const comEvidencia = (evidenciaId?: string) =>
+  recursoAtivo('fotosOdometro') && evidenciaId ? { evidencia_id: evidenciaId } : {}
+
 const LIMITE_PAGINA = 100
 const MAXIMO_PAGINAS = 50
 
@@ -122,11 +125,17 @@ export const viagensApi = {
       query: { pagina, limite: LIMITE_PAGINA },
     })),
 
-  iniciar: ({ id, tipo_operacao }: ReferenciaViagem, km_inicial: number) =>
-    request<Viagem>('PATCH', `/viagens/${id}/iniciar`, { body: { tipo_operacao, km_inicial } }),
+  /** `evidenciaId`: foto da saída já enviada (SCRUM-203); só segue com `fotosOdometro` ligado. */
+  iniciar: ({ id, tipo_operacao }: ReferenciaViagem, km_inicial: number, evidenciaId?: string) =>
+    request<Viagem>('PATCH', `/viagens/${id}/iniciar`, {
+      body: { tipo_operacao, km_inicial, ...comEvidencia(evidenciaId) },
+    }),
 
-  finalizar: ({ id, tipo_operacao }: ReferenciaViagem, km_final: number) =>
-    request<Viagem>('PATCH', `/viagens/${id}/finalizar`, { body: { tipo_operacao, km_final } }),
+  /** `evidenciaId`: foto da chegada já enviada (SCRUM-203); só segue com `fotosOdometro` ligado. */
+  finalizar: ({ id, tipo_operacao }: ReferenciaViagem, km_final: number, evidenciaId?: string) =>
+    request<Viagem>('PATCH', `/viagens/${id}/finalizar`, {
+      body: { tipo_operacao, km_final, ...comEvidencia(evidenciaId) },
+    }),
 
   cancelar: ({ id, tipo_operacao }: ReferenciaViagem) =>
     request<Viagem>('PATCH', `/viagens/${id}/cancelar`, { body: { tipo_operacao } }),

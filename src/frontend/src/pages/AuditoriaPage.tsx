@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Camera, RefreshCw } from 'lucide-react';
 import { Alert, Button, Card, Pagination, Table } from '../components/ui';
+import { recursoAtivo } from '../config/recursosBackend';
 import { auditoriaApi } from '../services/api/auditoriaApi';
 import { ApiError, mensagemDeErro } from '../services/api/http';
 import type { RegistroAuditoria } from '../types/auditoria';
 import { LABELS_MODULO_AUDITORIA } from '../types/auditoria';
 import { cn } from '../utils/cn';
+import { viagemDoRegistro } from '../utils/fotoOdometro';
+import { ModalEvidenciasOdometro, type ReferenciaEvidencias } from './viagens/ModalEvidenciasOdometro';
 
 const ITENS_POR_PAGINA = 20;
 
@@ -33,6 +36,9 @@ export default function AuditoriaPage() {
   const [pagina, setPagina] = useState(1);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<{ mensagem: string; podeTentarDeNovo: boolean } | null>(null);
+  const [fotosDe, setFotosDe] = useState<ReferenciaEvidencias | null>(null);
+  const comFotos = recursoAtivo('fotosOdometro');
+  const colunas = comFotos ? 5 : 4;
 
   // Só a resposta da última consulta é aplicada (troca rápida de página)
   const ultimaConsulta = useRef(0);
@@ -124,12 +130,13 @@ export default function AuditoriaPage() {
                 <th>Usuário</th>
                 <th>Módulo</th>
                 <th>Ação</th>
+                {comFotos && <th>Comprovação</th>}
               </tr>
             </thead>
             <tbody>
               {registros.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-9 text-center text-slate-500">
+                  <td colSpan={colunas} className="p-9 text-center text-slate-500">
                     {mensagemVazia}
                   </td>
                 </tr>
@@ -144,6 +151,18 @@ export default function AuditoriaPage() {
                       {LABELS_MODULO_AUDITORIA[r.modulo] ?? r.modulo}
                     </td>
                     <td className="font-mono text-xs break-all text-slate-700">{r.acao}</td>
+                    {comFotos && (
+                      <td className="whitespace-nowrap">
+                        {(() => {
+                          const viagem = viagemDoRegistro(r.acao);
+                          return viagem ? (
+                            <Button variant="outline" size="sm" onClick={() => setFotosDe(viagem)}>
+                              <Camera size={13} className="mr-1" /> Ver fotos
+                            </Button>
+                          ) : null;
+                        })()}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -161,6 +180,8 @@ export default function AuditoriaPage() {
           />
         )}
       </Card>
+
+      {fotosDe && <ModalEvidenciasOdometro referencia={fotosDe} onClose={() => setFotosDe(null)} />}
     </div>
   );
 }

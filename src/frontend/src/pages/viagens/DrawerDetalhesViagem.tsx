@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, Flag, MapPin, Play } from 'lucide-react';
+import { Camera, Download, Flag, MapPin, Play } from 'lucide-react';
 import { Avatar, Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
 import { LABELS_STATUS_VIAGEM, type StatusViagem, type Viagem } from '../../types/viagem';
 
@@ -10,6 +10,8 @@ interface DrawerDetalhesViagemProps {
   onIniciar?: (viagem: Viagem) => void;
   onFinalizar?: (viagem: Viagem) => void;
   onCancelar?: (viagem: Viagem) => void;
+  /** Fotos do odômetro (SCRUM-203); só é passado a quem pode vê-las na operação da viagem. */
+  onVerFotos?: (viagem: Viagem) => void;
 }
 
 function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
@@ -60,6 +62,7 @@ export function DrawerDetalhesViagem({
   onIniciar,
   onFinalizar,
   onCancelar,
+  onVerFotos,
   somentePropria = false,
 }: DrawerDetalhesViagemProps) {
   const [viagemState, setViagemState] = useState<Viagem | null>(viagemProp);
@@ -137,6 +140,19 @@ export function DrawerDetalhesViagem({
             >
               <Download size={13} className="mr-1" /> Baixar Ficha
             </Button>}
+
+            {onVerFotos && viagem.status !== 'AGENDADA' && viagem.status !== 'CANCELADA' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onVerFotos(viagem);
+                }}
+              >
+                <Camera size={13} className="mr-1" /> Fotos do odômetro
+              </Button>
+            )}
 
             {viagem.status === 'AGENDADA' && onIniciar && (
               <Button

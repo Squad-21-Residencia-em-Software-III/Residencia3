@@ -42,6 +42,7 @@ import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
 import { ModalFinalizarViagem } from './viagens/ModalFinalizarViagem';
 import { ModalAgendarColetaSvo } from './viagens/ModalAgendarColetaSvo';
 import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
+import { ModalEvidenciasOdometro } from './viagens/ModalEvidenciasOdometro';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
 import { usePermissao } from '../utils/permissoes';
 
@@ -148,9 +149,12 @@ interface PainelViagensProps {
 
 function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const location = useLocation();
-  const { pode } = usePermissao();
+  const { pode, podeNaFrota } = usePermissao();
   const isSvo = operacao === 'SVO';
   const agendaSvoAtiva = recursoAtivo('agendamentoTemporalSvo');
+  // Fotos do odômetro (SCRUM-203): cada gestor só na própria operação; o Administrador nas duas
+  const podeVerFotos =
+    recursoAtivo('fotosOdometro') && !somenteProprias && podeNaFrota('evidenciasOdometro.ver', operacao);
   const textos = TEXTOS_OPERACAO[operacao];
   // Agendar viagem administrativa (Admin e Gestor de Frota); alocar coleta SVO (Admin e Gestor SVO)
   const podeAgendar = !isSvo && !somenteProprias && pode('viagens.agendar');
@@ -188,6 +192,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const [viagemDetalhes, setViagemDetalhes] = useState<Viagem | null>(null);
   const [viagemIniciar, setViagemIniciar] = useState<Viagem | null>(null);
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
+  const [viagemFotos, setViagemFotos] = useState<Viagem | null>(null);
   const [viagemCancelar, setViagemCancelar] = useState<Viagem | null>(null);
   const [cancelandoViagem, setCancelandoViagem] = useState(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
@@ -395,16 +400,16 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
     exibirFeedback(`Viagem agendada com sucesso!`);
   };
 
-  const handleIniciarViagem = async (kmInicial: number) => {
+  const handleIniciarViagem = async (kmInicial: number, evidenciaId?: string) => {
     if (!viagemIniciar) return;
-    await viagensApi.iniciar(viagemIniciar, kmInicial);
+    await viagensApi.iniciar(viagemIniciar, kmInicial, evidenciaId);
     await carregarViagens();
     exibirFeedback(`Viagem #${viagemIniciar.id} iniciada com sucesso.`);
   };
 
-  const handleFinalizarViagem = async (kmFinal: number) => {
+  const handleFinalizarViagem = async (kmFinal: number, evidenciaId?: string) => {
     if (!viagemFinalizar) return;
-    await viagensApi.finalizar(viagemFinalizar, kmFinal);
+    await viagensApi.finalizar(viagemFinalizar, kmFinal, evidenciaId);
     await carregarViagens();
     exibirFeedback(`Viagem #${viagemFinalizar.id} finalizada com sucesso.`);
   };
@@ -922,7 +927,19 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
               }
             : undefined
         }
+        onVerFotos={
+          podeVerFotos
+            ? (v) => {
+                setViagemDetalhes(null);
+                setViagemFotos(v);
+              }
+            : undefined
+        }
       />
+
+      {viagemFotos && (
+        <ModalEvidenciasOdometro referencia={viagemFotos} onClose={() => setViagemFotos(null)} />
+      )}
 
       {viagemIniciar && (
         <ModalIniciarViagem
