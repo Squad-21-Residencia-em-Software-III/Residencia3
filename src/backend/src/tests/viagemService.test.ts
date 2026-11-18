@@ -254,7 +254,7 @@ function situacao(sql: string) {
       {
         em_andamento:
           estado.outrasViagens[coluna].em_andamento ||
-          ['EM_ANDAMENTO', 'EM_DESLOCAMENTO'].includes(
+          ['EM_ANDAMENTO', 'EM_DESLOCAMENTO', 'NO_LOCAL'].includes(
             String(statusAtual)
           ),
 
@@ -1329,5 +1329,92 @@ describe('viagemService.cancelarViagem', () => {
       tabela: 'solicitacoes_svo',
       valores: { status: 'CANCELADA' },
     });
+  });
+});
+
+describe('BL31 - registrarChegadaLocalSvo', () => {
+  beforeEach(() => {
+    ref.estado.viagem = {
+      id: 5,
+      status: 'EM_DESLOCAMENTO',
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+  });
+
+  it('deve permitir que o motorista SVO registre a chegada ao local', async () => {
+    await viagemService.registrarChegadaLocalSvo(5, motoristaSvo);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: { status: 'NO_LOCAL' },
+    });
+
+    expect(auditoriaModel.registrar).toHaveBeenCalled();
+    });
+
+    it('BL31 - deve finalizar uma coleta SVO com status NO_LOCAL', async () => {
+      ref.estado.viagem = {
+        id: 5,
+        solicitacao_id: 7,
+        status: 'NO_LOCAL',
+        km_inicial: 1000,
+        veiculo_id: 10,
+        motorista_id: 20,
+      };
+
+      await viagemService.finalizarViagem(
+        'SVO',
+        5,
+        1050,
+        gestorSvo
+      );
+
+      expect(ref.estado.updates).toContainEqual({
+        tabela: 'ordens_svo',
+        valores: expect.objectContaining({
+          status: 'CONCLUIDA',
+          data_hora_conclusao: expect.any(Date),
+        }),
+      });
+
+      expect(ref.estado.updates).toContainEqual({
+        tabela: 'solicitacoes_svo',
+        valores: { status: 'CONCLUIDA' },
+      });
+    });
+
+  it('deve rejeitar chegada quando a ordem nao esta em deslocamento', async () => {
+    ref.estado.viagem = {
+      id: 5,
+      status: 'ALOCADA',
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+
+    await expect(
+      viagemService.registrarChegadaLocalSvo(5, motoristaSvo)
+    ).rejects.toMatchObject({
+      statusCode: 409,
+    });
+
+    expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('deve impedir motorista SVO de registrar chegada de outro motorista', async () => {
+    const outroMotorista = {
+      id: 99,
+      perfil: PERFIS.MOTORISTA_SVO,
+    };
+
+    await expect(
+      viagemService.registrarChegadaLocalSvo(5, outroMotorista)
+    ).rejects.toMatchObject({
+      statusCode: 403,
+    });
+
+    expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
   });
 });

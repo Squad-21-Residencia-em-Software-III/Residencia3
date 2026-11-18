@@ -137,7 +137,7 @@ async function situacaoDoRecurso(
   const { rows } = await trx.raw<{ rows: { em_andamento: boolean | null; agendada: boolean | null }[] }>(
     `
     SELECT
-      bool_or(status IN ('EM_ANDAMENTO', 'EM_DESLOCAMENTO')) AS em_andamento,
+      bool_or(status IN ('EM_ANDAMENTO', 'EM_DESLOCAMENTO', 'NO_LOCAL')) AS em_andamento,
       bool_or(status IN ('AGENDADA', 'ALOCADA')) AS agendada
     FROM (
       SELECT status FROM viagens_frota WHERE ${coluna} = ?
@@ -373,6 +373,35 @@ async function detalhar(trx: Knex.Transaction, tipo: TipoOperacao, id: number): 
 }
 
 export const viagemService = {
+  async registrarChegadaLocalSvo(ordemId: number, autor: Autor) {
+    return db.transaction(async (trx) => {
+      await travarAgendaSvo(trx);
+
+      const ordem = await buscarParaAtualizar(trx, 'SVO', ordemId);
+
+      await garantirAcessoAoRegistro(trx, autor, 'SVO', ordem);
+
+      if (ordem.status !== 'EM_DESLOCAMENTO') {
+        throw new AppError(
+          'Apenas coletas em deslocamento podem registrar chegada ao local',
+          409
+        );
+      }
+
+      await trx('ordens_svo')
+        .where({ id: ordemId })
+        .update({ status: 'NO_LOCAL' });
+
+      await registrarAuditoria(
+        trx,
+        autor.id,
+        `CHEGOU_LOCAL_SVO id=${ordemId}`
+      );
+
+      return detalhar(trx, 'SVO', ordemId);
+    });
+  },
+
   async reprogramarOrdemSvo(id: number, dados: AlocarOrdemSvoInput, autor: Autor) {
     garantirAcesso(autor.perfil, 'SVO');
     return db.transaction(async (trx) => {
@@ -536,8 +565,15 @@ export const viagemService = {
       if (tipo === 'SVO') await travarAgendaSvo(trx);
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
-      if (viagem.status !== operacao.emAndamento) {
-        throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
+      const statusValido =
+        viagem.status === operacao.emAndamento ||
+        (tipo === 'SVO' && viagem.status === 'NO_LOCAL');
+
+      if (!statusValido) {
+        throw new AppError(
+          'Apenas viagens em andamento podem ser finalizadas',
+          400
+        );
       }
 
       // A quilometragem final é validada aqui, independentemente da interface (BL17)

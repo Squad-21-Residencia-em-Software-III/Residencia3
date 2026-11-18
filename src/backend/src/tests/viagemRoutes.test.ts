@@ -30,6 +30,10 @@ vi.mock('../services/viagemService', () => ({
     reprogramarOrdemSvo: vi.fn().mockResolvedValue({ id: 9 }),
     criar: vi.fn().mockResolvedValue({ id: 1 }),
     iniciarViagem: vi.fn().mockResolvedValue({ id: 1 }),
+    registrarChegadaLocalSvo: vi.fn().mockResolvedValue({
+      id: 5,
+      status: 'NO_LOCAL',
+    }),
     finalizarViagem: vi.fn().mockResolvedValue({ id: 1 }),
     cancelarViagem: vi.fn().mockResolvedValue({ id: 1 }),
   },
@@ -457,5 +461,93 @@ describe('Rotas de viagens', () => {
 
     expect(viagemService.criar).not.toHaveBeenCalled();
     expect(viagemService.cancelarViagem).not.toHaveBeenCalled();
+  });
+
+  describe('BL31 - rota de chegada ao local SVO', () => {
+    const token = 'Bearer token-teste';
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      autenticarComo(PERFIS.MOTORISTA_SVO);
+    });
+
+    it('deve permitir que o motorista SVO registre a chegada ao local', async () => {
+      const resposta = await request(app)
+        .patch('/api/viagens/ordens-svo/5/chegar-local')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(200);
+
+      expect(resposta.body).toMatchObject({
+        id: 5,
+        status: 'NO_LOCAL',
+      });
+
+      expect(viagemService.registrarChegadaLocalSvo).toHaveBeenCalledWith(
+        5,
+        {
+          id: 3,
+          perfil: PERFIS.MOTORISTA_SVO,
+        },
+      );
+    });
+
+    it.each([
+      PERFIS.GESTOR_FROTA,
+      PERFIS.MOTORISTA_FROTA,
+      PERFIS.SOLICITANTE,
+    ])('deve impedir o perfil %s de registrar chegada SVO', async (perfil) => {
+      autenticarComo(perfil);
+
+      const resposta = await request(app)
+        .patch('/api/viagens/ordens-svo/5/chegar-local')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(403);
+
+      expect(
+        viagemService.registrarChegadaLocalSvo
+      ).not.toHaveBeenCalled();
+    });
+
+    it.each(['abc', '0', '-1'])(
+      'deve rejeitar o ID inválido %s',
+      async (id) => {
+        const resposta = await request(app)
+          .patch(`/api/viagens/ordens-svo/${id}/chegar-local`)
+          .set('Authorization', token);
+
+        expect(resposta.status).toBe(400);
+
+        expect(
+          viagemService.registrarChegadaLocalSvo
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      PERFIS.ADMINISTRADOR,
+      PERFIS.GESTOR_SVO,
+    ])('deve permitir que o perfil %s registre chegada SVO', async (perfil) => {
+      autenticarComo(perfil);
+
+      const resposta = await request(app)
+        .patch('/api/viagens/ordens-svo/5/chegar-local')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(200);
+
+      expect(resposta.body).toMatchObject({
+        id: 5,
+        status: 'NO_LOCAL',
+      });
+
+      expect(
+        viagemService.registrarChegadaLocalSvo
+      ).toHaveBeenCalledWith(5, {
+        id: 3,
+        perfil,
+      });
+    });
   });
 });

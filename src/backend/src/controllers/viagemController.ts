@@ -50,6 +50,13 @@ export const viagemController = {
     res.status(dados.tipo_operacao === 'SVO' ? 200 : 201).json(viagem);
   },
 
+  async registrarChegadaLocalSvo(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    const autor = usuarioAutenticado(req);
+
+    res.json(await viagemService.registrarChegadaLocalSvo(id, autor));
+  },
+
   async iniciar(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
     const { tipo_operacao, km_inicial } = iniciarViagemSchema.parse(req.body);
