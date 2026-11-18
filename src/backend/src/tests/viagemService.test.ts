@@ -18,7 +18,6 @@ interface Estado {
   ordensDoVeiculo: object[];
   ordemEmOutroVeiculo?: object;
   equipe?: object;
-  semEscala?: boolean;
   outrasViagens: Record<
     'veiculo_id' | 'motorista_id',
     { em_andamento: boolean; agendada: boolean }
@@ -133,7 +132,7 @@ function responder(
     case 'equipes_svo':
       return estado.equipe;
     case 'escalas_svo':
-      return estado.semEscala ? undefined : { id: 1 };
+      return { id: 1 };
 
     case 'veiculos':
       return estado.veiculo;
@@ -693,18 +692,46 @@ describe('viagemService.criar (SVO)', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('deve rejeitar equipe sem escala para todo o período e não alterar a ordem', async () => {
-    ref.estado.semEscala = true;
+  // Regra antiga (BL29): equipe sem escala era rejeitada. A SCRUM-196 aprovou, para o MVP, que a
+  // equipe seja escolhida sem escala e que a disponibilidade dependa só dos conflitos reais. A
+  // consulta de escala ainda existe na develop; por isso estes cenários ficam registrados até o
+  // PR da SCRUM-196 (#162) entrar, sem consolidar a exigência antiga.
+  it.todo('deve permitir equipe sem escala, sem coleta em andamento e sem reserva conflitante (depende da SCRUM-196, #162)');
+  it.todo('deve manter a equipe ocupada enquanto a coleta estiver NO_LOCAL, mesmo após o término previsto (depende do #164)');
+  it.todo('com equipe selecionada exige ao menos um integrante individual válido (depende da SCRUM-196, #162)');
 
-    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 409 });
-    expect(ref.estado.updates.filter((u) => u.tabela === 'ordens_svo')).toEqual([]);
-    expect(ref.estado.updates.filter((u) => u.tabela === 'solicitacoes_svo')).toEqual([]);
-  });
-
-  it('deve rejeitar equipe já reservada em outra coleta no mesmo horário', async () => {
+  it('deve rejeitar equipe já reservada em outra coleta, mesmo com veículo e motorista diferentes', async () => {
+    // Coleta existente: equipe 2, veículo 11 e motorista 21 (os da nova coleta são 10 e 20)
     ref.estado.ordensDoVeiculo = [{
       id: 3, status: 'ALOCADA', veiculo_id: 11, motorista_id: 21, equipe_id: 2,
       inicio_previsto: '2099-11-20T15:00:00Z', fim_previsto: '2099-11-20T17:00:00Z',
+    }];
+
+    await expect(viagemService.criar(dados, gestorSvo))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+    // Nenhuma alocação parcial: a ordem não é alterada nem criada
+    expect(ref.estado.updates.filter((u) => u.tabela === 'ordens_svo')).toEqual([]);
+    expect(ref.estado.updates.filter((u) => u.tabela === 'solicitacoes_svo')).toEqual([]);
+    expect(ref.estado.inserts).toEqual([]);
+  });
+
+  it('deve alocar a equipe quando a outra reserva dela não se sobrepõe ao período', async () => {
+    ref.estado.ordensDoVeiculo = [{
+      id: 3, status: 'ALOCADA', veiculo_id: 11, motorista_id: 21, equipe_id: 2,
+      inicio_previsto: '2099-11-20T17:00:00Z', fim_previsto: '2099-11-20T19:00:00Z',
+    }];
+
+    await expect(viagemService.criar(dados, gestorSvo)).resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({ status: 'ALOCADA', equipe_id: 2 }),
+    });
+  });
+
+  it('deve manter a equipe ocupada por coleta em deslocamento atrasada, sem alterar a ordem', async () => {
+    ref.estado.ordensDoVeiculo = [{
+      id: 3, status: 'EM_DESLOCAMENTO', veiculo_id: 11, motorista_id: 21, equipe_id: 2,
+      inicio_previsto: '2000-01-01T10:00:00Z', fim_previsto: '2000-01-01T12:00:00Z',
     }];
 
     await expect(viagemService.criar(dados, gestorSvo))
