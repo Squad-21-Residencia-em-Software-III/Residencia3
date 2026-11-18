@@ -56,6 +56,12 @@ function validarEstadoMinimoPrivilegio(estado) {
     violacoes.push('role nao pode ter nenhum privilegio sobre knex_migrations ou knex_migrations_lock');
   }
 
+  if (estado.podeDeletarHistoricoSvo) {
+    violacoes.push(
+      'role nao pode ter privilegio DELETE sobre tabelas de historico de vinculos/designacoes SVO (equipes_svo_integrantes, ordens_svo_integrantes)'
+    );
+  }
+
   if (
     Array.isArray(estado.privilegiosExcessivosTabelas) &&
     estado.privilegiosExcessivosTabelas.length > 0
@@ -123,8 +129,19 @@ async function inspecionarEstadoRole(conexao, appUser) {
          WHEN to_regclass('public.knex_migrations_lock') IS NOT NULL THEN
            has_table_privilege(?, 'public.knex_migrations_lock', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
          ELSE false
-       END AS pode_acessar_migrations`,
-    [appUser, appUser, appUser, appUser]
+       END AS pode_acessar_migrations,
+       CASE
+         WHEN to_regclass('public.equipes_svo_integrantes') IS NOT NULL THEN
+           has_table_privilege(?, 'public.equipes_svo_integrantes', 'DELETE')
+         ELSE false
+       END
+       OR
+       CASE
+         WHEN to_regclass('public.ordens_svo_integrantes') IS NOT NULL THEN
+           has_table_privilege(?, 'public.ordens_svo_integrantes', 'DELETE')
+         ELSE false
+       END AS pode_deletar_historico_svo`,
+    [appUser, appUser, appUser, appUser, appUser, appUser]
   );
 
   const { rows: excessivosRows } = await conexao.raw(
@@ -143,6 +160,7 @@ async function inspecionarEstadoRole(conexao, appUser) {
     podeCriarNoPublic: Boolean(privRows[0]?.pode_criar_no_public),
     podeUsarPublic: Boolean(privRows[0]?.pode_usar_public),
     podeAcessarMigrations: Boolean(privRows[0]?.pode_acessar_migrations),
+    podeDeletarHistoricoSvo: Boolean(privRows[0]?.pode_deletar_historico_svo),
     privilegiosExcessivosTabelas: excessivosRows.map(
       (r) => `${r.table_name}:${r.privilege_type}`
     ),
@@ -245,6 +263,12 @@ async function provisionarUsuarioAplicacao() {
           END IF;
           IF to_regclass('public.knex_migrations_lock') IS NOT NULL THEN
             EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public.knex_migrations_lock FROM %I', '${appUser}');
+          END IF;
+          IF to_regclass('public.equipes_svo_integrantes') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.equipes_svo_integrantes FROM %I', '${appUser}');
+          END IF;
+          IF to_regclass('public.ordens_svo_integrantes') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.ordens_svo_integrantes FROM %I', '${appUser}');
           END IF;
         END $$;`
       );
