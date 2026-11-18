@@ -18,7 +18,9 @@
     "db:provisionar-app-user": "node scripts/provisionar-usuario-app.cjs",
     "db:backup": "node scripts/backup-db.cjs",
     "db:restore:validar": "node scripts/restaurar-backup-db.cjs",
-    "db:avaliar-consultas": "node scripts/avaliar-consultas-db.cjs"
+    "db:avaliar-consultas": "node scripts/avaliar-consultas-db.cjs",
+    "db:validar-scrum183": "node scripts/validar-migration-scrum183.cjs",
+    "db:validar-scrum198": "node scripts/validar-migration-scrum198.cjs"
   },
   "keywords": [],
   "author": "",
