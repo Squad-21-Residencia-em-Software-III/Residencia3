@@ -315,4 +315,32 @@ describe('ViagensPage: status e ações da coleta SVO por perfil (SCRUM-110)', (
     expect(within(linha).getByRole('button', { name: /Finalizar/ })).toBeInTheDocument();
     expect(within(linha).queryByText('A caminho')).not.toBeInTheDocument();
   });
+
+  const opcoesDoFiltroDeStatus = () =>
+    Array.from(
+      (screen.getByLabelText('Filtrar por status') as HTMLSelectElement).querySelectorAll('option'),
+    ).map((opcao) => opcao.textContent);
+
+  it('filtro de status da aba SVO oferece "A caminho" e "No local"', async () => {
+    api.listar.mockResolvedValue([coleta('NO_LOCAL')]);
+    abrir('/viagens?aba=svo');
+
+    await screen.findByText('Rua das Flores, 10');
+    expect(opcoesDoFiltroDeStatus()).toEqual(
+      expect.arrayContaining(['A caminho', 'No local']),
+    );
+  });
+
+  it('filtro de status da aba Administrativo não oferece "No local" nem "A caminho"', async () => {
+    api.listar.mockResolvedValue([
+      { ...viagem(3, 'ADMINISTRATIVA', 'Hospital de Lagarto'), status: 'EM_ANDAMENTO' },
+    ]);
+    abrir();
+
+    await screen.findByText('Hospital de Lagarto');
+    const opcoes = opcoesDoFiltroDeStatus();
+    expect(opcoes).toContain('Em Andamento');
+    expect(opcoes).not.toContain('No local');
+    expect(opcoes).not.toContain('A caminho');
+  });
 });
