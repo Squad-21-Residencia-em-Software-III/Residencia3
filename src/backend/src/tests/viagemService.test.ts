@@ -18,6 +18,7 @@ interface Estado {
   ordensDoVeiculo: object[];
   ordemEmOutroVeiculo?: object;
   equipe?: object;
+  semEscala?: boolean;
   outrasViagens: Record<
     'veiculo_id' | 'motorista_id',
     { em_andamento: boolean; agendada: boolean }
@@ -132,7 +133,7 @@ function responder(
     case 'equipes_svo':
       return estado.equipe;
     case 'escalas_svo':
-      return { id: 1 };
+      return estado.semEscala ? undefined : { id: 1 };
 
     case 'veiculos':
       return estado.veiculo;
@@ -690,6 +691,35 @@ describe('viagemService.criar (SVO)', () => {
     await expect(
       viagemService.criar(dados, gestorSvo)
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('deve rejeitar equipe sem escala para todo o período e não alterar a ordem', async () => {
+    ref.estado.semEscala = true;
+
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 409 });
+    expect(ref.estado.updates.filter((u) => u.tabela === 'ordens_svo')).toEqual([]);
+    expect(ref.estado.updates.filter((u) => u.tabela === 'solicitacoes_svo')).toEqual([]);
+  });
+
+  it('deve rejeitar equipe já reservada em outra coleta no mesmo horário', async () => {
+    ref.estado.ordensDoVeiculo = [{
+      id: 3, status: 'ALOCADA', veiculo_id: 11, motorista_id: 21, equipe_id: 2,
+      inicio_previsto: '2099-11-20T15:00:00Z', fim_previsto: '2099-11-20T17:00:00Z',
+    }];
+
+    await expect(viagemService.criar(dados, gestorSvo))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+    expect(ref.estado.updates.filter((u) => u.tabela === 'ordens_svo')).toEqual([]);
+  });
+
+  it('deve permitir alocar sem equipe, deixando equipe_id vazio na ordem', async () => {
+    const semEquipe = { ...dados, equipe_id: undefined };
+
+    await expect(viagemService.criar(semEquipe, gestorSvo)).resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({ status: 'ALOCADA', equipe_id: null }),
+    });
   });
 
   it('deve alocar a ordem existente com a capacidade informada sem criar outra', async () => {
