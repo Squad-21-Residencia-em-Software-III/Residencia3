@@ -20,7 +20,8 @@
     "db:restore:validar": "node scripts/restaurar-backup-db.cjs",
     "db:avaliar-consultas": "node scripts/avaliar-consultas-db.cjs",
     "db:validar-scrum183": "node scripts/validar-migration-scrum183.cjs",
-    "db:validar-scrum198": "node scripts/validar-migration-scrum198.cjs"
+    "db:validar-scrum198": "node scripts/validar-migration-scrum198.cjs",
+    "db:validar-scrum210": "node scripts/validar-migration-scrum210.cjs"
   },
   "keywords": [],
   "author": "",
