@@ -91,7 +91,9 @@ O navegador acessa o frontend na Vercel. A Vercel encaminha `/api/*` para a API 
 | Variável | Padrão | Função |
 |---|---|---|
 | `CORS_ORIGIN` | `http://localhost:5173` em desenvolvimento; vazio em produção | Lista, separada por vírgula, das origens autorizadas a fazer requisições com credenciais. Cada item é `https://dominio[:porta]`. `*` é recusado na inicialização. |
-| `TRUST_PROXY` | `0` fora de produção; obrigatório em produção | Proxies reversos confiáveis (número de saltos ou IPs/CIDRs). Define `req.ip`, usado no limite de tentativas, e `req.protocol`. Veja [seguranca-http.md](seguranca-http.md). |
+| `TRUST_PROXY` | `0` fora de produção; obrigatório em produção | Proxies reversos confiáveis do caminho direto (número de saltos ou IPs/CIDRs). Define `req.ip`, usado no limite de tentativas, e `req.protocol`. Veja [seguranca-http.md](seguranca-http.md). |
+| `PROXY_SECRET` | não definido | Segredo enviado pela Vercel em `X-Proxy-Secret` no rewrite `/api`. Com ele, a API identifica o cliente real no caminho da Vercel. Deve ser idêntico na Vercel e no Render. Veja [seguranca-http.md](seguranca-http.md#decisão-e-validação). |
+| `DIAGNOSTICO_PROXY_TOKEN` | não definido | Liga temporariamente `GET /api/diagnostico/ip`, usado para validar a cadeia de proxies. Remova após a validação. |
 | `COOKIE_SECURE` | `true` em produção, `false` fora dela | Atributo `Secure` do cookie. `false` em produção é recusado. |
 
 ### CSRF

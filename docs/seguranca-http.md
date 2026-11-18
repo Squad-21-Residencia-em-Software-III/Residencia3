@@ -51,13 +51,14 @@ A API só responde JSON, então a política é restritiva. Os cabeçalhos valem 
 
 ## Trust proxy e IP real do cliente
 
-Em produção, a requisição percorre uma cadeia de proxies antes de chegar à API:
+Em produção, a API pode ser acessada por dois caminhos, e eles têm quantidades diferentes de proxies:
 
 ```
-navegador → Vercel (rewrite /api) → balanceador do Render → API
+direto: cliente → borda do Render → API
+Vercel: cliente → Vercel (rewrite /api) → borda do Render → API
 ```
 
-Cada proxy acrescenta ao `X-Forwarded-For` o IP de quem o chamou. Como qualquer cliente também pode enviar esse cabeçalho, o Express só deve acreditar nas entradas acrescentadas por proxies **confiáveis**. O `TRUST_PROXY` declara quais são.
+Cada proxy acrescenta ao `X-Forwarded-For` o IP de quem o chamou. Como qualquer cliente também pode enviar esse cabeçalho, o Express só deve acreditar nas entradas acrescentadas por proxies **confiáveis**. O `TRUST_PROXY` declara quais são **no caminho direto**. O salto extra da Vercel é tratado pelo `PROXY_SECRET`, descrito em [Decisão e validação](#decisão-e-validação).
 
 | Formato | Exemplo | Significado |
 |---|---|---|
@@ -70,13 +71,54 @@ Valores recusados na inicialização:
 - **`true`, `*` e faixas `/0`:** confiar em qualquer proxy deixaria qualquer cliente forjar o próprio IP e escapar do limite de tentativas;
 - **ausência em produção:** a cadeia precisa ser declarada de forma consciente. Não se presume 0 nem 1. Se presumíssemos 1 numa cadeia de 2, o IP identificado seria o da Vercel, e todos os usuários dividiriam o mesmo limite de login (há teste que demonstra isso).
 
-### Como calibrar no Render
+## Decisão e validação
 
-1. Com o deploy no ar, faça uma requisição a partir de um IP conhecido, passando pelo domínio da Vercel.
-2. Nos logs do Render, observe o `X-Forwarded-For` que chega à API, ou consulte a documentação do Render e da Vercel sobre os proxies de cada um.
-3. Conte quantas entradas ficam **depois** do seu IP e some 1 (o balanceador do Render, que é a conexão direta com a API). Esse é o número de saltos. Por exemplo, `seu-ip, ip-da-vercel` com o balanceador do Render conectando dá `TRUST_PROXY=2`.
-4. Se os provedores publicarem as faixas de IP dos proxies, prefira a lista de CIDRs. Ela continua correta mesmo que a quantidade de saltos mude.
-5. Depois de ajustar, confirme que os logs não têm erros `ERR_ERL_*` do limitador.
+### Por que um `TRUST_PROXY` fixo não basta
+
+| `TRUST_PROXY` | Caminho direto | Caminho da Vercel |
+|---|---|---|
+| `1` | Correto: o IP é o que a borda do Render acrescentou | **Errado:** o IP identificado é o da Vercel, e todos os usuários do frontend dividem o mesmo limite de login |
+| `2` | **Inseguro:** o cliente envia `X-Forwarded-For: <qualquer>` e escolhe o próprio IP, contornando o rate limit | Correto |
+| CIDRs da Vercel | Não se aplica: a Vercel não publica faixas fixas de saída, exceto no Secure Compute, um recurso pago | |
+
+### Decisão
+
+- `TRUST_PROXY=1`: só a borda do Render é confiável. Vale para os dois caminhos e define `req.protocol`.
+- A Vercel se identifica com o cabeçalho `X-Proxy-Secret`, definido no `src/frontend/vercel.json` com `"op": "set"`. O `set` substitui qualquer valor enviado pelo visitante. O valor vem da variável de ambiente `PROXY_SECRET` da Vercel e não fica no repositório.
+- A API (`src/backend/src/middlewares/identificarCliente.ts`) compara o cabeçalho com o seu `PROXY_SECRET` em tempo constante:
+  - **segredo válido:** confia em mais um salto (o da Vercel), e `req.ip` passa a ser o endereço anterior a ele, que é o cliente. Segundo a documentação da Vercel, no rewrite para uma origem externa ela envia `X-Forwarded-For` com o IP público do visitante;
+  - **sem segredo, ou com segredo errado:** é tratado como acesso direto, sem confiar em nenhum salto extra.
+- O cabeçalho é removido antes das rotas e nunca aparece em logs.
+- O rate limit continua usando o `keyGenerator` padrão do `express-rate-limit`, porque é nele que rodam as validações `ERR_ERL_*`. Um `keyGenerator` próprio as desligaria.
+- O mesmo cliente tem um só contador nos dois caminhos.
+
+Se o `PROXY_SECRET` não estiver configurado, a API funciona como antes: no caminho da Vercel, o IP identificado é o da Vercel. Isso é seguro, mas os limites ficam compartilhados. Por isso a variável deve ser definida nos dois lados.
+
+### Como validar (e revalidar após mudanças na hospedagem)
+
+1. Gere dois segredos aleatórios, por exemplo com `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
+2. Configure as variáveis:
+   - Render: `PROXY_SECRET`, que deve ser idêntico ao da Vercel, e `DIAGNOSTICO_PROXY_TOKEN`. Este último é temporário e liga a rota `/api/diagnostico/ip`.
+   - Vercel: `PROXY_SECRET`, em Production e Preview. Depois, faça um redeploy.
+3. De uma rede, rode:
+   ```bash
+   cd src/backend
+   DIAGNOSTICO_PROXY_TOKEN=... node scripts/diagnosticar-proxy.cjs \
+     --direto https://fsph-api.onrender.com --vercel https://fsph-web.vercel.app --rede wifi
+   ```
+   Repita de outra rede, por exemplo `--rede 4g`, para provar que os limites são por cliente.
+4. O script salva `docs/evidencias/proxy-<data>-<rede>.json`, com o último bloco dos IPs mascarado, e termina com código 1 se alguma verificação falhar. Verificações:
+   - `diretoIdentificaTestador` e `vercelIdentificaTestador`: o IP identificado é o IP público do testador;
+   - `forjadoIgnoradoNosDois` e `segredoFalsoIgnoradoNosDois`: um `X-Forwarded-For` ou `X-Proxy-Secret` enviado pelo cliente não muda nada;
+   - `diretoComecouLiberado` e `diretoBloqueouNaTentativa11`: um IP novo tem o próprio contador e é bloqueado após 10 falhas de login;
+   - `forjadoNaoLiberou*`: trocar o `X-Forwarded-For` depois do bloqueio não libera novas tentativas;
+   - `vercelHerdouBloqueioDoMesmoCliente`: o caminho da Vercel já começa bloqueado, porque conta pelo IP do testador, e não pelo da Vercel.
+5. Nos logs do Render, no período do teste, confirme que não há `ERR_ERL_*`.
+6. Remova `DIAGNOSTICO_PROXY_TOKEN` do Render. A rota volta a responder 404.
+
+O teste consome as 10 falhas de login da janela de 15 minutos do IP do testador. Cada falha gera um registro de auditoria `LOGIN_FALHOU` com e-mail inexistente.
+
+Se o resultado medido divergir do esperado, por exemplo se a borda do Render não acrescentar o IP da Vercel, o `identificarCliente` mantém o `req.ip`. Nesse caso, o JSON do diagnóstico (`cabecalhos`, `reqIps`, `ipPeloTrustProxy`) mostra a cadeia real. Ajuste o `TRUST_PROXY` com base nele e registre aqui a nova decisão.
 
 ## Rate limit
 
