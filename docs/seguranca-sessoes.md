@@ -96,12 +96,11 @@ O navegador acessa o frontend na Vercel. A Vercel encaminha `/api/*` para a API 
 
 ### CSRF
 
-As rotas que emitem, leem ou removem o cookie (`/login`, `/refresh`, `/logout`, `/senha`) passam por `verificarOrigem`, além do `SameSite=Strict`. A requisição é recusada com **403 "Origem não autorizada"** se:
+As rotas `/login`, `/refresh`, `/logout` e `/senha` exigem uma origem confiável explicitamente listada em `CORS_ORIGIN`. `Origin` tem precedência: se presente, deve corresponder exatamente à lista; `null`, valores inválidos e divergências de protocolo, domínio ou porta são recusados. Na ausência de `Origin`, a origem HTTP(S) do `Referer` é validada. Se ambos faltarem ou forem inválidos, a resposta é 403. `Sec-Fetch-Site: cross-site` também é recusado, mesmo para origem listada. O middleware não usa `Host`, `X-Forwarded-Host` ou `X-Forwarded-Proto` como prova de origem, inclusive atrás do proxy.
 
-- o cabeçalho `Origin` vier com uma origem que não é a da própria API nem está em `CORS_ORIGIN` (inclusive `null`);
-- o navegador marcar a requisição como `Sec-Fetch-Site: cross-site`.
+O navegador controla esses cabeçalhos no modelo de CSRF; clientes HTTP independentes podem forjá-los e devem informar `Origin` ou `Referer` autorizado. Esta verificação não autentica clientes nem protege credenciais roubadas ou XSS. A ausência de ambos bloqueia também clientes legítimos que os removam; configure-os explicitamente e valide os proxies. SameSite=Strict e CORS restrito são camadas adicionais, mas CORS sozinho não impede CSRF. As demais rotas usam Bearer, que o navegador não acrescenta automaticamente. O login também é protegido contra login CSRF; a troca de senha exige Bearer e atualiza o cookie.
 
-Requisições sem `Origin`, como as de Postman ou de scripts, são aceitas, porque não carregam cookies de uma vítima. As demais rotas são autenticadas apenas por `Authorization: Bearer`, que o navegador não envia sozinho, e não mudam.
+A regra CodeQL `js/missing-token-validation` aponta o uso de cookies e pode não reconhecer a validação personalizada: a mitigação não garante que o alerta desapareça. Não houve classificação automática como falso positivo. Referências: [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) e [CodeQL](https://codeql.github.com/codeql-query-help/javascript/js-missing-token-validation/).
 
 ### Configuração em produção
 
