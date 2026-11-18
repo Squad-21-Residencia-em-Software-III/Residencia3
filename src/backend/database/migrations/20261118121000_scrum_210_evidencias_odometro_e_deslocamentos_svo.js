@@ -375,6 +375,16 @@ exports.up = async (knex) => {
               AND viagem_frota_id IS NULL
               AND deslocamento_svo_id IS NOT NULL
             )
+            -- Foto provisoria SVO enviada antes de a coleta iniciar (o deslocamento ainda nao existe).
+            -- A confirmacao na transicao preenche deslocamento_svo_id (SCRUM-208, PR #172).
+            OR (
+              tipo_operacao = 'SVO'
+              AND viagem_frota_id IS NULL
+              AND deslocamento_svo_id IS NULL
+              AND ordem_svo_id IS NOT NULL
+              AND modalidade = 'FOTO'
+              AND status IN ('STAGING', 'REJEITADA')
+            )
           ),
         CONSTRAINT chk_evidencias_odometro_km
           CHECK (km_registrado >= 0),

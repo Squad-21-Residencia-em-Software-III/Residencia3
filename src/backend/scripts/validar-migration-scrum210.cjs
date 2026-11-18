@@ -214,9 +214,33 @@ async function executarValidacaoCompletaScrum210() {
           throw new Error('Deveria bloquear vinculo duplicado da mesma ordem_svo.');
         }
 
-        // 2.2 Registra foto SAIDA para viagem_frota id=1 e foto SAIDA compartilhada para deslocamento_svo id=1
+        // 2.2 Registra foto SAIDA para viagem_frota id=1 e testa fluxo de foto provisoria SVO (STAGING sem deslocamento -> ATIVA com deslocamento)
         const hashSaidaAdm = 'a'.repeat(64);
         const hashSaidaSvo = 'b'.repeat(64);
+
+        // Recusa foto SVO ATIVA sem deslocamento_svo_id
+        const bloqueouAtivaSvoSemDeslocamento = await esperarErroSql(trx, '23514', () =>
+          trx('evidencias_odometro').insert({
+            tipo_operacao: 'SVO',
+            fase: 'SAIDA',
+            deslocamento_svo_id: null,
+            ordem_svo_id: 1,
+            veiculo_id: 2,
+            motorista_id: 2,
+            motorista_usuario_id: 4,
+            km_registrado: 5000,
+            modalidade: 'FOTO',
+            status: 'ATIVA',
+            storage_key: 'odometro/svo/2025/01/invalida-ativa-sem-deslocamento.webp',
+            mime_type: 'image/webp',
+            tamanho_bytes: 180000,
+            sha256: hashSaidaSvo,
+            registrado_por: 4,
+          })
+        );
+        if (!bloqueouAtivaSvoSemDeslocamento) {
+          throw new Error('Deveria recusar foto SVO ATIVA sem deslocamento_svo_id.');
+        }
 
         const [evAdmSaida] = await trx('evidencias_odometro')
           .insert({
@@ -238,22 +262,33 @@ async function executarValidacaoCompletaScrum210() {
           })
           .returning('*');
 
-        const [evSvoSaida] = await trx('evidencias_odometro')
+        // Aceita foto provisoria SVO (STAGING) ligada a ordem_svo_id antes de existir o deslocamento_svo_id
+        const [evSvoStaging] = await trx('evidencias_odometro')
           .insert({
             tipo_operacao: 'SVO',
             fase: 'SAIDA',
-            deslocamento_svo_id: deslocamento.id,
+            deslocamento_svo_id: null,
+            ordem_svo_id: 1,
             veiculo_id: 2,
             motorista_id: 2,
             motorista_usuario_id: 4,
             km_registrado: 5000,
             modalidade: 'FOTO',
-            status: 'ATIVA',
+            status: 'STAGING',
             storage_key: 'odometro/svo/2025/01/deslocamento-1-saida.webp',
             mime_type: 'image/webp',
             tamanho_bytes: 180000,
             sha256: hashSaidaSvo,
             registrado_por: 4,
+          })
+          .returning('*');
+
+        // Promove a foto provisoria para ATIVA preenchendo deslocamento_svo_id no inicio real da coleta
+        const [evSvoSaida] = await trx('evidencias_odometro')
+          .where({ id: evSvoStaging.id })
+          .update({
+            deslocamento_svo_id: deslocamento.id,
+            status: 'ATIVA',
           })
           .returning('*');
 

@@ -326,8 +326,8 @@ Registo imutável dos metadados das evidências fotográficas de odômetro (ou e
 | `tipo_operacao` | Varchar(20) | NOT NULL | CHECK: `ADMINISTRATIVA`, `SVO` (`chk_evidencias_odometro_tipo_operacao`). |
 | `fase` | Varchar(20) | NOT NULL | CHECK: `SAIDA`, `CHEGADA` (`chk_evidencias_odometro_fase`). |
 | `viagem_frota_id` | Integer | NULLABLE, FOREIGN KEY | Viagem administrativa (`viagens_frota.id`, `ON DELETE RESTRICT`; obrigatório quando `ADMINISTRATIVA`, nulo quando `SVO`). |
-| `deslocamento_svo_id` | Integer | NULLABLE, FOREIGN KEY | Deslocamento físico SVO (`deslocamentos_svo.id`, `ON DELETE RESTRICT`; obrigatório quando `SVO`, nulo quando `ADMINISTRATIVA`). |
-| `ordem_svo_id` | Integer | NULLABLE, FOREIGN KEY | Ordem SVO de referência opcional (`ordens_svo.id`, `ON DELETE RESTRICT`; nulo quando `ADMINISTRATIVA`). |
+| `deslocamento_svo_id` | Integer | NULLABLE, FOREIGN KEY | Deslocamento físico SVO (`deslocamentos_svo.id`, `ON DELETE RESTRICT`; obrigatório em `SVO` quando `ATIVA`/`SUBSTITUIDA`/`EXPURGADA_RETENCAO`/`EXCECAO_GESTOR`; pode ser nulo apenas em foto provisória `STAGING`/`REJEITADA` vinculada a `ordem_svo_id` antes do início da coleta). |
+| `ordem_svo_id` | Integer | NULLABLE, FOREIGN KEY | Ordem SVO de referência (`ordens_svo.id`, `ON DELETE RESTRICT`; obrigatório em foto provisória `SVO` sem deslocamento; nulo quando `ADMINISTRATIVA`). |
 | `veiculo_id` | Integer | NOT NULL, FOREIGN KEY | Veículo da operação (`veiculos.id`, `ON DELETE RESTRICT`). |
 | `motorista_id` | Integer | NOT NULL, FOREIGN KEY | Motorista da operação (`motoristas.id`, `ON DELETE RESTRICT`). |
 | `motorista_usuario_id` | Integer | NOT NULL, FOREIGN KEY | Conta de utilizador do motorista (`usuarios.id`, `ON DELETE RESTRICT`). |
