@@ -284,6 +284,17 @@ describe('Contrato de banco, migration e privilégios da SCRUM-198', () => {
     );
   });
 
+  it('executa DROP estrito (sem IF EXISTS) no down quando não há dados operacionais', async () => {
+    const limpo = criarKnexScrum198Mock();
+    await migrationScrum198.down(limpo.knexMock);
+
+    const ddlDown = limpo.sqlExecutados.find((sql) => sql.includes('DROP TABLE ordens_svo_integrantes'));
+    expect(ddlDown).toBeDefined();
+    expect(ddlDown).not.toContain('IF EXISTS');
+    expect(ddlDown).toContain('DROP INDEX idx_ordens_svo_integrantes_ordem;');
+    expect(ddlDown).toContain('DROP INDEX uq_equipes_svo_nome_normalizado;');
+  });
+
   it('rejeita role da aplicação que possua DELETE nas tabelas históricas de vínculos e designações SVO', () => {
     const baseRole = {
       rolname: 'frotas_app',

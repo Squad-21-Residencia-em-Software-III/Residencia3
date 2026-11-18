@@ -195,9 +195,21 @@ exports.up = async (knex) => {
     );
   }
 
-  // 3. Amplia chk_usuarios_perfil para incluir INTEGRANTE_SVO
+  // 3. Amplia chk_usuarios_perfil para incluir INTEGRANTE_SVO (validando existencia previa da constraint)
+  const { rows: chkPerfilRows } = await knex.raw(
+    `SELECT 1
+     FROM pg_constraint c
+     JOIN pg_class t ON t.oid = c.conrelid
+     JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = ?
+       AND t.relname = 'usuarios'
+       AND c.conname = 'chk_usuarios_perfil'`,
+    [schemaAtual]
+  );
+  if (chkPerfilRows.length > 0) {
+    await knex.raw('ALTER TABLE usuarios DROP CONSTRAINT chk_usuarios_perfil');
+  }
   await knex.raw(`
-    ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS chk_usuarios_perfil;
     ALTER TABLE usuarios ADD CONSTRAINT chk_usuarios_perfil
       CHECK (perfil IN (
         'ADMINISTRADOR',
@@ -330,16 +342,16 @@ exports.up = async (knex) => {
     const roleApp = await knex('pg_roles').where({ rolname: appUser }).first('rolname');
     if (roleApp) {
       await knex.raw(
-        `REVOKE ALL PRIVILEGES ON TABLE public.equipes_svo_integrantes, public.ordens_svo_integrantes FROM ??`,
-        [appUser]
+        `REVOKE ALL PRIVILEGES ON TABLE ??.equipes_svo_integrantes, ??.ordens_svo_integrantes FROM ??`,
+        [schemaAtual, schemaAtual, appUser]
       );
       await knex.raw(
-        `GRANT SELECT, INSERT, UPDATE ON TABLE public.equipes_svo_integrantes, public.ordens_svo_integrantes TO ??`,
-        [appUser]
+        `GRANT SELECT, INSERT, UPDATE ON TABLE ??.equipes_svo_integrantes, ??.ordens_svo_integrantes TO ??`,
+        [schemaAtual, schemaAtual, appUser]
       );
       await knex.raw(
-        `GRANT USAGE, SELECT ON SEQUENCE public.equipes_svo_integrantes_id_seq, public.ordens_svo_integrantes_id_seq TO ??`,
-        [appUser]
+        `GRANT USAGE, SELECT ON SEQUENCE ??.equipes_svo_integrantes_id_seq, ??.ordens_svo_integrantes_id_seq TO ??`,
+        [schemaAtual, schemaAtual, appUser]
       );
     }
   }
@@ -376,18 +388,18 @@ exports.down = async (knex) => {
   }
 
   await knex.raw(`
-    DROP INDEX IF EXISTS idx_ordens_svo_integrantes_ordem;
-    DROP INDEX IF EXISTS idx_ordens_svo_integrantes_equipe_usuario_ativo;
-    DROP INDEX IF EXISTS idx_ordens_svo_integrantes_usuario_ativo;
-    DROP INDEX IF EXISTS uq_ordens_svo_integrantes_ativo;
+    DROP INDEX idx_ordens_svo_integrantes_ordem;
+    DROP INDEX idx_ordens_svo_integrantes_equipe_usuario_ativo;
+    DROP INDEX idx_ordens_svo_integrantes_usuario_ativo;
+    DROP INDEX uq_ordens_svo_integrantes_ativo;
     DROP TABLE ordens_svo_integrantes;
 
-    DROP INDEX IF EXISTS idx_equipes_svo_integrantes_equipe;
-    DROP INDEX IF EXISTS idx_equipes_svo_integrantes_usuario_ativo;
-    DROP INDEX IF EXISTS uq_equipes_svo_integrantes_ativo;
+    DROP INDEX idx_equipes_svo_integrantes_equipe;
+    DROP INDEX idx_equipes_svo_integrantes_usuario_ativo;
+    DROP INDEX uq_equipes_svo_integrantes_ativo;
     DROP TABLE equipes_svo_integrantes;
 
-    DROP INDEX IF EXISTS uq_equipes_svo_nome_normalizado;
+    DROP INDEX uq_equipes_svo_nome_normalizado;
     ALTER TABLE equipes_svo DROP CONSTRAINT chk_equipes_svo_nome_nao_vazio;
 
     ALTER TABLE usuarios DROP CONSTRAINT chk_usuarios_perfil;
