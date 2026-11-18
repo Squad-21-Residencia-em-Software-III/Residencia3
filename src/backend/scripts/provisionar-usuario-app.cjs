@@ -62,6 +62,12 @@ function validarEstadoMinimoPrivilegio(estado) {
     );
   }
 
+  if (estado.podeDeletarEvidenciasOdometro) {
+    violacoes.push(
+      'role nao pode ter privilegio DELETE sobre tabelas imutaveis de evidencias/deslocamentos de odometro (deslocamentos_svo, deslocamentos_svo_ordens, evidencias_odometro)'
+    );
+  }
+
   if (
     Array.isArray(estado.privilegiosExcessivosTabelas) &&
     estado.privilegiosExcessivosTabelas.length > 0
@@ -140,8 +146,25 @@ async function inspecionarEstadoRole(conexao, appUser) {
          WHEN to_regclass('public.ordens_svo_integrantes') IS NOT NULL THEN
            has_table_privilege(?, 'public.ordens_svo_integrantes', 'DELETE')
          ELSE false
-       END AS pode_deletar_historico_svo`,
-    [appUser, appUser, appUser, appUser, appUser, appUser]
+       END AS pode_deletar_historico_svo,
+       CASE
+         WHEN to_regclass('public.deslocamentos_svo') IS NOT NULL THEN
+           has_table_privilege(?, 'public.deslocamentos_svo', 'DELETE')
+         ELSE false
+       END
+       OR
+       CASE
+         WHEN to_regclass('public.deslocamentos_svo_ordens') IS NOT NULL THEN
+           has_table_privilege(?, 'public.deslocamentos_svo_ordens', 'DELETE')
+         ELSE false
+       END
+       OR
+       CASE
+         WHEN to_regclass('public.evidencias_odometro') IS NOT NULL THEN
+           has_table_privilege(?, 'public.evidencias_odometro', 'DELETE')
+         ELSE false
+       END AS pode_deletar_evidencias_odometro`,
+    [appUser, appUser, appUser, appUser, appUser, appUser, appUser, appUser, appUser]
   );
 
   const { rows: excessivosRows } = await conexao.raw(
@@ -161,6 +184,7 @@ async function inspecionarEstadoRole(conexao, appUser) {
     podeUsarPublic: Boolean(privRows[0]?.pode_usar_public),
     podeAcessarMigrations: Boolean(privRows[0]?.pode_acessar_migrations),
     podeDeletarHistoricoSvo: Boolean(privRows[0]?.pode_deletar_historico_svo),
+    podeDeletarEvidenciasOdometro: Boolean(privRows[0]?.pode_deletar_evidencias_odometro),
     privilegiosExcessivosTabelas: excessivosRows.map(
       (r) => `${r.table_name}:${r.privilege_type}`
     ),
@@ -269,6 +293,15 @@ async function provisionarUsuarioAplicacao() {
           END IF;
           IF to_regclass('public.ordens_svo_integrantes') IS NOT NULL THEN
             EXECUTE format('REVOKE DELETE ON TABLE public.ordens_svo_integrantes FROM %I', '${appUser}');
+          END IF;
+          IF to_regclass('public.deslocamentos_svo') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.deslocamentos_svo FROM %I', '${appUser}');
+          END IF;
+          IF to_regclass('public.deslocamentos_svo_ordens') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.deslocamentos_svo_ordens FROM %I', '${appUser}');
+          END IF;
+          IF to_regclass('public.evidencias_odometro') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.evidencias_odometro FROM %I', '${appUser}');
           END IF;
         END $$;`
       );
