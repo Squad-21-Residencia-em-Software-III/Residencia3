@@ -93,22 +93,11 @@ Só uma foto confirmada (`ATIVA`) tem arquivo. Provisória, exceção ou expurga
 - **Motorista consulta a situação da própria viagem.** O contrato dizia 403, mas o modal precisa saber se a foto já foi registrada (deslocamento compartilhado). O motorista continua sem acesso ao arquivo.
 - **Sem coluna de chave de idempotência.** A chave entra na `storage_key`, que tem índice único.
 
-## Dependência no banco (pedido ao PR #170)
+## Foto provisória SVO no banco (resolvido no #170)
 
-A foto de saída SVO é enviada **antes** de a coleta iniciar, quando o deslocamento ainda não existe. A regra `chk_evidencias_odometro_origem_operacao` da SCRUM-210 exige `deslocamento_svo_id` em toda evidência SVO. Por isso, sem o ajuste abaixo, o envio da foto de saída SVO responde 500. A viagem administrativa e a chegada SVO não são afetadas.
+A foto de saída SVO é enviada **antes** de a coleta iniciar, quando o deslocamento ainda não existe. Por isso a regra `chk_evidencias_odometro_origem_operacao` da SCRUM-210 aceita a foto **provisória** SVO (`STAGING` ou `REJEITADA`) ligada só à ordem (`ordem_svo_id`). A confirmação na transição preenche o `deslocamento_svo_id`. Foto ativa, exceção e foto expurgada continuam exigindo o deslocamento.
 
-O ajuste deixa a foto **provisória** SVO ficar ligada só à ordem. A confirmação na transição preenche o `deslocamento_svo_id`.
-
-```sql
-ALTER TABLE evidencias_odometro DROP CONSTRAINT chk_evidencias_odometro_origem_operacao;
-ALTER TABLE evidencias_odometro ADD CONSTRAINT chk_evidencias_odometro_origem_operacao CHECK (
-  (tipo_operacao = 'ADMINISTRATIVA' AND viagem_frota_id IS NOT NULL
-    AND deslocamento_svo_id IS NULL AND ordem_svo_id IS NULL)
-  OR (tipo_operacao = 'SVO' AND viagem_frota_id IS NULL AND deslocamento_svo_id IS NOT NULL)
-  OR (tipo_operacao = 'SVO' AND viagem_frota_id IS NULL AND deslocamento_svo_id IS NULL
-    AND ordem_svo_id IS NOT NULL AND modalidade = 'FOTO' AND status IN ('STAGING', 'REJEITADA'))
-);
-```
+O ajuste entrou na própria migration da SCRUM-210 (commit `8b0b7da` do #170), então não há passo manual.
 
 ## Fora deste PR
 
@@ -121,4 +110,4 @@ ALTER TABLE evidencias_odometro ADD CONSTRAINT chk_evidencias_odometro_origem_op
 - `evidenciaOdometroArmazenamento.test.ts`: pasta local, chaves perigosas, assinatura do arquivo e variáveis de ambiente.
 - `evidenciaOdometroPostgres.test.ts`: fluxo completo em PostgreSQL descartável, com as fotos opcionais e obrigatórias, foto inválida e expirada, idempotência, permissões por operação, deslocamento SVO compartilhado e retenção de 12 meses.
 
-  Só roda com `SCRUM208_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`, depois de `npm run migrate` e do ajuste acima.
+  Só roda com `SCRUM208_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`, depois de `npm run migrate`.
