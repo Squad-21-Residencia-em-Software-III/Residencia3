@@ -17,6 +17,7 @@ import { solicitacaoSvoRoutes } from './solicitacaoSvoRoutes';
 import { auditoriaRoutes } from './auditoriaRoutes';
 import { equipeSvoRoutes } from './equipeSvoRoutes';
 import { relatorioRoutes } from './relatorioRoutes';
+import { evidenciaOdometroRoutes } from './evidenciaOdometroRoutes';
 import { logFalha } from '../middlewares/logRequisicao';
 
 export const routes = Router();
@@ -47,3 +48,4 @@ routes.use('/solicitacoes-svo', solicitacaoSvoRoutes);
 routes.use('/auditorias', auditoriaRoutes);
 routes.use('/equipes-svo', equipeSvoRoutes);
 routes.use('/relatorios', relatorioRoutes);
+routes.use('/evidencias-odometro', evidenciaOdometroRoutes);
