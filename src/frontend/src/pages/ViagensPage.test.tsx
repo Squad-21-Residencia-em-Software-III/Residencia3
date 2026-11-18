@@ -206,3 +206,113 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     await waitFor(() => expect(veiculosApi.listar).toHaveBeenCalled());
   });
 });
+
+describe('ViagensPage: status e ações da coleta SVO por perfil (SCRUM-110)', () => {
+  const coleta = (status: Viagem['status']): Viagem => ({
+    ...viagem(7, 'SVO', 'Rua das Flores, 10'),
+    status,
+  });
+  const linhaDaColeta = () => screen.getByText('Rua das Flores, 10').closest('tr')!;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    RECURSOS_BACKEND.agendamentoTemporalSvo = true;
+    sessao.perfil = 'ADMINISTRADOR';
+    api.listarAlertasSvo.mockResolvedValue([]);
+    api.listarOrdensPendentesSvo.mockResolvedValue([]);
+    vi.mocked(veiculosApi.listar).mockResolvedValue([]);
+    vi.mocked(veiculosApi.listarOcupacaoSvo).mockResolvedValue([]);
+    vi.mocked(motoristasApi.listar).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    RECURSOS_BACKEND.agendamentoTemporalSvo = false;
+  });
+
+  it.each([
+    ['EM_ANDAMENTO', 'A caminho'],
+    ['NO_LOCAL', 'No local'],
+    ['CONCLUIDA', 'Concluída'],
+  ] as const)('apresenta a coleta SVO %s como "%s"', async (status, rotulo) => {
+    api.listar.mockResolvedValue([coleta(status)]);
+    abrir('/viagens?aba=svo');
+
+    expect(await screen.findByText('Rua das Flores, 10')).toBeInTheDocument();
+    expect(within(linhaDaColeta()).getByText(rotulo)).toBeInTheDocument();
+  });
+
+  it('Motorista SVO inicia a coleta agendada e finaliza a coleta a caminho ou no local', async () => {
+    sessao.perfil = 'MOTORISTA_SVO';
+
+    api.listar.mockResolvedValue([coleta('AGENDADA')]);
+    const agendada = render(
+      <MemoryRouter>
+        <ViagensPage />
+      </MemoryRouter>,
+    );
+    await screen.findByText('Rua das Flores, 10');
+    expect(within(linhaDaColeta()).getByRole('button', { name: /Iniciar/ })).toBeInTheDocument();
+    agendada.unmount();
+
+    for (const status of ['EM_ANDAMENTO', 'NO_LOCAL'] as const) {
+      api.listar.mockResolvedValue([coleta(status)]);
+      const tela = render(
+        <MemoryRouter>
+          <ViagensPage />
+        </MemoryRouter>,
+      );
+      await screen.findByText('Rua das Flores, 10');
+      expect(within(linhaDaColeta()).getByRole('button', { name: /Finalizar/ }), status).toBeInTheDocument();
+      tela.unmount();
+    }
+  });
+
+  it('Motorista SVO não vê ações na coleta concluída', async () => {
+    sessao.perfil = 'MOTORISTA_SVO';
+    api.listar.mockResolvedValue([coleta('CONCLUIDA')]);
+    abrir();
+
+    await screen.findByText('Rua das Flores, 10');
+    expect(within(linhaDaColeta()).queryByRole('button', { name: /Iniciar|Finalizar|Cancelar/ })).not.toBeInTheDocument();
+  });
+
+  it.each(['GESTOR_SVO', 'ADMINISTRADOR'] as const)(
+    '%s acompanha a coleta no local sem Iniciar nem Finalizar',
+    async (perfil) => {
+      sessao.perfil = perfil;
+      api.listar.mockResolvedValue([coleta('NO_LOCAL')]);
+      abrir('/viagens?aba=svo');
+
+      await screen.findByText('Rua das Flores, 10');
+      expect(within(linhaDaColeta()).getByText('No local')).toBeInTheDocument();
+      expect(within(linhaDaColeta()).queryByRole('button', { name: /Iniciar|Finalizar/ })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByText('Rua das Flores, 10'));
+      const drawer = await screen.findByRole('dialog');
+      expect(within(drawer).queryByRole('button', { name: /Iniciar viagem|Finalizar viagem/ })).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(['GESTOR_SVO', 'ADMINISTRADOR'] as const)(
+    '%s não inicia coleta SVO agendada',
+    async (perfil) => {
+      sessao.perfil = perfil;
+      api.listar.mockResolvedValue([coleta('AGENDADA')]);
+      abrir('/viagens?aba=svo');
+
+      await screen.findByText('Rua das Flores, 10');
+      expect(within(linhaDaColeta()).queryByRole('button', { name: /Iniciar/ })).not.toBeInTheDocument();
+    },
+  );
+
+  it('viagem administrativa mantém Finalizar para quem executa a frota administrativa', async () => {
+    api.listar.mockResolvedValue([
+      { ...viagem(3, 'ADMINISTRATIVA', 'Hospital de Lagarto'), status: 'EM_ANDAMENTO' },
+    ]);
+    abrir();
+
+    const linha = (await screen.findByText('Hospital de Lagarto')).closest('tr')!;
+    expect(within(linha).getByRole('button', { name: /Finalizar/ })).toBeInTheDocument();
+    expect(within(linha).queryByText('A caminho')).not.toBeInTheDocument();
+  });
+});

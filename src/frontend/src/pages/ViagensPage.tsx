@@ -159,8 +159,10 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const podeAgendar = !isSvo && !somenteProprias && pode('viagens.agendar');
   const podeAlocarSvo = isSvo && pode('viagens.alocarSvo');
   const podeCancelar = !somenteProprias && pode('viagens.cancelar');
-  // Motoristas registram saída e retorno das próprias viagens (a API só lista as deles)
-  const podeExecutar = !somenteProprias && pode('viagens.executar');
+  // Motoristas registram saída e retorno das próprias viagens (a API só lista as deles). Na SVO,
+  // só o Motorista SVO executa; gestores e Administrador acompanham sem as ações operacionais.
+  const podeExecutar =
+    !somenteProprias && (isSvo ? pode('viagens.executarSvo') : pode('viagens.executar'));
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
