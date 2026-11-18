@@ -3,6 +3,173 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet
 const knex = require('knex');
 const knexConfig = require('../knexfile');
 
+/**
+ * Valida se o estado efetivo da role da aplicacao atende estritamente ao principio
+ * de minimo privilegio (sem superuser, createdb, createrole, replication, bypassrls,
+ * heranca de roles, CREATE no schema public, acesso a knex_migrations ou privilegios
+ * excessivos como TRUNCATE/REFERENCES/TRIGGER).
+ *
+ * @param {{
+ *   rolname?: string,
+ *   rolcanlogin?: boolean,
+ *   rolsuper?: boolean,
+ *   rolcreatedb?: boolean,
+ *   rolcreaterole?: boolean,
+ *   rolreplication?: boolean,
+ *   rolbypassrls?: boolean,
+ *   rolinherit?: boolean,
+ *   rolesHerdadas?: string[],
+ *   podeCriarNoPublic?: boolean,
+ *   podeUsarPublic?: boolean,
+ *   podeAcessarMigrations?: boolean,
+ *   privilegiosExcessivosTabelas?: string[]
+ * }} estado
+ */
+function validarEstadoMinimoPrivilegio(estado) {
+  if (!estado || !estado.rolname) {
+    throw new Error('Role da aplicacao nao encontrada em pg_roles apos o provisionamento.');
+  }
+
+  const violacoes = [];
+
+  if (!estado.rolcanlogin) violacoes.push('rolcanlogin deve ser true');
+  if (estado.rolsuper) violacoes.push('rolsuper deve ser false (NOSUPERUSER)');
+  if (estado.rolcreatedb) violacoes.push('rolcreatedb deve ser false (NOCREATEDB)');
+  if (estado.rolcreaterole) violacoes.push('rolcreaterole deve ser false (NOCREATEROLE)');
+  if (estado.rolreplication) violacoes.push('rolreplication deve ser false (NOREPLICATION)');
+  if (estado.rolbypassrls) violacoes.push('rolbypassrls deve ser false (NOBYPASSRLS)');
+  if (estado.rolinherit) violacoes.push('rolinherit deve ser false (NOINHERIT)');
+
+  if (Array.isArray(estado.rolesHerdadas) && estado.rolesHerdadas.length > 0) {
+    violacoes.push(`role possui associacoes herdadas indevidas: ${estado.rolesHerdadas.join(', ')}`);
+  }
+
+  if (estado.podeCriarNoPublic) {
+    violacoes.push('role nao pode ter privilegio CREATE no schema public');
+  }
+
+  if (estado.podeUsarPublic === false) {
+    violacoes.push('role precisa ter privilegio USAGE no schema public');
+  }
+
+  if (estado.podeAcessarMigrations) {
+    violacoes.push('role nao pode ter nenhum privilegio sobre knex_migrations ou knex_migrations_lock');
+  }
+
+  if (
+    Array.isArray(estado.privilegiosExcessivosTabelas) &&
+    estado.privilegiosExcessivosTabelas.length > 0
+  ) {
+    violacoes.push(
+      `role possui privilegios de tabela alem de SELECT/INSERT/UPDATE/DELETE: ${estado.privilegiosExcessivosTabelas.join(', ')}`
+    );
+  }
+
+  if (violacoes.length > 0) {
+    throw new Error(
+      `Validacao de minimo privilegio falhou para a role "${estado.rolname}": ${violacoes.join('; ')}`
+    );
+  }
+
+  return true;
+}
+
+/**
+ * Consulta no catalogo do PostgreSQL os atributos efetivos, associacoes em pg_auth_members
+ * e privilegios de schema/tabela da role informada.
+ *
+ * @param {import('knex').Knex} conexao
+ * @param {string} appUser
+ */
+async function inspecionarEstadoRole(conexao, appUser) {
+  const atributos = await conexao('pg_roles')
+    .where({ rolname: appUser })
+    .first(
+      'rolname',
+      'rolcanlogin',
+      'rolsuper',
+      'rolinherit',
+      'rolcreaterole',
+      'rolcreatedb',
+      'rolreplication',
+      'rolbypassrls'
+    );
+
+  if (!atributos) {
+    return null;
+  }
+
+  const { rows: membershipsRows } = await conexao.raw(
+    `SELECT r.rolname AS role_herdada
+     FROM pg_auth_members m
+     JOIN pg_roles r ON r.oid = m.roleid
+     JOIN pg_roles u ON u.oid = m.member
+     WHERE u.rolname = ?
+     ORDER BY r.rolname`,
+    [appUser]
+  );
+
+  const { rows: privRows } = await conexao.raw(
+    `SELECT
+       has_schema_privilege(?, 'public', 'CREATE') AS pode_criar_no_public,
+       has_schema_privilege(?, 'public', 'USAGE') AS pode_usar_public,
+       CASE
+         WHEN to_regclass('public.knex_migrations') IS NOT NULL THEN
+           has_table_privilege(?, 'public.knex_migrations', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+         ELSE false
+       END
+       OR
+       CASE
+         WHEN to_regclass('public.knex_migrations_lock') IS NOT NULL THEN
+           has_table_privilege(?, 'public.knex_migrations_lock', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+         ELSE false
+       END AS pode_acessar_migrations`,
+    [appUser, appUser, appUser, appUser]
+  );
+
+  const { rows: excessivosRows } = await conexao.raw(
+    `SELECT table_name, privilege_type
+     FROM information_schema.role_table_grants
+     WHERE grantee = ?
+       AND table_schema = 'public'
+       AND privilege_type NOT IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+     ORDER BY table_name, privilege_type`,
+    [appUser]
+  );
+
+  return {
+    ...atributos,
+    rolesHerdadas: membershipsRows.map((r) => r.role_herdada),
+    podeCriarNoPublic: Boolean(privRows[0]?.pode_criar_no_public),
+    podeUsarPublic: Boolean(privRows[0]?.pode_usar_public),
+    podeAcessarMigrations: Boolean(privRows[0]?.pode_acessar_migrations),
+    privilegiosExcessivosTabelas: excessivosRows.map(
+      (r) => `${r.table_name}:${r.privilege_type}`
+    ),
+  };
+}
+
+/**
+ * Monta o comando SQL de CREATE ROLE ou ALTER ROLE compativel com o privilegio
+ * do usuario executor (superuser local vs role administrativa gerenciada como Neon).
+ *
+ * @param {{ roleExistente: boolean, executorEhSuperuser: boolean }} contexto
+ */
+function obterTemplateSqlRole({ roleExistente, executorEhSuperuser }) {
+  if (!roleExistente) {
+    return `SELECT format('CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT', ?::text, ?::text) AS cmd`;
+  }
+
+  if (executorEhSuperuser) {
+    return `SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT', ?::text, ?::text) AS cmd`;
+  }
+
+  // Em provedores gerenciados (ex.: Neon), o owner possui CREATEROLE mas nao SUPERUSER;
+  // aplica os atributos permitidos no ALTER ROLE e valida todos os demais (incluindo
+  // rolsuper=false, rolreplication=false, rolbypassrls=false) em validarEstadoMinimoPrivilegio.
+  return `SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L NOCREATEDB NOCREATEROLE NOINHERIT', ?::text, ?::text) AS cmd`;
+}
+
 async function provisionarUsuarioAplicacao() {
   const appUser = process.env.POSTGRES_APP_USER;
   const appPassword = process.env.POSTGRES_APP_PASSWORD;
@@ -28,16 +195,32 @@ async function provisionarUsuarioAplicacao() {
   const db = knex(configMigration);
 
   try {
-    await db.transaction(async (trx) => {
+    const estadoValidado = await db.transaction(async (trx) => {
+      const executor = await trx('pg_roles')
+        .whereRaw('rolname = current_user')
+        .first('rolname', 'rolsuper');
       const roleExistente = await trx('pg_roles').where({ rolname: appUser }).first('rolname');
 
-      const { rows: sqlRole } = await trx.raw(
-        roleExistente
-          ? `SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L NOCREATEDB NOCREATEROLE', ?::text, ?::text) AS cmd`
-          : `SELECT format('CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', ?::text, ?::text) AS cmd`,
-        [appUser, appPassword]
-      );
+      const templateSql = obterTemplateSqlRole({
+        roleExistente: Boolean(roleExistente),
+        executorEhSuperuser: Boolean(executor?.rolsuper),
+      });
+
+      const { rows: sqlRole } = await trx.raw(templateSql, [appUser, appPassword]);
       await trx.raw(sqlRole[0].cmd);
+
+      // Revoga qualquer associacao herdada (pg_auth_members) que a role possa ter recebido anteriormente
+      const { rows: herdadas } = await trx.raw(
+        `SELECT r.rolname AS role_herdada
+         FROM pg_auth_members m
+         JOIN pg_roles r ON r.oid = m.roleid
+         JOIN pg_roles u ON u.oid = m.member
+         WHERE u.rolname = ?`,
+        [appUser]
+      );
+      for (const item of herdadas) {
+        await trx.raw('REVOKE ?? FROM ??', [item.role_herdada, appUser]);
+      }
 
       // Remove permissao de criar objetos no schema public para usuarios comuns
       await trx.raw('REVOKE CREATE ON SCHEMA public FROM PUBLIC');
@@ -66,7 +249,7 @@ async function provisionarUsuarioAplicacao() {
         END $$;`
       );
 
-      // Concede uso e leitura de sequences para colunas SERIAL / auto-incremento
+      // Concede uso e leitura de sequences para colunas SERIAL / IDENTITY
       await trx.raw('REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM ??', [appUser]);
       await trx.raw('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ??', [appUser]);
 
@@ -87,17 +270,35 @@ async function provisionarUsuarioAplicacao() {
         'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ??',
         [appUser]
       );
+
+      // Validacao obrigatoria dos atributos efetivos e privilegios antes de confirmar a transacao
+      const estado = await inspecionarEstadoRole(trx, appUser);
+      validarEstadoMinimoPrivilegio(estado);
+      return estado;
     });
 
     console.log(
-      `Role de minimo privilegio "${appUser}" configurada com sucesso no banco "${dbName}".`
+      `Role de minimo privilegio "${appUser}" configurada e validada com sucesso no banco "${dbName}" ` +
+        `(rolsuper=${estadoValidado.rolsuper}, rolcreatedb=${estadoValidado.rolcreatedb}, ` +
+        `rolcreaterole=${estadoValidado.rolcreaterole}, rolreplication=${estadoValidado.rolreplication}, ` +
+        `rolbypassrls=${estadoValidado.rolbypassrls}, rolinherit=${estadoValidado.rolinherit}, ` +
+        `rolesHerdadas=${estadoValidado.rolesHerdadas.length}).`
     );
   } finally {
     await db.destroy();
   }
 }
 
-provisionarUsuarioAplicacao().catch((erro) => {
-  console.error('Falha ao provisionar role da aplicacao:', erro.message);
-  process.exit(1);
-});
+module.exports = {
+  validarEstadoMinimoPrivilegio,
+  inspecionarEstadoRole,
+  obterTemplateSqlRole,
+  provisionarUsuarioAplicacao,
+};
+
+if (require.main === module) {
+  provisionarUsuarioAplicacao().catch((erro) => {
+    console.error('Falha ao provisionar role da aplicacao:', erro.message);
+    process.exit(1);
+  });
+}
