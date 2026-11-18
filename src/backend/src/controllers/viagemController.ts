@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import { usuarioAutenticado } from '../middlewares/autenticar';
 import { viagemService } from '../services/viagemService';
 import { listarMinhasColetasSvo } from '../services/minhasColetasSvoService';
+import { db } from '../config/database';
+import { AppError } from '../errors/AppError';
 import { idParamSchema } from '../validators/comuns';
 import { z } from 'zod';
 import {
@@ -17,6 +19,13 @@ const paginacaoSchema = z.object({
 }).strict();
 
 export const viagemController = {
+  async listarDesignacoesSvo(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    const ordem = await db('ordens_svo').where({ id }).first('id', 'equipe_id', 'data_hora_saida');
+    if (!ordem) throw new AppError('Ordem SVO não encontrada', 404);
+    const designacoes = await db('ordens_svo_integrantes').where({ ordem_id: id }).whereNull('revogado_em').select('usuario_id');
+    res.json({ equipe_id: ordem.equipe_id, iniciada: Boolean(ordem.data_hora_saida), integrantes_ids: designacoes.map((d) => d.usuario_id) });
+  },
   async listarMinhasColetasSvo(req: Request, res: Response): Promise<void> {
     const { pagina, limite } = paginacaoSchema.parse(req.query);
     res.json(await listarMinhasColetasSvo(usuarioAutenticado(req).id, pagina, limite));

@@ -5,10 +5,11 @@ import { PERFIS } from '../constants/perfis';
 import { authService } from '../services/authService';
 import { integrantesSvoService } from '../services/integrantesSvoService';
 import { listarMinhasColetasSvo } from '../services/minhasColetasSvoService';
+import { AppError } from '../errors/AppError';
 
 vi.mock('../services/authService', () => ({ authService: { usuarioDoToken: vi.fn() } }));
 vi.mock('../services/integrantesSvoService', () => ({ integrantesSvoService: {
-  criar: vi.fn(), listar: vi.fn(), listarEquipe: vi.fn(), vincular: vi.fn(), desvincular: vi.fn(),
+  criar: vi.fn(), listar: vi.fn(), listarEquipe: vi.fn(), vincular: vi.fn(), desvincular: vi.fn(), atualizar: vi.fn(), disponibilidade: vi.fn(),
 } }));
 vi.mock('../services/minhasColetasSvoService', () => ({ listarMinhasColetasSvo: vi.fn() }));
 
@@ -18,6 +19,20 @@ describe('acesso de integrantes SVO', () => {
     const r = await request(app).post('/api/equipes-svo/integrantes').set('Authorization', 'Bearer token')
       .send({ nome: 'Maria Silva', email: 'maria@exemplo.com', senha: 'Senha123', perfil: 'ADMINISTRADOR' });
     expect(r.status).toBe(400); expect(integrantesSvoService.criar).not.toHaveBeenCalled();
+  });
+  it('permite ao gestor editar apenas nome e email', async () => {
+    vi.mocked(integrantesSvoService.atualizar).mockResolvedValue({ id: 3, nome: 'Maria Silva', email: 'maria@exemplo.com' } as never);
+    const r = await request(app).patch('/api/equipes-svo/integrantes/3').set('Authorization', 'Bearer token').send({ nome: 'Maria Silva', email: 'MARIA@exemplo.com' });
+    expect(r.status).toBe(200);
+    expect(integrantesSvoService.atualizar).toHaveBeenCalledWith(3, { nome: 'Maria Silva', email: 'maria@exemplo.com' }, 7);
+  });
+  it.each([{ perfil: 'ADMINISTRADOR' }, { ativo: true }, { nome: '' }, { email: 'inválido' }, {}])('rejeita edição inválida ou com campos extras', async (dados) => {
+    expect((await request(app).patch('/api/equipes-svo/integrantes/3').set('Authorization', 'Bearer token').send(dados)).status).toBe(400);
+    expect(integrantesSvoService.atualizar).not.toHaveBeenCalled();
+  });
+  it.each([404, 409])('propaga erro de edição %s', async (status) => {
+    vi.mocked(integrantesSvoService.atualizar).mockRejectedValue(new AppError('Falha', status));
+    expect((await request(app).patch('/api/equipes-svo/integrantes/3').set('Authorization', 'Bearer token').send({ nome: 'Maria Silva' })).status).toBe(status);
   });
   it.each([PERFIS.MOTORISTA_SVO, PERFIS.SOLICITANTE, PERFIS.GESTOR_FROTA, PERFIS.INTEGRANTE_SVO])('nega gestão ao perfil %s', async (perfil) => {
     vi.mocked(authService.usuarioDoToken).mockResolvedValue({ id: 7, perfil } as never);

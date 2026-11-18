@@ -33,7 +33,8 @@ export async function atualizarDesignacoesSvo(trx: Knex.Transaction, dados: Desi
       .whereIn('d.usuario_id', integrantes).whereNull('d.revogado_em').whereNot('o.id', ordemId)
       .whereIn('o.status', ['ALOCADA', 'EM_DESLOCAMENTO'])
       .andWhere((q) => q.whereNull('o.inicio_previsto').orWhereNull('o.fim_previsto')
-        .orWhere((q2) => q2.where('o.status', 'EM_DESLOCAMENTO').whereNull('o.data_hora_conclusao').where('o.fim_previsto', '<=', trx.fn.now()))
+        .orWhere((q2) => q2.where('o.status', 'EM_DESLOCAMENTO').whereNull('o.data_hora_conclusao')
+          .andWhere((q3) => q3.whereNull('o.data_hora_saida').orWhere('o.data_hora_saida', '<', fim)))
         .orWhere((q2) => q2.where('o.inicio_previsto', '<', fim).where('o.fim_previsto', '>', inicio)))
       .first('d.id');
     if (conflito) throw new AppError('Um integrante já está ocupado no período solicitado', 409, 'CONFLITO_AGENDA');

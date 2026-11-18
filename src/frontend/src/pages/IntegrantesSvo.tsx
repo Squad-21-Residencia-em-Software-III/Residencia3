@@ -11,6 +11,7 @@ export function IntegrantesSvo({ equipes }: { equipes: EquipeSvo[] }) {
   const [equipeId, setEquipeId] = useState('');
   const [usuarioId, setUsuarioId] = useState('');
   const [nome, setNome] = useState(''); const [email, setEmail] = useState(''); const [senha, setSenha] = useState('');
+  const [editando, setEditando] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [remover, setRemover] = useState<IntegranteSvo | null>(null);
@@ -32,7 +33,11 @@ export function IntegrantesSvo({ equipes }: { equipes: EquipeSvo[] }) {
   }
   async function criar(e: FormEvent) {
     e.preventDefault();
-    await executar(async () => { await equipesSvoApi.criarIntegrante({ nome, email, senha }); setNome(''); setEmail(''); setSenha(''); });
+    await executar(async () => {
+      if (editando === null) await equipesSvoApi.criarIntegrante({ nome, email, senha });
+      else await equipesSvoApi.atualizarIntegrante(editando, { nome, email });
+      setNome(''); setEmail(''); setSenha(''); setEditando(null);
+    });
   }
   return <Card className="p-4 space-y-4">
     <h2 className="text-lg font-bold">Integrantes SVO</h2>
@@ -40,9 +45,13 @@ export function IntegrantesSvo({ equipes }: { equipes: EquipeSvo[] }) {
     <form onSubmit={(e) => void criar(e)} className="space-y-2">
       <Input label="Nome completo" value={nome} onChange={(e) => setNome(e.target.value)} required />
       <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      <Input label="Senha" type="password" value={senha} onChange={(e) => setSenha(e.target.value)} minLength={8} maxLength={72} required />
-      <Button type="submit" disabled={ocupado}>Cadastrar integrante</Button>
+      {editando === null && <Input label="Senha" type="password" value={senha} onChange={(e) => setSenha(e.target.value)} minLength={8} maxLength={72} required />}
+      <Button type="submit" disabled={ocupado}>{editando === null ? 'Cadastrar integrante' : 'Salvar integrante'}</Button>
+      {editando !== null && <Button type="button" variant="ghost" onClick={() => { setEditando(null); setNome(''); setEmail(''); }}>Cancelar edição</Button>}
     </form>
+    {todos.length > 0 && <ul>{todos.map((u) => <li key={u.id} className="flex items-center justify-between gap-2 py-2">
+      <span>{u.nome} — {u.email}</span><Button type="button" variant="outline" size="sm" onClick={() => { setEditando(u.id); setNome(u.nome); setEmail(u.email); setSenha(''); }}>Editar {u.nome}</Button>
+    </li>)}</ul>}
     <Select label="Equipe" value={equipeId} onChange={(e) => { setEquipeId(e.target.value); setUsuarioId(''); }}>
       <option value="">Selecione uma equipe</option>{equipes.map((e) => <option key={e.id} value={e.id}>{e.nome_equipe}</option>)}
     </Select>

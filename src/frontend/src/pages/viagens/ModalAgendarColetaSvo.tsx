@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Alert, Button, IdBadge, Input, Modal, Select } from '../../components/ui';
@@ -94,8 +94,11 @@ export function ModalAgendarColetaSvo({
   const [equipeId, setEquipeId] = useState(viagemReprogramar?.equipe_id ? String(viagemReprogramar.equipe_id) : '');
   const [integrantes, setIntegrantes] = useState<IntegranteSvo[]>([]);
   const [selecionados, setSelecionados] = useState<number[]>([]);
+  const designacoesCarregadas = useRef(false);
   const [erroIntegrantes, setErroIntegrantes] = useState<string | null>(null);
   const [carregandoIntegrantes, setCarregandoIntegrantes] = useState(false);
+  const [disponibilidade, setDisponibilidade] = useState<Record<number, boolean> | null>(null);
+  const [erroDisponibilidade, setErroDisponibilidade] = useState<string | null>(null);
   const [erroEquipes, setErroEquipes] = useState<string | null>(null);
   const [carregandoEquipes, setCarregandoEquipes] = useState(false);
   const [ocupacoes, setOcupacoes] = useState<OcupacaoVeiculoSvo[]>([]);
@@ -142,15 +145,35 @@ export function ModalAgendarColetaSvo({
 
   useEffect(() => {
     let ativo = true;
-    setIntegrantes([]); setSelecionados([]); setErroIntegrantes(null);
+    setIntegrantes([]); setErroIntegrantes(null);
     if (!equipeId) { setCarregandoIntegrantes(false); return () => { ativo = false; }; }
     setCarregandoIntegrantes(true);
-    equipesSvoApi.integrantesEquipe(Number(equipeId))
-      .then((itens) => { if (ativo) setIntegrantes(itens); })
+    const inicial = Boolean(viagemReprogramar && !designacoesCarregadas.current && String(viagemReprogramar.equipe_id) === equipeId);
+    Promise.all([equipesSvoApi.integrantesEquipe(Number(equipeId)),
+      inicial ? equipesSvoApi.designacoes(viagemReprogramar!.id) : Promise.resolve(null)])
+      .then(([itens, designacoes]) => { if (ativo) {
+        setIntegrantes(itens);
+        if (designacoes) {
+          if (designacoes.iniciada || String(designacoes.equipe_id) !== equipeId || designacoes.integrantes_ids.some((id) => !itens.some((i) => i.id === id))) {
+            setErroIntegrantes('As designações atuais não podem ser editadas; atualize a coleta e verifique os vínculos.');
+            return;
+          }
+          setSelecionados(designacoes.integrantes_ids); designacoesCarregadas.current = true;
+        }
+      } })
       .catch((e) => { if (ativo) setErroIntegrantes(mensagemDeErro(e)); })
       .finally(() => { if (ativo) setCarregandoIntegrantes(false); });
     return () => { ativo = false; };
   }, [equipeId]);
+  useEffect(() => {
+    let ativo = true; setDisponibilidade(null); setErroDisponibilidade(null);
+    if (!equipeId || (comPeriodo && (!inicio || !fim || new Date(fim) <= new Date(inicio)))) return () => { ativo = false; };
+    const periodo = comPeriodo ? { inicio: paraIso(inicio), fim: paraIso(fim), ...(viagemReprogramar ? { ignorar_ordem_id: viagemReprogramar.id } : {}) } : periodoConsultaEquipes();
+    equipesSvoApi.disponibilidadeIntegrantes(Number(equipeId), periodo)
+      .then((dados) => { if (ativo) setDisponibilidade(Object.fromEntries(dados.map((i) => [i.id, i.disponivel]))); })
+      .catch((e) => { if (ativo) setErroDisponibilidade(mensagemDeErro(e)); });
+    return () => { ativo = false; };
+  }, [equipeId, comPeriodo, inicio, fim, viagemReprogramar]);
   const bloqueio = !comPeriodo && ocupacaoDoVeiculo ? motivoBloqueioSvo(ocupacaoDoVeiculo) : null;
 
   // Qualquer mudança invalida a confirmação anterior: o servidor precisa validar de novo
@@ -167,6 +190,8 @@ export function ModalAgendarColetaSvo({
     if (bloqueio) return bloqueio;
     if (equipeId && !equipes.some((e) => String(e.id) === equipeId)) return 'A equipe selecionada não está mais disponível.';
     if (equipeId && (carregandoIntegrantes || erroIntegrantes)) return 'Não foi possível confirmar os integrantes da equipe.';
+    if (equipeId && (!disponibilidade || erroDisponibilidade)) return 'Aguarde ou verifique a disponibilidade dos integrantes.';
+    if (equipeId && selecionados.some((id) => disponibilidade?.[id] !== true)) return 'Um integrante selecionado está indisponível no período.';
     if (equipeId && selecionados.length < 1) return 'Selecione pelo menos um integrante da equipe.';
     if (equipeId && selecionados.length > maxIntegrantes) return 'A lotação da cabine não comporta os integrantes selecionados.';
     if (!comPeriodo) return null;
@@ -316,19 +341,20 @@ export function ModalAgendarColetaSvo({
         </div>
 
         <SeletorEquipeSvo equipes={equipes} carregando={carregandoEquipes} erro={erroEquipes}
-          valor={equipeId} onChange={alterar(setEquipeId)} />
+          valor={equipeId} onChange={(valor) => { setSelecionados([]); designacoesCarregadas.current = true; alterar(setEquipeId)(valor); }} />
 
         {equipeId && <fieldset className="mt-4 space-y-2">
           <legend className="font-semibold">Integrantes da coleta</legend>
           <p className="text-sm text-slate-600">Vagas para integrantes: {maxIntegrantes} (uma vaga é reservada ao motorista).</p>
           {carregandoIntegrantes && <p>Carregando integrantes...</p>}
           {erroIntegrantes && <Alert tone="danger">{erroIntegrantes}</Alert>}
+          {erroDisponibilidade && <Alert tone="danger">{erroDisponibilidade}</Alert>}
           {!carregandoIntegrantes && !erroIntegrantes && integrantes.length === 0 && <p>Nenhum integrante vinculado à equipe.</p>}
           {integrantes.map((item) => <label key={item.id} className="flex items-center gap-2">
             <input type="checkbox" checked={selecionados.includes(item.id)}
-              disabled={!selecionados.includes(item.id) && selecionados.length >= maxIntegrantes}
+              disabled={!selecionados.includes(item.id) && (selecionados.length >= maxIntegrantes || disponibilidade?.[item.id] !== true)}
               onChange={(e) => { setSelecionados((atual) => e.target.checked ? [...atual, item.id] : atual.filter((id) => id !== item.id)); setConflitos(null); setTokenConfirmacao(null); setCiente(false); }} />
-            {item.nome}
+            {item.nome}{disponibilidade?.[item.id] === false ? ' — indisponível' : ''}
           </label>)}
         </fieldset>}
 

@@ -11,7 +11,7 @@ const habilitado = process.env.SCRUM166_POSTGRES_TESTS === '1';
 const instante = (minutos: number) => new Date(Date.now() + minutos * 60_000);
 const nonce = () => randomBytes(4).toString('hex');
 
-async function usuario(perfil: 'GESTOR_SVO' | 'GESTOR_FROTA' | 'MOTORISTA_SVO' | 'MOTORISTA_FROTA') {
+async function usuario(perfil: 'GESTOR_SVO' | 'GESTOR_FROTA' | 'MOTORISTA_SVO' | 'MOTORISTA_FROTA' | 'INTEGRANTE_SVO') {
   const chave = nonce();
   const [u] = await db('usuarios').insert({
     nome: `Teste ${chave}`, email: `${chave}@testes.invalid`, senha: 'hash-de-teste',
@@ -32,6 +32,7 @@ async function usuario(perfil: 'GESTOR_SVO' | 'GESTOR_FROTA' | 'MOTORISTA_SVO' |
 async function recursos() {
   const gestor = await usuario('GESTOR_SVO');
   const condutor = await usuario('MOTORISTA_SVO');
+  const integrante = await usuario('INTEGRANTE_SVO');
   const chave = nonce();
   const [veiculo] = await db('veiculos').insert({
     placa: `T${chave}`, modelo: 'Veículo de teste', tipo_frota: 'SVO',
@@ -43,7 +44,8 @@ async function recursos() {
   }).returning('*');
   const [equipe] = await db('equipes_svo').insert({ nome_equipe: `Equipe ${chave}` }).returning('*');
   await db('escalas_svo').insert({ equipe_id: equipe.id, data_inicio: instante(-1440), data_fim: instante(14400) });
-  return { gestor, condutor, veiculo, motorista, equipe };
+  await db('equipes_svo_integrantes').insert({ equipe_id: equipe.id, usuario_id: integrante.id, vinculado_em: new Date() });
+  return { gestor, condutor, integrante, veiculo, motorista, equipe };
 }
 
 async function pendente(autorId: number) {
@@ -70,7 +72,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     const r = await recursos();
     const [a, b] = await Promise.all([pendente(r.gestor.id), pendente(r.gestor.id)]);
     const corpo = { tipo_operacao: 'SVO', veiculo_id: r.veiculo.id, motorista_id: r.motorista.id,
-      equipe_id: r.equipe.id, inicio_previsto: instante(120).toISOString(), fim_previsto: instante(180).toISOString() };
+      equipe_id: r.equipe.id, integrantes_ids: [r.integrante.id], inicio_previsto: instante(120).toISOString(), fim_previsto: instante(180).toISOString() };
     const respostas = await Promise.all([a, b].map((item) => request(app).post('/api/viagens')
       .set('Authorization', r.gestor.token).send({ ...corpo, solicitacao_id: item.solicitacao.id })));
     expect(respostas.map((resp) => resp.status).sort()).toEqual([200, 409]);
@@ -108,7 +110,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     const inicioA = instante(120);
     const fimA = new Date(inicioA.getTime() + 60 * 60_000);
     const inicioB = new Date(fimA.getTime() + 10 * 60_000);
-    const base = { tipo_operacao: 'SVO', veiculo_id: r.veiculo.id, motorista_id: r.motorista.id, equipe_id: r.equipe.id, capacidade_utilizada: 2 };
+    const base = { tipo_operacao: 'SVO', veiculo_id: r.veiculo.id, motorista_id: r.motorista.id, equipe_id: r.equipe.id, integrantes_ids: [r.integrante.id], capacidade_utilizada: 2 };
     const primeira = await request(app).post('/api/viagens').set('Authorization', r.gestor.token)
       .send({ ...base, solicitacao_id: a.solicitacao.id, inicio_previsto: inicioA.toISOString(), fim_previsto: fimA.toISOString() });
     expect(primeira.status).toBe(200);
@@ -142,7 +144,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     const saidaAntecipada = await request(app).patch(`/api/viagens/${b.ordem.id}/iniciar`)
       .set('Authorization', r.condutor.token).send({ tipo_operacao: 'SVO', km_inicial: 20 });
     expect(saidaAntecipada.status).toBe(409);
-    const finalizacao = await request(app).patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.gestor.token)
+    const finalizacao = await request(app).patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.condutor.token)
       .send({ tipo_operacao: 'SVO', km_final: 20 });
     expect(finalizacao.status).toBe(200);
     const proxima = await db('ordens_svo').where({ id: b.ordem.id }).first();
@@ -209,7 +211,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     await db('ordens_svo').where({ id: b.ordem.id }).update({ veiculo_id: r1.veiculo.id, motorista_id: r2.motorista.id,
       equipe_id: r1.equipe.id, status: 'ALOCADA', inicio_previsto: instante(-20), fim_previsto: instante(40) });
     const respostas = await Promise.all([a, d].map((item) =>
-      request(app).patch(`/api/viagens/${item.ordem.id}/finalizar`).set('Authorization', r1.gestor.token)
+      request(app).patch(`/api/viagens/${item.ordem.id}/finalizar`).set('Authorization', r1.condutor.token)
         .send({ tipo_operacao: 'SVO', km_final: 20 })));
     expect(respostas.map((resp) => resp.status)).toEqual([200, 200]);
     const proxima = await db('ordens_svo').where({ id: b.ordem.id }).first();
@@ -230,7 +232,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     await db('ordens_svo').where({ id: b.ordem.id }).update({ ...comum, status: 'ALOCADA',
       inicio_previsto: instante(-20), fim_previsto: instante(40) });
     const resultados = await Promise.all([1, 2].map(() => request(app)
-      .patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.gestor.token)
+      .patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.condutor.token)
       .send({ tipo_operacao: 'SVO', km_final: 20 })));
     expect(resultados.map((resp) => resp.status).sort()).toEqual([200, 400]);
     expect(await db('auditorias').where({ acao: `LIBEROU_ORDEM_SVO id=${b.ordem.id}` })).toHaveLength(1);
@@ -263,7 +265,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     const fimA = new Date(inicioA.getTime() + 60 * 60_000);
     const inicioB = new Date(fimA.getTime() + 20 * 60_000);
     const fimB = new Date(inicioB.getTime() + 60 * 60_000);
-    const base = { tipo_operacao: 'SVO', veiculo_id: r.veiculo.id, motorista_id: r.motorista.id, equipe_id: r.equipe.id };
+    const base = { tipo_operacao: 'SVO', veiculo_id: r.veiculo.id, motorista_id: r.motorista.id, equipe_id: r.equipe.id, integrantes_ids: [r.integrante.id] };
     expect((await request(app).post('/api/viagens').set('Authorization', r.gestor.token)
       .send({ ...base, solicitacao_id: a.solicitacao.id, inicio_previsto: inicioA.toISOString(), fim_previsto: fimA.toISOString() })).status).toBe(200);
     const marcada = await request(app).post('/api/viagens').set('Authorization', r.gestor.token)
@@ -285,10 +287,10 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     const ordem = await pendente(r.gestor.id);
     await db('escalas_svo').where({ equipe_id: r.equipe.id }).delete();
     const corpo = { tipo_operacao: 'SVO', solicitacao_id: ordem.solicitacao.id, veiculo_id: r.veiculo.id,
-      motorista_id: r.motorista.id, equipe_id: r.equipe.id, inicio_previsto: instante(120).toISOString(),
+      motorista_id: r.motorista.id, equipe_id: r.equipe.id, integrantes_ids: [r.integrante.id], inicio_previsto: instante(120).toISOString(),
       fim_previsto: instante(180).toISOString() };
     const semCapacidade = await request(app).post('/api/viagens').set('Authorization', r.gestor.token)
-      .send({ ...corpo, equipe_id: null, capacidade_utilizada: 5 });
+      .send({ ...corpo, equipe_id: null, integrantes_ids: [], capacidade_utilizada: 5 });
     expect(semCapacidade.status).toBe(400);
     expect((await db('ordens_svo').where({ id: ordem.ordem.id }).first()).status).toBe('AGUARDANDO_ALOCACAO');
     const semEscala = await request(app).post('/api/viagens').set('Authorization', r.gestor.token).send(corpo);
@@ -299,7 +301,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     const r = await recursos();
     const a = await pendente(r.gestor.id);
     const b = await pendente(r.gestor.id);
-    const base = { tipo_operacao: 'SVO', veiculo_id: r.veiculo.id, motorista_id: r.motorista.id, equipe_id: r.equipe.id, capacidade_utilizada: 2 };
+    const base = { tipo_operacao: 'SVO', veiculo_id: r.veiculo.id, motorista_id: r.motorista.id, equipe_id: r.equipe.id, integrantes_ids: [r.integrante.id], capacidade_utilizada: 2 };
     for (const [item, inicio, fim] of [[a, 120, 180], [b, 210, 270]] as const) {
       const resp = await request(app).post('/api/viagens').set('Authorization', r.gestor.token)
         .send({ ...base, solicitacao_id: item.solicitacao.id, inicio_previsto: instante(inicio).toISOString(), fim_previsto: instante(fim).toISOString() });

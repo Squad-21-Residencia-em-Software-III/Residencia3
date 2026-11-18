@@ -16,3 +16,12 @@ Base de desenvolvimento: `develop` no commit `ea08d75`. A integração PostgreSQ
 - O contrato proposto está em `docs/scrum-196-contrato-banco.md`. As tabelas `equipes_svo_integrantes` e `ordens_svo_integrantes`, o perfil na constraint de usuários e o índice único de nomes ainda dependem da SCRUM-198. Nenhum DDL ou migration foi criado ou executado aqui. Antes dessa entrega, funcionalidades dependentes dessas estruturas não estão disponíveis e a reavaliação de ordens com equipe pode falhar; não publicar ou integrar isoladamente.
 - Os testes unitários e de rotas não substituem execução em PostgreSQL. Permanecem pendentes testes de persistência, rollback, concorrência real, integração de migração, regressão de dados legados e homologação ponta a ponta. O contrato e o comportamento de destinos precisam de revisão na integração.
 - A separação entre lotação da cabine e capacidade de corpos é mantida; com lotação ausente, a designação com equipe é bloqueada. Nenhum calendário de escala é criado.
+
+## Revisão de QA do PR #162
+
+- O reagendamento consulta `GET /api/viagens/ordens-svo/:id/designacoes` para restaurar somente designações ativas; a consulta é restrita a Administrador e Gestor SVO. Falha na consulta impede o envio. Mudança de equipe limpa a seleção, e nova lotação é validada.
+- `GET /api/equipes-svo/:id/integrantes/disponibilidade?inicio=...&fim=...&ignorar_ordem_id=...` distingue membros elegíveis de membros ocupados. A validação transacional continua obrigatória ao salvar; coleta em deslocamento sem conclusão real ocupa o integrante.
+- `PATCH /api/equipes-svo/integrantes/:id` aceita somente nome e e-mail para contas do perfil INTEGRANTE_SVO; audita a operação e rejeita campos extras. A senha segue o mecanismo de contas existente.
+- Os fixtures de agenda PostgreSQL foram ajustados para o contrato proposto e para o motorista realizar a finalização. Não foram executados: aguardam migration definitiva da SCRUM-198 e banco isolado autorizado. Verificar compatibilidade e todos os casos de concorrência e rollback após a entrega DB.
+- A consulta pessoal continua sem destino: o schema documentado não oferece destino SVO estruturado; não se deve expor `dados_solicitante` como substituto. Confirmação do destino depende da definição de produto/modelo.
+- Pendentes: execução dos testes PostgreSQL adaptados, testes reais de concorrência/rollback e histórico, revisão visual acessível e regressão integral em banco após o contrato definitivo. Suítes com mocks não homologam persistência nem isolamento transacional.

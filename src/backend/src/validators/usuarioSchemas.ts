@@ -18,6 +18,8 @@ export const criarUsuarioSchema = z.object({
 });
 
 export const criarIntegranteSvoSchema = criarUsuarioSchema.omit({ perfil: true }).strict();
+export const atualizarIntegranteSvoSchema = z.strictObject({ nome: nomeSchema.optional(), email: emailSchema.optional() })
+  .refine((dados) => Object.keys(dados).length > 0, { message: 'Informe nome ou e-mail' });
 
 export const atualizarUsuarioSchema = z
   .strictObject(

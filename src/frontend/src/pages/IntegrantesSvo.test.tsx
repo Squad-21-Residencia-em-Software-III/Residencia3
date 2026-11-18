@@ -5,7 +5,7 @@ import { equipesSvoApi } from '../services/api/equipesSvoApi';
 import { IntegrantesSvo } from './IntegrantesSvo';
 
 vi.mock('../services/api/equipesSvoApi', () => ({ equipesSvoApi: {
-  integrantes: vi.fn(), integrantesEquipe: vi.fn(), criarIntegrante: vi.fn(), vincular: vi.fn(), desvincular: vi.fn(),
+  integrantes: vi.fn(), integrantesEquipe: vi.fn(), criarIntegrante: vi.fn(), atualizarIntegrante: vi.fn(), vincular: vi.fn(), desvincular: vi.fn(),
 } }));
 
 describe('gestão de integrantes SVO', () => {
@@ -31,5 +31,14 @@ describe('gestão de integrantes SVO', () => {
     await userEvent.type(screen.getByLabelText('Senha'), 'Senha123');
     await userEvent.click(screen.getByRole('button', { name: 'Cadastrar integrante' }));
     expect(equipesSvoApi.criarIntegrante).toHaveBeenCalledWith({ nome: 'Maria Silva', email: 'maria@exemplo.com', senha: 'Senha123' });
+  });
+  it('edita nome e e-mail sem enviar senha ou perfil', async () => {
+    vi.mocked(equipesSvoApi.atualizarIntegrante).mockResolvedValue({ id: 7, nome: 'Maria Lima', email: 'maria@exemplo.com' });
+    render(<IntegrantesSvo equipes={[]} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar Maria' }));
+    await userEvent.clear(screen.getByLabelText('Nome completo'));
+    await userEvent.type(screen.getByLabelText('Nome completo'), 'Maria Lima');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar integrante' }));
+    expect(equipesSvoApi.atualizarIntegrante).toHaveBeenCalledWith(7, { nome: 'Maria Lima', email: 'maria@exemplo.com' });
   });
 });

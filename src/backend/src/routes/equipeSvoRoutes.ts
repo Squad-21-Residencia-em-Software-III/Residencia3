@@ -24,6 +24,8 @@ equipeSvoRoutes.get('/', gestaoEquipesSvoController.listar);
 equipeSvoRoutes.post('/', gestaoEquipesSvoController.criar);
 equipeSvoRoutes.get('/integrantes', integrantesSvoController.listar);
 equipeSvoRoutes.post('/integrantes', integrantesSvoController.criar);
+equipeSvoRoutes.patch('/integrantes/:id', integrantesSvoController.atualizar);
+equipeSvoRoutes.get('/:id/integrantes/disponibilidade', integrantesSvoController.disponibilidade);
 equipeSvoRoutes.get('/:id/integrantes', integrantesSvoController.listarEquipe);
 equipeSvoRoutes.put('/:id/integrantes/:usuarioId', integrantesSvoController.vincular);
 equipeSvoRoutes.delete('/:id/integrantes/:usuarioId', integrantesSvoController.desvincular);
