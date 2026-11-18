@@ -15,7 +15,7 @@ A `SCRUM-210` exige persistir os metadados imutaveis das evidencias de odometro 
    - Como `viagens_frota.id` e `ordens_svo.id` utilizam sequencias proprias e podem possuir o mesmo valor numerico (por exemplo, `id = 1` em ambas), nao foi utilizada coluna polimorfica sem FK.
    - Em `evidencias_odometro`, a constraint `chk_evidencias_odometro_origem_operacao` exige:
      - Quando `tipo_operacao = 'ADMINISTRATIVA'`: `viagem_frota_id IS NOT NULL` (FK para `viagens_frota`) e `deslocamento_svo_id IS NULL AND ordem_svo_id IS NULL`.
-     - Quando `tipo_operacao = 'SVO'`: `deslocamento_svo_id IS NOT NULL` (FK para `deslocamentos_svo`) e `viagem_frota_id IS NULL`.
+     - Quando `tipo_operacao = 'SVO'`: `viagem_frota_id IS NULL` e `deslocamento_svo_id IS NOT NULL` (ou, para foto provisoria `STAGING`/`REJEITADA` enviada antes do inicio real da coleta, `deslocamento_svo_id IS NULL AND ordem_svo_id IS NOT NULL AND modalidade = 'FOTO'`, sendo `deslocamento_svo_id` preenchido na transicao para `ATIVA`).
 2. **Deslocamento fisico compartilhado no SVO (`deslocamentos_svo` e `deslocamentos_svo_ordens`)**:
    - Um mesmo deslocamento fisico de um veiculo SVO pode atender multiplas ordens (`ordens_svo`) sem duplicar o par de fotos (`SAIDA` e `CHEGADA`) nem inventar quilometragens independentes.
    - A tabela `deslocamentos_svo` representa o deslocamento fisico real (`veiculo_id`, `motorista_id`, `km_inicial`, `km_final`, `data_hora_saida`, `data_hora_conclusao`, `status`), com indices unicos parciais `uq_deslocamentos_svo_veiculo_em_curso` e `uq_deslocamentos_svo_motorista_em_curso` (`WHERE status = 'EM_CURSO'`).
