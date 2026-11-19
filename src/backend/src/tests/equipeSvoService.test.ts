@@ -107,9 +107,10 @@ describe('equipeSvoService.consultarDisponibilidade', () => {
     expect(resultado.equipes).toEqual([]);
   });
 
-  it('não exige escala cadastrada para consultar equipes', async () => {
+  it('consulta equipes sem exigir cadastro de escalas', async () => {
     await equipeSvoService.consultarDisponibilidade(filtros);
-    expect(mockDb).not.toHaveBeenCalledWith('escalas_svo as es');
+    expect(consultas.some((c) => c.tabela.startsWith('escalas_svo'))).toBe(false);
+    expect(consultas.some((c) => c.metodo === 'whereExists')).toBe(false);
   });
 
   it('exclui equipes com ordens ativas', async () => {

@@ -37,6 +37,11 @@ viagemRoutes.get('/ordens-svo/pendentes', autorizar(PERFIS.ADMINISTRADOR, PERFIS
 viagemRoutes.get('/ordens-svo/alertas', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.consultarAlertasSvo);
 viagemRoutes.get('/ordens-svo/:id/designacoes', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.listarDesignacoesSvo);
 viagemRoutes.post('/ordens-svo/:id/reprogramar', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.reprogramarOrdemSvo);
+viagemRoutes.patch(
+  '/ordens-svo/:id/chegar-local',
+  autorizar(PERFIS.MOTORISTA_SVO),
+  viagemController.registrarChegadaLocalSvo
+);
 
 viagemRoutes.post('/', gestores, viagemController.criar);
 

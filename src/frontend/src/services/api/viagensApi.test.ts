@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RECURSOS_BACKEND } from '../../config/recursosBackend';
-import { request } from './http';
+import { ApiError, CODIGO_CANCELADO, request } from './http';
 import { viagensApi } from './viagensApi';
 
-vi.mock('./http', () => ({ request: vi.fn() }));
+vi.mock('./http', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./http')>(),
+  request: vi.fn(),
+}));
 
 const req = vi.mocked(request);
 
@@ -16,6 +19,26 @@ describe('viagensApi (SCRUM-171/172)', () => {
   afterEach(() => {
     RECURSOS_BACKEND.agendamentoTemporalSvo = false;
     RECURSOS_BACKEND.ordensPendentesSvo = false;
+  });
+
+  it('registra chegada pelo ID da ordem e devolve a resposta sem enviar corpo', async () => {
+    const atualizada = { id: 7, solicitacao_id: 31, tipo_operacao: 'SVO', status: 'NO_LOCAL' };
+    req.mockResolvedValueOnce(atualizada);
+    await expect(viagensApi.registrarChegadaLocalSvo(7)).resolves.toBe(atualizada);
+    expect(req).toHaveBeenCalledExactlyOnceWith('PATCH', '/viagens/ordens-svo/7/chegar-local', {
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it('propaga rejeições do servidor ao registrar chegada', async () => {
+    const erro = new ApiError('Acesso negado.', 403);
+    req.mockRejectedValueOnce(erro);
+    await expect(viagensApi.registrarChegadaLocalSvo(7)).rejects.toBe(erro);
+  });
+
+  it('identifica o timeout no envio da chegada', async () => {
+    req.mockRejectedValueOnce(new ApiError('Envio cancelado.', 0, [], CODIGO_CANCELADO));
+    await expect(viagensApi.registrarChegadaLocalSvo(7)).rejects.toThrow('O servidor demorou a responder.');
   });
 
   it('percorre as páginas das viagens próprias e adapta o DTO reduzido', async () => {

@@ -53,3 +53,11 @@ Base de desenvolvimento: `develop` no commit `ea08d75`. A integração PostgreSQ
 - Minhas coletas usa `PageHeader` e `Badge`. A lista usa `inicio_previsto DESC NULLS LAST, id DESC` e seu menu e rota são exclusivos de `INTEGRANTE_SVO`. O agendamento usa o `Checkbox` compartilhado e orienta o cadastro da lotação quando a equipe está selecionada e o veículo ainda não tem esse dado.
 - `/api/equipes-svo` exige associação à unidade SVO para o gestor, inclusive em consultas, criação de equipes e contas e vinculação. A consulta de designações foi movida para o serviço. Criação e edição de equipes usam o módulo existente `USUARIOS` na auditoria.
 - Validação local desta revisão: 1.244 testes de backend aprovados, 21 ignorados e 304 testes de frontend aprovados. Typecheck do backend e builds de ambos passaram. Os cenários de PostgreSQL continuam opt-in e aguardam a SCRUM-198 e ambiente isolado autorizado.
+
+
+## Integração com develop
+
+- A develop integrada inclui SCRUM-198 (#169), fila e alertas (#157), chegada e ocupação em NO_LOCAL (#164), apresentação operacional (#167), segurança do proxy (#168) e evidências do odômetro (#170–#172).
+- O reagendamento usa a composição efetiva para validar agenda e cabine. Mantém as designações quando a equipe é a mesma e a lista é omitida. Trocas explícitas passam pela validação de vínculo ativo e preservam o histórico.
+- Validação local da integração com 251 testes selecionados de backend e 168 de frontend. Typecheck do backend e builds dos dois módulos aprovados. O build do frontend também inclui a verificação TypeScript.
+- Suítes PostgreSQL opt-in e homologação visual e funcional com backend e banco reais seguem pendentes. Nenhum banco foi provisionado ou alterado. A presença da migration na develop foi verificada no repositório.

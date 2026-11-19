@@ -1,6 +1,6 @@
-# SCRUM-196: contrato proposto para persistência
+# SCRUM-196 — contrato de persistência
 
-Proposta para revisão de Gabriel Arruda na SCRUM-198. Este documento não representa uma migration aplicada. O backend desta branch utiliza os nomes abaixo; a nomenclatura e os detalhes devem ser confirmados com a frente de banco antes da integração. Não alterar o banco compartilhado por este PR.
+A SCRUM-198 foi integrada à develop pelo PR #169. A migration 20261118113000_scrum_198_equipes_integrantes_designacoes_svo.js implementa as estruturas descritas aqui. A validação do PR #162 foi feita por inspeção do código e testes com mocks. O estado da migration no Neon não foi verificado neste trabalho. Consulte o [relatório da SCRUM-198](validacao-banco-scrum-198.md).
 
 ## Estruturas existentes
 
@@ -9,11 +9,11 @@ Proposta para revisão de Gabriel Arruda na SCRUM-198. Este documento não repre
 - `veiculos.lotacao_cabine`: utilizar como número de lugares incluindo o motorista; é nullable no schema atual. Ausência de lotação deve impedir designação com equipe até regularização, sem valor presumido. Não confundir com `capacidade_maxima` para corpos.
 - `ordens_svo`: `inicio_previsto` e `fim_previsto` representam reservas; `data_hora_saida` e `data_hora_conclusao` representam início e término reais. Preservar registros antigos e `escalas_svo`.
 
-## Vínculos de equipe (proposta)
+## Vínculos de equipe
 
 Tabela `equipes_svo_integrantes`: chave primária gerada `id`; `equipe_id` e `usuario_id` obrigatórios com FKs para `equipes_svo` e `usuarios`, exclusão restrita; `vinculado_em` obrigatório com fuso, `desvinculado_em` anulável com verificação de ordem temporal. As operações registram autor e ação em `auditorias`. Índice único parcial por `(equipe_id, usuario_id)` para vínculo ativo e índices de pesquisa por usuário e equipe. O mesmo usuário pode ter vínculos simultâneos com equipes distintas. Evitar exclusão física de vínculos históricos.
 
-## Designações (proposta)
+## Designações
 
 Tabela `ordens_svo_integrantes`: chave primária gerada; `ordem_id`, `equipe_id`, `usuario_id`, `designado_em`, `designado_por` obrigatórios; campos anuláveis `revogado_em`, `revogado_por` para preservar alterações; referências com exclusão restrita a ordem, equipe e usuários. Restrição temporal de revogação posterior à designação; índice único parcial por `(ordem_id, usuario_id)` para designação ativa; índices por `(usuario_id, ordem_id)` e por ordem para conflito e consulta pessoal. Revisar a integridade da equipe da ordem e do vínculo ativo na mesma transação, inclusive em reprogramações; FKs isoladas não garantem essas regras temporais.
 
@@ -23,11 +23,11 @@ As designações válidas no início real constituem histórico de participaçã
 
 O backend deverá executar designação, reprogramação, alteração de veículo e desvinculação relevantes sob o mesmo `pg_advisory_xact_lock(166, 182)` já usado na agenda, com transação e bloqueios de linha na ordem consistente. Validar usuário ativo e perfil, vínculo ativo com equipe, intervalo e lotação antes de persistir. Uma ordem em deslocamento ocupa seus integrantes até `data_hora_conclusao`, mesmo após o fim previsto. A reavaliação da fila deverá reconhecer disputas entre equipes diferentes pelo mesmo integrante. Verificar também permissões de aplicação, migrations reversíveis sem apagar histórico e testes de concorrência em PostgreSQL isolado, antes de disponibilizar a funcionalidade.
 
-A aplicação da branch consome os campos descritos, mas a compatibilidade real ainda não foi validada em PostgreSQL. Devem ser combinados nomes definitivos, regras de compatibilidade, tratamento de dados legados, privilégios e sequência de deploy antes de integrar. Nenhum DDL, seed ou dado foi alterado neste trabalho.
+A migration define a unicidade do nome normalizado da equipe, índices parciais de vínculos e designações ativos, FKs com exclusão restrita e consistência temporal das revogações. O PR #162 utiliza essas estruturas e mantém a verificação de vínculo ativo, disponibilidade e cabine na transação da aplicação. Gabriel Arruda deve confirmar a versão do esquema no ambiente de homologação antes dos testes de concorrência e rollback.
 
 ## Integração após revisão de QA
 
-A consulta de disponibilidade individual filtra `ordens_svo_integrantes.usuario_id`, `ordem_id`, `revogado_em` e as colunas de status, início/fim previstos e início/conclusão reais da ordem. Para evitar varreduras, avaliar índices parciais para designações não revogadas por usuário e por ordem, além dos índices e FKs descritos acima. A leitura das designações do reagendamento também usa `ordem_id` e `revogado_em`. Confirmar permissões mínimas SELECT/INSERT/UPDATE e uso das sequências necessárias para a role de aplicação, sem DELETE para preservar histórico. Executar migration aditiva e validação isolada antes do deploy do backend; não fazer rollback destrutivo quando existirem vínculos ou designações. O lock transacional `(166,182)` coordena os serviços da aplicação; qualquer outro escritor deve cumprir a mesma disciplina ou garantir integridade equivalente no banco. A proposta depende de revisão de Gabriel e não representa schema confirmado.
+A disponibilidade e a consulta de designações ativas usam os índices documentados na SCRUM-198. A role de aplicação tem SELECT, INSERT e UPDATE nas tabelas históricas e acesso às sequências necessárias. O reagendamento com a mesma equipe preserva as designações ativas quando integrantes_ids é omitido. Uma substituição explícita revoga os vínculos da ordem que deixaram de valer e registra as novas designações na mesma transação.
 
 
 ## Ordens anteriores à designação individual
@@ -39,7 +39,7 @@ Na SCRUM-198, inventariar no ambiente isolado a quantidade de ordens com equipe 
 
 ## Compatibilidade com BL31 e fila SVO
 
-A BL31 ([PR #164](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/164)) acrescenta `NO_LOCAL` às constraints e aos índices de ordens ativas. O endpoint de chegada, `PATCH /api/viagens/ordens-svo/:id/chegar-local`, usa a mesma trava de agenda e muda o estado de `EM_DESLOCAMENTO` para `NO_LOCAL`. A chegada não altera designações nem equivale à conclusão. As relações propostas da SCRUM-198 continuam referenciando a ordem pelo ID. O status e os horários pertencem à ordem. Os índices de designações ativas continuam condicionados a `revogado_em IS NULL`. Conferir no esquema combinado se consultas e constraints que distinguem ordem ativa reconhecem `NO_LOCAL`.
+A BL31 ([PR #164](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/164)) acrescenta `NO_LOCAL` às constraints e aos índices de ordens ativas. O endpoint de chegada, `PATCH /api/viagens/ordens-svo/:id/chegar-local`, usa a mesma trava de agenda e muda o estado de `EM_DESLOCAMENTO` para `NO_LOCAL`. A chegada não altera designações nem equivale à conclusão. As relações da SCRUM-198 continuam referenciando a ordem pelo ID. O status e os horários pertencem à ordem. Os índices de designações ativas continuam condicionados a `revogado_em IS NULL`. Conferir no esquema combinado se consultas e constraints que distinguem ordem ativa reconhecem `NO_LOCAL`.
 
 O [PR #157](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/157) fornece `ordens_svo.liberada_em` e `alertas_atraso_svo`, incluindo unicidade por par de ordens e resolução com `resolvido_em`. O contrato da fila usa esses campos também quando a ordem retém recursos em `NO_LOCAL`. A conclusão real resolve alertas e pode liberar a próxima reserva sem gravar saída, km ou mudar seu status. A coluna `solicitacoes_viagem.material_sensivel` do #157 é da frota administrativa e não fornece dados para Minhas coletas.
 

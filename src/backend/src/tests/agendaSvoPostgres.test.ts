@@ -72,7 +72,9 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_PORT !== '55432' ||
         process.env.POSTGRES_DB !== 'fsph_scrum166_teste') throw new Error('Banco de teste não autorizado');
     const resultado = await db.raw('SELECT current_database() AS db, inet_server_addr()::text AS endereco, inet_server_port() AS porta');
-    expect(resultado.rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', endereco: '127.0.0.1/32', porta: 55432 });
+    const ip = process.env.POSTGRES_TEST_CONTAINER_IP ?? '127.0.0.1';
+    if (!/^(127\.|172\.(1[6-9]|2\d|3[01])\.|10\.|192\.168\.)/.test(ip)) throw new Error('IP de teste não privado');
+    expect(resultado.rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', endereco: `${ip}/32`, porta: 55432 });
   });
   afterAll(async () => { await db.destroy(); });
 
@@ -207,21 +209,21 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     expect(filtro.status).toBe(400);
   });
 
-  it('conclusões simultâneas liberam uma única vez somente após todos os recursos ficarem livres', async () => {
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('conclusões simultâneas em %s liberam somente após todos os recursos ficarem livres', async (status) => {
     const r1 = await recursos();
     const r2 = await recursos();
     const [a, d, b] = await Promise.all([pendente(r1.gestor.id), pendente(r1.gestor.id), pendente(r1.gestor.id)]);
     for (const item of [a, d, b]) await db('solicitacoes_svo').where({ id: item.solicitacao.id }).update({ status: 'EM_ANDAMENTO' });
     await db('ordens_svo').where({ id: a.ordem.id }).update({ veiculo_id: r1.veiculo.id, motorista_id: r1.motorista.id,
-      status: 'EM_DESLOCAMENTO', inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
+      status, inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
     await db('ordens_svo').where({ id: d.ordem.id }).update({ veiculo_id: r2.veiculo.id, motorista_id: r2.motorista.id,
-      status: 'EM_DESLOCAMENTO', inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
+      status, inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
     await db('ordens_svo').where({ id: b.ordem.id }).update({ veiculo_id: r1.veiculo.id, motorista_id: r2.motorista.id,
       equipe_id: r1.equipe.id, status: 'ALOCADA', inicio_previsto: instante(-20), fim_previsto: instante(40) });
     const indevida = await request(app).patch(`/api/viagens/${d.ordem.id}/finalizar`)
       .set('Authorization', r1.condutor.token).send({ tipo_operacao: 'SVO', km_final: 20 });
     expect(indevida.status).toBe(403);
-    expect((await db('ordens_svo').where({ id: d.ordem.id }).first()).status).toBe('EM_DESLOCAMENTO');
+    expect((await db('ordens_svo').where({ id: d.ordem.id }).first()).status).toBe(status);
     const respostas = await Promise.all([{ item: a, token: r1.condutor.token }, { item: d, token: r2.condutor.token }].map(({ item, token }) =>
       request(app).patch(`/api/viagens/${item.ordem.id}/finalizar`).set('Authorization', token)
         .send({ tipo_operacao: 'SVO', km_final: 20 })));
@@ -269,7 +271,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     expect(ordem.data_hora_saida).toBeNull();
   });
 
-  it('permite 20 minutos exatos e reprograma a ordem preservando a identidade e a capacidade', async () => {
+  it('permite 20 minutos exatos e reprograma a ordem preservando identidade, capacidade e designação', async () => {
     const r = await recursos();
     const a = await pendente(r.gestor.id);
     const b = await pendente(r.gestor.id);
@@ -284,10 +286,18 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
       .send({ ...base, solicitacao_id: b.solicitacao.id, capacidade_utilizada: 2,
         inicio_previsto: inicioB.toISOString(), fim_previsto: fimB.toISOString() });
     expect(marcada.status).toBe(200);
+    const designacoes = () => db('ordens_svo_integrantes').where({ ordem_id: b.ordem.id })
+      .select('id', 'usuario_id', 'revogado_em').orderBy('id');
+    const participantesAntes = await designacoes();
+    expect(participantesAntes).toEqual([
+      expect.objectContaining({ usuario_id: r.integrante.id, revogado_em: null }),
+    ]);
     const alteracao = await request(app).post(`/api/viagens/ordens-svo/${b.ordem.id}/reprogramar`)
-      .set('Authorization', r.gestor.token).send({ ...base, solicitacao_id: b.solicitacao.id, capacidade_utilizada: 2,
+      .set('Authorization', r.gestor.token).send({ ...base, integrantes_ids: undefined,
+        solicitacao_id: b.solicitacao.id, capacidade_utilizada: 2,
         inicio_previsto: instante(300).toISOString(), fim_previsto: instante(360).toISOString() });
     expect(alteracao.status).toBe(200);
+    expect(await designacoes()).toEqual(participantesAntes);
     const ordemAtualizada = await db('ordens_svo').where({ id: b.ordem.id }).first();
     expect(ordemAtualizada).toMatchObject({ status: 'ALOCADA', capacidade_utilizada: 2, solicitacao_id: b.solicitacao.id });
     expect(await db('ordens_svo').where({ solicitacao_id: b.solicitacao.id })).toHaveLength(1);

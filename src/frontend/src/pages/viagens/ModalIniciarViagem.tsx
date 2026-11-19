@@ -1,22 +1,26 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
-import { mensagemDeErro } from '../../services/api/http';
 import type { Viagem } from '../../types/viagem';
+import { SituacaoFotoOdometro } from './SituacaoFotoOdometro';
+import { mensagemFalhaTransicao, useFotoOdometro } from './useFotoOdometro';
 
 interface ModalIniciarViagemProps {
   viagem: Viagem;
   onClose: () => void;
-  onSalvar: (kmInicial: number) => Promise<void>;
+  /** `evidenciaId`: foto da saída já enviada (SCRUM-205), quando `fotosOdometro` está ligado. */
+  onSalvar: (kmInicial: number, evidenciaId?: string) => Promise<void>;
 }
 
 export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarViagemProps) {
   const [kmInicial, setKmInicial] = useState<string>('');
   const [erro, setErro] = useState<string>('');
   const [salvando, setSalvando] = useState(false);
+  const foto = useFotoOdometro(viagem, 'SAIDA');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (salvando) return;
     setErro('');
 
     const kmInicialNum = Number(kmInicial);
@@ -24,13 +28,20 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
       setErro('Informe o odômetro de saída como um número inteiro.');
       return;
     }
+    if (foto.fotoExigida && !foto.arquivo) {
+      setErro('Tire ou carregue a foto do odômetro na saída.');
+      return;
+    }
 
     setSalvando(true);
     try {
-      await onSalvar(kmInicialNum);
+      const evidenciaId = await foto.obterEvidenciaId();
+      if (evidenciaId) await onSalvar(kmInicialNum, evidenciaId);
+      else await onSalvar(kmInicialNum);
       onClose();
     } catch (error) {
-      setErro(mensagemDeErro(error));
+      foto.tratarErroTransicao(error);
+      setErro(mensagemFalhaTransicao(error, 'saída'));
       setSalvando(false);
     }
   };
@@ -60,6 +71,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
         <Input
           label="Odômetro de Saída (Km Inicial) *"
           type="number"
+          inputMode="numeric"
           placeholder="Ex: 35000"
           value={kmInicial}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmInicial(e.target.value)}
@@ -67,12 +79,26 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
           required
         />
 
+        <SituacaoFotoOdometro fase="SAIDA" foto={foto} disabled={salvando} />
+
+        {foto.enviando && (
+          <p role="status" className="mb-3 text-xs font-semibold text-primary">
+            Enviando a foto... Em rede lenta isso pode levar alguns segundos.
+          </p>
+        )}
+
         <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
-          <Button variant="ghost" type="button" onClick={onClose}>
-            Voltar
-          </Button>
-          <Button type="submit" disabled={salvando}>
-            {salvando ? 'Iniciando...' : 'Confirmar Saída'}
+          {foto.enviando ? (
+            <Button variant="ghost" type="button" onClick={foto.cancelarEnvio}>
+              Cancelar envio
+            </Button>
+          ) : (
+            <Button variant="ghost" type="button" onClick={onClose} disabled={salvando}>
+              Voltar
+            </Button>
+          )}
+          <Button type="submit" disabled={salvando || foto.consultando}>
+            {foto.enviando ? 'Enviando foto...' : salvando ? 'Iniciando...' : 'Confirmar Saída'}
           </Button>
         </div>
       </form>

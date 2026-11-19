@@ -3,10 +3,11 @@ import { rateLimit, type Options } from 'express-rate-limit';
 import { env } from '../config/env';
 
 // Limites de requisição por tipo de operação (docs/limites-e-timeouts.md).
-// A contagem é por req.ip, que só reflete o IP real do cliente se TRUST_PROXY estiver de acordo
-// com a cadeia de proxies da hospedagem (docs/seguranca-http.md). As validações do
-// express-rate-limit ficam ativas para acusar trust proxy permissivo ou X-Forwarded-For
-// inesperado (sinal de TRUST_PROXY ausente atrás de um proxy).
+// A contagem é por req.ip: o TRUST_PROXY define o caminho direto, e identificarCliente o ajusta
+// no caminho da Vercel, autenticado pelo PROXY_SECRET (docs/seguranca-http.md). O keyGenerator
+// padrão é mantido de propósito: é nele que rodam as validações do express-rate-limit, que
+// acusam trust proxy permissivo ou X-Forwarded-For inesperado (TRUST_PROXY ausente atrás de um
+// proxy) com erros ERR_ERL_* no log.
 // A memória é local, por instância.
 
 const QUINZE_MINUTOS = 15 * 60 * 1000;

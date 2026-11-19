@@ -13,7 +13,7 @@ export const gestaoEquipesSvoService = {
   },
   async salvar(nome: string, autorId: number, id?: number) {
     return db.transaction(async (trx) => {
-      // Serializa alterações realizadas pela aplicação até existir índice único no banco.
+      // Serializa a validação de unicidade e a gravação entre transações da aplicação.
       await trx.raw('SELECT pg_advisory_xact_lock(?, ?)', [196, 1]);
       if (id !== undefined && !await trx('equipes_svo').where({ id }).forUpdate().first('id')) {
         throw new AppError('Equipe SVO não encontrada', 404);
