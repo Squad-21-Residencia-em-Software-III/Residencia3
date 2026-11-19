@@ -119,6 +119,19 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     expect(onSalvar).toHaveBeenCalledWith(35000, 'ev-1');
   });
 
+  it('orienta a corrigir o odômetro fora do intervalo antes de enviar a foto', async () => {
+    const { onSalvar } = abrir();
+    await screen.findByRole('button', { name: /Carregar foto/ });
+    await escolherFoto();
+    informarKm('7454757527');
+    confirmar();
+
+    expect(screen.getByText('A quilometragem deve ser de no máximo 2.147.483.647 km.')).toBeVisible();
+    expect(screen.getByAltText(/Prévia da foto do odômetro/)).toBeVisible();
+    expect(api.enviar).not.toHaveBeenCalled();
+    expect(onSalvar).not.toHaveBeenCalled();
+  });
+
   it('recusa arquivo que não é imagem e não o seleciona', async () => {
     abrir();
     await screen.findByRole('button', { name: /Carregar foto/ });
@@ -341,6 +354,20 @@ describe('ModalFinalizarViagem com foto do odômetro (SCRUM-206)', () => {
     api.enviar.mockResolvedValue({ id: 'ev-c', fase: 'CHEGADA', expira_em: '' });
   });
 
+  it('rejeita km final acima do limite antes de calcular a distância ou enviar a foto', async () => {
+    const onSalvar = vi.fn();
+    render(<ModalFinalizarViagem viagem={viagem} onClose={vi.fn()} onSalvar={onSalvar} />);
+    await screen.findByRole('button', { name: /Carregar foto/ });
+    await escolherFoto(fotoJpeg(), 'CHEGADA');
+    fireEvent.change(screen.getByLabelText(/Odômetro Final/), { target: { value: '2147483648' } });
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar Chegada/ }));
+
+    expect(screen.getByText('A quilometragem deve ser de no máximo 2.147.483.647 km.')).toBeVisible();
+    expect(screen.queryByText(/Distância percorrida apurada/)).not.toBeInTheDocument();
+    expect(api.enviar).not.toHaveBeenCalled();
+    expect(onSalvar).not.toHaveBeenCalled();
+  });
+
   it('mantém a regra do km e envia a foto da chegada', async () => {
     const onSalvar = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
@@ -348,8 +375,7 @@ describe('ModalFinalizarViagem com foto do odômetro (SCRUM-206)', () => {
     await screen.findByRole('button', { name: /Carregar foto/ });
 
     fireEvent.change(screen.getByLabelText(/Odômetro Final/), { target: { value: '900' } });
-    // O navegador já barra pelo `min`; o envio direto confirma a validação própria do modal
-    fireEvent.submit(screen.getByLabelText(/Odômetro Final/).closest('form')!);
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar Chegada/ }));
     expect(await screen.findByText(/não pode ser menor que o odômetro inicial/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/Odômetro Final/), { target: { value: '1120' } });

@@ -3,6 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { Check } from 'lucide-react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
 import type { Viagem } from '../../types/viagem';
+import { ERRO_LIMITE_ODOMETRO, KM_ODOMETRO_MAXIMO } from './limiteOdometro';
 import { SituacaoFotoOdometro } from './SituacaoFotoOdometro';
 import { mensagemFalhaTransicao, useFotoOdometro } from './useFotoOdometro';
 
@@ -24,8 +25,10 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
   const foto = useFotoOdometro(viagem, 'CHEGADA');
 
   const kmFinalNum = Number(kmFinal);
-  const kmRodados =
-    kmFinal && !isNaN(kmFinalNum) && kmFinalNum >= kmInicial ? kmFinalNum - kmInicial : null;
+  const kmRodados = kmFinal && Number.isInteger(kmFinalNum)
+    && kmFinalNum >= kmInicial && kmFinalNum <= KM_ODOMETRO_MAXIMO
+    ? kmFinalNum - kmInicial
+    : null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -42,6 +45,10 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
       setErro(
         `O odômetro final (${kmFinalNum} km) não pode ser menor que o odômetro inicial (${kmInicial} km).`,
       );
+      return;
+    }
+    if (kmFinalNum > KM_ODOMETRO_MAXIMO) {
+      setErro(ERRO_LIMITE_ODOMETRO);
       return;
     }
     if (foto.fotoExigida && !foto.arquivo) {
@@ -74,7 +81,7 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
       ajustarAoTeclado
       bloquearFechamento={salvando}
     >
-      <form onSubmit={handleSubmit}>
+      <form noValidate onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">
             {erro}
@@ -107,6 +114,7 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
           readOnly={salvando}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmFinal(e.target.value)}
           min={kmInicial}
+          max={KM_ODOMETRO_MAXIMO}
           required
         />
 
