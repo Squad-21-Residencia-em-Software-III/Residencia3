@@ -42,6 +42,11 @@ vi.mock('../config/database', () => ({
   db: mockDb,
 }));
 vi.mock('../services/filaSvoService', () => ({ reavaliarFilaSvo: vi.fn() }));
+// O vínculo das fotos do odômetro tem testes próprios (evidenciaOdometroTransicao.test.ts)
+vi.mock('../services/evidenciaOdometroTransicao', () => ({
+  registrarEvidenciaNaTransicao: vi.fn(async () => undefined),
+  concluirOperacao: vi.fn(async () => undefined),
+}));
 
 vi.mock('../models/veiculoModel', () => ({
   veiculoModel: { atualizarStatus: vi.fn() },

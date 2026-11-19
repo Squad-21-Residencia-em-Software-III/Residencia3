@@ -281,7 +281,8 @@ describe('Rotas de viagens', () => {
       'ADMINISTRATIVA',
       5,
       1000,
-      expect.anything()
+      expect.anything(),
+      undefined,
     );
   });
 
@@ -323,7 +324,8 @@ describe('Rotas de viagens', () => {
       'SVO',
       5,
       1050,
-      expect.anything()
+      expect.anything(),
+      undefined,
     );
   });
 
@@ -385,7 +387,8 @@ describe('Rotas de viagens', () => {
       expect.objectContaining({
         id: 3,
         perfil: PERFIS.MOTORISTA_FROTA,
-      })
+      }),
+      undefined,
     );
   });
 
@@ -410,7 +413,8 @@ describe('Rotas de viagens', () => {
       expect.objectContaining({
         id: 3,
         perfil: PERFIS.MOTORISTA_FROTA,
-      })
+      }),
+      undefined,
     );
   });
 
@@ -435,7 +439,8 @@ describe('Rotas de viagens', () => {
       expect.objectContaining({
         id: 3,
         perfil: PERFIS.MOTORISTA_SVO,
-      })
+      }),
+      undefined,
     );
   });
 

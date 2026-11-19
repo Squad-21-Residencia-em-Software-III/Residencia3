@@ -8,6 +8,7 @@ import { veiculoModel } from '../models/veiculoModel';
 import { viagemModel, type ViagemDetalhada } from '../models/viagemModel';
 import type { CriarViagemInput, TipoOperacao } from '../validators/viagemSchemas';
 import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
+import { concluirOperacao, registrarEvidenciaNaTransicao } from './evidenciaOdometroTransicao';
 import { reavaliarFilaSvo } from './filaSvoService';
 import {
   periodoDaSolicitacao,
@@ -29,7 +30,7 @@ type AlocarOrdemSvoInput = Extract<CriarViagemInput, { tipo_operacao: 'SVO' }>;
 // solicitacao*: status que a solicitação recebe em cada etapa (null = não muda).
 // A solicitação administrativa fica AGENDADA durante a viagem, CONCLUIDA ao final
 // e volta a APROVADA (pode ser agendada de novo) quando a viagem é cancelada.
-const OPERACOES = {
+export const OPERACOES = {
   ADMINISTRATIVA: {
     tabela: 'viagens_frota',
     agendada: 'AGENDADA',
@@ -79,7 +80,7 @@ export const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacao[]>> = {
   [PERFIS.GESTOR_SVO]: ['SVO'],
 };
 
-function garantirAcesso(perfil: Perfil, tipo: TipoOperacao): void {
+export function garantirAcesso(perfil: Perfil, tipo: TipoOperacao): void {
   if (!(TIPOS_POR_PERFIL[perfil] ?? []).includes(tipo)) {
     throw new AppError(
       'Você não tem permissão para gerenciar este tipo de viagem',
@@ -88,7 +89,7 @@ function garantirAcesso(perfil: Perfil, tipo: TipoOperacao): void {
   }
 }
 
-async function garantirAcessoAoRegistro(
+export async function garantirAcessoAoRegistro(
   trx: Knex.Transaction,
   autor: Autor,
   tipo: TipoOperacao,
@@ -356,7 +357,7 @@ async function registrarAuditoria(trx: Knex.Transaction, autorId: number, acao: 
   );
 }
 
-async function buscarParaAtualizar(trx: Knex.Transaction, tipo: TipoOperacao, id: number) {
+export async function buscarParaAtualizar(trx: Knex.Transaction, tipo: TipoOperacao, id: number) {
   const viagem = await trx(OPERACOES[tipo].tabela).where({ id }).forUpdate().first();
   if (!viagem) {
     throw new AppError('Viagem não encontrada', 404);
@@ -493,7 +494,8 @@ export const viagemService = {
     });
   },
 
-  async iniciarViagem(tipo: TipoOperacao, viagemId: number, kmInicial: number, autor: Autor) {
+  // evidenciaId: foto do odômetro enviada antes em POST /evidencias-odometro (SCRUM-208)
+  async iniciarViagem(tipo: TipoOperacao, viagemId: number, kmInicial: number, autor: Autor, evidenciaId?: number) {
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
@@ -540,6 +542,11 @@ export const viagemService = {
         }
       }
 
+      // Foto da saída: confirmada na mesma transação, ou a transição não acontece
+      const evidenciaSaida = await registrarEvidenciaNaTransicao(trx, {
+        tipo, viagemId, viagem, fase: 'SAIDA', km: kmInicial, evidenciaId, autorId: autor.id,
+      });
+
       // Atualiza a viagem
       await trx(operacao.tabela)
         .where({ id: viagemId })
@@ -552,13 +559,14 @@ export const viagemService = {
       // Veículo → EM_USO e motorista → EM_VIAGEM
       await sincronizarStatus(trx, viagem.veiculo_id, viagem.motorista_id);
 
-      await registrarAuditoria(trx, autor.id, `INICIOU_VIAGEM tipo=${tipo} id=${viagemId} km_inicial=${kmInicial}`);
+      await registrarAuditoria(trx, autor.id,
+        `INICIOU_VIAGEM tipo=${tipo} id=${viagemId} km_inicial=${kmInicial}${evidenciaSaida ? ` evidencia=${evidenciaSaida}` : ''}`);
 
       return detalhar(trx, tipo, viagemId);
     });
   },
 
-  async finalizarViagem(tipo: TipoOperacao, viagemId: number, kmFinal: number, autor: Autor) {
+  async finalizarViagem(tipo: TipoOperacao, viagemId: number, kmFinal: number, autor: Autor, evidenciaId?: number) {
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
@@ -584,6 +592,12 @@ export const viagemService = {
         throw new AppError(`O km final não pode ser menor que o km inicial (${viagem.km_inicial})`, 400);
       }
 
+      // Foto da chegada: confirmada na mesma transação, ou a transição não acontece
+      const transicao = {
+        tipo, viagemId, viagem, fase: 'CHEGADA' as const, km: kmFinal, evidenciaId, autorId: autor.id,
+      };
+      const evidenciaChegada = await registrarEvidenciaNaTransicao(trx, transicao);
+
       // Atualiza a viagem
       await trx(operacao.tabela)
         .where({ id: viagemId })
@@ -592,6 +606,8 @@ export const viagemService = {
           km_final: kmFinal,
           [operacao.colunaChegada]: new Date(),
         });
+      // Prazo de guarda das fotos (12 meses) conta da conclusão real
+      await concluirOperacao(trx, transicao);
 
       // Atualiza km do veiculo sem reduzir o valor já registrado
       await trx('veiculos')
@@ -607,7 +623,8 @@ export const viagemService = {
         await reavaliarFilaSvo(trx, autor.id);
       }
 
-      await registrarAuditoria(trx, autor.id, `FINALIZOU_VIAGEM tipo=${tipo} id=${viagemId} km_final=${kmFinal}`);
+      await registrarAuditoria(trx, autor.id,
+        `FINALIZOU_VIAGEM tipo=${tipo} id=${viagemId} km_final=${kmFinal}${evidenciaChegada ? ` evidencia=${evidenciaChegada}` : ''}`);
 
       return detalhar(trx, tipo, viagemId);
     });

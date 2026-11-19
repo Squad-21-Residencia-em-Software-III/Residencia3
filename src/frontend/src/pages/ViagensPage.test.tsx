@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +7,7 @@ import { RECURSOS_BACKEND } from '../config/recursosBackend';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { viagensApi } from '../services/api/viagensApi';
+import { evidenciasOdometroApi } from '../services/api/evidenciasOdometroApi';
 import type { Viagem } from '../types/viagem';
 import ViagensPage from './ViagensPage';
 
@@ -204,5 +205,42 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     expect(within(modal).getByText('Agendar coleta SVO')).toBeInTheDocument();
     expect(within(modal).getByText('Solicitação SVO #31')).toBeInTheDocument();
     await waitFor(() => expect(veiculosApi.listar).toHaveBeenCalled());
+  });
+});
+
+vi.mock('../services/api/evidenciasOdometroApi', () => ({
+  evidenciasOdometroApi: { enviar: vi.fn(), consultar: vi.fn(), arquivo: vi.fn() },
+}));
+
+describe('ViagensPage: fotos do odômetro no detalhe (SCRUM-207)', () => {
+  const concluida = { ...viagem(7, 'ADMINISTRATIVA', 'Hospital de Lagarto'), status: 'CONCLUIDA' as const, km_inicial: 100, km_final: 150 };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessao.perfil = 'GESTOR_FROTA';
+    api.listar.mockResolvedValue([concluida]);
+    api.listarAlertasSvo.mockResolvedValue([]);
+    vi.mocked(evidenciasOdometroApi.consultar).mockReturnValue(new Promise(() => {}));
+  });
+
+  afterEach(() => {
+    RECURSOS_BACKEND.fotosOdometro = false;
+    sessao.perfil = 'ADMINISTRADOR';
+  });
+
+  it('desligado, o detalhe não oferece as fotos', async () => {
+    abrir();
+    fireEvent.click(await screen.findByTitle('Ver detalhes da viagem'));
+    expect(await screen.findByText('Viagem #7')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Fotos do odômetro/ })).not.toBeInTheDocument();
+  });
+
+  it('Gestor de Frota abre as fotos da viagem administrativa', async () => {
+    RECURSOS_BACKEND.fotosOdometro = true;
+    abrir();
+    fireEvent.click(await screen.findByTitle('Ver detalhes da viagem'));
+    fireEvent.click(await screen.findByRole('button', { name: /Fotos do odômetro/ }));
+    expect(await screen.findByText(/Fotos do odômetro · Viagem administrativa #7/)).toBeInTheDocument();
+    expect(evidenciasOdometroApi.consultar).toHaveBeenCalledWith(expect.objectContaining({ id: 7, tipo_operacao: 'ADMINISTRATIVA' }));
   });
 });

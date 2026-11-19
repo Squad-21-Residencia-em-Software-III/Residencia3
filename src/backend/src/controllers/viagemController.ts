@@ -59,18 +59,18 @@ export const viagemController = {
 
   async iniciar(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
-    const { tipo_operacao, km_inicial } = iniciarViagemSchema.parse(req.body);
+    const { tipo_operacao, km_inicial, evidencia_id } = iniciarViagemSchema.parse(req.body);
     const autor = usuarioAutenticado(req);
 
-    res.json(await viagemService.iniciarViagem(tipo_operacao, id, km_inicial, autor));
+    res.json(await viagemService.iniciarViagem(tipo_operacao, id, km_inicial, autor, evidencia_id));
   },
 
   async finalizar(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
-    const { tipo_operacao, km_final } = finalizarViagemSchema.parse(req.body);
+    const { tipo_operacao, km_final, evidencia_id } = finalizarViagemSchema.parse(req.body);
     const autor = usuarioAutenticado(req);
 
-    res.json(await viagemService.finalizarViagem(tipo_operacao, id, km_final, autor));
+    res.json(await viagemService.finalizarViagem(tipo_operacao, id, km_final, autor, evidencia_id));
   },
 
   async cancelar(req: Request, res: Response): Promise<void> {
