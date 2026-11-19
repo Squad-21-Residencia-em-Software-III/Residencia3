@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { AppError } from '../errors/AppError';
 
 export const TAMANHO_MAXIMO_FOTO_BYTES = 10 * 1024 * 1024;
+export const LIMITE_FOTO_ARMAZENADA = 512 * 1024;
 export type FormatoFoto = 'image/jpeg' | 'image/png' | 'image/webp';
 
 /** Primeiro confere a assinatura, antes de acionar o decodificador. */
@@ -20,24 +21,29 @@ export async function normalizarFotoOdometro(entrada: Buffer) {
   if (entrada.length > TAMANHO_MAXIMO_FOTO_BYTES) {
     throw new AppError('A foto deve ter no máximo 10 MB', 413);
   }
-  const formato = detectarFormato(entrada);
-  if (!formato) {
+  const formatoEntrada = detectarFormato(entrada);
+  if (!formatoEntrada) {
     throw new AppError('Envie uma foto JPG, PNG ou WebP. Fotos HEIC do iPhone precisam ser convertidas.', 400);
   }
   let bytes: Buffer;
   try {
-    const decoder = formato === 'image/jpeg' ? 'jpeg' : formato === 'image/png' ? 'png' : 'webp';
+    const decoder = formatoEntrada === 'image/jpeg' ? 'jpeg' : formatoEntrada === 'image/png' ? 'png' : 'webp';
     const imagem = sharp(entrada, { failOn: 'warning', limitInputPixels: 16_000_000 });
     const metadados = await imagem.metadata();
     if (metadados.format !== decoder || (metadados.pages ?? 1) > 1) {
       throw new Error('Formato de imagem inválido');
     }
-    bytes = await imagem.autoOrient().toFormat(decoder).timeout({ seconds: 4 }).toBuffer();
+    bytes = await imagem.autoOrient()
+      .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 78 })
+      .timeout({ seconds: 4 })
+      .toBuffer();
   } catch {
     throw new AppError('A foto está corrompida ou ultrapassa o limite de resolução', 422);
   }
-  if (bytes.length > TAMANHO_MAXIMO_FOTO_BYTES) {
-    throw new AppError('A foto processada deve ter no máximo 10 MB', 413);
+  if (bytes.length > LIMITE_FOTO_ARMAZENADA) {
+    throw new AppError('A foto processada deve ter no máximo 512 KB. Tire outra foto ou use uma imagem menor.', 413);
   }
-  return { formato, bytes };
+  return { formato: 'image/jpeg' as const, bytes };
 }

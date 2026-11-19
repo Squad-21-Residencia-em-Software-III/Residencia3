@@ -1,13 +1,11 @@
 import type { Knex } from 'knex';
-import type { ArmazenamentoEvidencias } from './armazenamentoEvidencias';
-import { CHAVE_OPACA } from './chavesEvidencias';
+import { TABELA_ARQUIVOS_ODOMETRO } from './armazenamentoEvidenciasPostgres';
 import { VALIDADE_PROVISORIA_MS } from './evidenciaOdometroTransicao';
 
-const MINUTOS_LIMPEZA_STAGING = VALIDADE_PROVISORIA_MS / 60_000 + 5;
+const MINUTOS_LIMPEZA_STAGING = VALIDADE_PROVISORIA_MS / 60_000;
 
 interface Candidata {
   id: number;
-  storage_key: string;
   status: 'STAGING' | 'ATIVA';
 }
 
@@ -15,7 +13,7 @@ function candidatas(db: Knex | Knex.Transaction) {
   return db<Candidata>('evidencias_odometro as e')
     .where('e.modalidade', 'FOTO')
     .where('e.preservacao_legal', false)
-    .whereRaw("e.storage_key ~ '^odometro/v1/[0-9a-f]{64}$'")
+    .whereExists(db(TABELA_ARQUIVOS_ODOMETRO).select('evidencia_id').whereRaw('?? = ??', ['evidencia_id', 'e.id']))
     .where((consulta) => {
       consulta.where((staging) => staging.where('e.status', 'STAGING')
         .whereRaw("e.criado_em <= CURRENT_TIMESTAMP - (? * interval '1 minute')", [MINUTOS_LIMPEZA_STAGING]))
@@ -43,7 +41,6 @@ function candidatas(db: Knex | Knex.Transaction) {
 
 export async function processarRetencaoEvidencias(
   db: Knex,
-  storage: Pick<ArmazenamentoEvidencias, 'remover'>,
   opcoes: { aplicar: boolean; limite: number },
 ) {
   if (!Number.isInteger(opcoes.limite) || opcoes.limite < 1 || opcoes.limite > 100) {
@@ -65,23 +62,22 @@ export async function processarRetencaoEvidencias(
       const removeu = await db.transaction(async (trx) => {
         // A confirmação de uma foto e a alteração de preservação usam a mesma linha.
         const foto = await candidatas(trx).where('e.id', id)
-          .forUpdate('e').skipLocked().first('e.id', 'e.storage_key', 'e.status');
-        if (!foto || !CHAVE_OPACA.test(foto.storage_key)) return false;
+          .forUpdate('e').skipLocked().first('e.id', 'e.status');
+        if (!foto) return false;
 
-        // Verifica as constraints no banco antes de solicitar a exclusão remota.
-        // As mudanças só ficam visíveis se a exclusão for confirmada pelo R2.
+        // Arquivo e metadados são alterados na mesma transação.
+        if (!await trx(TABELA_ARQUIVOS_ODOMETRO).where({ evidencia_id: id }).del()) return false;
         await trx('evidencias_odometro').where({ id }).update(foto.status === 'STAGING'
           ? { status: 'REJEITADA' }
           : {
               status: 'EXPURGADA_RETENCAO', storage_key: null, expurgado_em: trx.fn.now(),
               expurgo_motivo: 'PRAZO_RETENCAO_12_MESES',
             });
-        await storage.remover(foto.storage_key);
         return true;
       });
       if (removeu) resultado.removidas++;
     } catch {
-      // Mantém a linha elegível para retry, sem registrar chave nem erro do provedor.
+      // Mantém a linha e os bytes elegíveis para retry após rollback.
       resultado.falhas++;
     }
   }

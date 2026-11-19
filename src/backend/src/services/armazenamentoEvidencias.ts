@@ -1,22 +1,21 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { link, mkdir, open, rm } from 'node:fs/promises';
 import path from 'node:path';
+import type { Knex } from 'knex';
+import { db } from '../config/database';
 import { env, type DriverArmazenamentoEvidencias } from '../config/env';
 import { AppError } from '../errors/AppError';
-import { armazenamentoR2 } from './armazenamentoEvidenciasR2';
+import { armazenamentoPostgres } from './armazenamentoEvidenciasPostgres';
 import { limiteLeituraEvidencia, validarChave } from './chavesEvidencias';
 
 export { validarChave } from './chavesEvidencias';
 
 /**
- * Onde ficam os arquivos das fotos do odômetro (SCRUM-208/209/211). O banco guarda só a
- * storage_key; os bytes ficam aqui, nunca em log, auditoria ou JSON da viagem.
- * Novos destinos (ex.: bucket privado) implementam esta interface.
+ * Armazenamento de fotos, acessado pelo backend após autorização.
  */
 export interface ArmazenamentoEvidencias {
-  salvar(chave: string, conteudo: Buffer, tipo?: string): Promise<void>;
-  ler(chave: string, maxBytes?: number): Promise<Buffer>;
-  remover(chave: string): Promise<void>;
+  salvar(chave: string, conteudo: Buffer, trx?: Knex.Transaction): Promise<void>;
+  ler(chave: string, maxBytes?: number, trx?: Knex.Transaction): Promise<Buffer>;
 }
 
 export const MENSAGEM_ARMAZENAMENTO_DESATIVADO =
@@ -29,12 +28,9 @@ const desativado: ArmazenamentoEvidencias = {
   async ler() {
     throw new AppError(MENSAGEM_ARMAZENAMENTO_DESATIVADO, 503);
   },
-  async remover() {
-    throw new AppError(MENSAGEM_ARMAZENAMENTO_DESATIVADO, 503);
-  },
 };
 
-export function armazenamentoLocal(pastaBase: string): ArmazenamentoEvidencias {
+export function armazenamentoLocal(pastaBase: string): ArmazenamentoEvidencias & { remover(chave: string): Promise<void> } {
   const base = path.resolve(pastaBase);
   const caminho = (chave: string) => {
     const destino = path.resolve(base, validarChave(chave));
@@ -102,7 +98,7 @@ export function armazenamentoLocal(pastaBase: string): ArmazenamentoEvidencias {
 }
 
 function criar(driver: DriverArmazenamentoEvidencias): ArmazenamentoEvidencias {
-  if (driver === 'r2' && env.evidenciasR2) return armazenamentoR2(env.evidenciasR2);
+  if (driver === 'postgres') return armazenamentoPostgres(db, () => env.evidenciasPostgresLimiteBytes);
   return driver === 'local' ? armazenamentoLocal(env.evidenciasStorageDir) : desativado;
 }
 
@@ -117,11 +113,11 @@ export function armazenamentoConfigurado(): boolean {
   return armazenamentoEvidencias() !== desativado;
 }
 
-export async function lerEvidenciaVerificada(chave: string, tamanho: number, sha256: string): Promise<Buffer> {
+export async function lerEvidenciaVerificada(chave: string, tamanho: number, sha256: string, trx?: Knex.Transaction): Promise<Buffer> {
   if (!Number.isInteger(tamanho) || tamanho < 1 || tamanho > limiteLeituraEvidencia || !/^[0-9a-f]{64}$/.test(sha256)) {
     throw new AppError('Metadados de evidência inválidos', 502);
   }
-  const bytes = await armazenamentoEvidencias().ler(chave, tamanho);
+  const bytes = await armazenamentoEvidencias().ler(chave, tamanho, trx);
   if (bytes.length !== tamanho || createHash('sha256').update(bytes).digest('hex') !== sha256) {
     throw new AppError('Falha de integridade da evidência', 502, 'EVIDENCIAS_INTEGRIDADE');
   }

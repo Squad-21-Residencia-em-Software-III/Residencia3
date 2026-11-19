@@ -1,56 +1,39 @@
-# SCRUM-211 | Armazenamento das fotos do odômetro
+# SCRUM-211 | Fotos do odômetro no PostgreSQL do Neon
 
-O driver Cloudflare R2 integra as fotos das viagens administrativas e dos deslocamentos SVO à API existente. Upload, autorização, download e metadados continuam nas rotas e tabelas já integradas à `develop`. O R2 precisa ser provisionado e homologado para ser ativado. [SCRUM-211](https://squad21.atlassian.net/browse/SCRUM-211) · [Contrato do backend](evidencias-odometro.md)
+As fotos de saída e de chegada ficam no mesmo PostgreSQL usado pela API. A decisão prioriza o baixo volume de um projeto acadêmico e dispensa um serviço de arquivos externo. A aplicação usa a conexão `POSTGRES_*` já configurada. [SCRUM-211](https://squad21.atlassian.net/browse/SCRUM-211) · [Contrato do backend](evidencias-odometro.md)
 
-## Decisão de armazenamento
+## Como funciona
 
-O sistema de arquivos padrão do Render é efêmero. Um disco persistente no Render limita o serviço a uma instância e impede deploys sem interrupção. O Neon continua responsável pelos metadados e vínculos. A Vercel encaminha `/api` ao Render e o navegador recebe as imagens pelo proxy autenticado. [Discos do Render](https://render.com/docs/disks) · [Rewrites da Vercel](https://vercel.com/docs/routing/rewrites#rewrites-to-external-origins)
+- O endpoint recebe JPEG, PNG ou WebP de até 10 MiB e 16 milhões de pixels. O servidor aplica a orientação da câmera, remove EXIF e converte para JPEG com até 1.600 pixels no maior lado. A cópia persistida tem limite de 512 KiB. Se ultrapassar o limite após a compactação, o envio recebe 413.
+- A migration cria `evidencias_odometro_arquivos`, com uma coluna `bytea` ligada à evidência. Em modo PostgreSQL, os bytes, o tamanho, o SHA-256, o vínculo e a auditoria do envio são gravados na mesma transação. Um reenvio com a mesma chave e o mesmo conteúdo reaproveita o registro.
+- Ao confirmar uma evidência, a API confere tamanho e SHA-256 dentro da transação da viagem. A consulta do arquivo passa pelo mesmo proxy autenticado, com as permissões de gestor por operação e respostas sem cache.
+- O expurgo remove os bytes e atualiza o estado da evidência na mesma transação. Os registros da viagem, a auditoria e os metadados permanecem disponíveis.
 
-| Opção | Custo de referência | Segurança e operação |
-| --- | --- | --- |
-| **R2 Standard** | 10 GB-mês, 1 milhão de operações classe A e 10 milhões classe B incluídos. Excedentes de US$ 0,015/GB-mês, US$ 4,50/milhão A e US$ 0,36/milhão B. Saída de dados do R2 sem tarifa. | Bucket privado por padrão, durabilidade projetada de onze noves, criptografia e PUT condicional atômico. A localização sugerida não garante residência no Brasil. [Preços](https://developers.cloudflare.com/r2/pricing/) · [Consistência](https://developers.cloudflare.com/r2/reference/consistency/) · [Localização](https://developers.cloudflare.com/r2/reference/data-location/) |
-| **AWS S3 Standard** | US$ 0,023/GB-mês como referência na Virgínia, mais operações e transferência conforme tabela regional. | IAM e Block Public Access, retenção e versões administráveis, opção de região São Paulo. O descarte precisa alcançar as versões e réplicas aplicáveis. [Preços](https://aws.amazon.com/s3/pricing/) · [Escrita condicional](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html) |
-| **Backblaze B2** | 10 GB gratuitos, US$ 6,95/TB-mês e saída incluída até 3× o armazenamento médio mensal. | Bucket privado por escopo e versões. A integração teria de comprovar a escrita sem sobrescrita e o descarte das versões. [Preços](https://www.backblaze.com/cloud-storage/pricing) · [Versões](https://www.backblaze.com/apidocs/b2-list-file-versions) |
-| **Neon Object Storage** | 5 GB incluídos no plano gratuito anunciado. | S3 vinculado a branches e disponibilidade regional variável. Avaliar como clonagem e restauração afetam as cópias privadas e o expurgo. [Preços](https://neon.com/pricing) · [Regiões](https://neon.com/docs/introduction/regions#product-availability) |
-
-Como referência, 1.000 deslocamentos físicos por mês com duas fotos de 2 MB geram aproximadamente 48 GB em 12 meses. No R2 Standard, o armazenamento primário custaria cerca de US$ 0,57/mês após a franquia, antes de operações excedentes, cópias e tráfego de outros serviços. Confirmar com a FSPH a jurisdição, a política de cópias e a cobrança institucional antes de provisionar. Se houver exigência de residência no Brasil, avaliar S3 São Paulo antes da ativação. [Localização e jurisdição do R2](https://developers.cloudflare.com/r2/reference/data-location/)
-
-## Configuração no backend
+## Configuração
 
 | Variável | Uso |
 | --- | --- |
-| `EVIDENCIAS_STORAGE` | `r2` para habilitar o bucket. O padrão é `desativado`. |
-| `EVIDENCIAS_R2_AMBIENTE` | `qa` ou `producao` com `NODE_ENV=production`. `teste` e `desenvolvimento` ficam restritos aos respectivos ambientes. |
-| `EVIDENCIAS_R2_BUCKET` | Bucket privado exclusivo, com sufixo `-<ambiente>`. |
-| `EVIDENCIAS_R2_ACCOUNT_ID` e `EVIDENCIAS_R2_JURISDICAO` | Formam o endpoint HTTPS da Cloudflare. Jurisdição vazia, `eu` ou `us`. |
-| `EVIDENCIAS_R2_ACCESS_KEY_ID`, `EVIDENCIAS_R2_SECRET_ACCESS_KEY` e `EVIDENCIAS_R2_SESSION_TOKEN` | Credenciais de objeto no servidor. O token de sessão é opcional e deve acompanhar credenciais temporárias. |
-| `EVIDENCIAS_R2_CHAVE_SECRETA` | Segredo estável de 32 bytes aleatórios em hexadecimal, distinto por ambiente. O HMAC associa o UUID de retry ao autor sem gravar o identificador do autor na chave. Manter estável durante a rotação das credenciais S3. |
-| `EVIDENCIAS_R2_TIMEOUT_MS` | 4.000 ms por padrão para a operação do SDK, de 250 a 8.000. O PUT e a leitura após conflito compartilham o mesmo prazo. |
-| `FOTOS_ODOMETRO_OBRIGATORIAS` | Ativar somente após a homologação da integração e aprovação do fluxo de exceção. |
+| `EVIDENCIAS_STORAGE=postgres` | Habilita a gravação no banco usado pela API. O padrão continua `desativado` até a liberação do recurso. |
+| `EVIDENCIAS_POSTGRES_LIMITE_MIB=128` | Teto de bytes das fotos armazenadas. Faixa de 1 a 512 MiB. A checagem é serializada no banco para cobrir envios simultâneos. |
+| `FOTOS_ODOMETRO_OBRIGATORIAS=true` | Exige a evidência nas transições. Ativar após a homologação e a aprovação do fluxo de exceção. |
 
-### Isolamento do ambiente de QA
+O limite de 128 MiB cobre o conteúdo das fotos, inclusive as provisórias. O tamanho físico do PostgreSQL, seu histórico, as demais tabelas e a transferência têm limites próprios no Neon. Antes de ativar, confira o plano e o espaço disponível no painel. Quando a cota de fotos é atingida, novos envios são recusados com `EVIDENCIAS_LIMITE_ARMAZENAMENTO`. As fotos existentes continuam disponíveis e seguem a política de retenção. [Planos do Neon](https://neon.com/pricing) · [Tipo binário do PostgreSQL](https://www.postgresql.org/docs/current/datatype-binary.html)
 
-O `src/frontend/vercel.json` encaminha `/api` para `fsph-api.onrender.com` também no preview do PR. Antes de enviar qualquer foto em homologação, disponibilizar uma API e um PostgreSQL descartáveis de QA. Usar um projeto ou configuração de deploy exclusivo de QA na Vercel, com o rewrite apontando para esse Render, `PROXY_SECRET` próprio nos dois serviços e a origem de QA na configuração da API. Confirmar o destino com uma consulta de leitura e correlacionar a requisição nos logs da API de QA antes de enviar fotos.
+A migration concede leitura, inserção e exclusão apenas dos bytes à role de aplicação, com `POSTGRES_APP_USER` definido no processo de migration. Os metadados permanecem na tabela existente da SCRUM-210. Conferir a presença de chaves do driver local em um inventário antes da troca. Arquivos locais anteriores, se houver, precisam de migração validada separadamente.
 
-O plano Free do Render compartilha a franquia de horas entre os serviços do workspace. Se ela acabar, todos os serviços Free do workspace são suspensos. Confirmar capacidade para o teste ou usar um workspace de QA separado da produção. [Limites do Render Free](https://render.com/docs/free#monthly-usage-limits)
+## Homologação e ativação
 
-### Sequência de homologação
+1. Aplicar a migration em um PostgreSQL descartável. Configurar a API de teste com `EVIDENCIAS_STORAGE=postgres` e usar fotos fictícias. Validar envio, retry, autorização, recebimento de erro ao atingir o teto e leitura após reinício.
+2. Se usar a Vercel em QA, apontar o rewrite para a API de QA, com `PROXY_SECRET` próprio. O `vercel.json` do repositório encaminha o preview atual para a API de produção. Confirme o destino antes de enviar fotos.
+3. Após revisão da equipe de banco, conferir o espaço do Neon do projeto, aplicar a migration e habilitar a variável na API pelo fluxo de implantação do Squad. Confirmar a presença da nova tabela no backup de teste e testar a restauração antes de habilitar a obrigatoriedade.
+4. Para reverter uma implantação, preservar a migration e os arquivos armazenados. A reversão da migration é bloqueada enquanto houver fotos na tabela. Manter um leitor compatível até a recuperação ou a migração dos dados.
 
-1. Com aprovação institucional, criar um bucket Standard exclusivo de QA. Manter `r2.dev`, domínios públicos e CORS de bucket desativados. Usar outro bucket, outras credenciais e outro segredo de HMAC em produção. Manter os segredos no Render e fora de `VITE_*`, do repositório e dos logs.
-2. Provisionar credenciais efetivas de API limitadas a `PutObject` e `GetObject` no prefixo `odometro/v1/`. Usar uma credencial separada para `DeleteObject` na rotina de retenção. Para R2, ações individuais podem ser limitadas com credenciais temporárias assinadas localmente. O deploy deve fornecer credenciais válidas e renová-las antes de expirar. Objetos com chaves legadas precisam de plano de migração e leitura aprovado antes da troca de driver. [Credenciais privadas](https://developers.cloudflare.com/r2/api/tokens/) · [Ações e prefixos](https://developers.cloudflare.com/r2/api/s3/temporary-credentials/)
-3. Após `npm ci` e `npm run build`, testar o caminho Vercel → Render com imagens sintéticas de até 10 MiB incluindo o multipart. Verificar a resposta em dispositivos móveis, memória da instância, concorrência limitada por rota e latência p95 de PUT/GET. O limite de payload de Vercel Functions tem escopo próprio e não substitui o teste do rewrite externo. [Limites de Functions](https://vercel.com/docs/functions/limitations)
-4. Confirmar GET anônimo negado no R2, negação para credenciais de outro ambiente e para DELETE com a credencial da API. Enviar uma imagem, reiniciar o Render de QA e comparar os bytes recuperados com o SHA-256 registrado. Cobrir falha de rede após PUT, retry, download com ACL do aplicativo, preservação formal e SVO compartilhado. A API mantém a viagem no estado anterior quando a confirmação da foto falha.
+O ensaio local aplicou as 25 migrations em um PostgreSQL descartável. A suíte passou com 1.390 testes, incluindo as rotas de evidência, a cota sob concorrência, o expurgo e os rollbacks transacionais. Uma foto foi recuperada com o mesmo SHA-256 depois de reiniciar a API com a role restrita. A migration recusou rollback enquanto havia fotos. O teste de restauração do backup e a ativação no Neon do projeto seguem o fluxo de homologação.
 
-### Ensaio local de 19/11/2026
+## Retenção e backups
 
-Executado com as 24 migrations em PostgreSQL descartável, a API do PR em um processo separado e o emulador oficial de S3 do R2, Wrangler 4.165.0, com persistência local e fotos sintéticas. Passaram o envio concorrente sem duplicação, as transições de viagem, as recusas de acesso no proxy e na interface S3 local, a recuperação pelo SHA-256 após reiniciar ambos os processos, a restauração de uma cópia em bucket local com credenciais distintas e o expurgo em simulação e aplicação, com preservação legal. A privacidade do bucket Cloudflare hospedado, o rewrite de QA na Vercel e a persistência após reiniciar o Render continuam pendentes na infraestrutura real. [Emulador local de R2](https://developers.cloudflare.com/r2/local-development/#serve-buckets-over-the-s3-api)
+O prazo de 12 meses começa na conclusão real da viagem administrativa ou do deslocamento físico SVO. A rotina pula fotos com preservação legal e deslocamentos SVO ainda em andamento. Reservas de upload não confirmadas podem ser limpas após 30 minutos.
 
-## Retenção e recuperação
+Após compilar o backend, `npm run evidencias:retencao` simula um lote de 25 itens. Na janela de manutenção aprovada, `npm run evidencias:retencao -- --aplicar` executa a limpeza e o expurgo. É possível usar `--limite=50`, com máximo de 100 por lote. Esse comando usa o banco já configurado e sai com erro se houver falhas no lote.
 
-`npm run evidencias:retencao` simula a rotina e mostra contagens, com 25 candidatos por padrão. `npm run evidencias:retencao -- --limite=50 --aplicar` executa o lote após homologação e autorização. Usar um processo separado com credenciais do ambiente alvo e capturar o código de saída e as contagens para alertar sobre falhas e acúmulo.
-
-- A reserva `STAGING` é válida por 30 minutos. A rotina concede mais cinco minutos antes de remover os bytes de uma reserva abandonada e marcar sua linha como `REJEITADA`.
-- O expurgo de fotos confirmadas usa `retencao_ate` da operação efetivamente concluída. No SVO, a consulta exige o deslocamento concluído e todas as ordens associadas em status terminal. A preservação legal impede qualquer remoção da rotina. A trava da evidência serializa o expurgo com alterações de preservação e confirmação.
-- A rotina altera o estado e envia DELETE dentro da transação por evidência. Uma falha remota deixa a linha elegível para reprocessamento. Um retorno perdido após DELETE pode significar que o objeto já foi removido. Pausar a rotina para registrar pedidos formais de preservação durante um incidente e reconciliar operações pendentes com os registros do bucket.
-- O expurgo mantém a viagem, a auditoria e os metadados da evidência. Excluir por idade de objeto no bucket violaria a regra de conclusão efetiva. A rotina é restrita às chaves opacas criadas para R2. Objetos sem registro após restauração ou migração devem passar por inventário e reconciliação assistida antes de qualquer remoção.
-- Aprovar RPO e RTO das fotos separadamente do PostgreSQL. Usar manifestos de referências e SHA-256 para validar a recuperação em isolamento. Cópias recuperáveis devem obedecer à mesma política de descarte e preservação aprovada. Para reverter, pausar expurgo e novos uploads, preservar o bucket e os vínculos e manter a leitura disponível enquanto se reconcilia a versão anterior. Confirmar que o deploy de reversão entende o driver R2 antes de redirecionar tráfego.
+As fotos passam a integrar os backups completos do PostgreSQL. A retenção aprovada também precisa contemplar as cópias recuperáveis. Testar a restauração com fotos fictícias e comparar o SHA-256 no ambiente isolado. A exclusão libera a cota lógica de fotos. O espaço físico e as cópias históricas seguem o ciclo de manutenção e recuperação do PostgreSQL e do Neon.

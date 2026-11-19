@@ -8,7 +8,7 @@ import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { viagemModel } from '../models/viagemModel';
 import type { TipoOperacao } from '../validators/viagemSchemas';
 import { armazenamentoEvidencias, lerEvidenciaVerificada } from './armazenamentoEvidencias';
-import { chaveR2Evidencia } from './chavesEvidencias';
+import { chavePostgresEvidencia } from './chavesEvidencias';
 import { normalizarFotoOdometro, type FormatoFoto } from './imagemEvidencias';
 import {
   deslocamentoDaOrdem,
@@ -221,21 +221,19 @@ export const evidenciaOdometroService = {
   async enviar(dados: EnvioFoto, conteudo: Buffer, autor: Autor): Promise<EvidenciaEnviada> {
     const { formato, bytes } = await normalizarFotoOdometro(conteudo);
     const idempotencia = dados.chave_idempotencia.toLowerCase();
-    const chaveLegada = `odometro/${autor.id}/${idempotencia}`;
-    const storageKey = env.evidenciasR2
-      ? chaveR2Evidencia(autor.id, idempotencia, env.evidenciasR2.segredoIdempotencia)
-      : chaveLegada;
+    const postgres = env.evidenciasStorage === 'postgres';
+    const storageKey = postgres
+      ? chavePostgresEvidencia(autor.id, idempotencia)
+      : `odometro/${autor.id}/${idempotencia}`;
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    // Persiste a reserva antes de gravar os bytes. Um PUT sem resposta ainda tem
-    // referência para retry e para a limpeza, mesmo se a conexão cair.
-    const reserva = await db.transaction(async (trx) => {
+    const reservar = async (trx: Knex.Transaction) => {
       await trx.raw('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [storageKey]);
       const anterior = await trx<EvidenciaOdometroRow>('evidencias_odometro')
-        .whereIn('storage_key', [storageKey, chaveLegada]).orderBy('id').first();
+        .where({ storage_key: storageKey }).first();
       return anterior ?? criarProvisoria(trx, dados, autor, { storageKey, formato, tamanho: bytes.length, sha256 });
-    });
+    };
     const armazenamento = armazenamentoEvidencias();
-    return db.transaction(async (trx) => {
+    const salvar = async (trx: Knex.Transaction, reserva: EvidenciaOdometroRow) => {
       const evidencia = await trx<EvidenciaOdometroRow>('evidencias_odometro')
         .where({ id: reserva.id }).forUpdate().first();
       if (!evidencia || evidencia.registrado_por !== autor.id || evidencia.tipo_operacao !== dados.tipo_operacao ||
@@ -246,18 +244,16 @@ export const evidenciaOdometroService = {
         (evidencia.status !== 'STAGING' || expiraEm(evidencia.criado_em).getTime() <= Date.now())) {
         throw new AppError('A foto enviada expirou. Envie a foto com uma nova chave.', 409);
       }
-      const legadoSemNormalizacao = evidencia.auditoria_id === null && evidencia.storage_key === chaveLegada &&
+      const legadoSemNormalizacao = !postgres && evidencia.auditoria_id === null &&
         evidencia.sha256 === createHash('sha256').update(conteudo).digest('hex') && evidencia.sha256 !== sha256;
       if (!legadoSemNormalizacao && evidencia.sha256 !== sha256) {
         throw new AppError('Esta chave de envio já foi usada para outra foto. Gere uma nova chave.', 409);
       }
       if (evidencia.status === 'ATIVA' || evidencia.auditoria_id !== null) return respostaEnvio(evidencia);
-      if (!evidencia.storage_key) throw new AppError('Reserva de evidência inválida', 502);
-      if (env.evidenciasR2 && evidencia.storage_key === chaveLegada) {
-        // A migração de arquivos locais é separada. Uma requisição não recria a chave legada no R2.
-        await lerEvidenciaVerificada(chaveLegada, evidencia.tamanho_bytes!, evidencia.sha256!);
+      if (legadoSemNormalizacao) {
+        await lerEvidenciaVerificada(storageKey, evidencia.tamanho_bytes!, evidencia.sha256!, trx);
       } else {
-        await armazenamento.salvar(evidencia.storage_key, legadoSemNormalizacao ? conteudo : bytes, formato);
+        await armazenamento.salvar(storageKey, bytes, trx);
       }
       const [auditoria] = await trx('auditorias').insert({
         usuario_id: autor.id,
@@ -266,7 +262,14 @@ export const evidenciaOdometroService = {
       }).returning<{ id: number }[]>('id');
       await trx('evidencias_odometro').where({ id: evidencia.id }).update({ auditoria_id: auditoria!.id });
       return respostaEnvio(evidencia);
-    });
+    };
+    if (postgres) {
+      // No mesmo banco, bytes, metadados e auditoria confirmam juntos ou sofrem rollback juntos.
+      return db.transaction(async (trx) => salvar(trx, await reservar(trx)));
+    }
+    // Preserva a reserva para retry quando o destino for o disco local.
+    const reserva = await db.transaction(reservar);
+    return db.transaction((trx) => salvar(trx, reserva));
   },
 
   async consultar(tipo: TipoOperacao, viagemId: number, autor: Autor) {

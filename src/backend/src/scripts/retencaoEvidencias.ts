@@ -1,6 +1,5 @@
 import { db } from '../config/database';
 import { env } from '../config/env';
-import { armazenamentoEvidencias } from '../services/armazenamentoEvidencias';
 import { processarRetencaoEvidencias } from '../services/retencaoEvidencias';
 
 async function executar(): Promise<void> {
@@ -8,11 +7,11 @@ async function executar(): Promise<void> {
   if (argumentos.some((arg) => arg !== '--aplicar' && !/^--limite=\d+$/.test(arg))) {
     throw new Error('Argumentos esperados: --aplicar, --limite=<1 a 100>');
   }
-  if (!env.evidenciasR2) throw new Error('O expurgo exige EVIDENCIAS_STORAGE=r2');
+  if (env.evidenciasStorage !== 'postgres') throw new Error('O expurgo exige EVIDENCIAS_STORAGE=postgres');
   const aplicar = argumentos.includes('--aplicar');
   const limite = Number(argumentos.find((arg) => arg.startsWith('--limite='))?.split('=')[1] ?? 25);
-  const resultado = await processarRetencaoEvidencias(db, armazenamentoEvidencias(), { aplicar, limite });
-  console.info(JSON.stringify({ evento: 'retencao_odometro', ambiente: env.evidenciasR2.ambiente, aplicar, ...resultado }));
+  const resultado = await processarRetencaoEvidencias(db, { aplicar, limite });
+  console.info(JSON.stringify({ evento: 'retencao_odometro', aplicar, ...resultado }));
   if (resultado.falhas > 0) process.exitCode = 1;
 }
 

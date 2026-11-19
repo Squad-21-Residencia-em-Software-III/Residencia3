@@ -173,46 +173,8 @@ function limitesAtivos(valor: string | undefined, nodeEnv: string, producao: boo
 // Fotos do odômetro (SCRUM-208/209, docs/evidencias-odometro.md).
 // desativado: as rotas de foto respondem 503 e iniciar/finalizar funcionam como antes.
 // local: arquivos numa pasta do servidor (desenvolvimento, testes ou disco persistente montado).
-export const DRIVERS_ARMAZENAMENTO_EVIDENCIAS = ['desativado', 'local', 'r2'] as const;
+const DRIVERS_ARMAZENAMENTO_EVIDENCIAS = ['desativado', 'local', 'postgres'] as const;
 export type DriverArmazenamentoEvidencias = (typeof DRIVERS_ARMAZENAMENTO_EVIDENCIAS)[number];
-
-function configuracaoR2(origem: Origem, nodeEnv: string) {
-  const ambiente = obrigatoria(origem, 'EVIDENCIAS_R2_AMBIENTE');
-  const ambientes = nodeEnv === 'production' ? ['qa', 'producao']
-    : nodeEnv === 'test' ? ['teste'] : ['desenvolvimento'];
-  if (!ambientes.includes(ambiente)) {
-    throw new Error('EVIDENCIAS_R2_AMBIENTE incompatível com NODE_ENV');
-  }
-  const bucket = obrigatoria(origem, 'EVIDENCIAS_R2_BUCKET');
-  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket) || !bucket.endsWith(`-${ambiente}`)) {
-    throw new Error('EVIDENCIAS_R2_BUCKET deve terminar com o sufixo do ambiente');
-  }
-  const conta = obrigatoria(origem, 'EVIDENCIAS_R2_ACCOUNT_ID');
-  if (conta.length !== 32 || !/^[a-f0-9]+$/.test(conta)) {
-    throw new Error('EVIDENCIAS_R2_ACCOUNT_ID inválido');
-  }
-  const jurisdicao = origem.EVIDENCIAS_R2_JURISDICAO || '';
-  if (!['', 'eu', 'us'].includes(jurisdicao)) {
-    throw new Error('EVIDENCIAS_R2_JURISDICAO deve ser vazio, eu ou us');
-  }
-  const segredoIdempotencia = obrigatoria(origem, 'EVIDENCIAS_R2_CHAVE_SECRETA');
-  if (segredoIdempotencia.length !== 64 || !/^[a-f0-9]+$/.test(segredoIdempotencia) ||
-    new Set(segredoIdempotencia).size < 10) {
-    throw new Error('EVIDENCIAS_R2_CHAVE_SECRETA deve conter 32 bytes aleatórios em hexadecimal');
-  }
-  const accessKeyId = obrigatoria(origem, 'EVIDENCIAS_R2_ACCESS_KEY_ID');
-  const secretAccessKey = obrigatoria(origem, 'EVIDENCIAS_R2_SECRET_ACCESS_KEY');
-  const sessionToken = origem.EVIDENCIAS_R2_SESSION_TOKEN || undefined;
-  if ([accessKeyId, secretAccessKey, sessionToken].some((valor) => valor && /\s/.test(valor))) {
-    throw new Error('Credenciais EVIDENCIAS_R2 não podem conter espaços');
-  }
-  return {
-    bucket, segredoIdempotencia, ambiente,
-    endpoint: `https://${conta}${jurisdicao ? `.${jurisdicao}` : ''}.r2.cloudflarestorage.com`,
-    credenciais: { accessKeyId, secretAccessKey, sessionToken },
-    timeoutMs: inteiroNaFaixa('EVIDENCIAS_R2_TIMEOUT_MS', origem.EVIDENCIAS_R2_TIMEOUT_MS, 4000, 250, 8000),
-  };
-}
 
 function configuracaoEvidenciasOdometro(origem: Origem, nodeEnv: string) {
   const valor = (origem.EVIDENCIAS_STORAGE ?? '').trim() || 'desativado';
@@ -235,7 +197,8 @@ function configuracaoEvidenciasOdometro(origem: Origem, nodeEnv: string) {
   return {
     evidenciasStorage: driver,
     evidenciasStorageDir: path.resolve(pasta || path.join(__dirname, '../../storage/evidencias')),
-    evidenciasR2: driver === 'r2' ? configuracaoR2(origem, nodeEnv) : undefined,
+    evidenciasPostgresLimiteBytes:
+      inteiroNaFaixa('EVIDENCIAS_POSTGRES_LIMITE_MIB', origem.EVIDENCIAS_POSTGRES_LIMITE_MIB, 128, 1, 512) * 1024 * 1024,
     fotosOdometroObrigatorias: obrigatorias === 'true',
   };
 }

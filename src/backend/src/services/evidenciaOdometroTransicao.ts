@@ -3,7 +3,6 @@ import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 import type { TipoOperacao } from '../validators/viagemSchemas';
 import { lerEvidenciaVerificada } from './armazenamentoEvidencias';
-import { CHAVE_OPACA } from './chavesEvidencias';
 
 /**
  * Vínculo das fotos do odômetro com o início e o fim das viagens (SCRUM-208).
@@ -147,11 +146,10 @@ async function confirmarProvisoria(trx: Knex.Transaction, t: Transicao, deslocam
   if (Date.now() >= expiraEm(evidencia.criado_em).getTime()) {
     throw erroEvidencia('A foto enviada expirou. Envie a foto novamente.', CODIGOS_EVIDENCIA.EXPIRADA);
   }
-  if (!evidencia.storage_key || !evidencia.sha256 || !evidencia.tamanho_bytes ||
-    (CHAVE_OPACA.test(evidencia.storage_key) && evidencia.auditoria_id === null)) {
+  if (!evidencia.storage_key || !evidencia.sha256 || !evidencia.tamanho_bytes) {
     throw erroEvidencia('O envio da foto ainda não foi concluído.', CODIGOS_EVIDENCIA.INVALIDA);
   }
-  await lerEvidenciaVerificada(evidencia.storage_key, evidencia.tamanho_bytes, evidencia.sha256);
+  await lerEvidenciaVerificada(evidencia.storage_key, evidencia.tamanho_bytes, evidencia.sha256, trx);
   await trx('evidencias_odometro')
     .where({ id: evidencia.id })
     .update({

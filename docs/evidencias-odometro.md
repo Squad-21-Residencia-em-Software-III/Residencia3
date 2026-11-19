@@ -10,11 +10,12 @@ Tudo começa **desligado**:
 
 | Variável | Valores | Padrão | Para que serve |
 |---|---|---|---|
-| `EVIDENCIAS_STORAGE` | `desativado`, `local`, `r2` | `desativado` | Onde ficam os arquivos. `local` é uma pasta do servidor e `r2` usa um bucket privado. |
+| `EVIDENCIAS_STORAGE` | `desativado`, `local`, `postgres` | `desativado` | Onde ficam os arquivos. `local` usa uma pasta e `postgres` usa o banco da API. |
 | `EVIDENCIAS_STORAGE_DIR` | caminho | `src/backend/storage/evidencias` | Pasta do `local`. Em produção é obrigatória, absoluta e num **disco persistente**. |
+| `EVIDENCIAS_POSTGRES_LIMITE_MIB` | inteiro de 1 a 512 | `128` | Teto de bytes das fotos no modo PostgreSQL. |
 | `FOTOS_ODOMETRO_OBRIGATORIAS` | `true`, `false` | `false` | `true`: iniciar e finalizar exigem a foto. Só é aceito com armazenamento configurado. |
 
-O driver `r2` usa a interface `ArmazenamentoEvidencias` e gera chaves opacas. O banco guarda a referência do objeto e os metadados da evidência, e a API entrega a imagem pelo proxy autenticado. [Configuração e homologação da SCRUM-211](scrum-211-armazenamento-odometro.md)
+No modo `postgres`, a SCRUM-211 guarda os bytes em uma tabela separada dentro do banco da API. A imagem continua disponível pelo proxy autenticado. [Configuração e homologação da SCRUM-211](scrum-211-armazenamento-odometro.md)
 
 ## Rotas
 
@@ -28,15 +29,15 @@ Recebe `multipart/form-data` com os campos:
 - `arquivo`.
 
 Validação:
-- O servidor confere a assinatura e decodifica imagens JPEG, PNG e WebP com até 16 milhões de pixels. A imagem guardada tem a orientação aplicada e os metadados EXIF removidos. Arquivo corrompido ou com resolução excessiva recebe 422.
-- O arquivo tem no máximo 10 MB e fica só na memória, nunca no disco temporário.
+- O servidor confere a assinatura e decodifica imagens JPEG, PNG e WebP com até 16 milhões de pixels. A cópia armazenada é JPEG, com orientação aplicada, sem EXIF e limite de 1.600 pixels no maior lado e 512 KiB. Arquivo corrompido ou com resolução excessiva recebe 422.
+- O envio aceita arquivos de até 10 MiB e processa os bytes em memória.
 - O envio tem tempo limite próprio de 60 s; o geral da API é de 15 s.
 
 Regras:
 - Envia quem pode iniciar ou finalizar a viagem: o motorista da própria viagem ou o gestor da operação.
 - A saída só aceita foto com a viagem agendada. A chegada, com a viagem em andamento. Uma fase já registrada responde 409.
 - A foto nasce **provisória** (`STAGING`) e vale por 30 minutos.
-- O banco registra a reserva antes de enviar os bytes. O reenvio com a mesma chave e conteúdo reaproveita a reserva. Se os bytes ainda precisarem ser enviados, a escrita condicional impede sobrescrita.
+- No modo PostgreSQL, a reserva, os bytes e a auditoria são gravados juntos. O reenvio com a mesma chave e conteúdo reaproveita a reserva.
 - Gera auditoria `ENVIOU_FOTO_ODOMETRO`.
 
 Resposta `201`: `{ "id": "15", "fase": "SAIDA", "expira_em": "..." }`.

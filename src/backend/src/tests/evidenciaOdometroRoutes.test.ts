@@ -39,7 +39,7 @@ const CHAVE = '3f6c0d8e-1a2b-4c3d-8e9f-0a1b2c3d4e5f';
 const autenticarComo = (perfil: Perfil) =>
   vi.mocked(authService.usuarioDoToken).mockResolvedValue({ id: 3, perfil } as Awaited<ReturnType<typeof authService.usuarioDoToken>>);
 
-const armazenamentoFalso: ArmazenamentoEvidencias = { salvar: vi.fn(), ler: vi.fn(), remover: vi.fn() };
+const armazenamentoFalso: ArmazenamentoEvidencias = { salvar: vi.fn(), ler: vi.fn() };
 
 const envio = (campos: Record<string, string> = {}) => {
   const req = request(app).post('/api/evidencias-odometro').set('Authorization', token);
