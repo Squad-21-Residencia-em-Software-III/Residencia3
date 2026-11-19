@@ -37,6 +37,7 @@ const backupModule = require('../../scripts/backup-db.cjs') as {
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const restoreModule = require('../../scripts/restaurar-backup-db.cjs') as {
+  reidratarBuffers: <T>(valor: T) => T;
   validarIntegridadeTabelas: (
     resumoEsperado: Record<string, { totalRegistros: number; sha256: string }>,
     tabelasRestauradas: Record<string, Array<Record<string, unknown>>>
@@ -184,5 +185,34 @@ describe('Rotina de backup criptografado e validacao de restauracao do PostgreSQ
     expect(fs.existsSync(arqRecente)).toBe(true);
     expect(fs.existsSync(arqAntigo)).toBe(false);
     expect(fs.existsSync(metaAntigo)).toBe(false);
+  });
+
+  it('reidrata colunas BYTEA (fotos de odometro) apos descriptografia mantendo tamanho e hash SHA-256', () => {
+    const chaveSecreta = 'chave-secreta-de-teste-bytea-odometro-2026';
+    const fotoOriginal = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0xff, 0xd9]);
+    const linhasOriginais = [
+      {
+        evidencia_id: 1,
+        conteudo: fotoOriginal,
+        tamanho_bytes: fotoOriginal.length,
+      },
+    ];
+    const hashOriginal = backupModule.calcularHashTabela(linhasOriginais);
+    const { buffer } = backupModule.criptografarPayloadBackup(
+      { tabelas: { evidencias_odometro_arquivos: linhasOriginais } },
+      chaveSecreta
+    );
+    const { payload } = backupModule.descriptografarPayloadBackup(buffer, chaveSecreta);
+    const tabelas = payload.tabelas as Record<string, Array<Record<string, unknown>>>;
+    const reidratadas = restoreModule.reidratarBuffers(tabelas.evidencias_odometro_arquivos);
+
+    expect(Buffer.isBuffer(reidratadas[0].conteudo)).toBe(true);
+    expect((reidratadas[0].conteudo as Buffer).equals(fotoOriginal)).toBe(true);
+
+    const validacao = restoreModule.validarIntegridadeTabelas(
+      { evidencias_odometro_arquivos: { totalRegistros: 1, sha256: hashOriginal } },
+      { evidencias_odometro_arquivos: reidratadas }
+    );
+    expect(validacao.integro).toBe(true);
   });
 });
