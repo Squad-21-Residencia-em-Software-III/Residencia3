@@ -53,6 +53,7 @@ interface DadosNovaViagem {
   veiculos: Veiculo[];
   motoristas: Motorista[];
   solicitacoes: SolicitacaoViagem[];
+  expiradasNaSessao: number[];
   erroSolicitacoes: string | null;
 }
 
@@ -317,7 +318,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         })),
     ])
       .then(([veiculos, motoristas, resultado]) => {
-        if (ativo) setDadosNovaViagem({ veiculos, motoristas, ...resultado });
+        if (ativo) setDadosNovaViagem({ veiculos, motoristas, ...resultado, expiradasNaSessao: [] });
       })
       .catch((error) => {
         if (!ativo) return;
@@ -404,7 +405,28 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   }, [filtradas, paginaSegura]);
 
   const handleSalvarNovaViagem = async (nova: NovaViagemInput) => {
-    await viagensApi.criar(nova);
+    try {
+      await viagensApi.criar(nova);
+    } catch (error) {
+      if (error instanceof ApiError && error.codigo === 'SOLICITACAO_EXPIRADA') {
+        let atualizadas: SolicitacaoViagem[] | undefined;
+        let erroSolicitacoes: string | null = null;
+        try {
+          atualizadas = await solicitacoesApi.listarAprovadas();
+        } catch (falhaDeConsulta) {
+          erroSolicitacoes = mensagemDeErro(falhaDeConsulta);
+        }
+        setDadosNovaViagem((dados) => {
+          if (!dados) return dados;
+          const expiradasNaSessao = [...dados.expiradasNaSessao, nova.solicitacao_id];
+          return {
+            ...dados, expiradasNaSessao, erroSolicitacoes,
+            solicitacoes: (atualizadas ?? dados.solicitacoes).filter(({ id }) => !expiradasNaSessao.includes(id)),
+          };
+        });
+      }
+      throw error;
+    }
     await carregarViagens();
     exibirFeedback(`Viagem agendada com sucesso!`);
   };

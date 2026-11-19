@@ -6,6 +6,7 @@ export const LISTA_STATUS_SOLICITACAO_VIAGEM = [
   'CONCLUIDA',
   'RECUSADA',
   'CANCELADA',
+  'EXPIRADA',
 ] as const;
 
 export type StatusSolicitacaoViagem = (typeof LISTA_STATUS_SOLICITACAO_VIAGEM)[number];

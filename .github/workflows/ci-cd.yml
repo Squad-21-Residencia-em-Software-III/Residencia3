@@ -62,6 +62,28 @@ jobs:
     name: Verificar Backend
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: frotas_teste
+          POSTGRES_PASSWORD: ci-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d frotas_teste"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: '5432'
+      POSTGRES_DB: frotas_teste
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ci-test-only
+      POSTGRES_SSL: 'false'
+      EXPIRACAO_POSTGRES_TESTS: '1'
+      SCRUM208_POSTGRES_TESTS: '1'
 
     defaults:
       run:
@@ -86,6 +108,12 @@ jobs:
           node --test ../../scripts/audit-ci.test.cjs
           node ../../scripts/audit-ci.cjs
 
+      - name: Migrar PostgreSQL descartável
+        run: npm run migrate
+
+      - name: Compilar backend
+        run: npm run build
+
       - name: Executar testes automatizados
         run: npm test
         env:
@@ -93,6 +121,3 @@ jobs:
 
       - name: Verificar tipos TypeScript
         run: npm run typecheck
-
-      - name: Compilar backend
-        run: npm run build

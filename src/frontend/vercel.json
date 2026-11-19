@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "codex/expiracao-administrativa": false,
+      "codex/odometro-e-operacao-svo": false
+    }
+  },
   "routes": [
     {
       "src": "/(.*)",

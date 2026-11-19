@@ -80,6 +80,20 @@ describe('SolicitacoesPage por perfil', () => {
     expect(screen.getAllByRole('button', { name: /Detalhes/ })).toHaveLength(2);
   });
 
+  it.each(['SOLICITANTE', 'GESTOR_FROTA'])('mostra o vencimento sem ação de agendar para %s', async (perfil) => {
+    sessao.perfil = perfil;
+    const expirada: SolicitacaoViagem = { ...pendente, status: 'EXPIRADA' };
+    api.listarMinhas.mockResolvedValue([expirada]);
+    api.listar.mockResolvedValue([expirada]);
+
+    abrir();
+
+    expect(await screen.findByText('Expirada')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Agendar/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Detalhes/ }));
+    expect(screen.getByText(/O prazo de agendamento terminou 30 minutos/)).toBeInTheDocument();
+  });
+
   it('Gestor de Frota analisa as pendentes, mas não cria solicitação', async () => {
     sessao.perfil = 'GESTOR_FROTA';
     api.listar.mockResolvedValue([pendente]);

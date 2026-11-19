@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Modal, Select } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
-import { mensagemDeErro } from '../../services/api/http';
+import { ApiError, mensagemDeErro } from '../../services/api/http';
 import { equipesSvoApi } from '../../services/api/equipesSvoApi';
 import { solicitacoesSvoApi } from '../../services/api/solicitacoesSvoApi';
 import { veiculosApi } from '../../services/api/veiculosApi';
@@ -113,7 +113,7 @@ export function ModalNovaViagem({
   const carregandoDadosSvo = carregandoSolicitacoesSvo || carregandoOcupacao;
   const podeSalvar = isSvo
     ? !carregandoDadosSvo && solicitacaoSvoValida && equipeValida && Boolean(veiculoId && motoristaId)
-    : Boolean(solicitacaoId && veiculoId && motoristaId);
+    : solicitacoesAprovadas.some((s) => String(s.id) === solicitacaoId) && Boolean(veiculoId && motoristaId);
 
   const avisoSolicitacao = isSvo
     ? erroSolicitacoesSvo
@@ -252,6 +252,7 @@ export function ModalNovaViagem({
       });
       onClose();
     } catch (error) {
+      if (error instanceof ApiError && error.codigo === 'SOLICITACAO_EXPIRADA') setSolicitacaoId('');
       setErro(mensagemDeErro(error));
       setSalvando(false);
     }
@@ -325,6 +326,7 @@ export function ModalNovaViagem({
               value={solicitacaoId}
               onChange={(e: ChangeEvent<HTMLSelectElement>) => setSolicitacaoId(e.target.value)}
             >
+              <option value="" disabled>Selecione uma solicitação</option>
               {solicitacoesAprovadas.map((s) => (
                 <option key={s.id} value={s.id}>
                   #{s.id} — {s.solicitante_nome} ({s.origem} → {s.destino})
