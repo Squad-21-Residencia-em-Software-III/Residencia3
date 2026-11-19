@@ -9,7 +9,7 @@ import { veiculosApi } from '../../services/api/veiculosApi';
 import { viagensApi } from '../../services/api/viagensApi';
 import type { Motorista } from '../../types/motorista';
 import type { Veiculo } from '../../types/veiculo';
-import { CODIGO_CONFIRMAR_INTERVALO } from '../../types/viagem';
+import { CODIGO_CONFIRMAR_INTERVALO, type ConflitoIntervaloSvo } from '../../types/viagem';
 import { ModalAgendarColetaSvo } from './ModalAgendarColetaSvo';
 
 vi.mock('../../services/api/equipesSvoApi', () => ({ equipesSvoApi: { listarDisponiveis: vi.fn(), integrantesEquipe: vi.fn(), disponibilidadeIntegrantes: vi.fn(), designacoes: vi.fn() } }));
@@ -279,20 +279,19 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
       expect(api.agendarColetaSvo).not.toHaveBeenCalled();
     });
 
-    it('intervalo menor que 20 min: mostra o aviso e só reenvia com a ciência do gestor', async () => {
+    it('intervalo menor que 20 min: identifica os recursos e só reenvia com a ciência do gestor', async () => {
+      const reserva = { inicio: '2026-11-17T17:00:00Z', fim: '2026-11-17T19:00:00Z' };
+      const conflitos: ConflitoIntervaloSvo[] = [
+        { ...reserva, recurso: 'VEICULO', descricao: 'Rabecão (SVO2B22)', intervalo_minutos: 10 },
+        { ...reserva, recurso: 'MOTORISTA', descricao: '#5', intervalo_minutos: 11 },
+        { ...reserva, recurso: 'EQUIPE', descricao: '#9', intervalo_minutos: 12 },
+        { ...reserva, recurso: 'INTEGRANTE', descricao: '#12', intervalo_minutos: 15 },
+      ];
       api.agendarColetaSvo
         .mockRejectedValueOnce(
           new ApiError('Intervalo reduzido entre coletas.', 409, [], CODIGO_CONFIRMAR_INTERVALO, {
             token_confirmacao: 'desafio-assinado',
-            conflitos: [
-              {
-                recurso: 'VEICULO',
-                descricao: 'Rabecão (SVO2B22)',
-                inicio: '2026-11-17T17:00:00.000Z',
-                fim: '2026-11-17T19:00:00.000Z',
-                intervalo_minutos: 10,
-              },
-            ],
+            conflitos,
           }),
         )
         .mockResolvedValueOnce({} as never);
@@ -303,7 +302,11 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
 
       expect(await screen.findByText('Intervalo menor que 20 minutos')).toBeInTheDocument();
-      expect(screen.getByText(/10 min de intervalo/)).toBeInTheDocument();
+      expect(screen.getByText(/^Veículo Rabecão .*10 min de intervalo/)).toBeInTheDocument();
+      expect(screen.getByText(/^Motorista #5.*11 min de intervalo/)).toBeInTheDocument();
+      expect(screen.getByText(/^Equipe #9.*12 min de intervalo/)).toBeInTheDocument();
+      expect(screen.getByText(/^Integrante #12: reserva de \d{2}\/\d{2},? \d{2}:\d{2} a \d{2}\/\d{2},? \d{2}:\d{2} \(15 min de intervalo\)$/))
+        .toBeInTheDocument();
       const confirmar = screen.getByRole('button', { name: 'Confirmar agendamento' });
       expect(confirmar).toBeDisabled();
       expect(onAgendada).not.toHaveBeenCalled();

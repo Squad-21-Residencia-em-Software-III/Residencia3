@@ -38,6 +38,7 @@ const RECURSO_LABEL: Record<ConflitoIntervaloSvo['recurso'], string> = {
   VEICULO: 'Veículo',
   MOTORISTA: 'Motorista',
   EQUIPE: 'Equipe',
+  INTEGRANTE: 'Integrante',
 };
 
 const horario = (iso: string) =>
