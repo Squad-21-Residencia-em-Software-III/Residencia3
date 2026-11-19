@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { cva } from 'class-variance-authority';
 import {
   BellIcon,
@@ -11,6 +11,7 @@ import {
   PlusIcon,
 } from '../ui';
 import { cn } from '../../utils/cn';
+import { SobreNosLink } from './SobreNosLink';
 
 export type NavItem = {
   path: string;
@@ -69,9 +70,6 @@ export function AppLayout({
 }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const location = useLocation();
-
-  const isHomePage = location.pathname === '/' || location.pathname === '/inicio';
   const isCompact = collapsed && !mobileOpen;
 
   const handleNavClick = () => {
@@ -266,12 +264,12 @@ export function AppLayout({
       </aside>
 
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-3.5 shadow-2xs md:h-[60px] md:px-8">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3.5 shadow-2xs md:h-[60px] md:px-8">
           <div className="flex min-w-0 items-center gap-3">
             {/* Botão de Menu Hambúrguer Clássico (3 barras) no mobile */}
             <button
               type="button"
-              className="-ml-1 inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-surface p-0 text-text transition-all hover:border-border-strong hover:bg-surface-hover active:scale-95 md:hidden"
+              className="-ml-1 inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-surface p-0 text-text transition-all hover:border-border-strong hover:bg-surface-hover active:scale-95 md:hidden"
               onClick={() => setMobileOpen(true)}
               aria-label="Abrir menu de navegação"
               title="Abrir menu"
@@ -295,19 +293,7 @@ export function AppLayout({
                 <span className="hidden md:inline">{actionLabel}</span>
               </button>
             )}
-            {isHomePage && (
-              <NavLink
-                to="/sobre"
-                className={({ isActive }) =>
-                  cn(
-                    'inline-flex h-7.5 cursor-pointer items-center justify-center rounded-md border border-primary bg-primary px-2.5 text-xs font-semibold whitespace-nowrap text-white no-underline transition-all hover:border-primary-hover hover:bg-primary-hover hover:shadow-sm md:h-8.5 md:px-3.5',
-                    isActive && 'bg-primary-hover shadow-inner'
-                  )
-                }
-              >
-                Sobre Nós
-              </NavLink>
-            )}
+            <SobreNosLink />
             <button
               type="button"
               className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-all hover:border-border-strong hover:bg-surface-hover"

@@ -1,8 +1,9 @@
 import type { ReactElement } from 'react'
-import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
-import { ClipboardCheck, ScrollText, Wrench } from 'lucide-react'
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom'
+import { ArrowLeft, ClipboardCheck, ScrollText, Wrench } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
+import { SOBRE_NOS_PATH, SobreNosLink } from '../components/layout/SobreNosLink'
 import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import AbastecimentoPage from '../pages/AbastecimentoPage'
@@ -70,11 +71,14 @@ export const navItems: NavItemComPermissao[] = [
 
 function LayoutRoute() {
   const { pathname } = useLocation()
+  const sobreNos = useMatch(SOBRE_NOS_PATH)
   const { usuario, logout } = useAuth()
   const { pode } = usePermissao()
 
+  if (!usuario) return <Outlet />
+
   const itensVisiveis = navItems.filter((item) => !item.permissao || pode(item.permissao))
-  const title = pathname.startsWith('/sobre')
+  const title = sobreNos
     ? 'Sobre Nós'
     : itensVisiveis.find((item) => pathname.startsWith(item.path))?.label ?? 'FSPH'
 
@@ -82,11 +86,45 @@ function LayoutRoute() {
     <AppLayout
       navItems={itensVisiveis}
       title={title}
-      user={usuario ? { name: usuario.nome, role: LABELS_PERFIS[usuario.perfil] } : undefined}
+      user={{ name: usuario.nome, role: LABELS_PERFIS[usuario.perfil] }}
       onLogout={logout}
     >
       <Outlet />
     </AppLayout>
+  )
+}
+
+function SobreNosRoute() {
+  const { usuario } = useAuth()
+  const { state } = useLocation()
+  const navigate = useNavigate()
+  const veioDeOutraTela = (state as { veioDeOutraTela?: boolean } | null)?.veioDeOutraTela
+
+  if (usuario) return <SobreNosPage />
+
+  return (
+    <div className="flex min-h-full flex-col bg-page-bg">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3.5 md:h-[60px] md:px-8">
+        {veioDeOutraTela ? (
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-md text-sm font-semibold text-primary hover:underline"
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            Voltar
+          </button>
+        ) : (
+          <Link to="/login" className="text-sm font-semibold text-primary hover:underline">
+            Entrar
+          </Link>
+        )}
+        <SobreNosLink />
+      </header>
+      <main className="mx-auto w-full max-w-7xl px-3 py-4 md:px-6 md:py-6">
+        <SobreNosPage />
+      </main>
+    </div>
   )
 }
 
@@ -115,12 +153,12 @@ export function AppRoutes() {
       <Route path="/500" element={<ServerErrorPage />} />
       <Route path="/403" element={<ForbiddenPage />} />
 
-      <Route element={<RotaProtegida />}>
-        <Route element={<LayoutRoute />}>
+      <Route element={<LayoutRoute />}>
+        <Route path={SOBRE_NOS_PATH} element={<SobreNosRoute />} />
+        <Route element={<RotaProtegida />}>
           <Route index element={<Navigate to="/inicio" replace />} />
           <Route path="/inicio" element={<HomePage />} />
           <Route path="/dashboard" element={<Navigate to="/inicio" replace />} />
-          <Route path="/sobre" element={<SobreNosPage />} />
           <Route element={<RotaComPermissao permissao="veiculos.acessar" />}>
             <Route path="/veiculos" element={<VeiculosPage />} />
           </Route>
