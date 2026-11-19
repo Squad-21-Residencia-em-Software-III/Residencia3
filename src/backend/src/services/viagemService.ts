@@ -8,6 +8,7 @@ import { veiculoModel } from '../models/veiculoModel';
 import { viagemModel, type ViagemDetalhada } from '../models/viagemModel';
 import type { CriarViagemInput, TipoOperacao } from '../validators/viagemSchemas';
 import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
+import { garantirPerfilOperacional } from './autorizacaoOperacionalSvo';
 import { concluirOperacao, registrarEvidenciaNaTransicao } from './evidenciaOdometroTransicao';
 import { reavaliarFilaSvo } from './filaSvoService';
 import {
@@ -138,7 +139,7 @@ async function situacaoDoRecurso(
   const { rows } = await trx.raw<{ rows: { em_andamento: boolean | null; agendada: boolean | null }[] }>(
     `
     SELECT
-      bool_or(status IN ('EM_ANDAMENTO', 'EM_DESLOCAMENTO')) AS em_andamento,
+      bool_or(status IN ('EM_ANDAMENTO', 'EM_DESLOCAMENTO', 'NO_LOCAL')) AS em_andamento,
       bool_or(status IN ('AGENDADA', 'ALOCADA')) AS agendada
     FROM (
       SELECT status FROM viagens_frota WHERE ${coluna} = ?
@@ -303,14 +304,21 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
   }));
 
   // 4. Valida a equipe, se informada
+  const designacoes: { usuario_id: number; equipe_id: number }[] = ordemReprogramada
+    ? await trx('ordens_svo_integrantes').where({ ordem_id: ordemPendente.id })
+      .whereNull('revogado_em').select('usuario_id', 'equipe_id')
+    : [];
+  if (designacoes.some((d) => d.equipe_id !== dados.equipe_id)) {
+    throw new AppError('A equipe possui integrantes designados: revise a designação antes de alterar a equipe', 409);
+  }
+  if (designacoes.length > 0 && (!Number.isInteger(veiculo.lotacao_cabine) || designacoes.length > veiculo.lotacao_cabine - 1)) {
+    throw new AppError('A lotação da cabine não comporta os integrantes designados e o motorista', 409);
+  }
   if (dados.equipe_id) {
     const equipe = await trx('equipes_svo').where({ id: dados.equipe_id }).forUpdate().first('id');
     if (!equipe) {
       throw new AppError('Equipe SVO não encontrada', 404);
     }
-    const escala = await trx('escalas_svo').where({ equipe_id: dados.equipe_id })
-      .where('data_inicio', '<=', inicio).where('data_fim', '>=', fim).forUpdate().first('id');
-    if (!escala) throw new AppError('Equipe sem escala para todo o período', 409);
   }
 
   const conflitoAdministrativo = await viagensConflitantes(trx, inicio, fim)
@@ -320,6 +328,7 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
   const conflitos = await validarAgendaSvo(trx, {
     ordemId: ordemPendente.id, autorId, veiculoId: dados.veiculo_id,
     motoristaId: dados.motorista_id, equipeId: dados.equipe_id, inicio, fim,
+    integrantesIds: designacoes.map((d) => d.usuario_id),
     confirmar: dados.confirmar_intervalo_reduzido, token: dados.token_confirmacao,
   });
 
@@ -374,6 +383,36 @@ async function detalhar(trx: Knex.Transaction, tipo: TipoOperacao, id: number): 
 }
 
 export const viagemService = {
+  async registrarChegadaLocalSvo(ordemId: number, autor: Autor) {
+    garantirPerfilOperacional('SVO', autor);
+    return db.transaction(async (trx) => {
+      await travarAgendaSvo(trx);
+
+      const ordem = await buscarParaAtualizar(trx, 'SVO', ordemId);
+
+      await garantirAcessoAoRegistro(trx, autor, 'SVO', ordem);
+
+      if (ordem.status !== 'EM_DESLOCAMENTO') {
+        throw new AppError(
+          'Apenas coletas em deslocamento podem registrar chegada ao local',
+          409
+        );
+      }
+
+      await trx('ordens_svo')
+        .where({ id: ordemId })
+        .update({ status: 'NO_LOCAL' });
+
+      await registrarAuditoria(
+        trx,
+        autor.id,
+        `CHEGOU_LOCAL_SVO id=${ordemId}`
+      );
+
+      return detalhar(trx, 'SVO', ordemId);
+    });
+  },
+
   async reprogramarOrdemSvo(id: number, dados: AlocarOrdemSvoInput, autor: Autor) {
     garantirAcesso(autor.perfil, 'SVO');
     return db.transaction(async (trx) => {
@@ -467,17 +506,21 @@ export const viagemService = {
 
   // evidenciaId: foto do odômetro enviada antes em POST /evidencias-odometro (SCRUM-208)
   async iniciarViagem(tipo: TipoOperacao, viagemId: number, kmInicial: number, autor: Autor, evidenciaId?: number) {
+    garantirPerfilOperacional(tipo, autor);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
       if (tipo === 'SVO') {
         await travarAgendaSvo(trx);
-        await reavaliarFilaSvo(trx, autor.id);
       }
-      const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
+      let viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
       if (viagem.status !== operacao.agendada) {
         throw new AppError('Apenas viagens agendadas podem ser iniciadas', 400);
+      }
+      if (tipo === 'SVO') {
+        await reavaliarFilaSvo(trx, autor.id);
+        viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       }
       if (tipo === 'SVO' && viagem.inicio_previsto && !viagem.liberada_em) {
         throw new AppError('Coleta ainda não liberada: verifique prioridade e disponibilidade dos recursos', 409);
@@ -538,14 +581,22 @@ export const viagemService = {
   },
 
   async finalizarViagem(tipo: TipoOperacao, viagemId: number, kmFinal: number, autor: Autor, evidenciaId?: number) {
+    garantirPerfilOperacional(tipo, autor);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
       if (tipo === 'SVO') await travarAgendaSvo(trx);
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
-      if (viagem.status !== operacao.emAndamento) {
-        throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
+      const statusValido =
+        viagem.status === operacao.emAndamento ||
+        (tipo === 'SVO' && viagem.status === 'NO_LOCAL');
+
+      if (!statusValido) {
+        throw new AppError(
+          'Apenas viagens em andamento podem ser finalizadas',
+          400
+        );
       }
 
       // A quilometragem final é validada aqui, independentemente da interface (BL17)

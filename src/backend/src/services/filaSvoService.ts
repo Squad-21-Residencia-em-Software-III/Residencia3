@@ -29,18 +29,32 @@ async function auditar(trx: Knex.Transaction, usuarioId: number, acao: string) {
 export async function reavaliarFilaSvo(trx: Knex.Transaction, usuarioId: number): Promise<void> {
   const [{ agora }] = await trx.raw<{ rows: { agora: Date }[] }>('SELECT CURRENT_TIMESTAMP AS agora').then((r) => r.rows);
   const ordens: OrdemFila[] = await trx('ordens_svo')
-    .whereIn('status', ['ALOCADA', 'EM_DESLOCAMENTO'])
+    .whereIn('status', ['ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'])
     .select('id', 'status', 'veiculo_id', 'motorista_id', 'equipe_id', 'capacidade_utilizada',
       'inicio_previsto', 'fim_previsto', 'liberada_em')
     .orderBy('inicio_previsto', 'asc', 'last').orderBy('id');
-  const emCurso = ordens.filter((o) => o.status === 'EM_DESLOCAMENTO');
+  const emCurso = ordens.filter(
+    (o) => o.status === 'EM_DESLOCAMENTO' || o.status === 'NO_LOCAL'
+  );
+  // A composição atual de uma equipe não substitui a designação da coleta.
+  // Ordens legadas sem designações continuam válidas.
+  const designacoes: { ordem_id: number; usuario_id: number }[] = await trx('ordens_svo_integrantes')
+    .whereIn('ordem_id', ordens.map((o) => o.id)).whereNull('revogado_em')
+    .select('ordem_id', 'usuario_id');
+  const integrantes = new Map<number, Set<number>>();
+  for (const d of designacoes) {
+    if (!integrantes.has(d.ordem_id)) integrantes.set(d.ordem_id, new Set());
+    integrantes.get(d.ordem_id)!.add(d.usuario_id);
+  }
+  const compartilhaRecurso = (a: OrdemFila, b: OrdemFila) => disputa(a, b) ||
+    [...(integrantes.get(a.id) ?? [])].some((id) => integrantes.get(b.id)?.has(id));
   const candidatas = ordens.filter((o) => o.status === 'ALOCADA' && o.inicio_previsto && o.fim_previsto);
   const selecionadas: OrdemFila[] = [];
 
   for (const ordem of candidatas) {
     const inicio = new Date(ordem.inicio_previsto!);
-    let livre = inicio <= agora && !emCurso.some((ativa) => disputa(ativa, ordem)) &&
-      !selecionadas.some((outra) => disputa(outra, ordem));
+    let livre = inicio <= agora && !emCurso.some((ativa) => compartilhaRecurso(ativa, ordem)) &&
+      !selecionadas.some((outra) => compartilhaRecurso(outra, ordem));
     if (livre) {
       const veiculo = await trx('veiculos').where({ id: ordem.veiculo_id }).forUpdate()
         .first('status', 'tipo_frota', 'capacidade_maxima');
@@ -56,10 +70,7 @@ export async function reavaliarFilaSvo(trx: Knex.Transaction, usuarioId: number)
         validade >= dataHoje);
       if (livre && ordem.equipe_id) {
         const equipe = await trx('equipes_svo').where({ id: ordem.equipe_id }).forUpdate().first('id');
-        const escala = await trx('escalas_svo').where({ equipe_id: ordem.equipe_id })
-          .where('data_inicio', '<=', agora).where('data_fim', '>', agora)
-          .where('data_fim', '>=', ordem.fim_previsto! > agora ? ordem.fim_previsto : agora).forUpdate().first('id');
-        livre = Boolean(equipe && escala);
+        livre = Boolean(equipe);
       }
     }
     if (livre) selecionadas.push(ordem);
@@ -75,7 +86,7 @@ export async function reavaliarFilaSvo(trx: Knex.Transaction, usuarioId: number)
   for (const anterior of emCurso) {
     if (!anterior.fim_previsto || new Date(anterior.fim_previsto) >= agora) continue;
     for (const afetada of candidatas) {
-      if (!afetada.inicio_previsto || new Date(afetada.inicio_previsto) > agora || !disputa(anterior, afetada)) continue;
+      if (!afetada.inicio_previsto || new Date(afetada.inicio_previsto) > agora || !compartilhaRecurso(anterior, afetada)) continue;
       const alerta = await trx('alertas_atraso_svo')
         .where({ ordem_em_atraso_id: anterior.id, ordem_afetada_id: afetada.id })
         .first('id', 'resolvido_em');

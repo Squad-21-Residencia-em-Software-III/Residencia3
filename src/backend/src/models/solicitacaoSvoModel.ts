@@ -8,7 +8,7 @@ export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO
 export type StatusSolicitacaoSvo = (typeof STATUS_SOLICITACAO_SVO)[number];
 
 // Ordens de coleta que ainda ocupam a solicitação (BL27)
-export const ORDENS_SVO_ATIVAS = ['AGUARDANDO_ALOCACAO', 'ALOCADA', 'EM_DESLOCAMENTO'];
+export const ORDENS_SVO_ATIVAS = ['AGUARDANDO_ALOCACAO', 'ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'] as const;
 
 export interface NovaSolicitacaoSvo {
   registrante_id: number;
@@ -30,7 +30,7 @@ export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
 export interface OrdemSvo {
   id: number;
   solicitacao_id: number;
-  status: 'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+  status: 'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
   veiculo_id: number | null;
   motorista_id: number | null;
   equipe_id: number | null;
