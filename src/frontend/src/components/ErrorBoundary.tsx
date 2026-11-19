@@ -4,7 +4,6 @@ import ServerErrorPage from '../pages/ServerErrorPage';
 
 interface Props {
   children: ReactNode;
-  pathname: string;
 }
 
 interface State {
@@ -25,12 +24,6 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Registra falhas inesperadas no console para auditoria
     console.error('ErrorBoundary capturou uma falha não tratada:', error, errorInfo);
-  }
-
-  componentDidUpdate(previousProps: Props) {
-    if (this.state.hasError && this.props.pathname !== previousProps.pathname) {
-      this.setState({ hasError: false, error: undefined });
-    }
   }
 
   handleReset = () => {
