@@ -9,11 +9,13 @@ export type StatusSolicitacao =
   | 'AGENDADA'
   | 'CONCLUIDA'
   | 'RECUSADA'
-  | 'CANCELADA';
+  | 'CANCELADA'
+  | 'EXPIRADA';
 
 export const LABELS_STATUS_SOLICITACAO: Record<StatusSolicitacao, string> = {
   PENDENTE_APROVACAO: 'Pendente',
   APROVADA: 'Aprovada',
+  EXPIRADA: 'Expirada',
   AGENDADA: 'Agendada',
   CONCLUIDA: 'Concluída',
   RECUSADA: 'Recusada',

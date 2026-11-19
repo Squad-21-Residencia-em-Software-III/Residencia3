@@ -404,7 +404,20 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   }, [filtradas, paginaSegura]);
 
   const handleSalvarNovaViagem = async (nova: NovaViagemInput) => {
-    await viagensApi.criar(nova);
+    try {
+      await viagensApi.criar(nova);
+    } catch (error) {
+      if (error instanceof ApiError && error.codigo === 'SOLICITACAO_EXPIRADA') {
+        const removerExpirada = (solicitacoes: SolicitacaoViagem[]) =>
+          solicitacoes.filter(({ id }) => id !== nova.solicitacao_id);
+        setDadosNovaViagem((dados) => dados && { ...dados, solicitacoes: removerExpirada(dados.solicitacoes) });
+        void solicitacoesApi.listarAprovadas().then(
+          (solicitacoes) => setDadosNovaViagem((dados) => dados && { ...dados, solicitacoes: removerExpirada(solicitacoes) }),
+          (erro) => setDadosNovaViagem((dados) => dados && { ...dados, erroSolicitacoes: mensagemDeErro(erro) }),
+        );
+      }
+      throw error;
+    }
     await carregarViagens();
     exibirFeedback(`Viagem agendada com sucesso!`);
   };

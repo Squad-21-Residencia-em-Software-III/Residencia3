@@ -5,6 +5,7 @@ import { ORDENS_SVO_EM_CURSO, ordemSvoEmCurso } from '../constants/statusOrdemSv
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { motoristaModel } from '../models/motoristaModel';
+import { solicitacaoViagemModel } from '../models/solicitacaoViagemModel';
 import { veiculoModel } from '../models/veiculoModel';
 import { viagemModel, type ViagemDetalhada } from '../models/viagemModel';
 import type { CriarViagemInput, TipoOperacao } from '../validators/viagemSchemas';
@@ -209,12 +210,21 @@ async function garantirCnhValida(trx: Knex.Transaction, motoristaId: number, ult
   }
 }
 
+function erroSolicitacaoExpirada(): AppError {
+  return new AppError(
+    'A solicitação expirou 30 minutos após a saída pretendida e não pode mais ser agendada.',
+    409,
+    'SOLICITACAO_EXPIRADA',
+  );
+}
+
 async function criarViagemFrota(trx: Knex.Transaction, dados: CriarViagemFrotaInput) {
   // 1. Valida a solicitação
   const solicitacao = await trx('solicitacoes_viagem').where({ id: dados.solicitacao_id }).forUpdate().first();
   if (!solicitacao) {
     throw new AppError('Solicitação de viagem não encontrada', 404);
   }
+  if (solicitacao.status === 'EXPIRADA') throw erroSolicitacaoExpirada();
   if (solicitacao.status !== 'APROVADA') {
     throw new AppError('Apenas solicitações aprovadas podem ser agendadas', 400);
   }
@@ -224,6 +234,9 @@ async function criarViagemFrota(trx: Knex.Transaction, dados: CriarViagemFrotaIn
     .first('id');
   if (viagemAtiva) {
     throw new AppError('A solicitação já possui uma viagem ativa', 409);
+  }
+  if (await solicitacaoViagemModel.prazoDeAgendamentoVencido(trx, solicitacao.id)) {
+    throw erroSolicitacaoExpirada();
   }
   const { inicio, fim } = periodoDaSolicitacao(solicitacao);
 
@@ -250,6 +263,11 @@ async function criarViagemFrota(trx: Knex.Transaction, dados: CriarViagemFrotaIn
     .first('vf.id');
   if (conflitoMotorista) {
     throw new AppError('O motorista já possui viagem no período solicitado', 409);
+  }
+
+  // Os locks dos recursos podem ter demorado. Confira o prazo junto da gravação.
+  if (await solicitacaoViagemModel.prazoDeAgendamentoVencido(trx, solicitacao.id)) {
+    throw erroSolicitacaoExpirada();
   }
 
   // 4. Cria o registro da viagem

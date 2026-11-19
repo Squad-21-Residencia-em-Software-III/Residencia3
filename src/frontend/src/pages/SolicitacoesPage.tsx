@@ -35,7 +35,7 @@ import { useAbaOperacao } from '../utils/abaOperacao';
 import type { TipoFrota } from '../types/veiculo';
 
 type FiltroStatusAba =
-  'TODAS' | 'PENDENTES' | 'APROVADAS' | 'AGENDADAS' | 'CONCLUIDAS' | 'RECUSADAS';
+  'TODAS' | 'PENDENTES' | 'APROVADAS' | 'AGENDADAS' | 'CONCLUIDAS' | 'RECUSADAS' | 'EXPIRADAS';
 
 function obterToneStatus(status: StatusSolicitacao): BadgeTone {
   switch (status) {
@@ -46,6 +46,8 @@ function obterToneStatus(status: StatusSolicitacao): BadgeTone {
       return 'success';
     case 'AGENDADA':
       return 'info';
+    case 'EXPIRADA':
+      return 'warning';
     case 'RECUSADA':
       return 'danger';
     case 'CANCELADA':
@@ -163,6 +165,7 @@ function SolicitacoesAdministrativas() {
       pendentes: solicitacoes.filter((s) => s.status === 'PENDENTE_APROVACAO').length,
       aprovadas: solicitacoes.filter((s) => s.status === 'APROVADA').length,
       agendadas: solicitacoes.filter((s) => s.status === 'AGENDADA').length,
+      expiradas: solicitacoes.filter((s) => s.status === 'EXPIRADA').length,
       recusadas: solicitacoes.filter((s) => s.status === 'RECUSADA').length,
       concluidas: solicitacoes.filter((s) => s.status === 'CONCLUIDA').length,
     }),
@@ -174,6 +177,7 @@ function SolicitacoesAdministrativas() {
       if (filtroAba === 'PENDENTES' && s.status !== 'PENDENTE_APROVACAO') return false;
       if (filtroAba === 'APROVADAS' && s.status !== 'APROVADA') return false;
       if (filtroAba === 'AGENDADAS' && s.status !== 'AGENDADA') return false;
+      if (filtroAba === 'EXPIRADAS' && s.status !== 'EXPIRADA') return false;
       if (filtroAba === 'RECUSADAS' && s.status !== 'RECUSADA') return false;
       if (filtroAba === 'CONCLUIDAS' && s.status !== 'CONCLUIDA') return false;
 
@@ -284,6 +288,7 @@ function SolicitacoesAdministrativas() {
               { value: 'APROVADAS', label: `Aprovadas (${totais.aprovadas})` },
               { value: 'AGENDADAS', label: `Agendadas (${totais.agendadas})` },
               { value: 'CONCLUIDAS', label: `Concluídas (${totais.concluidas})` },
+              { value: 'EXPIRADAS', label: `Expiradas (${totais.expiradas})` },
               { value: 'RECUSADAS', label: `Recusadas (${totais.recusadas})` },
             ]}
           />

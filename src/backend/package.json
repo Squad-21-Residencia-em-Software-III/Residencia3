@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "solicitacoes:expirar": "node dist/scripts/expirarSolicitacoesViagem.js",
     "evidencias:retencao": "node dist/scripts/retencaoEvidencias.js",
     "test": "vitest run src/tests",
     "migrate": "knex migrate:latest",

@@ -113,7 +113,7 @@ export function ModalNovaViagem({
   const carregandoDadosSvo = carregandoSolicitacoesSvo || carregandoOcupacao;
   const podeSalvar = isSvo
     ? !carregandoDadosSvo && solicitacaoSvoValida && equipeValida && Boolean(veiculoId && motoristaId)
-    : Boolean(solicitacaoId && veiculoId && motoristaId);
+    : solicitacoesAprovadas.some((s) => String(s.id) === solicitacaoId) && Boolean(veiculoId && motoristaId);
 
   const avisoSolicitacao = isSvo
     ? erroSolicitacoesSvo

@@ -60,6 +60,28 @@ function normalizarMotivoRecusa(motivo: string): string {
 }
 
 export const solicitacaoViagemService = {
+  async expirarAprovadas(): Promise<number> {
+    const tamanhoLote = 100;
+    let total = 0;
+    for (let lote = 0; lote < 20; lote++) {
+      const processadas = await db.transaction(async (trx) => {
+        const vencidas = await solicitacaoViagemModel.buscarAprovadasVencidas(trx, tamanhoLote);
+        for (const { id } of vencidas) {
+          await solicitacaoViagemModel.atualizarStatus(id, 'EXPIRADA', trx);
+          await auditoriaModel.registrar({
+            usuario_id: null,
+            acao: `EXPIROU_SOLICITACAO_VIAGEM id=${id} origem=ROTINA_AUTOMATICA`,
+            modulo: MODULOS_AUDITORIA.SOLICITACOES_VIAGEM,
+          }, trx);
+        }
+        return vencidas.length;
+      });
+      total += processadas;
+      if (processadas < tamanhoLote) break;
+    }
+    return total;
+  },
+
   // Encaminhamento administrativo: apenas Administrador e Gestor de Frota listam solicitações para análise
   async listar(
     analista: Analista,

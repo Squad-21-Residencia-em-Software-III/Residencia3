@@ -44,6 +44,8 @@ function obterToneStatus(status: StatusSolicitacao): BadgeTone {
       return 'success';
     case 'AGENDADA':
       return 'info';
+    case 'EXPIRADA':
+      return 'warning';
     case 'RECUSADA':
       return 'danger';
     case 'CANCELADA':
@@ -313,6 +315,9 @@ export function ModalAnaliseSolicitacao({
         )}
 
         {/* 5. Se já foi Recusada: Mostra o motivo gravado */}
+        {solicitacao.status === 'EXPIRADA' && (
+          <Alert tone="warning">O prazo de agendamento terminou 30 minutos após a saída pretendida.</Alert>
+        )}
         {solicitacao.status === 'RECUSADA' && solicitacao.motivo_recusa && (
           <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
             <div className="mb-0.5 text-[11px] font-semibold text-rose-700 uppercase">
