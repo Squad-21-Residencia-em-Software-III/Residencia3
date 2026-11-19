@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Check } from 'lucide-react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
@@ -19,6 +19,8 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
   const [kmFinal, setKmFinal] = useState<string>('');
   const [erro, setErro] = useState<string>('');
   const [salvando, setSalvando] = useState(false);
+  const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
+  const envioEmCurso = useRef(false);
   const foto = useFotoOdometro(viagem, 'CHEGADA');
 
   const kmFinalNum = Number(kmFinal);
@@ -27,8 +29,9 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (salvando) return;
+    if (envioEmCurso.current || foto.consultando || foto.validandoArquivo) return;
     setErro('');
+    setFalhaAoSalvar(false);
 
     if (!kmFinal || !Number.isInteger(kmFinalNum)) {
       setErro('Informe o odômetro final como um número inteiro.');
@@ -46,6 +49,7 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
       return;
     }
 
+    envioEmCurso.current = true;
     setSalvando(true);
     try {
       const evidenciaId = await foto.obterEvidenciaId();
@@ -55,12 +59,21 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
     } catch (error) {
       foto.tratarErroTransicao(error);
       setErro(mensagemFalhaTransicao(error, 'chegada'));
+      setFalhaAoSalvar(true);
+      envioEmCurso.current = false;
       setSalvando(false);
     }
   };
 
   return (
-    <Modal title={`Registrar Retorno da Viagem #${viagem.id}`} onClose={onClose} telaInteira>
+    <Modal
+      title={`Registrar Retorno da Viagem #${viagem.id}`}
+      onClose={onClose}
+      telaInteira
+      gerenciarFoco
+      ajustarAoTeclado
+      bloquearFechamento={salvando}
+    >
       <form onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">
@@ -88,8 +101,10 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
           label="Odômetro Final (Km de Retorno) *"
           type="number"
           inputMode="numeric"
+          className="min-h-11 text-base md:text-sm"
           placeholder={`Maior que ${kmInicial}`}
           value={kmFinal}
+          readOnly={salvando}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmFinal(e.target.value)}
           min={kmInicial}
           required
@@ -110,7 +125,7 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
           </p>
         )}
 
-        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
+        <div className="mt-4 flex flex-col gap-2 md:mt-5 md:flex-row md:justify-end md:gap-3 [&>button]:min-h-11">
           {foto.enviando ? (
             <Button variant="ghost" type="button" onClick={foto.cancelarEnvio}>
               Cancelar envio
@@ -120,8 +135,8 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
               Cancelar
             </Button>
           )}
-          <Button type="submit" disabled={salvando || foto.consultando}>
-            {foto.enviando ? 'Enviando foto...' : salvando ? 'Concluindo...' : 'Confirmar Chegada e Concluir'}
+          <Button type="submit" disabled={salvando || foto.consultando || foto.validandoArquivo}>
+            {salvando ? (foto.enviando ? 'Enviando foto...' : 'Concluindo...') : falhaAoSalvar ? 'Tentar novamente' : 'Confirmar Chegada e Concluir'}
           </Button>
         </div>
       </form>

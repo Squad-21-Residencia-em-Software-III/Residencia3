@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
 import type { Viagem } from '../../types/viagem';
@@ -16,12 +16,15 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
   const [kmInicial, setKmInicial] = useState<string>('');
   const [erro, setErro] = useState<string>('');
   const [salvando, setSalvando] = useState(false);
+  const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
+  const envioEmCurso = useRef(false);
   const foto = useFotoOdometro(viagem, 'SAIDA');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (salvando) return;
+    if (envioEmCurso.current || foto.consultando || foto.validandoArquivo) return;
     setErro('');
+    setFalhaAoSalvar(false);
 
     const kmInicialNum = Number(kmInicial);
     if (!kmInicial || !Number.isInteger(kmInicialNum) || kmInicialNum < 0) {
@@ -33,6 +36,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
       return;
     }
 
+    envioEmCurso.current = true;
     setSalvando(true);
     try {
       const evidenciaId = await foto.obterEvidenciaId();
@@ -42,12 +46,21 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
     } catch (error) {
       foto.tratarErroTransicao(error);
       setErro(mensagemFalhaTransicao(error, 'saída'));
+      setFalhaAoSalvar(true);
+      envioEmCurso.current = false;
       setSalvando(false);
     }
   };
 
   return (
-    <Modal title={`Iniciar Viagem #${viagem.id}`} onClose={onClose} telaInteira>
+    <Modal
+      title={`Iniciar Viagem #${viagem.id}`}
+      onClose={onClose}
+      telaInteira
+      gerenciarFoco
+      ajustarAoTeclado
+      bloquearFechamento={salvando}
+    >
       <form onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">
@@ -72,8 +85,10 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
           label="Odômetro de Saída (Km Inicial) *"
           type="number"
           inputMode="numeric"
+          className="min-h-11 text-base md:text-sm"
           placeholder="Ex: 35000"
           value={kmInicial}
+          readOnly={salvando}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmInicial(e.target.value)}
           min={0}
           required
@@ -87,7 +102,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
           </p>
         )}
 
-        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
+        <div className="mt-4 flex flex-col gap-2 md:mt-5 md:flex-row md:justify-end md:gap-3 [&>button]:min-h-11">
           {foto.enviando ? (
             <Button variant="ghost" type="button" onClick={foto.cancelarEnvio}>
               Cancelar envio
@@ -97,8 +112,8 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
               Voltar
             </Button>
           )}
-          <Button type="submit" disabled={salvando || foto.consultando}>
-            {foto.enviando ? 'Enviando foto...' : salvando ? 'Iniciando...' : 'Confirmar Saída'}
+          <Button type="submit" disabled={salvando || foto.consultando || foto.validandoArquivo}>
+            {salvando ? (foto.enviando ? 'Enviando foto...' : 'Iniciando...') : falhaAoSalvar ? 'Tentar novamente' : 'Confirmar Saída'}
           </Button>
         </div>
       </form>
