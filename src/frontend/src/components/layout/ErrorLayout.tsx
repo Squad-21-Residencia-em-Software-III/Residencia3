@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Home, RefreshCw } from 'lucide-react';
 import { Button } from '../ui';
+import { SobreNosLink } from './SobreNosLink';
 
 interface StopSignIllustrationProps {
   code?: string;
@@ -21,7 +22,7 @@ function StopSignIllustration({
       viewBox="0 0 280 220"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="mx-auto mb-4 overflow-visible"
+      className="mx-auto mb-4 h-auto max-w-full overflow-visible"
       aria-hidden="true"
     >
       {/* Nuvens decorativas estilizadas em traço vetorial limpo */}
@@ -148,14 +149,18 @@ export function ErrorLayout({
   const PrimaryIcon = primaryAction.icon === 'refresh' ? RefreshCw : Home;
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-50 via-slate-100 to-slate-200 p-6 font-sans">
+    <div className="relative flex min-h-full w-full flex-col overflow-hidden bg-gradient-to-b from-slate-50 via-slate-100 to-slate-200 font-sans">
       {/* Elementos decorativos de fundo suaves (bolinhas com tons de anil e cinza claro) */}
       <div className="pointer-events-none absolute top-[8%] left-[12%] h-14 w-14 rounded-full bg-primary/6" />
       <div className="pointer-events-none absolute top-[18%] right-[18%] h-11 w-11 rounded-full bg-slate-200/70" />
       <div className="pointer-events-none absolute bottom-[22%] left-[16%] h-10 w-10 rounded-full bg-slate-200/60" />
       <div className="pointer-events-none absolute right-[14%] bottom-[15%] h-15 w-15 rounded-full bg-primary/5" />
 
-      <div className="relative z-10 flex w-full max-w-[540px] flex-col items-center text-center">
+      <header className="relative z-10 flex shrink-0 justify-end px-3.5 py-3 md:px-8">
+        <SobreNosLink />
+      </header>
+
+      <main className="relative z-10 mx-auto flex w-full max-w-[588px] flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
         {/* FSPH PIN Institucional Centralizado */}
         <div className="mb-6">
           <img
@@ -207,7 +212,7 @@ export function ErrorLayout({
         <div className="mt-9 text-[11px] leading-snug text-slate-500">
           Sistema Integrado de Gestão de Frotas • FSPH
         </div>
-      </div>
+      </main>
     </div>
   );
 }
