@@ -1,3 +1,6 @@
+import { execFile } from 'node:child_process';
+import { resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { randomBytes, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -475,6 +478,51 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(await db(TABELA_ARQUIVOS_ODOMETRO).whereIn('evidencia_id', ids)).toHaveLength(0);
     await expect(storage.ler(reserva.storage_key)).resolves.toBeTruthy();
   });
+
+  it.skipIf(process.env.GITHUB_ACTIONS !== 'true')('executa simulação e aplicação pelo cmd de retenção com role restrita', async () => {
+    const { condutor, viagem } = await viagemAdministrativa();
+    const campos = { tipo_operacao: 'ADMINISTRATIVA', viagem_id: viagem.id, fase: 'SAIDA' };
+    const envios = [await enviar(condutor.token, campos), await enviar(condutor.token, campos)];
+    expect(envios.map(({ status }) => status)).toEqual([201, 201]);
+    const ids = envios.map(({ body }) => Number(body.id));
+    await db('evidencias_odometro').whereIn('id', ids)
+      .update({ criado_em: db.raw("CURRENT_TIMESTAMP - interval '40 minutes'") });
+    await db.raw(`
+      CREATE ROLE cron_retencao_ci LOGIN PASSWORD 'cron-retencao-ci-apenas';
+      GRANT CONNECT ON DATABASE frotas_teste TO cron_retencao_ci;
+      GRANT USAGE ON SCHEMA public TO cron_retencao_ci;
+      GRANT SELECT (id, status, modalidade, preservacao_legal, criado_em, retencao_ate, conclusao_operacao_em,
+        tipo_operacao, viagem_frota_id, deslocamento_svo_id),
+        UPDATE (status, storage_key, expurgado_em, expurgo_motivo) ON evidencias_odometro TO cron_retencao_ci;
+      GRANT SELECT (evidencia_id), DELETE ON evidencias_odometro_arquivos TO cron_retencao_ci;
+      GRANT SELECT (id, status, data_hora_efetiva_chegada) ON viagens_frota TO cron_retencao_ci;
+      GRANT SELECT (id, status, data_hora_conclusao) ON deslocamentos_svo TO cron_retencao_ci;
+      GRANT SELECT (deslocamento_svo_id, ordem_svo_id) ON deslocamentos_svo_ordens TO cron_retencao_ci;
+      GRANT SELECT (id, status) ON ordens_svo TO cron_retencao_ci;
+    `);
+    const executar = async (...args: string[]) => {
+      const { stdout } = await promisify(execFile)(process.execPath, [
+        resolve(__dirname, '../../dist/scripts/retencaoEvidencias.js'), ...args,
+      ], {
+        timeout: 12_000,
+        env: {
+          ...process.env,
+          NODE_ENV: 'production', TRUST_PROXY: '0', EVIDENCIAS_STORAGE: 'postgres', DB_ROLE: 'app',
+          POSTGRES_APP_USER: 'cron_retencao_ci', POSTGRES_APP_PASSWORD: 'cron-retencao-ci-apenas',
+          POSTGRES_POOL_MIN: '0', POSTGRES_POOL_MAX: '1',
+        },
+      });
+      return stdout.trim().split(/\r?\n/).map((linha) => JSON.parse(linha));
+    };
+
+    expect(await executar('--limite=100')).toEqual([expect.objectContaining({ aplicar: false, temporarias: 2, removidas: 0 })]);
+    expect(await db(TABELA_ARQUIVOS_ODOMETRO).whereIn('evidencia_id', ids)).toHaveLength(2);
+    const aplicados = await executar('--aplicar', '--limite=1', '--lotes=3');
+    expect(aplicados.filter((lote) => lote.removidas === 1)).toHaveLength(2);
+    expect(aplicados.every((lote) => lote.falhas === 0)).toBe(true);
+    expect(await db(TABELA_ARQUIVOS_ODOMETRO).whereIn('evidencia_id', ids)).toHaveLength(0);
+    expect(await db('evidencias_odometro').whereIn('id', ids).where({ status: 'REJEITADA' })).toHaveLength(2);
+  }, 15_000);
 
   it('aplica o teto de bytes a uploads concorrentes de viagens diferentes sem gravar evidência incompleta', async () => {
     const [{ total }] = await db(TABELA_ARQUIVOS_ODOMETRO).sum('tamanho_bytes as total');
