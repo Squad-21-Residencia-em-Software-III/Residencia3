@@ -157,7 +157,7 @@ function CardIntegrante({ membro }: { membro: MembroEquipe }) {
           href={`https://github.com/${membro.usuarioGit}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-sm text-xs text-text-muted no-underline hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="inline-flex items-center gap-1.5 rounded-sm text-xs text-primary no-underline hover:text-primary-hover hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <svg
             className="shrink-0"
@@ -196,7 +196,7 @@ export default function SobreNosPage() {
       <section className="@container" aria-labelledby="integrantes-squad">
         <h2
           id="integrantes-squad"
-          className="mb-3 text-[11px] font-bold tracking-wider text-text-muted uppercase"
+          className="mb-3 text-[11px] font-bold tracking-wider text-text-secondary uppercase"
         >
           Integrantes
         </h2>
