@@ -173,11 +173,48 @@ function limitesAtivos(valor: string | undefined, nodeEnv: string, producao: boo
 // Fotos do odômetro (SCRUM-208/209, docs/evidencias-odometro.md).
 // desativado: as rotas de foto respondem 503 e iniciar/finalizar funcionam como antes.
 // local: arquivos numa pasta do servidor (desenvolvimento, testes ou disco persistente montado).
-// O armazenamento definitivo (ex.: bucket privado) entra como outro driver quando a SCRUM-211 decidir.
-export const DRIVERS_ARMAZENAMENTO_EVIDENCIAS = ['desativado', 'local'] as const;
+export const DRIVERS_ARMAZENAMENTO_EVIDENCIAS = ['desativado', 'local', 'r2'] as const;
 export type DriverArmazenamentoEvidencias = (typeof DRIVERS_ARMAZENAMENTO_EVIDENCIAS)[number];
 
-function configuracaoEvidenciasOdometro(origem: Origem, producao: boolean) {
+function configuracaoR2(origem: Origem, nodeEnv: string) {
+  const ambiente = obrigatoria(origem, 'EVIDENCIAS_R2_AMBIENTE');
+  const ambientes = nodeEnv === 'production' ? ['qa', 'producao']
+    : nodeEnv === 'test' ? ['teste'] : ['desenvolvimento'];
+  if (!ambientes.includes(ambiente)) {
+    throw new Error('EVIDENCIAS_R2_AMBIENTE incompatível com NODE_ENV');
+  }
+  const bucket = obrigatoria(origem, 'EVIDENCIAS_R2_BUCKET');
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket) || !bucket.endsWith(`-${ambiente}`)) {
+    throw new Error('EVIDENCIAS_R2_BUCKET deve terminar com o sufixo do ambiente');
+  }
+  const conta = obrigatoria(origem, 'EVIDENCIAS_R2_ACCOUNT_ID');
+  if (conta.length !== 32 || !/^[a-f0-9]+$/.test(conta)) {
+    throw new Error('EVIDENCIAS_R2_ACCOUNT_ID inválido');
+  }
+  const jurisdicao = origem.EVIDENCIAS_R2_JURISDICAO || '';
+  if (!['', 'eu', 'us'].includes(jurisdicao)) {
+    throw new Error('EVIDENCIAS_R2_JURISDICAO deve ser vazio, eu ou us');
+  }
+  const segredoIdempotencia = obrigatoria(origem, 'EVIDENCIAS_R2_CHAVE_SECRETA');
+  if (segredoIdempotencia.length !== 64 || !/^[a-f0-9]+$/.test(segredoIdempotencia) ||
+    new Set(segredoIdempotencia).size < 10) {
+    throw new Error('EVIDENCIAS_R2_CHAVE_SECRETA deve conter 32 bytes aleatórios em hexadecimal');
+  }
+  const accessKeyId = obrigatoria(origem, 'EVIDENCIAS_R2_ACCESS_KEY_ID');
+  const secretAccessKey = obrigatoria(origem, 'EVIDENCIAS_R2_SECRET_ACCESS_KEY');
+  const sessionToken = origem.EVIDENCIAS_R2_SESSION_TOKEN || undefined;
+  if ([accessKeyId, secretAccessKey, sessionToken].some((valor) => valor && /\s/.test(valor))) {
+    throw new Error('Credenciais EVIDENCIAS_R2 não podem conter espaços');
+  }
+  return {
+    bucket, segredoIdempotencia, ambiente,
+    endpoint: `https://${conta}${jurisdicao ? `.${jurisdicao}` : ''}.r2.cloudflarestorage.com`,
+    credenciais: { accessKeyId, secretAccessKey, sessionToken },
+    timeoutMs: inteiroNaFaixa('EVIDENCIAS_R2_TIMEOUT_MS', origem.EVIDENCIAS_R2_TIMEOUT_MS, 4000, 250, 8000),
+  };
+}
+
+function configuracaoEvidenciasOdometro(origem: Origem, nodeEnv: string) {
   const valor = (origem.EVIDENCIAS_STORAGE ?? '').trim() || 'desativado';
   if (!(DRIVERS_ARMAZENAMENTO_EVIDENCIAS as readonly string[]).includes(valor)) {
     throw new Error(`EVIDENCIAS_STORAGE deve ser um destes: ${DRIVERS_ARMAZENAMENTO_EVIDENCIAS.join(', ')}`);
@@ -185,7 +222,7 @@ function configuracaoEvidenciasOdometro(origem: Origem, producao: boolean) {
   const driver = valor as DriverArmazenamentoEvidencias;
   const pasta = (origem.EVIDENCIAS_STORAGE_DIR ?? '').trim();
   // Em produção a pasta precisa ser declarada e absoluta: o disco padrão do Render é apagado a cada deploy
-  if (driver === 'local' && producao && !path.isAbsolute(pasta)) {
+  if (driver === 'local' && nodeEnv === 'production' && !path.isAbsolute(pasta)) {
     throw new Error('Com EVIDENCIAS_STORAGE=local em produção, EVIDENCIAS_STORAGE_DIR deve ser o caminho absoluto de um disco persistente');
   }
   const obrigatorias = (origem.FOTOS_ODOMETRO_OBRIGATORIAS ?? '').trim() || 'false';
@@ -198,6 +235,7 @@ function configuracaoEvidenciasOdometro(origem: Origem, producao: boolean) {
   return {
     evidenciasStorage: driver,
     evidenciasStorageDir: path.resolve(pasta || path.join(__dirname, '../../storage/evidencias')),
+    evidenciasR2: driver === 'r2' ? configuracaoR2(origem, nodeEnv) : undefined,
     fotosOdometroObrigatorias: obrigatorias === 'true',
   };
 }
@@ -239,7 +277,7 @@ export function carregarEnv(origem: Origem = process.env) {
     rateLimitPesadasPorMin: inteiroNaFaixa('RATE_LIMIT_PESADAS_POR_MIN', origem.RATE_LIMIT_PESADAS_POR_MIN, 30, 1, 1000),
     maxRequisicoesSimultaneas: inteiroNaFaixa('MAX_REQUISICOES_SIMULTANEAS', origem.MAX_REQUISICOES_SIMULTANEAS, 50, 1, 1000),
     requestTimeoutMs: inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000),
-    ...configuracaoEvidenciasOdometro(origem, producao),
+    ...configuracaoEvidenciasOdometro(origem, nodeEnv),
   };
 }
 

@@ -1,8 +1,12 @@
-import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { link, mkdir, open, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { env, type DriverArmazenamentoEvidencias } from '../config/env';
 import { AppError } from '../errors/AppError';
+import { armazenamentoR2 } from './armazenamentoEvidenciasR2';
+import { limiteLeituraEvidencia, validarChave } from './chavesEvidencias';
+
+export { validarChave } from './chavesEvidencias';
 
 /**
  * Onde ficam os arquivos das fotos do odômetro (SCRUM-208/209/211). O banco guarda só a
@@ -10,19 +14,9 @@ import { AppError } from '../errors/AppError';
  * Novos destinos (ex.: bucket privado) implementam esta interface.
  */
 export interface ArmazenamentoEvidencias {
-  salvar(chave: string, conteudo: Buffer): Promise<void>;
-  ler(chave: string): Promise<Buffer>;
+  salvar(chave: string, conteudo: Buffer, tipo?: string): Promise<void>;
+  ler(chave: string, maxBytes?: number): Promise<Buffer>;
   remover(chave: string): Promise<void>;
-}
-
-// Formato gerado pelo service: odometro/<usuario>/<uuid>. Nada de "..", barra inicial ou esquema.
-const CHAVE_SEGURA = /^odometro\/\d+\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-export function validarChave(chave: string): string {
-  if (!CHAVE_SEGURA.test(chave)) {
-    throw new AppError('Chave de armazenamento inválida', 500);
-  }
-  return chave;
 }
 
 export const MENSAGEM_ARMAZENAMENTO_DESATIVADO =
@@ -36,7 +30,7 @@ const desativado: ArmazenamentoEvidencias = {
     throw new AppError(MENSAGEM_ARMAZENAMENTO_DESATIVADO, 503);
   },
   async remover() {
-    // Nada a remover
+    throw new AppError(MENSAGEM_ARMAZENAMENTO_DESATIVADO, 503);
   },
 };
 
@@ -51,29 +45,54 @@ export function armazenamentoLocal(pastaBase: string): ArmazenamentoEvidencias {
     return destino;
   };
 
+  async function ler(chave: string, maxBytes = limiteLeituraEvidencia): Promise<Buffer> {
+    try {
+      const arquivo = await open(caminho(chave), 'r');
+      try {
+        const { size } = await arquivo.stat();
+        if (size > maxBytes) throw new AppError('Tamanho do objeto de evidência inválido', 502);
+        const bytes = Buffer.alloc(size + 1);
+        let tamanho = 0;
+        while (tamanho < bytes.length) {
+          const { bytesRead } = await arquivo.read(bytes, tamanho, bytes.length - tamanho, null);
+          if (!bytesRead) break;
+          tamanho += bytesRead;
+        }
+        if (tamanho !== size) throw new AppError('Tamanho do objeto de evidência inválido', 502);
+        return bytes.subarray(0, tamanho);
+      } finally {
+        await arquivo.close();
+      }
+    } catch (erro) {
+      if ((erro as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new AppError('O arquivo da foto não foi encontrado no armazenamento', 404);
+      }
+      throw erro;
+    }
+  }
+
   return {
+    ler,
     async salvar(chave, conteudo) {
       const destino = caminho(chave);
       await mkdir(path.dirname(destino), { recursive: true });
-      // Grava num temporário e renomeia: um leitor nunca vê arquivo pela metade.
-      // "wx" impede sobrescrever um temporário de outra gravação.
-      const temporario = `${destino}.${randomBytes(6).toString('hex')}.tmp`;
-      await writeFile(temporario, conteudo, { flag: 'wx', mode: 0o600 });
+      const temporario = `${destino}.${randomBytes(12).toString('hex')}.tmp`;
+      const arquivo = await open(temporario, 'wx', 0o600);
       try {
-        await rename(temporario, destino);
-      } catch (erro) {
-        await rm(temporario, { force: true });
-        throw erro;
-      }
-    },
-    async ler(chave) {
-      try {
-        return await readFile(caminho(chave));
-      } catch (erro) {
-        if ((erro as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw new AppError('O arquivo da foto não foi encontrado no armazenamento', 404);
+        try {
+          await arquivo.writeFile(conteudo);
+        } finally {
+          await arquivo.close();
         }
-        throw erro;
+        // A publicação é atômica e o hard link falha se o destino já existir.
+        await link(temporario, destino);
+      } catch (erro) {
+        if ((erro as NodeJS.ErrnoException).code !== 'EEXIST') throw erro;
+        if (!(await ler(chave)).equals(conteudo)) {
+          throw new AppError('Esta chave já está associada a outro conteúdo', 409);
+        }
+      } finally {
+        await rm(temporario, { force: true });
       }
     },
     async remover(chave) {
@@ -83,6 +102,7 @@ export function armazenamentoLocal(pastaBase: string): ArmazenamentoEvidencias {
 }
 
 function criar(driver: DriverArmazenamentoEvidencias): ArmazenamentoEvidencias {
+  if (driver === 'r2' && env.evidenciasR2) return armazenamentoR2(env.evidenciasR2);
   return driver === 'local' ? armazenamentoLocal(env.evidenciasStorageDir) : desativado;
 }
 
@@ -95,6 +115,17 @@ export function armazenamentoEvidencias(): ArmazenamentoEvidencias {
 
 export function armazenamentoConfigurado(): boolean {
   return armazenamentoEvidencias() !== desativado;
+}
+
+export async function lerEvidenciaVerificada(chave: string, tamanho: number, sha256: string): Promise<Buffer> {
+  if (!Number.isInteger(tamanho) || tamanho < 1 || tamanho > limiteLeituraEvidencia || !/^[0-9a-f]{64}$/.test(sha256)) {
+    throw new AppError('Metadados de evidência inválidos', 502);
+  }
+  const bytes = await armazenamentoEvidencias().ler(chave, tamanho);
+  if (bytes.length !== tamanho || createHash('sha256').update(bytes).digest('hex') !== sha256) {
+    throw new AppError('Falha de integridade da evidência', 502, 'EVIDENCIAS_INTEGRIDADE');
+  }
+  return bytes;
 }
 
 /** Só para testes: troca o destino dos arquivos. */

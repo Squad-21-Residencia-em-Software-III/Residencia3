@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { carregarEnv } from '../config/env';
 import { armazenamentoLocal, validarChave } from '../services/armazenamentoEvidencias';
-import { detectarFormato } from '../services/evidenciaOdometroService';
+import { detectarFormato } from '../services/imagemEvidencias';
 
 const CHAVE = 'odometro/7/3f6c0d8e-1a2b-4c3d-8e9f-0a1b2c3d4e5f';
 const BASE_ENV = { JWT_SECRET: 'ci-test-only-secret-not-for-production' };

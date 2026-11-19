@@ -10,11 +10,11 @@ Tudo começa **desligado**:
 
 | Variável | Valores | Padrão | Para que serve |
 |---|---|---|---|
-| `EVIDENCIAS_STORAGE` | `desativado`, `local` | `desativado` | Onde ficam os arquivos. `local` é uma pasta do servidor. |
+| `EVIDENCIAS_STORAGE` | `desativado`, `local`, `r2` | `desativado` | Onde ficam os arquivos. `local` é uma pasta do servidor e `r2` usa um bucket privado. |
 | `EVIDENCIAS_STORAGE_DIR` | caminho | `src/backend/storage/evidencias` | Pasta do `local`. Em produção é obrigatória, absoluta e num **disco persistente**. |
 | `FOTOS_ODOMETRO_OBRIGATORIAS` | `true`, `false` | `false` | `true`: iniciar e finalizar exigem a foto. Só é aceito com armazenamento configurado. |
 
-**Armazenamento (SCRUM-211).** O destino definitivo ainda não foi decidido. Os arquivos passam pela interface `ArmazenamentoEvidencias` (`services/armazenamentoEvidencias.ts`), e um bucket privado entra como outro driver dessa interface, sem mudar o resto. O banco guarda só a `storage_key` (`odometro/<usuario>/<uuid>`), nunca o caminho absoluto, uma URL ou o conteúdo em base64.
+O driver `r2` usa a interface `ArmazenamentoEvidencias` e gera chaves opacas. O banco guarda a referência do objeto e os metadados da evidência, e a API entrega a imagem pelo proxy autenticado. [Configuração e homologação da SCRUM-211](scrum-211-armazenamento-odometro.md)
 
 ## Rotas
 
@@ -28,7 +28,7 @@ Recebe `multipart/form-data` com os campos:
 - `arquivo`.
 
 Validação:
-- O tipo do arquivo é conferido pela **assinatura** do conteúdo: JPEG, PNG ou WebP. Arquivo HEIC ou PDF renomeado é recusado.
+- O servidor confere a assinatura e decodifica imagens JPEG, PNG e WebP com até 16 milhões de pixels. A imagem guardada tem a orientação aplicada e os metadados EXIF removidos. Arquivo corrompido ou com resolução excessiva recebe 422.
 - O arquivo tem no máximo 10 MB e fica só na memória, nunca no disco temporário.
 - O envio tem tempo limite próprio de 60 s; o geral da API é de 15 s.
 
@@ -36,7 +36,7 @@ Regras:
 - Envia quem pode iniciar ou finalizar a viagem: o motorista da própria viagem ou o gestor da operação.
 - A saída só aceita foto com a viagem agendada. A chegada, com a viagem em andamento. Uma fase já registrada responde 409.
 - A foto nasce **provisória** (`STAGING`) e vale por 30 minutos.
-- O reenvio com a mesma chave devolve a mesma foto, sem duplicar arquivo nem registro.
+- O banco registra a reserva antes de enviar os bytes. O reenvio com a mesma chave e conteúdo reaproveita a reserva. Se os bytes ainda precisarem ser enviados, a escrita condicional impede sobrescrita.
 - Gera auditoria `ENVIOU_FOTO_ODOMETRO`.
 
 Resposta `201`: `{ "id": "15", "fase": "SAIDA", "expira_em": "..." }`.
@@ -53,7 +53,7 @@ Os corpos aceitam `evidencia_id`, como número ou como texto. A foto é confirma
 
 Para outros erros (por exemplo, km menor que o atual), o front reaproveita a mesma foto. A auditoria da transição ganha ` evidencia=<id>`.
 
-**Retenção.** Ao finalizar, `conclusao_operacao_em` e `retencao_ate` (12 meses depois) são gravados nas fotos. A contagem parte da conclusão real da viagem. No SVO, parte da conclusão do deslocamento.
+**Retenção.** Ao finalizar, `conclusao_operacao_em` e `retencao_ate` (12 meses depois) são gravados nas fotos. A contagem parte da conclusão real da viagem. No SVO, parte da conclusão do deslocamento. A rotina da SCRUM-211 usa esses campos e a preservação legal. O expurgo é habilitado operacionalmente após a homologação.
 
 ### Coletas SVO e deslocamento compartilhado
 
@@ -101,7 +101,7 @@ O ajuste entrou na própria migration da SCRUM-210 (commit `8b0b7da` do #170), e
 
 ## Fora deste PR
 
-- **Limpeza das fotos provisórias** não usadas e **expurgo** das fotos após `retencao_ate`. Os dois dependem de uma rotina agendada, que deve ser definida com o armazenamento definitivo (SCRUM-211). O banco já tem o índice `idx_evidencias_odometro_retencao_pendente`.
+- **Agendamento da limpeza e do expurgo** no ambiente hospedado. A SCRUM-211 fornece o comando para simulação e execução controlada.
 - **Tela de aprovação da exceção sem foto.** Ficou para o desenho técnico, por decisão da SCRUM-203. O back já reconhece a exceção registrada (`EXCECAO_GESTOR`, `ATIVA`) como fase coberta.
 
 ## Testes
