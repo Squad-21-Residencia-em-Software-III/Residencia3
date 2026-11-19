@@ -6,7 +6,7 @@ import type {
   OrdemPendenteSvo,
   Viagem,
 } from '../../types/viagem'
-import { request } from './http'
+import { ApiError, CODIGO_CANCELADO, request } from './http'
 
 // Viagens administrativas e ordens SVO têm ids independentes: o tipo indica a tabela no backend
 type ReferenciaViagem = Pick<Viagem, 'id' | 'tipo_operacao'>
@@ -130,6 +130,19 @@ export const viagensApi = {
     request<Viagem>('PATCH', `/viagens/${id}/iniciar`, {
       body: { tipo_operacao, km_inicial, ...comEvidencia(evidenciaId) },
     }),
+
+  registrarChegadaLocalSvo: async (ordemId: number) => {
+    try {
+      return await request<Viagem>('PATCH', `/viagens/ordens-svo/${ordemId}/chegar-local`, {
+        signal: AbortSignal.timeout(30_000),
+      })
+    } catch (error) {
+      if (error instanceof ApiError && error.codigo === CODIGO_CANCELADO) {
+        throw new ApiError('O servidor demorou a responder. Tente novamente.', 0)
+      }
+      throw error
+    }
+  },
 
   /** `evidenciaId`: foto da chegada já enviada (SCRUM-203); só segue com `fotosOdometro` ligado. */
   finalizar: ({ id, tipo_operacao }: ReferenciaViagem, km_final: number, evidenciaId?: string) =>

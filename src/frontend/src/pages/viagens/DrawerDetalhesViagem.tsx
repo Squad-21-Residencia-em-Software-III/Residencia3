@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Camera, Download, Flag, MapPin, Play } from 'lucide-react';
-import { Avatar, Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
-import { LABELS_STATUS_VIAGEM, type StatusViagem, type Viagem } from '../../types/viagem';
+import { Alert, Avatar, Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
+import { rotuloStatusViagem, viagemEmCurso, type StatusViagem, type Viagem } from '../../types/viagem';
 
 interface DrawerDetalhesViagemProps {
   viagem: Viagem | null;
   somentePropria?: boolean;
   onClose: () => void;
   onIniciar?: (viagem: Viagem) => void;
+  onRegistrarChegada?: (viagem: Viagem) => Promise<void>;
+  registrandoChegada?: boolean;
+  mensagemSucesso?: string | null;
+  mensagemErro?: string | null;
   onFinalizar?: (viagem: Viagem) => void;
   onCancelar?: (viagem: Viagem) => void;
   /** Fotos do odômetro (SCRUM-203); só é passado a quem pode vê-las na operação da viagem. */
@@ -18,6 +22,8 @@ function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
     case 'EM_ANDAMENTO':
       return 'info';
+    case 'NO_LOCAL':
+      return 'warning';
     case 'AGENDADA':
       return 'purple';
     case 'CONCLUIDA':
@@ -60,6 +66,10 @@ export function DrawerDetalhesViagem({
   viagem: viagemProp,
   onClose,
   onIniciar,
+  onRegistrarChegada,
+  registrandoChegada = false,
+  mensagemSucesso,
+  mensagemErro,
   onFinalizar,
   onCancelar,
   onVerFotos,
@@ -107,7 +117,7 @@ export function DrawerDetalhesViagem({
         <div className="flex items-center gap-2.5">
           <span>Viagem #{viagem.id}</span>
           <Badge tone={obterBadgeToneStatus(viagem.status)}>
-            {LABELS_STATUS_VIAGEM[viagem.status]}
+            {rotuloStatusViagem(viagem)}
           </Badge>
         </div>
       }
@@ -129,7 +139,7 @@ export function DrawerDetalhesViagem({
             <div />
           )}
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
             {!somentePropria && <Button
               variant="outline"
               size="sm"
@@ -167,7 +177,19 @@ export function DrawerDetalhesViagem({
               </Button>
             )}
 
-            {viagem.status === 'EM_ANDAMENTO' && onFinalizar && (
+            {!somentePropria && viagem.tipo_operacao === 'SVO' && viagem.status === 'EM_ANDAMENTO' && onRegistrarChegada && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={registrandoChegada}
+                aria-busy={registrandoChegada}
+                onClick={() => void onRegistrarChegada(viagem)}
+              >
+                {registrandoChegada ? 'Registrando chegada…' : 'Cheguei ao local'}
+              </Button>
+            )}
+
+            {viagemEmCurso(viagem.status) && onFinalizar && (
               <Button
                 variant="primary"
                 size="sm"
@@ -175,6 +197,7 @@ export function DrawerDetalhesViagem({
                   onClose();
                   onFinalizar(viagem);
                 }}
+                disabled={registrandoChegada}
               >
                 <Flag size={13} className="mr-1" /> Finalizar viagem
               </Button>
@@ -183,6 +206,8 @@ export function DrawerDetalhesViagem({
         </div>
       }
     >
+      {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
+      {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
       <div className="flex flex-col gap-6">
         {/* 1. Card de Partida e Destino (Fundo suave estilizado) */}
         <div className="rounded-2xl border border-blue-100 bg-[#f4f8fe] p-5">
@@ -324,7 +349,9 @@ export function DrawerDetalhesViagem({
               <div className="mt-1 text-sm font-bold text-slate-900">
                 {duracao
                   ? duracao
-                  : viagem.status === 'EM_ANDAMENTO'
+                  : viagem.status === 'NO_LOCAL'
+                    ? 'No local da coleta'
+                    : viagem.status === 'EM_ANDAMENTO'
                     ? 'Em trânsito'
                     : 'Aguardando partida'}
               </div>

@@ -60,8 +60,13 @@ export const PERMISSOES = {
    * Administrativo completa, como o Administrador, não usa essa visão.
    */
   'viagens.acompanharProprias': [ADMINISTRADOR, GESTOR_SVO],
-  /** Registrar saída e retorno (iniciar e finalizar com quilometragem). */
-  'viagens.executar': [...GESTORES, ...MOTORISTAS],
+  /** Registrar saída e retorno (iniciar e finalizar) das viagens da operação administrativa. */
+  'viagens.executar': [ADMINISTRADOR, GESTOR_FROTA, MOTORISTA_FROTA],
+  /**
+   * Registrar saída, chegada e retorno das coletas SVO. Pertence ao Motorista SVO responsável;
+   * Administrador e Gestor SVO só acompanham o andamento (SCRUM-110, revisão de QA).
+   */
+  'viagens.executarSvo': [MOTORISTA_SVO],
 
   // Disponibilidade da frota por data e horário
   'agenda.acessar': GESTORES,
