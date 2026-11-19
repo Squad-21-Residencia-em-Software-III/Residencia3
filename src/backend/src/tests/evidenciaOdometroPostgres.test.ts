@@ -265,6 +265,37 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(await db('evidencias_odometro').where({ deslocamento_svo_id: evidencia.deslocamento_svo_id })).toHaveLength(1);
   });
 
+  it('encerra autorizações SVO quando a ordem é reprogramada para outro condutor', async () => {
+    env.excecoesOdometroAtivas = true;
+    const gestor = await usuario('GESTOR_SVO');
+    const original = await recursos('SVO');
+    const substituto = await recursos('SVO');
+    const ordem = await ordemSvo(original, gestor.id);
+    const rota = '/api/evidencias-odometro/excecoes';
+    const referencia = { tipo_operacao: 'SVO', viagem_id: ordem.id };
+    const pedido = await request(app).post(rota).set('Authorization', original.condutor.token)
+      .send({ ...referencia, fase: 'SAIDA', motivo: 'Não foi possível fotografar' });
+    expect(pedido.status).toBe(201);
+    expect((await request(app).patch(`${rota}/${pedido.body.id}`).set('Authorization', gestor.token)
+      .send({ tipo_operacao: 'SVO', decisao: 'APROVADA', justificativa: 'Impossibilidade conferida' })).status).toBe(200);
+
+    const reprogramada = await request(app).post(`/api/viagens/ordens-svo/${ordem.id}/reprogramar`)
+      .set('Authorization', gestor.token).send({
+        tipo_operacao: 'SVO', solicitacao_id: ordem.solicitacao_id, veiculo_id: original.veiculo.id,
+        motorista_id: substituto.motorista.id, capacidade_utilizada: 1,
+        inicio_previsto: new Date(Date.now() + 3_600_000),
+        fim_previsto: new Date(Date.now() + 7_200_000),
+      });
+    expect(reprogramada.status).toBe(200);
+    expect(await db('excecoes_odometro').where({ id: pedido.body.id }).first()).toMatchObject({
+      status: 'APROVADA', encerrada_em: expect.any(Date), evidencia_id: null,
+    });
+
+    const consultar = (token: string) => request(app).get('/api/evidencias-odometro').query(referencia).set('Authorization', token);
+    expect((await consultar(original.condutor.token)).status).toBe(403);
+    expect((await consultar(substituto.condutor.token)).body.pedidos_excecao).toEqual([]);
+  });
+
   it('com as fotos opcionais (padrão), iniciar e finalizar sem foto funcionam como antes', async () => {
     const { condutor, viagem } = await viagemAdministrativa();
     expect((await transicao(condutor.token, 'iniciar', viagem.id, { km_inicial: 1000 })).status).toBe(200);

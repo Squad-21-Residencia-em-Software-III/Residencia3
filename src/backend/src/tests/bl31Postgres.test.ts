@@ -176,7 +176,13 @@ describe.skipIf(!habilitado)('BL31 com PostgreSQL descartável e autenticação 
       .set('Authorization', gestor.token).send({ ...corpo, ...alteracao });
     expect((await reprogramar({ inicio_previsto: instante(30).toISOString() })).status).toBe(409);
     expect((await reprogramar()).status).toBe(200); // Reserva futura compatível não é bloqueada pela ocupação atual.
-    expect((await reprogramar({ equipe_id: a.equipe.id })).status).toBe(409);
+    // Trocar de equipe exige informar nominalmente os integrantes; esses integrantes passam pela agenda.
+    expect((await reprogramar({ equipe_id: a.equipe.id })).status).toBe(400);
+    const choqueNaEquipe = await reprogramar({
+      equipe_id: a.equipe.id, integrantes_ids: [u.id], inicio_previsto: instante(30).toISOString(),
+    });
+    expect(choqueNaEquipe.status).toBe(409);
+    expect(choqueNaEquipe.body.codigo).toBe('CONFLITO_AGENDA');
     await db('veiculos').where({ id: b.veiculo.id }).update({ lotacao_cabine: 1 });
     expect((await reprogramar()).status).toBe(409);
     await db('veiculos').where({ id: b.veiculo.id }).update({ lotacao_cabine: 3 });
