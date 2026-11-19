@@ -9,6 +9,7 @@ import { env } from '../config/env';
 import { armazenamentoEvidencias, definirArmazenamentoEvidencias } from '../services/armazenamentoEvidencias';
 import { TABELA_ARQUIVOS_ODOMETRO } from '../services/armazenamentoEvidenciasPostgres';
 import { normalizarFotoOdometro } from '../services/imagemEvidencias';
+import { excecaoOdometroService } from '../services/excecaoOdometroService';
 import { processarRetencaoEvidencias } from '../services/retencaoEvidencias';
 import { AppError } from '../errors/AppError';
 
@@ -96,6 +97,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
 
   afterEach(() => {
     env.fotosOdometroObrigatorias = false;
+    env.excecoesOdometroAtivas = false;
     env.evidenciasPostgresLimiteBytes = limiteOriginal;
     definirArmazenamentoEvidencias(undefined);
   });
@@ -173,6 +175,94 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
       `SELECT bool_and(retencao_ate = conclusao_operacao_em + interval '12 months') AS doze_meses, count(*)::int AS total
        FROM evidencias_odometro WHERE viagem_frota_id = ? AND status = 'ATIVA'`, [viagem.id]);
     expect(rows[0]).toEqual({ doze_meses: true, total: 2 });
+  });
+
+  it('autoriza a dispensa administrativa só para a fase e a viagem designadas, com auditoria', async () => {
+    env.excecoesOdometroAtivas = true;
+    env.fotosOdometroObrigatorias = true;
+    const { condutor, viagem } = await viagemAdministrativa();
+    const outra = await viagemAdministrativa();
+    const gestor = await usuario('GESTOR_FROTA');
+    const gestorSvo = await usuario('GESTOR_SVO');
+    const rota = '/api/evidencias-odometro/excecoes';
+    const dados = { tipo_operacao: 'ADMINISTRATIVA', viagem_id: viagem.id, fase: 'SAIDA', motivo: 'A câmera ficou indisponível' };
+    const solicitar = (token: string, campos = dados) => request(app).post(rota).set('Authorization', token).send(campos);
+
+    expect((await solicitar(condutor.token, { ...dados, motivo: '   ' })).status).toBe(400);
+    expect((await solicitar(outra.condutor.token)).status).toBe(403);
+    expect((await solicitar(condutor.token, { ...dados, tipo_operacao: 'SVO' })).status).toBe(403);
+    expect((await solicitar(condutor.token, { ...dados, fase: 'CHEGADA' })).status).toBe(409);
+    expect((await solicitar(gestor.token)).status).toBe(403);
+
+    const pedidos = await Promise.all([solicitar(condutor.token), solicitar(condutor.token)]);
+    expect(pedidos.map((r) => r.status)).toEqual([201, 201]);
+    expect(pedidos[0]!.body.id).toBe(pedidos[1]!.body.id);
+    const id = pedidos[0]!.body.id;
+    expect((await request(app).get(rota).query({ tipo_operacao: 'ADMINISTRATIVA' }).set('Authorization', gestor.token))
+      .body.dados).toEqual([expect.objectContaining({ id, fase: 'SAIDA', status: 'PENDENTE' })]);
+    expect((await transicao(condutor.token, 'iniciar', viagem.id, { km_inicial: 1010 })).body.codigo).toBe('EVIDENCIA_OBRIGATORIA');
+
+    const decidir = (token: string, decisao = 'APROVADA', justificativa = 'Impossibilidade verificada em contato') =>
+      request(app).patch(`${rota}/${id}`).set('Authorization', token)
+        .send({ tipo_operacao: 'ADMINISTRATIVA', decisao, justificativa });
+    expect((await decidir(condutor.token)).status).toBe(403);
+    await expect(excecaoOdometroService.decidir(id, 'ADMINISTRATIVA', 'APROVADA', 'Motivo suficientemente longo', {
+      id: condutor.id, perfil: 'ADMINISTRADOR',
+    })).rejects.toMatchObject({ statusCode: 403 });
+    expect((await decidir(gestorSvo.token)).status).toBe(403);
+    expect((await decidir(gestor.token, 'APROVADA', '   ')).status).toBe(400);
+    const decisoes = await Promise.all([decidir(gestor.token), decidir(gestor.token)]);
+    expect(decisoes.map((r) => r.status).sort()).toEqual([200, 409]);
+
+    const consulta = await request(app).get('/api/evidencias-odometro')
+      .query({ tipo_operacao: 'ADMINISTRATIVA', viagem_id: viagem.id }).set('Authorization', condutor.token);
+    expect(consulta.body.pedidos_excecao).toEqual([expect.objectContaining({ id, status: 'APROVADA' })]);
+    expect((await transicao(condutor.token, 'iniciar', viagem.id, {})).status).toBe(400);
+    expect((await transicao(outra.condutor.token, 'iniciar', outra.viagem.id, { km_inicial: 1010 })).body.codigo)
+      .toBe('EVIDENCIA_OBRIGATORIA');
+    expect((await transicao(condutor.token, 'iniciar', viagem.id, { km_inicial: 1010 })).status).toBe(200);
+    expect((await transicao(condutor.token, 'finalizar', viagem.id, { km_final: 1020 })).body.codigo).toBe('EVIDENCIA_OBRIGATORIA');
+    const evidencia = await db('evidencias_odometro').where({ viagem_frota_id: viagem.id }).first();
+    expect(evidencia).toMatchObject({
+      fase: 'SAIDA', modalidade: 'EXCECAO_GESTOR', km_registrado: 1010,
+      storage_key: null, excecao_aprovada_por: gestor.id,
+    });
+    expect(await db('excecoes_odometro').where({ id }).first()).toMatchObject({ evidencia_id: evidencia.id });
+    expect(await db('auditorias').where({ id: evidencia.auditoria_id }).first()).toMatchObject({ usuario_id: gestor.id });
+    expect(await db(TABELA_ARQUIVOS_ODOMETRO).where({ evidencia_id: evidencia.id })).toHaveLength(0);
+  });
+
+  it('mantém a recusa e isola a autorização SVO até confirmar o deslocamento compartilhado', async () => {
+    env.excecoesOdometroAtivas = true;
+    env.fotosOdometroObrigatorias = true;
+    const gestor = await usuario('GESTOR_SVO');
+    const gestorFrota = await usuario('GESTOR_FROTA');
+    const administrador = await usuario('ADMINISTRADOR');
+    const r = await recursos('SVO');
+    const a = await ordemSvo(r, gestor.id);
+    const b = await ordemSvo(r, gestor.id);
+    const rota = '/api/evidencias-odometro/excecoes';
+    const pedir = () => request(app).post(rota).set('Authorization', r.condutor.token)
+      .send({ tipo_operacao: 'SVO', viagem_id: a.id, fase: 'SAIDA', motivo: 'Não foi possível fotografar' });
+    const decidir = (id: number, decisao: string, token = gestor.token) =>
+      request(app).patch(`${rota}/${id}`).set('Authorization', token)
+        .send({ tipo_operacao: 'SVO', decisao, justificativa: 'Motivo registrado pelo gestor' });
+    const { body: primeiro } = await pedir();
+    expect((await decidir(primeiro.id, 'APROVADA', gestorFrota.token)).status).toBe(403);
+    expect((await decidir(primeiro.id, 'RECUSADA')).status).toBe(200);
+    const { body: segundo } = await pedir();
+    expect(segundo.id).not.toBe(primeiro.id);
+    expect((await decidir(segundo.id, 'APROVADA', administrador.token)).status).toBe(200);
+    expect(await db('excecoes_odometro').where({ id: primeiro.id }).first()).toMatchObject({ status: 'RECUSADA' });
+
+    const saida = { tipo_operacao: 'SVO', km_inicial: 1000 };
+    expect((await transicao(r.condutor.token, 'iniciar', b.id, saida)).body.codigo).toBe('EVIDENCIA_OBRIGATORIA');
+    expect((await transicao(r.condutor.token, 'iniciar', a.id, saida)).status).toBe(200);
+    expect((await transicao(r.condutor.token, 'iniciar', b.id, saida)).status).toBe(200);
+    const evidencia = await db('evidencias_odometro').where({ ordem_svo_id: a.id, fase: 'SAIDA' }).first();
+    expect(evidencia).toMatchObject({ modalidade: 'EXCECAO_GESTOR', storage_key: null });
+    expect(await db('deslocamentos_svo_ordens').where({ deslocamento_svo_id: evidencia.deslocamento_svo_id })).toHaveLength(2);
+    expect(await db('evidencias_odometro').where({ deslocamento_svo_id: evidencia.deslocamento_svo_id })).toHaveLength(1);
   });
 
   it('com as fotos opcionais (padrão), iniciar e finalizar sem foto funcionam como antes', async () => {
@@ -339,8 +429,13 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
       await db.raw('ALTER TABLE evidencias_odometro DROP CONSTRAINT teste_expurgo_rollback');
     }
 
-    const aplicado = await processarRetencaoEvidencias(db, { aplicar: true, limite: 25 });
-    expect(aplicado).toMatchObject({ removidas: 2, falhas: 0 });
+    const aplicacoes = await Promise.all([
+      processarRetencaoEvidencias(db, { aplicar: true, limite: 25 }),
+      processarRetencaoEvidencias(db, { aplicar: true, limite: 25 }),
+    ]);
+    expect(aplicacoes.reduce((total, item) => total + item.removidas, 0)).toBe(2);
+    expect(aplicacoes.every((item) => item.falhas === 0)).toBe(true);
+    expect(await processarRetencaoEvidencias(db, { aplicar: true, limite: 25 })).toMatchObject({ candidatos: 0, removidas: 0 });
     expect(await db('evidencias_odometro').where({ id: Number(chegada.body.id) }).first())
       .toMatchObject({ status: 'EXPURGADA_RETENCAO', expurgo_motivo: 'PRAZO_RETENCAO_12_MESES', storage_key: null });
     expect(await db('evidencias_odometro').where({ id: Number(temporaria.body.id) }).first())

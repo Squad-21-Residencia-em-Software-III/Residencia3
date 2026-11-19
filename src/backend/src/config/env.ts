@@ -194,7 +194,18 @@ function configuracaoEvidenciasOdometro(origem: Origem, nodeEnv: string) {
   if (obrigatorias === 'true' && driver === 'desativado') {
     throw new Error('FOTOS_ODOMETRO_OBRIGATORIAS=true exige EVIDENCIAS_STORAGE configurado');
   }
+  const excecoes = (origem.EXCECOES_ODOMETRO_ATIVAS ?? '').trim() || 'false';
+  if (excecoes !== 'true' && excecoes !== 'false') {
+    throw new Error('EXCECOES_ODOMETRO_ATIVAS deve ser true ou false');
+  }
+  if (excecoes === 'true' && driver === 'desativado') {
+    throw new Error('EXCECOES_ODOMETRO_ATIVAS=true exige EVIDENCIAS_STORAGE configurado');
+  }
+  if (nodeEnv === 'production' && obrigatorias === 'true' && excecoes !== 'true') {
+    throw new Error('Fotos obrigatórias em produção exigem EXCECOES_ODOMETRO_ATIVAS=true');
+  }
   return {
+    excecoesOdometroAtivas: excecoes === 'true',
     evidenciasStorage: driver,
     evidenciasStorageDir: path.resolve(pasta || path.join(__dirname, '../../storage/evidencias')),
     evidenciasPostgresLimiteBytes:

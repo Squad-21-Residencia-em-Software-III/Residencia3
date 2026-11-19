@@ -32,6 +32,27 @@ export const consultarEvidenciasSchema = z
   })
   .strict();
 
+const textoExcecao = z.string()
+  .trim()
+  .min(10, 'Informe pelo menos 10 caracteres')
+  .max(500, 'Informe no máximo 500 caracteres');
+
+export const solicitarExcecaoSchema = consultarEvidenciasSchema.extend({
+  fase: faseOdometroSchema,
+  motivo: textoExcecao,
+});
+
+export const decidirExcecaoSchema = z.strictObject({
+  tipo_operacao: tipoOperacaoSchema,
+  decisao: z.enum(['APROVADA', 'RECUSADA']),
+  justificativa: textoExcecao,
+});
+
+export const listarExcecoesSchema = z.strictObject({
+  tipo_operacao: tipoOperacaoSchema,
+  pagina: z.coerce.number().int().min(1).max(1_000_000).default(1),
+});
+
 export const arquivoEvidenciaSchema = z
   .object({
     download: z.enum(['0', '1']).optional(),

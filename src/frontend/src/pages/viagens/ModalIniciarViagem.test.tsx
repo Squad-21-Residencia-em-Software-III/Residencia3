@@ -10,7 +10,7 @@ import { ModalFinalizarViagem } from './ModalFinalizarViagem';
 import { ModalIniciarViagem } from './ModalIniciarViagem';
 
 vi.mock('../../services/api/evidenciasOdometroApi', () => ({
-  evidenciasOdometroApi: { enviar: vi.fn(), consultar: vi.fn(), arquivo: vi.fn() },
+  evidenciasOdometroApi: { enviar: vi.fn(), consultar: vi.fn(), arquivo: vi.fn(), solicitarExcecao: vi.fn() },
 }));
 
 const api = vi.mocked(evidenciasOdometroApi);
@@ -33,6 +33,7 @@ const fase = (f: 'SAIDA' | 'CHEGADA', extra: Partial<EvidenciaOdometro> = {}): E
 });
 const situacao = (saida: Partial<EvidenciaOdometro> = {}, chegada: Partial<EvidenciaOdometro> = {}): EvidenciasDaViagem => ({
   tipo_operacao: 'ADMINISTRATIVA', viagem_id: 7, veiculo_placa: 'ABC1D23', motorista_nome: 'Beto',
+  fotos_disponiveis: true, fotos_obrigatorias: true,
   saida: fase('SAIDA', saida), chegada: fase('CHEGADA', chegada),
 });
 
@@ -272,7 +273,7 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     confirmar();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(onSalvar).toHaveBeenCalledWith(35000);
-    expect(api.consultar).toHaveBeenCalledWith(coleta);
+    expect(api.consultar).toHaveBeenCalledWith({ id: coleta.id, tipo_operacao: 'SVO' });
     expect(api.enviar).not.toHaveBeenCalled();
   });
 
@@ -288,14 +289,49 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     await waitFor(() => expect(onSalvar).toHaveBeenCalledWith(35000));
   });
 
-  it('se não conseguir consultar a situação, a foto continua obrigatória', async () => {
-    api.consultar.mockRejectedValue(new ApiError('Servidor indisponível', 503));
+  it('solicita autorização, atualiza a decisão e envia só o km quando aprovada', async () => {
+    const pedido = {
+      id: 18, fase: 'SAIDA', tipo_operacao: 'ADMINISTRATIVA', viagem_id: 7,
+      motivo: 'A câmera do celular quebrou.', status: 'PENDENTE',
+      justificativa: null, decidida_em: null, solicitada_em: '2026-11-18T12:00:00Z',
+    } as const;
+    api.consultar.mockResolvedValue({ ...situacao(), pode_solicitar_excecao: true });
+    api.solicitarExcecao.mockResolvedValue(pedido);
     const { onSalvar } = abrir();
-    expect(await screen.findByText(/Ela continua obrigatória/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Solicitar autorização sem foto' }));
+    expect(screen.getByRole('button', { name: 'Enviar pedido' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Motivo para solicitar autorização sem foto'), { target: { value: pedido.motivo } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar pedido' }));
+    expect(await screen.findByText('Pedido aguardando decisão do gestor.')).toBeInTheDocument();
+    expect(api.solicitarExcecao).toHaveBeenCalledWith(viagem, 'SAIDA', pedido.motivo);
+    expect(onSalvar).not.toHaveBeenCalled();
+
+    api.consultar.mockResolvedValue({ ...situacao(), pedidos_excecao: [{ ...pedido, status: 'APROVADA', justificativa: 'Equipamento indisponível.' }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar pedido' }));
+    expect(await screen.findByText(/Autorização aprovada/)).toBeInTheDocument();
     informarKm('35000');
     confirmar();
-    expect(await screen.findByText('Tire ou carregue a foto do odômetro na saída.')).toBeInTheDocument();
-    expect(onSalvar).not.toHaveBeenCalled();
+    await waitFor(() => expect(onSalvar).toHaveBeenCalledWith(35000));
+    expect(api.enviar).not.toHaveBeenCalled();
+  });
+
+  it('respeita a configuração do backend quando a foto está indisponível', async () => {
+    api.consultar.mockResolvedValue({ ...situacao(), fotos_disponiveis: false, fotos_obrigatorias: false });
+    const { onSalvar } = abrir();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Confirmar Saída/ })).toBeEnabled());
+    expect(screen.queryByRole('button', { name: /Carregar foto/ })).not.toBeInTheDocument();
+    informarKm('35000');
+    confirmar();
+    await waitFor(() => expect(onSalvar).toHaveBeenCalledWith(35000));
+  });
+
+  it('se a consulta falhar, delega a validação da obrigatoriedade ao servidor', async () => {
+    api.consultar.mockRejectedValue(new ApiError('Servidor indisponível', 503));
+    const { onSalvar } = abrir();
+    expect(await screen.findByText(/O servidor validará a transição/)).toBeInTheDocument();
+    informarKm('35000');
+    confirmar();
+    await waitFor(() => expect(onSalvar).toHaveBeenCalledWith(35000));
   });
 });
 

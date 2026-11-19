@@ -1,6 +1,7 @@
 import type { Knex } from 'knex';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
+import { chaveExcecao, excecoesDoRegistro } from '../models/excecaoOdometroModel';
 import type { TipoOperacao } from '../validators/viagemSchemas';
 import { lerEvidenciaVerificada } from './armazenamentoEvidencias';
 
@@ -160,6 +161,29 @@ async function confirmarProvisoria(trx: Knex.Transaction, t: Transicao, deslocam
   return evidencia.id;
 }
 
+async function registrarExcecao(trx: Knex.Transaction, t: Transicao, deslocamentoId?: number): Promise<number | undefined> {
+  const motorista = await trx('motoristas').where({ id: t.viagem.motorista_id }).first('usuario_id');
+  if (!motorista?.usuario_id) return undefined;
+  const consulta = excecoesDoRegistro(trx, t.tipo, t.viagemId);
+  const aprovada = await consulta.clone().where({
+    fase: t.fase, status: 'APROVADA', motorista_id: t.viagem.motorista_id,
+    veiculo_id: t.viagem.veiculo_id, solicitada_por: motorista.usuario_id,
+  }).whereNull('encerrada_em').forUpdate().first();
+  if (!aprovada) return undefined;
+
+  const [evidencia] = await trx('evidencias_odometro').insert({
+    ...chaveExcecao(t.tipo, t.viagemId),
+    deslocamento_svo_id: deslocamentoId ?? null,
+    fase: t.fase, modalidade: 'EXCECAO_GESTOR', status: 'ATIVA',
+    veiculo_id: t.viagem.veiculo_id, motorista_id: t.viagem.motorista_id,
+    motorista_usuario_id: motorista.usuario_id, km_registrado: t.km, registrado_por: t.autorId,
+    excecao_aprovada_por: aprovada.decidida_por, excecao_aprovada_em: aprovada.decidida_em,
+    excecao_justificativa: aprovada.justificativa, auditoria_id: aprovada.auditoria_decisao_id,
+  }).returning<{ id: number }[]>('id');
+  await consulta.where({ id: aprovada.id }).update({ encerrada_em: trx.fn.now(), evidencia_id: evidencia!.id });
+  return evidencia!.id;
+}
+
 // A fase já coberta (foto de outra ordem do mesmo deslocamento ou exceção) dispensa nova foto.
 // Sem cobertura: usa a foto enviada ou, com as fotos obrigatórias, recusa a transição.
 async function cobrirFase(
@@ -170,6 +194,10 @@ async function cobrirFase(
 ): Promise<number | undefined> {
   if (await evidenciaDaFase(trx, t.tipo, alvoId, t.fase)) return undefined;
   if (t.evidenciaId !== undefined) return confirmarProvisoria(trx, t, deslocamentoId);
+  if (env.excecoesOdometroAtivas) {
+    const id = await registrarExcecao(trx, t, deslocamentoId);
+    if (id !== undefined) return id;
+  }
   if (env.fotosOdometroObrigatorias) {
     throw erroEvidencia(
       `Envie a foto do odômetro na ${t.fase === 'SAIDA' ? 'saída' : 'chegada'} para continuar.`,

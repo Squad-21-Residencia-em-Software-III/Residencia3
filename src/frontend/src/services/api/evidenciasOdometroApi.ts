@@ -2,6 +2,8 @@ import type {
   EvidenciaEnviada,
   EvidenciasDaViagem,
   FaseOdometro,
+  DecisaoExcecaoOdometro,
+  PedidoExcecaoOdometro,
 } from '../../types/evidenciaOdometro';
 import type { Viagem } from '../../types/viagem';
 import { downloadBlob, request } from './http';
@@ -13,6 +15,25 @@ type ReferenciaViagem = Pick<Viagem, 'id' | 'tipo_operacao'>;
  * Contrato: docs/scrum-203-contrato-backend.md.
  */
 export const evidenciasOdometroApi = {
+  configuracao: () => request<{ fotos_disponiveis: boolean; excecoes_disponiveis: boolean }>(
+    'GET', '/evidencias-odometro/configuracao',
+  ),
+
+  solicitarExcecao: ({ id, tipo_operacao }: ReferenciaViagem, fase: FaseOdometro, motivo: string) =>
+    request<PedidoExcecaoOdometro>('POST', '/evidencias-odometro/excecoes', {
+      body: { tipo_operacao, viagem_id: id, fase, motivo },
+    }),
+
+  listarExcecoes: (tipo_operacao: ReferenciaViagem['tipo_operacao'], pagina: number) =>
+    request<{ dados: Array<PedidoExcecaoOdometro & { motorista_nome: string }>; tem_mais: boolean }>(
+      'GET', '/evidencias-odometro/excecoes', { query: { tipo_operacao, pagina } },
+    ),
+
+  decidirExcecao: (pedido: PedidoExcecaoOdometro, decisao: DecisaoExcecaoOdometro, justificativa: string) =>
+    request<PedidoExcecaoOdometro>('PATCH', `/evidencias-odometro/excecoes/${pedido.id}`, {
+      body: { tipo_operacao: pedido.tipo_operacao, decisao, justificativa },
+    }),
+
   /**
    * Envia a foto antes da transição. Ela fica provisória até `iniciar`/`finalizar` usar o id
    * devolvido. A mesma `chave_idempotencia` em um reenvio devolve a mesma evidência.
