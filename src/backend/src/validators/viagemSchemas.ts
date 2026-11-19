@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// Viagens administrativas, coletas SVO e veículos guardam o odômetro em colunas INTEGER.
+const KM_ODOMETRO_MAXIMO = 2_147_483_647;
+
 const idSchema = (campo: string) =>
   z
     .number({ error: `O campo ${campo} é obrigatório` })
@@ -10,7 +13,8 @@ const kmSchema = (campo: string) =>
   z
     .number({ error: `O campo ${campo} é obrigatório` })
     .int('A quilometragem deve ser um número inteiro')
-    .nonnegative('A quilometragem não pode ser negativa');
+    .nonnegative('A quilometragem não pode ser negativa')
+    .max(KM_ODOMETRO_MAXIMO, `A quilometragem deve ser de no máximo ${KM_ODOMETRO_MAXIMO.toLocaleString('pt-BR')} km.`);
 
 export const tipoOperacaoSchema = z.enum(['ADMINISTRATIVA', 'SVO'], {
   error: 'Tipo de operação inválido. Valores aceitos: ADMINISTRATIVA, SVO',

@@ -341,6 +341,23 @@ describe('Rotas de viagens', () => {
   });
 
   // BL17: a quilometragem final é validada na API, não só na interface
+  it.each([
+    ['iniciar', 'km_inicial', 7454757527],
+    ['finalizar', 'km_final', 2147483648],
+  ])('PATCH /api/viagens/:id/%s rejeita quilometragem acima do limite do banco', async (acao, campo, km) => {
+    const resposta = await request(app)
+      .patch(`/api/viagens/5/${acao}`)
+      .set('Authorization', token)
+      .send({ [campo]: km });
+
+    expect(resposta.status).toBe(400);
+    expect(resposta.body.detalhes).toEqual([
+      { campo, mensagem: 'A quilometragem deve ser de no máximo 2.147.483.647 km.' },
+    ]);
+    expect(viagemService.iniciarViagem).not.toHaveBeenCalled();
+    expect(viagemService.finalizarViagem).not.toHaveBeenCalled();
+  });
+
   it.each([{}, { km_final: -1 }, { km_final: 1050.5 }, { km_final: '1050' }, { km_final: null }])(
     'PATCH /api/viagens/:id/finalizar deve rejeitar km_final inválido: %j',
     async (corpo) => {
