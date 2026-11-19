@@ -100,10 +100,9 @@ A foto de saída SVO é enviada **antes** de a coleta iniciar, quando o deslocam
 
 O ajuste entrou na própria migration da SCRUM-210 (commit `8b0b7da` do #170), então não há passo manual.
 
-## Fora deste PR
+## Exceção gerencial e operação recorrente
 
-- **Agendamento da limpeza e do expurgo** no ambiente hospedado. A SCRUM-211 fornece o comando para simulação e execução controlada.
-- **Tela de aprovação da exceção sem foto.** Ficou para o desenho técnico, por decisão da SCRUM-203. O back já reconhece a exceção registrada (`EXCECAO_GESTOR`, `ATIVA`) como fase coberta.
+O [contrato SCRUM-203](scrum-203-contrato-backend.md#6-exceção-sem-foto) descreve a solicitação, a decisão gerencial e o consumo da aprovação. O [guia de operação](operacao-odometro-e-agenda-svo.md) registra a configuração das flags, os lotes de retenção, o monitoramento e os pré-requisitos para ativar o cron.
 
 ## Testes
 

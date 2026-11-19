@@ -64,7 +64,7 @@ Rotas públicas: `GET /status`, `POST /auth/login`, `POST /auth/refresh` e `POST
 4. **Solicitações próprias.** `/minhas` devolve apenas as solicitações do usuário autenticado (`solicitante_id` do token).
 5. **Segregação de funções.** Ninguém aprova nem recusa uma solicitação criada por si mesmo, nem o Administrador. A resposta é 403 "Você não pode analisar uma solicitação criada por você".
 6. **Tipo de operação.** O Gestor de Frota gerencia viagens da frota administrativa, e o Gestor SVO, ordens SVO. O Administrador gerencia ambos.
-7. **Viagens do motorista.** O motorista só lista, inicia e finaliza as próprias viagens ou ordens, e só do seu tipo de frota.
+7. **Viagens do motorista.** O motorista só lista, inicia e finaliza as próprias viagens ou ordens, e só do seu tipo de frota. O condutor designado pode solicitar dispensa de foto por fase. A decisão exige justificativa e é restrita a Administrador (ambas as operações), Gestor de Frota (Administrativo) ou Gestor SVO associado (SVO). O condutor que solicitou a dispensa fica impedido de decidi-la. A consulta de situação do motorista se limita ao seu registro e o arquivo fica disponível apenas aos gestores competentes.
 
 Outras proteções que já existiam:
 
@@ -84,4 +84,4 @@ Outras proteções que já existiam:
 
 ### Navegação da SCRUM-166
 
-O seletor não concede acesso à API. Em Solicitações, Administrador vê Administrativo e SVO; Gestor SVO vê SVO e Administrativo, nesta ordem; Gestor de Frota e Solicitante veem Administrativo. A triagem e o cadastro SVO exigem Administrador ou Gestor SVO, com a associação SVO exigida pelo servidor. O Gestor SVO acompanha suas solicitações administrativas por `/minhas`, sem ações de aprovação ou agendamento; consulta de viagens administrativas próprias depende da SCRUM-179. A consulta administrativa de veículos para Gestor SVO deve limitar os campos a modelo, placa, status/disponibilidade e capacidade de ocupantes. A validação por perfil, registro e campo é responsabilidade do servidor.
+O seletor não concede acesso à API. Em Solicitações, Administrador vê Administrativo e SVO; Gestor SVO vê SVO e Administrativo, nesta ordem; Gestor de Frota e Solicitante veem Administrativo. A triagem e o cadastro SVO exigem Administrador ou Gestor SVO, com a associação SVO exigida pelo servidor. O Gestor SVO acompanha suas solicitações administrativas por `/minhas`, sem ações de aprovação ou agendamento; as viagens que ele próprio solicitou ficam disponíveis em `/api/viagens/minhas`, com dados operacionais reduzidos. A consulta administrativa de veículos para Gestor SVO deve limitar os campos a modelo, placa, status/disponibilidade e capacidade de ocupantes. A validação por perfil, registro e campo é responsabilidade do servidor.

@@ -210,6 +210,10 @@ npm run build
 | API | `src/backend` | `npm install`, `npm run migrate` e `npm run dev` | http://localhost:3000/api/status |
 | Front | `src/frontend` | `npm install` e `npm run dev` | http://localhost:5173/ |
 
+## Configuração dos fluxos por ambiente
+
+O [guia de operação](operacao-odometro-e-agenda-svo.md) informa as migrations, as flags da API e da Vercel, os crons e os passos de homologação. A interface está descrita no [manual do usuário](manual-fluxos-operacionais.md).
+
 ## Problemas comuns
 - **`docker compose` não encontra o `.env`**: o arquivo precisa estar na **raiz** do projeto, não dentro de `src/backend`.
 - **Porta 5432 ou 3000 em uso**: pare o serviço que está usando a porta ou ajuste a porta.

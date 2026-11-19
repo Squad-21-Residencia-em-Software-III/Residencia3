@@ -1,8 +1,6 @@
 # SCRUM-203: contrato das fotos do odômetro (front → back, banco e DevOps)
 
-O front das SCRUM-205, 206, 207 e 214 está pronto e **desligado** pelo interruptor `fotosOdometro` em `src/frontend/src/config/recursosBackend.ts`. Desligado, iniciar e finalizar funcionam como hoje, sem foto e sem campos novos.
-
-Este documento descreve o que o front espera. Os nomes são uma **proposta**: se o back preferir outros, basta avisar, e o ajuste no front é pequeno (`services/api/evidenciasOdometroApi.ts` e `types/evidenciaOdometro.ts`).
+O frontend expõe os controles com `VITE_FOTOS_ODOMETRO_ATIVAS=true`. A API informa a disponibilidade e obrigatoriedade das fotos e a disponibilidade de exceções. A configuração tem [implantação coordenada](operacao-odometro-e-agenda-svo.md).
 
 Regras de negócio: decisões do líder de 18/11/2026 na SCRUM-203.
 
@@ -127,9 +125,16 @@ Fica com back e banco:
 
 ## 6. Exceção sem foto
 
-Só o **gestor responsável pela operação** (distinto do motorista), com justificativa obrigatória e auditoria. A **tela de aprovação** ficou para o desenho técnico e **não está neste PR**.
+O motorista designado usa **Solicitar autorização sem foto** na saída ou chegada. O gestor competente abre **Pedidos sem foto** na aba da operação em **Viagens**. Motivo do pedido e justificativa de decisão devem ter de 10 a 500 caracteres úteis. Uma recusa fica no histórico. O motorista pode enviar outro pedido.
 
-O front já está pronto para a exceção: quando o `GET` devolve `EXCECAO_AUTORIZADA`, o modal mostra a autorização e permite a transição sem foto. O motorista **não** tem nenhum botão para pular a foto.
+| Método e rota | Contrato |
+|---|---|
+| `POST /api/evidencias-odometro/excecoes` | `tipo_operacao`, `viagem_id`, `fase` e `motivo`. Reenvio enquanto houver pedido aberto retorna o mesmo pedido. |
+| `GET /api/evidencias-odometro/excecoes` | `tipo_operacao` e `pagina`. Retorna `dados` e `tem_mais` para gestores da operação. |
+| `PATCH /api/evidencias-odometro/excecoes/:id` | `tipo_operacao`, `decisao` (`APROVADA` ou `RECUSADA`) e `justificativa`. Um pedido já decidido ou invalidado responde 409. |
+| `GET /api/evidencias-odometro` | Inclui `pedidos_excecao` por fase e `pode_solicitar_excecao`, além das evidências existentes e da configuração efetiva. |
+
+A aprovação ainda permite enviar foto. Sem foto, a transição consome a autorização no mesmo commit, usando o km informado, e grava a evidência `EXCECAO_GESTOR` com referência à auditoria da decisão. Cancelamento e realocação invalidam os pedidos correspondentes. No SVO, a aprovação abre somente a fase da ordem designada. Após a comprovação, a evidência física pode ser compartilhada pelas demais ordens do deslocamento. A quilometragem segue obrigatória.
 
 ## 7. Banco (SCRUM-210) e armazenamento (SCRUM-211)
 
@@ -141,9 +146,9 @@ O front não depende da modelagem interna, só do contrato acima. Pontos que o c
 
 ## 8. Checklist para ligar o interruptor
 
-1. As migrations da SCRUM-210 estão aplicadas e o armazenamento da SCRUM-211 está configurado em homologação.
-2. As seções 1 a 4 estão implementadas, com os códigos de erro da seção 2.
-3. Ligar `fotosOdometro: true`.
+1. Validar as migrations SCRUM-210, SCRUM-211 e SCRUM-203 e as permissões de banco em homologação.
+2. Configurar o PostgreSQL privado e as flags do backend conforme o [guia operacional](operacao-odometro-e-agenda-svo.md).
+3. Gerar o frontend com `VITE_FOTOS_ODOMETRO_ATIVAS=true`.
 4. Testar no celular (Android/Chrome e iOS/Safari):
    - câmera, galeria e prévia;
    - erro de rede;

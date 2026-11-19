@@ -15,7 +15,7 @@ As fotos de saída e de chegada ficam no mesmo PostgreSQL usado pela API. A deci
 | --- | --- |
 | `EVIDENCIAS_STORAGE=postgres` | Habilita a gravação no banco usado pela API. O padrão continua `desativado` até a liberação do recurso. |
 | `EVIDENCIAS_POSTGRES_LIMITE_MIB=128` | Teto de bytes das fotos armazenadas. Faixa de 1 a 512 MiB. A checagem é serializada no banco para cobrir envios simultâneos. |
-| `FOTOS_ODOMETRO_OBRIGATORIAS=true` | Exige a evidência nas transições. Ativar após a homologação e a aprovação do fluxo de exceção. |
+| `FOTOS_ODOMETRO_OBRIGATORIAS=true` | Exige foto válida ou exceção aprovada. Ativar após homologação. Em produção, requer `EXCECOES_ODOMETRO_ATIVAS=true`. |
 
 O limite de 128 MiB cobre o conteúdo das fotos, inclusive as provisórias. O tamanho físico do PostgreSQL, seu histórico, as demais tabelas e a transferência têm limites próprios no Neon. Antes de ativar, confira o plano e o espaço disponível no painel. Quando a cota de fotos é atingida, novos envios são recusados com `EVIDENCIAS_LIMITE_ARMAZENAMENTO`. As fotos existentes continuam disponíveis e seguem a política de retenção. [Planos do Neon](https://neon.com/pricing) · [Tipo binário do PostgreSQL](https://www.postgresql.org/docs/current/datatype-binary.html)
 
@@ -35,5 +35,7 @@ O ensaio local aplicou as 25 migrations em um PostgreSQL descartável. A suíte 
 O prazo de 12 meses começa na conclusão real da viagem administrativa ou do deslocamento físico SVO. A rotina pula fotos com preservação legal e deslocamentos SVO ainda em andamento. Reservas de upload não confirmadas podem ser limpas após 30 minutos.
 
 Após compilar o backend, `npm run evidencias:retencao` simula um lote de 25 itens. Na janela de manutenção aprovada, `npm run evidencias:retencao -- --aplicar` executa a limpeza e o expurgo. É possível usar `--limite=50`, com máximo de 100 por lote. Esse comando usa o banco já configurado e sai com erro se houver falhas no lote.
+
+Para configurar a recorrência, o alerta e o reprocessamento, siga o [guia operacional da retenção](operacao-odometro-e-agenda-svo.md#retenção-do-odômetro).
 
 As fotos passam a integrar os backups completos do PostgreSQL. A retenção aprovada também precisa contemplar as cópias recuperáveis. Testar a restauração com fotos fictícias e comparar o SHA-256 no ambiente isolado. A exclusão libera a cota lógica de fotos. O espaço físico e as cópias históricas seguem o ciclo de manutenção e recuperação do PostgreSQL e do Neon.
