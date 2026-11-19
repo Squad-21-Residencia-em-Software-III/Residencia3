@@ -47,6 +47,14 @@ const autenticarComo = (perfil: Perfil) =>
 
 describe('Rotas de viagens', () => {
   const token = 'Bearer token-teste';
+  const agendamentoSvo = {
+    tipo_operacao: 'SVO',
+    solicitacao_id: 1,
+    veiculo_id: 2,
+    motorista_id: 3,
+    inicio_previsto: '2099-11-20T14:00:00Z',
+    fim_previsto: '2099-11-20T16:00:00Z',
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -220,29 +228,75 @@ describe('Rotas de viagens', () => {
     );
   });
 
-  it('POST /api/viagens deve alocar ordem SVO com capacidade padrão e retornar 200', async () => {
-    autenticarComo(PERFIS.GESTOR_SVO);
+  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO])('permite %s alocar ordem SVO com capacidade padrão', async (perfil) => {
+    autenticarComo(perfil);
 
     const resposta = await request(app)
       .post('/api/viagens')
       .set('Authorization', token)
-      .send({
-        tipo_operacao: 'SVO',
-        solicitacao_id: 1,
-        veiculo_id: 2,
-        motorista_id: 3,
-        inicio_previsto: '2099-11-20T14:00:00Z',
-        fim_previsto: '2099-11-20T16:00:00Z',
-      });
+      .send(agendamentoSvo);
 
     expect(resposta.status).toBe(200);
     expect(viagemService.criar).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tipo_operacao: 'SVO',
-        capacidade_utilizada: 1,
-      }),
-      expect.anything()
+      { ...agendamentoSvo, capacidade_utilizada: 1 },
+      { id: 3, perfil },
     );
+  });
+
+  it('aceita quatro óbitos no pedido de alocação SVO', async () => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    const dados = { ...agendamentoSvo, capacidade_utilizada: 4 };
+
+    const resposta = await request(app).post('/api/viagens').set('Authorization', token).send(dados);
+
+    expect(resposta.status).toBe(200);
+    expect(viagemService.criar).toHaveBeenCalledWith(dados, { id: 3, perfil: PERFIS.GESTOR_SVO });
+  });
+
+  it.each([0, 1.5, 5])('rejeita capacidade utilizada inválida (%s) antes da alocação SVO', async (capacidade) => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+
+    const resposta = await request(app).post('/api/viagens').set('Authorization', token)
+      .send({ ...agendamentoSvo, capacidade_utilizada: capacidade });
+
+    expect(resposta.status).toBe(400);
+    expect(viagemService.criar).not.toHaveBeenCalled();
+  });
+
+  it.each(['solicitacao_id', 'veiculo_id', 'motorista_id'] as const)('exige %s para alocar a ordem SVO', async (campo) => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    const { [campo]: _, ...dados } = agendamentoSvo;
+
+    const resposta = await request(app).post('/api/viagens').set('Authorization', token).send(dados);
+
+    expect(resposta.status).toBe(400);
+    expect(viagemService.criar).not.toHaveBeenCalled();
+  });
+
+  it.each([PERFIS.MOTORISTA_SVO, PERFIS.INTEGRANTE_SVO, PERFIS.SOLICITANTE])('nega alocação SVO a %s', async (perfil) => {
+    autenticarComo(perfil);
+
+    const resposta = await request(app).post('/api/viagens').set('Authorization', token).send(agendamentoSvo);
+
+    expect(resposta.status).toBe(403);
+    expect(viagemService.criar).not.toHaveBeenCalled();
+  });
+
+  it('nega alocação sem autenticação', async () => {
+    const resposta = await request(app).post('/api/viagens').send(agendamentoSvo);
+
+    expect(resposta.status).toBe(401);
+    expect(viagemService.criar).not.toHaveBeenCalled();
+  });
+
+  it('nega alocação ao gestor sem vínculo com a unidade SVO', async () => {
+    autenticarComo(PERFIS.GESTOR_SVO);
+    vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValueOnce(false);
+
+    const resposta = await request(app).post('/api/viagens').set('Authorization', token).send(agendamentoSvo);
+
+    expect(resposta.status).toBe(403);
+    expect(viagemService.criar).not.toHaveBeenCalled();
   });
 
   it('POST /api/viagens deve retornar 400 sem tipo de operação', async () => {

@@ -1,5 +1,5 @@
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PERFIS } from '../constants/perfis';
 import type { ReservaSvo } from '../services/agendaSvoService';
 
@@ -661,6 +661,8 @@ describe('viagemService.criar (SVO)', () => {
     id: 1, ordem_id: 3, equipe_id: 9, usuario_id: 40, revogado_em: null,
   };
 
+  afterEach(() => vi.useRealTimers());
+
   beforeEach(() => {
     ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota: 'SVO', lotacao_cabine: 2 };
     ref.estado.motorista = { ...ref.estado.motorista, tipo_motorista: 'SVO' };
@@ -694,6 +696,34 @@ describe('viagemService.criar (SVO)', () => {
   });
 
   it.each([
+    { tipo_frota: 'ADMINISTRATIVA', status: 'DISPONIVEL', mensagem: 'O veículo não pertence à frota SVO' },
+    { tipo_frota: 'SVO', status: 'MANUTENCAO', mensagem: 'O veículo está em manutenção' },
+  ])('deve rejeitar veículo da frota $tipo_frota com status $status', async ({ tipo_frota, status, mensagem }) => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota, status };
+
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 400, message: mensagem });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(ref.estado.updates).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it.each([1, 2, 4])('deve aceitar %i óbito(s) no limite do veículo com um integrante designado', async (capacidade) => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, capacidade_maxima: capacidade };
+
+    await expect(viagemService.criar({ ...dados, capacidade_utilizada: capacidade }, gestorSvo))
+      .resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({ capacidade_utilizada: capacidade, status: 'ALOCADA' }),
+    });
+    expect(ref.estado.inserts).toEqual([{
+      tabela: 'ordens_svo_integrantes',
+      valores: expect.objectContaining({ ordem_id: 99, usuario_id: 40 }),
+    }]);
+  });
+
+  it.each([
+    { capacidadeMaxima: 1, capacidadeUtilizada: 2 },
     { capacidadeMaxima: 2, capacidadeUtilizada: 3 },
     { capacidadeMaxima: 5, capacidadeUtilizada: 5 },
   ])('deve rejeitar capacidade utilizada $capacidadeUtilizada em veículo com capacidade $capacidadeMaxima',
@@ -704,8 +734,34 @@ describe('viagemService.criar (SVO)', () => {
         .rejects.toMatchObject({ statusCode: 409, message: 'O veículo não tem capacidade suficiente' });
       expect(ref.estado.inserts).toEqual([]);
       expect(ref.estado.updates).toEqual([]);
+      expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+      expect(reavaliarFilaSvo).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    { statusOrdem: 'ALOCADA', statusVeiculo: 'RESERVADO', agora: '2099-11-20T12:00:00Z' },
+    { statusOrdem: 'EM_DESLOCAMENTO', statusVeiculo: 'EM_USO', agora: '2099-11-20T13:30:00Z' },
+  ])('deve reservar veículo $statusVeiculo para outro motorista em período distinto', async ({ statusOrdem, statusVeiculo, agora }) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(agora));
+    ref.estado.veiculo = { ...ref.estado.veiculo, status: statusVeiculo };
+    const coletaAnterior = {
+      ...reserva, status: statusOrdem, veiculo_id: 10, equipe_id: 9, capacidade_utilizada: 3,
+      inicio_previsto: '2099-11-20T13:00:00Z', fim_previsto: '2099-11-20T14:00:00Z',
+    };
+    ref.estado.ordensDaAgenda = [coletaAnterior];
+
+    await expect(viagemService.criar({ ...dados, capacidade_utilizada: 3 }, gestorSvo))
+      .resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({
+        veiculo_id: 10, motorista_id: 20, capacidade_utilizada: 3, status: 'ALOCADA', liberada_em: null,
+        inicio_previsto: new Date(dados.inicio_previsto), fim_previsto: new Date(dados.fim_previsto),
+      }),
+    });
+  });
 
   it.each([
     { recurso: 'veículo alocado a outro motorista', ordem: { veiculo_id: 10 } },
@@ -716,6 +772,8 @@ describe('viagemService.criar (SVO)', () => {
 
     await expect(viagemService.criar(dados, gestorSvo))
       .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+    expect(ref.estado.updates).toEqual([]);
+    expect(ref.estado.inserts).toEqual([]);
   });
 
   it('deve rejeitar equipe inexistente', async () => {
