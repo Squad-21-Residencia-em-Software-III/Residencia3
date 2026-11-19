@@ -11,6 +11,33 @@ const {
 } = require('./backup-db.cjs');
 
 /**
+ * Converte recursivamente representacoes JSON de Buffer ({ type: 'Buffer', data: [...] })
+ * de volta para instancias reais de Buffer antes da insercao em colunas BYTEA do PostgreSQL.
+ * @param {unknown} valor
+ * @returns {unknown}
+ */
+function reidratarBuffers(valor) {
+  if (Array.isArray(valor)) {
+    return valor.map(reidratarBuffers);
+  }
+  if (valor !== null && typeof valor === 'object') {
+    if (
+      valor.type === 'Buffer' &&
+      Array.isArray(valor.data) &&
+      Object.keys(valor).length === 2
+    ) {
+      return Buffer.from(valor.data);
+    }
+    const convertido = {};
+    for (const [k, v] of Object.entries(valor)) {
+      convertido[k] = reidratarBuffers(v);
+    }
+    return convertido;
+  }
+  return valor;
+}
+
+/**
  * Compara o resumo esperado do manifesto de backup com os registros lidos do ambiente restaurado.
  * @param {Record<string, { totalRegistros: number, sha256: string }>} resumoEsperado
  * @param {Record<string, Array<Record<string, unknown>>>} tabelasRestauradas
@@ -147,9 +174,9 @@ async function executarRestauracaoValidada(opcoes = {}) {
         );
       }
 
-      // 2. Insere os dados do backup em ordem topologica
+      // 2. Insere os dados do backup em ordem topologica (reidratando buffers BYTEA como fotos do odometro)
       for (const nomeTabela of ordemTabelas) {
-        const registros = payload.tabelas[nomeTabela] || [];
+        const registros = reidratarBuffers(payload.tabelas[nomeTabela] || []);
         if (registros.length > 0) {
           await trx.withSchema(schemaTeste).into(nomeTabela).insert(registros);
         }
@@ -251,6 +278,7 @@ async function executarRestauracaoValidada(opcoes = {}) {
 }
 
 module.exports = {
+  reidratarBuffers,
   validarIntegridadeTabelas,
   localizarBackupMaisRecente,
   executarRestauracaoValidada,
