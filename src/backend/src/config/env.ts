@@ -37,17 +37,24 @@ function obrigatoria(origem: Origem, nome: string): string {
 }
 
 // As mensagens nunca incluem o valor do segredo
-function validarSegredo(segredo: string): string {
+function validarSegredo(segredo: string, nome = 'JWT_SECRET'): string {
   if (segredo.length < TAMANHO_MINIMO_SEGREDO) {
-    throw new Error(`JWT_SECRET deve ter pelo menos ${TAMANHO_MINIMO_SEGREDO} caracteres`);
+    throw new Error(`${nome} deve ter pelo menos ${TAMANHO_MINIMO_SEGREDO} caracteres`);
   }
   if (SEGREDOS_DE_EXEMPLO.includes(segredo)) {
-    throw new Error('JWT_SECRET não pode usar o valor de exemplo da documentação');
+    throw new Error(`${nome} não pode usar o valor de exemplo da documentação`);
   }
   if (new Set(segredo).size < CARACTERES_DISTINTOS_MINIMOS) {
-    throw new Error('JWT_SECRET é previsível demais; gere um valor aleatório');
+    throw new Error(`${nome} é previsível demais; gere um valor aleatório`);
   }
   return segredo;
+}
+
+// Segredo opcional: ausente ou vazio desativa o recurso; definido, segue as mesmas regras do JWT_SECRET
+function segredoOpcional(origem: Origem, nome: string): string | undefined {
+  const valor = origem[nome];
+  if (valor === undefined || valor === '') return undefined;
+  return validarSegredo(valor, nome);
 }
 
 // Converte durações como "30m", "2h" ou "1d" em segundos
@@ -221,6 +228,10 @@ export function carregarEnv(origem: Origem = process.env) {
     jwtRefreshExpiraEmSegundos,
     corsOrigens: origensCors(origem.CORS_ORIGIN, producao),
     trustProxy: confiancaProxy(origem.TRUST_PROXY, producao),
+    // Enviado pela Vercel no rewrite /api (docs/seguranca-http.md): identifica o caminho via proxy
+    proxySecret: segredoOpcional(origem, 'PROXY_SECRET'),
+    // Liga a rota /api/diagnostico/ip, usada só para validar a cadeia de proxies
+    diagnosticoProxyToken: segredoOpcional(origem, 'DIAGNOSTICO_PROXY_TOKEN'),
     cookieSecure: cookieSeguro(origem.COOKIE_SECURE, producao),
     limitarRequisicoes: limitesAtivos(origem.RATE_LIMIT, nodeEnv, producao),
     rateLimitLeituraPorMin: inteiroNaFaixa('RATE_LIMIT_LEITURA_POR_MIN', origem.RATE_LIMIT_LEITURA_POR_MIN, 300, 10, 10000),
