@@ -9,6 +9,7 @@ import { logRequisicao } from './middlewares/logRequisicao';
 import { limitarConcorrencia } from './middlewares/limitarConcorrencia';
 import { limitarConsultasPesadas, limitarPorTipoDeOperacao } from './middlewares/limitarTentativasLogin';
 import { limitarTempoRequisicao } from './middlewares/limitarTempoRequisicao';
+import { ehEnvioDeFotoOdometro } from './routes/evidenciaOdometroRoutes';
 import { routes } from './routes';
 
 z.config(z.locales.pt());
@@ -26,7 +27,8 @@ app.use(cabecalhosDeSeguranca());
 app.use(corsPorAmbiente());
 // Proteção contra excesso (docs/limites-e-timeouts.md): concorrência e tempo limite por requisição
 app.use(limitarConcorrencia);
-app.use(limitarTempoRequisicao);
+// O envio da foto do odômetro tem tempo próprio, maior (ver evidenciaOdometroRoutes)
+app.use((req, res, next) => (ehEnvioDeFotoOdometro(req) ? next() : limitarTempoRequisicao(req, res, next)));
 app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
 

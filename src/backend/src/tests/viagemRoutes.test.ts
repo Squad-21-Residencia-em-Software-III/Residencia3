@@ -30,6 +30,10 @@ vi.mock('../services/viagemService', () => ({
     reprogramarOrdemSvo: vi.fn().mockResolvedValue({ id: 9 }),
     criar: vi.fn().mockResolvedValue({ id: 1 }),
     iniciarViagem: vi.fn().mockResolvedValue({ id: 1 }),
+    registrarChegadaLocalSvo: vi.fn().mockResolvedValue({
+      id: 5,
+      status: 'NO_LOCAL',
+    }),
     finalizarViagem: vi.fn().mockResolvedValue({ id: 1 }),
     cancelarViagem: vi.fn().mockResolvedValue({ id: 1 }),
   },
@@ -277,7 +281,8 @@ describe('Rotas de viagens', () => {
       'ADMINISTRATIVA',
       5,
       1000,
-      expect.anything()
+      expect.anything(),
+      undefined,
     );
   });
 
@@ -307,6 +312,7 @@ describe('Rotas de viagens', () => {
   });
 
   it('PATCH /api/viagens/:id/finalizar deve repassar o tipo informado', async () => {
+    autenticarComo(PERFIS.MOTORISTA_SVO);
     await request(app)
       .patch('/api/viagens/5/finalizar')
       .set('Authorization', token)
@@ -319,7 +325,8 @@ describe('Rotas de viagens', () => {
       'SVO',
       5,
       1050,
-      expect.anything()
+      expect.anything(),
+      undefined,
     );
   });
 
@@ -381,7 +388,8 @@ describe('Rotas de viagens', () => {
       expect.objectContaining({
         id: 3,
         perfil: PERFIS.MOTORISTA_FROTA,
-      })
+      }),
+      undefined,
     );
   });
 
@@ -406,7 +414,8 @@ describe('Rotas de viagens', () => {
       expect.objectContaining({
         id: 3,
         perfil: PERFIS.MOTORISTA_FROTA,
-      })
+      }),
+      undefined,
     );
   });
 
@@ -431,7 +440,8 @@ describe('Rotas de viagens', () => {
       expect.objectContaining({
         id: 3,
         perfil: PERFIS.MOTORISTA_SVO,
-      })
+      }),
+      undefined,
     );
   });
 
@@ -458,4 +468,95 @@ describe('Rotas de viagens', () => {
     expect(viagemService.criar).not.toHaveBeenCalled();
     expect(viagemService.cancelarViagem).not.toHaveBeenCalled();
   });
+
+  describe('BL31 - rota de chegada ao local SVO', () => {
+    const token = 'Bearer token-teste';
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      autenticarComo(PERFIS.MOTORISTA_SVO);
+    });
+
+    it('deve permitir que o motorista SVO registre a chegada ao local', async () => {
+      const resposta = await request(app)
+        .patch('/api/viagens/ordens-svo/5/chegar-local')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(200);
+
+      expect(resposta.body).toMatchObject({
+        id: 5,
+        status: 'NO_LOCAL',
+      });
+
+      expect(viagemService.registrarChegadaLocalSvo).toHaveBeenCalledWith(
+        5,
+        {
+          id: 3,
+          perfil: PERFIS.MOTORISTA_SVO,
+        },
+      );
+    });
+
+    it.each([
+      PERFIS.GESTOR_FROTA,
+      PERFIS.MOTORISTA_FROTA,
+      PERFIS.SOLICITANTE,
+    ])('deve impedir o perfil %s de registrar chegada SVO', async (perfil) => {
+      autenticarComo(perfil);
+
+      const resposta = await request(app)
+        .patch('/api/viagens/ordens-svo/5/chegar-local')
+        .set('Authorization', token);
+
+      expect(resposta.status).toBe(403);
+
+      expect(
+        viagemService.registrarChegadaLocalSvo
+      ).not.toHaveBeenCalled();
+    });
+
+    it.each(['abc', '0', '-1'])(
+      'deve rejeitar o ID inválido %s',
+      async (id) => {
+        const resposta = await request(app)
+          .patch(`/api/viagens/ordens-svo/${id}/chegar-local`)
+          .set('Authorization', token);
+
+        expect(resposta.status).toBe(400);
+
+        expect(
+          viagemService.registrarChegadaLocalSvo
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO])('nega chegada ao perfil %s', async (perfil) => {
+      autenticarComo(perfil);
+      const resposta = await request(app).patch('/api/viagens/ordens-svo/5/chegar-local').set('Authorization', token);
+      expect(resposta.status).toBe(403);
+      expect(viagemService.registrarChegadaLocalSvo).not.toHaveBeenCalled();
+    });
+    it('exige autenticação para chegar ao local', async () => {
+      const resposta = await request(app).patch('/api/viagens/ordens-svo/5/chegar-local');
+      expect(resposta.status).toBe(401);
+      expect(viagemService.registrarChegadaLocalSvo).not.toHaveBeenCalled();
+    });
+    it.each([403, 404, 409])('preserva erro %s do serviço', async (status) => {
+      vi.mocked(viagemService.registrarChegadaLocalSvo).mockRejectedValueOnce(new AppError('Transição negada', status));
+      const resposta = await request(app).patch('/api/viagens/ordens-svo/5/chegar-local').set('Authorization', token);
+      expect(resposta.status).toBe(status);
+    });
+  });
+  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO, PERFIS.GESTOR_FROTA, PERFIS.MOTORISTA_FROTA])(
+    'nega início e fim SVO ao perfil %s na API', async (perfil) => {
+      autenticarComo(perfil);
+      for (const acao of ['iniciar', 'finalizar']) {
+        const resposta = await request(app).patch(`/api/viagens/5/${acao}`).set('Authorization', token)
+          .send({ tipo_operacao: 'SVO', [acao === 'iniciar' ? 'km_inicial' : 'km_final']: 1050 });
+        expect(resposta.status).toBe(403);
+      }
+      expect(viagemService.iniciarViagem).not.toHaveBeenCalled();
+      expect(viagemService.finalizarViagem).not.toHaveBeenCalled();
+    });
 });

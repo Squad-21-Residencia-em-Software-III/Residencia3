@@ -60,8 +60,13 @@ export const PERMISSOES = {
    * Administrativo completa, como o Administrador, não usa essa visão.
    */
   'viagens.acompanharProprias': [ADMINISTRADOR, GESTOR_SVO],
-  /** Registrar saída e retorno (iniciar e finalizar com quilometragem). */
-  'viagens.executar': [...GESTORES, ...MOTORISTAS],
+  /** Registrar saída e retorno (iniciar e finalizar) das viagens da operação administrativa. */
+  'viagens.executar': [ADMINISTRADOR, GESTOR_FROTA, MOTORISTA_FROTA],
+  /**
+   * Registrar saída, chegada e retorno das coletas SVO. Pertence ao Motorista SVO responsável;
+   * Administrador e Gestor SVO só acompanham o andamento (SCRUM-110, revisão de QA).
+   */
+  'viagens.executarSvo': [MOTORISTA_SVO],
 
   // Disponibilidade da frota por data e horário
   'agenda.acessar': GESTORES,
@@ -89,6 +94,11 @@ export const PERMISSOES = {
 
   // Auditoria
   'auditoria.acessar': [ADMINISTRADOR],
+  /**
+   * Fotos do odômetro (SCRUM-203): use com `podeNaFrota`. Administrador nas duas operações, Gestor
+   * de Frota só nas administrativas e Gestor SVO só nas SVO, sem abrir a Auditoria aos gestores.
+   */
+  'evidenciasOdometro.ver': [ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO],
 
   // Relatórios gerenciais (BL35 / RF18 / RN20)
   'relatorios.exportar': [ADMINISTRADOR, GESTOR_FROTA],

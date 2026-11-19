@@ -116,10 +116,17 @@ export function mensagemDeErro(erro: unknown): string {
   return erro instanceof Error ? erro.message : 'Erro inesperado. Tente novamente.'
 }
 
+/** `codigo` do ApiError quando a requisição foi cancelada pelo próprio usuário. */
+export const CODIGO_CANCELADO = 'REQUISICAO_CANCELADA'
+
 type Metodo = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
 
 interface Opcoes {
   body?: unknown
+  /** Envio de arquivo (multipart). O navegador define o Content-Type com o boundary. */
+  formData?: FormData
+  /** Permite cancelar a requisição (ex.: envio de foto lento). */
+  signal?: AbortSignal
   query?: Record<string, string | number | boolean | undefined>
   /** Login não deve disparar "sessão expirada" quando a senha está errada. */
   semAutenticacao?: boolean
@@ -228,9 +235,11 @@ async function executar<T>(
       method: metodo,
       headers,
       credentials: 'include',
-      body: opcoes.body !== undefined ? JSON.stringify(opcoes.body) : undefined,
+      body: opcoes.formData ?? (opcoes.body !== undefined ? JSON.stringify(opcoes.body) : undefined),
+      signal: opcoes.signal,
     })
   } catch {
+    if (opcoes.signal?.aborted) throw new ApiError('O envio foi cancelado.', 0, [], CODIGO_CANCELADO)
     throw new ApiError('Não foi possível conectar ao servidor. Verifique sua conexão.', 0)
   }
 

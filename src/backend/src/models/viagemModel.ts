@@ -15,6 +15,7 @@ function normalizarLimite(limite?: number): number {
 export type StatusViagem =
   | 'AGENDADA'
   | 'EM_ANDAMENTO'
+  | 'NO_LOCAL'
   | 'CONCLUIDA'
   | 'CANCELADA';
 
