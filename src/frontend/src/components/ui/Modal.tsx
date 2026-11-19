@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Button } from './Button';
 import { CloseIcon } from './icons';
+import { createPortal } from 'react-dom';
 
 type ModalProps = {
   isOpen?: boolean;
@@ -12,6 +13,8 @@ type ModalProps = {
   hideFooter?: boolean;
   maxWidth?: string | number;
   children: ReactNode;
+  telaInteira?: boolean;
+  gerenciarFoco?: boolean;
 };
 
 export function Modal({
@@ -23,7 +26,34 @@ export function Modal({
   hideFooter = false,
   maxWidth,
   children,
+  telaInteira = false,
+  gerenciarFoco = false,
 }: ModalProps) {
+  const dialogo = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!gerenciarFoco || isOpen === false || !dialogo.current) return;
+    const modal = dialogo.current;
+    const acionador = document.activeElement;
+    const controles = () => [...modal.querySelectorAll<HTMLElement>(
+      'button, input, select, textarea, a[href], [tabindex]',
+    )].filter((el) => el.tabIndex >= 0 && !el.matches(':disabled') && !el.hidden && el.getClientRects().length);
+    const aoPressionarTab = (evento: KeyboardEvent) => {
+      if (evento.key !== 'Tab') return;
+      const itens = controles();
+      const atual = itens.indexOf(document.activeElement as HTMLElement);
+      if (!itens.length || atual === -1 || (evento.shiftKey ? atual === 0 : atual === itens.length - 1)) {
+        evento.preventDefault();
+        (itens[evento.shiftKey ? itens.length - 1 : 0] ?? modal).focus();
+      }
+    };
+    (controles()[0] ?? modal).focus();
+    document.addEventListener('keydown', aoPressionarTab);
+    return () => {
+      document.removeEventListener('keydown', aoPressionarTab);
+      if (acionador instanceof HTMLElement && acionador.isConnected) acionador.focus();
+    };
+  }, [isOpen, gerenciarFoco]);
+
   useEffect(() => {
     if (isOpen === false) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -35,13 +65,15 @@ export function Modal({
 
   const showFooter = !hideFooter && onConfirm !== undefined;
 
-  return (
+  const conteudo = (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#0d1b35]/45 backdrop-blur-[3px]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
         className="relative mx-auto max-h-[88vh] w-[95vw] max-w-[95vw] overflow-y-auto rounded-lg bg-surface px-4 py-5 shadow-modal md:mx-4 md:max-h-[90vh] md:w-full md:max-w-[480px] md:rounded-modal md:p-8"
+        ref={dialogo}
+        tabIndex={gerenciarFoco ? -1 : undefined}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -70,4 +102,5 @@ export function Modal({
       </div>
     </div>
   );
+  return telaInteira ? createPortal(conteudo, document.body) : conteudo;
 }

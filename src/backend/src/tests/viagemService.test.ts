@@ -1,8 +1,18 @@
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PERFIS } from '../constants/perfis';
+import type { ReservaSvo } from '../services/agendaSvoService';
 
 type Chamada = [metodo: string, argumentos: unknown[]];
+type OrdemAgenda = Omit<ReservaSvo, 'status'> & { status: string };
+
+interface Designacao {
+  id: number;
+  ordem_id: number;
+  usuario_id: number;
+  equipe_id: number;
+  revogado_em: Date | null;
+}
 
 interface Estado {
   solicitacao?: object;
@@ -15,8 +25,9 @@ interface Estado {
   motorista?: Record<string, unknown>;
   cnhValida: boolean;
   conflito: { veiculo?: object; motorista?: object };
-  ordensDoVeiculo: object[];
-  ordemEmOutroVeiculo?: object;
+  ordensDaAgenda: OrdemAgenda[];
+  designacoes: Designacao[];
+  vinculos: { id: number; equipe_id: number; perfil: string; ativo: boolean; desvinculado_em: Date | null }[];
   equipe?: object;
   outrasViagens: Record<
     'veiculo_id' | 'motorista_id',
@@ -27,7 +38,7 @@ interface Estado {
 }
 
 const { mockDb, mockTrx, ref } = vi.hoisted(() => {
-  const trx = Object.assign(vi.fn(), { raw: vi.fn() });
+  const trx = Object.assign(vi.fn(), { raw: vi.fn(), fn: { now: () => new Date('2099-01-01T00:00:00Z') } });
 
   return {
     mockTrx: trx,
@@ -40,6 +51,12 @@ const { mockDb, mockTrx, ref } = vi.hoisted(() => {
 
 vi.mock('../config/database', () => ({
   db: mockDb,
+}));
+vi.mock('../services/filaSvoService', () => ({ reavaliarFilaSvo: vi.fn() }));
+// O vínculo das fotos do odômetro tem testes próprios (evidenciaOdometroTransicao.test.ts)
+vi.mock('../services/evidenciaOdometroTransicao', () => ({
+  registrarEvidenciaNaTransicao: vi.fn(async () => undefined),
+  concluirOperacao: vi.fn(async () => undefined),
 }));
 
 vi.mock('../models/veiculoModel', () => ({
@@ -58,6 +75,7 @@ vi.mock('../models/auditoriaModel', () => ({
 vi.mock('../models/viagemModel', () => ({
   viagemModel: {
     listar: vi.fn().mockResolvedValue([]),
+    listarAdministrativasDoSolicitante: vi.fn().mockResolvedValue({ dados: [], paginacao: {} }),
     buscarPorId: vi.fn(async (tipo: string, id: number) => ({
       id,
       tipo_operacao: tipo,
@@ -65,11 +83,26 @@ vi.mock('../models/viagemModel', () => ({
   },
 }));
 
+import { reavaliarFilaSvo } from '../services/filaSvoService';
+import { registrarEvidenciaNaTransicao, concluirOperacao } from '../services/evidenciaOdometroTransicao';
 import { viagemService } from '../services/viagemService';
 import { veiculoModel } from '../models/veiculoModel';
 import { motoristaModel } from '../models/motoristaModel';
 import { auditoriaModel } from '../models/auditoriaModel';
 import { viagemModel } from '../models/viagemModel';
+
+describe('Consulta própria administrativa', () => {
+  it('repassa ao modelo o ID autenticado e a paginação', async () => {
+    await viagemService.listarMinhasAdministrativas({ id: 42, perfil: PERFIS.GESTOR_SVO }, 2, 10);
+    expect(viagemModel.listarAdministrativasDoSolicitante).toHaveBeenCalledWith(42, 2, 10);
+  });
+
+  it('nega outros perfis mesmo se o serviço for chamado diretamente', async () => {
+    await expect(viagemService.listarMinhasAdministrativas(
+      { id: 42, perfil: PERFIS.GESTOR_FROTA }, 1, 20,
+    )).rejects.toMatchObject({ statusCode: 403 });
+  });
+});
 
 const temChamada = (
   chamadas: Chamada[],
@@ -82,6 +115,33 @@ const temChamada = (
       (primeiroArgumento === undefined ||
         args[0] === primeiroArgumento)
   );
+
+function filtrarLinhas<T extends object>(linhas: T[], chamadas: Chamada[]): T[] {
+  return linhas.filter((linha) => {
+    const valor = (campo: unknown) => linha[campo as keyof T];
+    const corresponde = ([metodo, [campo, criterio]]: Chamada): boolean => {
+      switch (metodo) {
+        case 'where':
+        case 'orWhere':
+          return typeof campo === 'string'
+            ? valor(campo) === criterio
+            : Object.entries(campo as object).every(([chave, esperado]) => valor(chave) === esperado);
+        case 'whereNot':
+          return !Object.entries(campo as object).every(([chave, esperado]) => valor(chave) === esperado);
+        case 'whereIn':
+        case 'orWhereIn':
+          return (criterio as unknown[]).includes(valor(campo));
+        case 'whereNull':
+          return valor(campo) === null;
+        case 'andWhere':
+          return (campo as Chamada[]).some(corresponde);
+        default:
+          return true;
+      }
+    };
+    return chamadas.every(corresponde);
+  });
+}
 
 function responder(
   tabela: string,
@@ -116,6 +176,17 @@ function responder(
 
     case 'equipes_svo':
       return estado.equipe;
+    case 'ordens_svo_integrantes':
+      return filtrarLinhas(estado.designacoes, chamadas);
+    case 'equipes_svo_integrantes as v':
+      return filtrarLinhas(estado.vinculos.map((vinculo) => ({
+        'v.equipe_id': vinculo.equipe_id,
+        'u.perfil': vinculo.perfil,
+        'u.ativo': vinculo.ativo,
+        'v.desvinculado_em': vinculo.desvinculado_em,
+        'u.id': vinculo.id,
+        id: vinculo.id,
+      })), chamadas);
 
     case 'veiculos':
       return estado.veiculo;
@@ -153,6 +224,7 @@ function responder(
     }
 
     case 'viagens_frota as vf':
+      if (temChamada(chamadas, 'andWhere')) return estado.conflito.veiculo ?? estado.conflito.motorista;
       return temChamada(chamadas, 'where', 'vf.veiculo_id')
         ? estado.conflito.veiculo
         : estado.conflito.motorista;
@@ -163,12 +235,11 @@ function responder(
         : estado.viagemAtivaDaSolicitacao;
 
     case 'ordens_svo':
-      if (terminal === 'await') return estado.ordensDoVeiculo;
+      if (terminal === 'await') return filtrarLinhas(estado.ordensDaAgenda, chamadas);
       if (chamadas.some(([m, args]) => m === 'where' && (args[0] as { status?: string })?.status === 'AGUARDANDO_ALOCACAO')) {
         return estado.ordemPendente;
       }
-      if (temChamada(chamadas, 'forUpdate')) return estado.viagem;
-      if (temChamada(chamadas, 'whereNot')) return estado.ordemEmOutroVeiculo;
+      if (temChamada(chamadas, 'forUpdate')) return estado.viagem ?? estado.ordemPendente;
       return estado.ordemAtivaDaSolicitacao;
 
     default:
@@ -176,14 +247,18 @@ function responder(
   }
 }
 
-function criarConsulta(tabela: string) {
-  const chamadas: Chamada[] = [];
+function criarConsulta(tabela: string, chamadas: Chamada[] = []) {
   const consulta: Record<string, any> = {};
 
   for (const metodo of [
     'where',
     'whereIn',
     'whereNot',
+    'orWhere',
+    'orWhereIn',
+    'whereNull',
+    'orWhereNull',
+    'orderBy',
     'whereRaw',
     'join',
     'select',
@@ -197,6 +272,13 @@ function criarConsulta(tabela: string) {
       return consulta;
     };
   }
+  consulta.modify = (callback: (q: unknown) => void) => { callback(consulta); return consulta; };
+  consulta.andWhere = (callback: (q: unknown) => void) => {
+    const grupo: Chamada[] = [];
+    callback(criarConsulta(tabela, grupo));
+    chamadas.push(['andWhere', [grupo]]);
+    return consulta;
+  };
 
   consulta.first = async () =>
     responder(tabela, chamadas, 'first');
@@ -232,7 +314,7 @@ function situacao(sql: string) {
       {
         em_andamento:
           estado.outrasViagens[coluna].em_andamento ||
-          ['EM_ANDAMENTO', 'EM_DESLOCAMENTO'].includes(
+          ['EM_ANDAMENTO', 'EM_DESLOCAMENTO', 'NO_LOCAL'].includes(
             String(statusAtual)
           ),
 
@@ -301,7 +383,9 @@ beforeEach(() => {
 
     cnhValida: true,
     conflito: {},
-    ordensDoVeiculo: [],
+    ordensDaAgenda: [],
+    designacoes: [],
+    vinculos: [],
     equipe: { id: 2 },
 
     outrasViagens: {
@@ -559,14 +643,34 @@ describe('viagemService.criar (SVO)', () => {
     veiculo_id: 10,
     motorista_id: 20,
     equipe_id: 2,
+    integrantes_ids: [40],
+    inicio_previsto: '2099-11-20T16:00:00Z',
+    fim_previsto: '2099-11-20T18:00:00Z',
     capacidade_utilizada: 2,
   };
+  const reserva: OrdemAgenda = {
+    id: 3,
+    status: 'ALOCADA',
+    veiculo_id: 11,
+    motorista_id: 21,
+    equipe_id: 2,
+    inicio_previsto: '2099-11-20T15:00:00Z',
+    fim_previsto: '2099-11-20T17:00:00Z',
+  };
+  const designacao: Designacao = {
+    id: 1, ordem_id: 3, equipe_id: 9, usuario_id: 40, revogado_em: null,
+  };
+
+  afterEach(() => vi.useRealTimers());
 
   beforeEach(() => {
-    ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota: 'SVO' };
+    ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota: 'SVO', lotacao_cabine: 2 };
     ref.estado.motorista = { ...ref.estado.motorista, tipo_motorista: 'SVO' };
     ref.estado.solicitacaoSvo = { id: 7, status: 'CONFIRMADA' };
-    ref.estado.ordemPendente = { id: 99 };
+    ref.estado.ordemPendente = { id: 99, data_hora_saida: null };
+    ref.estado.vinculos = [{
+      id: 40, equipe_id: 2, perfil: PERFIS.INTEGRANTE_SVO, ativo: true, desvinculado_em: null,
+    }];
   });
 
   it('deve impedir o gestor de frota de alocar ordem SVO', async () => {
@@ -591,170 +695,172 @@ describe('viagemService.criar (SVO)', () => {
     expect(ref.estado.inserts).toEqual([]);
   });
 
-  it('deve rejeitar quando a capacidade do veículo é excedida', async () => {
-    ref.estado.ordensDoVeiculo = [
-      {
-        motorista_id: 20,
-        capacidade_utilizada: 3,
-        status: 'ALOCADA',
-      },
-    ];
+  it.each([
+    { tipo_frota: 'ADMINISTRATIVA', status: 'DISPONIVEL', mensagem: 'O veículo não pertence à frota SVO' },
+    { tipo_frota: 'SVO', status: 'MANUTENCAO', mensagem: 'O veículo está em manutenção' },
+  ])('deve rejeitar veículo da frota $tipo_frota com status $status', async ({ tipo_frota, status, mensagem }) => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota, status };
 
-    await expect(
-      viagemService.criar(dados, gestorSvo)
-    ).rejects.toMatchObject({
-      statusCode: 409,
-      message:
-        'O veículo não tem capacidade suficiente (vagas disponíveis: 1)',
-    });
-  });
-
-  it('deve bloquear nova alocação quando as 4 vagas estão ocupadas', async () => {
-    ref.estado.ordensDoVeiculo = [
-      { motorista_id: 20, capacidade_utilizada: 3, status: 'ALOCADA' },
-      { motorista_id: 20, capacidade_utilizada: 1, status: 'ALOCADA' },
-    ];
-
-    await expect(
-      viagemService.criar({ ...dados, capacidade_utilizada: 1 }, gestorSvo)
-    ).rejects.toMatchObject({
-      statusCode: 409,
-      message: 'O veículo não tem capacidade suficiente (vagas disponíveis: 0)',
-    });
-    expect(ref.estado.inserts).toEqual([]);
-    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
-  });
-
-  it('deve rejeitar veículo alocado a outro motorista', async () => {
-    ref.estado.ordensDoVeiculo = [
-      {
-        motorista_id: 21,
-        capacidade_utilizada: 1,
-        status: 'ALOCADA',
-      },
-    ];
-
-    await expect(
-      viagemService.criar(dados, gestorSvo)
-    ).rejects.toMatchObject({ statusCode: 409 });
-  });
-
-  it('deve rejeitar veículo em deslocamento', async () => {
-    ref.estado.ordensDoVeiculo = [
-      {
-        motorista_id: 20,
-        capacidade_utilizada: 1,
-        status: 'EM_DESLOCAMENTO',
-      },
-    ];
-
-    await expect(
-      viagemService.criar(dados, gestorSvo)
-    ).rejects.toMatchObject({ statusCode: 409 });
-  });
-
-  it.each(['EM_USO', 'INATIVO'])('deve rejeitar veículo com situação %s, sem alterar nada (RN10)', async (status) => {
-    ref.estado.veiculo = { ...ref.estado.veiculo, status };
-
-    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({
-      statusCode: 409,
-      message: `O veículo não está disponível para alocação (situação atual: ${status})`,
-    });
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 400, message: mensagem });
     expect(ref.estado.inserts).toEqual([]);
     expect(ref.estado.updates).toEqual([]);
-    expect(veiculoModel.atualizarStatus).not.toHaveBeenCalled();
     expect(auditoriaModel.registrar).not.toHaveBeenCalled();
   });
 
-  it('deve rejeitar veículo em manutenção', async () => {
-    ref.estado.veiculo = { ...ref.estado.veiculo, status: 'MANUTENCAO' };
+  it.each([1, 2, 4])('deve aceitar %i óbito(s) no limite do veículo com um integrante designado', async (capacidade) => {
+    ref.estado.veiculo = { ...ref.estado.veiculo, capacidade_maxima: capacidade };
 
-    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({
-      statusCode: 400,
-      message: 'O veículo está em manutenção',
-    });
-    expect(ref.estado.updates).toEqual([]);
-  });
-
-  it('deve informar o deslocamento, e não a situação do veículo, quando ele está em uso por uma ordem em deslocamento', async () => {
-    ref.estado.veiculo = { ...ref.estado.veiculo, status: 'EM_USO' };
-    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 1, status: 'EM_DESLOCAMENTO' }];
-
-    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({
-      statusCode: 409,
-      message: 'O veículo está em deslocamento',
-    });
-  });
-
-  it('deve rejeitar veículo da frota administrativa', async () => {
-    ref.estado.veiculo = { ...ref.estado.veiculo, tipo_frota: 'ADMINISTRATIVA' };
-
-    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({
-      statusCode: 400,
-      message: 'O veículo não pertence à frota SVO',
-    });
-    expect(ref.estado.updates).toEqual([]);
-  });
-
-  it('deve rejeitar capacidade utilizada acima de 4 óbitos (RN11)', async () => {
-    await expect(viagemService.criar({ ...dados, capacidade_utilizada: 5 }, gestorSvo)).rejects.toMatchObject({
-      statusCode: 400,
-    });
-    expect(ref.estado.updates).toEqual([]);
-    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
-  });
-
-  it('deve aplicar o teto de 4 óbitos a veículo cadastrado com capacidade maior', async () => {
-    ref.estado.veiculo = { ...ref.estado.veiculo, capacidade_maxima: 6 };
-    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 3, status: 'ALOCADA' }];
-
-    await expect(viagemService.criar({ ...dados, capacidade_utilizada: 2 }, gestorSvo)).rejects.toMatchObject({
-      statusCode: 409,
-      message: 'O veículo não tem capacidade suficiente (vagas disponíveis: 1)',
-    });
-  });
-
-  it('deve alocar em veículo RESERVADO que já tem ordem do mesmo motorista e ocupar a última vaga', async () => {
-    ref.estado.veiculo = { ...ref.estado.veiculo, status: 'RESERVADO' };
-    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA' }];
-
-    await expect(viagemService.criar({ ...dados, capacidade_utilizada: 2 }, gestorSvo)).resolves.toEqual({
-      id: 99,
-      tipo_operacao: 'SVO',
-    });
+    await expect(viagemService.criar({ ...dados, capacidade_utilizada: capacidade }, gestorSvo))
+      .resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
     expect(ref.estado.updates).toContainEqual({
       tabela: 'ordens_svo',
-      valores: expect.objectContaining({ veiculo_id: 10, motorista_id: 20, status: 'ALOCADA', capacidade_utilizada: 2 }),
+      valores: expect.objectContaining({ capacidade_utilizada: capacidade, status: 'ALOCADA' }),
+    });
+    expect(ref.estado.inserts).toEqual([{
+      tabela: 'ordens_svo_integrantes',
+      valores: expect.objectContaining({ ordem_id: 99, usuario_id: 40 }),
+    }]);
+  });
+
+  it.each([
+    { capacidadeMaxima: 1, capacidadeUtilizada: 2 },
+    { capacidadeMaxima: 2, capacidadeUtilizada: 3 },
+    { capacidadeMaxima: 5, capacidadeUtilizada: 5 },
+  ])('deve rejeitar capacidade utilizada $capacidadeUtilizada em veículo com capacidade $capacidadeMaxima',
+    async ({ capacidadeMaxima, capacidadeUtilizada }) => {
+      ref.estado.veiculo = { ...ref.estado.veiculo, capacidade_maxima: capacidadeMaxima };
+
+      await expect(viagemService.criar({ ...dados, capacidade_utilizada: capacidadeUtilizada }, gestorSvo))
+        .rejects.toMatchObject({ statusCode: 409, message: 'O veículo não tem capacidade suficiente' });
+      expect(ref.estado.inserts).toEqual([]);
+      expect(ref.estado.updates).toEqual([]);
+      expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+      expect(reavaliarFilaSvo).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { statusOrdem: 'ALOCADA', statusVeiculo: 'RESERVADO', agora: '2099-11-20T12:00:00Z' },
+    { statusOrdem: 'EM_DESLOCAMENTO', statusVeiculo: 'EM_USO', agora: '2099-11-20T13:30:00Z' },
+  ])('deve reservar veículo $statusVeiculo para outro motorista em período distinto', async ({ statusOrdem, statusVeiculo, agora }) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(agora));
+    ref.estado.veiculo = { ...ref.estado.veiculo, status: statusVeiculo };
+    const coletaAnterior = {
+      ...reserva, status: statusOrdem, veiculo_id: 10, equipe_id: 9, capacidade_utilizada: 3,
+      inicio_previsto: '2099-11-20T13:00:00Z', fim_previsto: '2099-11-20T14:00:00Z',
+    };
+    ref.estado.ordensDaAgenda = [coletaAnterior];
+
+    await expect(viagemService.criar({ ...dados, capacidade_utilizada: 3 }, gestorSvo))
+      .resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({
+        veiculo_id: 10, motorista_id: 20, capacidade_utilizada: 3, status: 'ALOCADA', liberada_em: null,
+        inicio_previsto: new Date(dados.inicio_previsto), fim_previsto: new Date(dados.fim_previsto),
+      }),
     });
   });
 
-  it('deve rejeitar motorista alocado em outro veículo', async () => {
-    ref.estado.ordemEmOutroVeiculo = { id: 3 };
+  it.each([
+    { recurso: 'veículo alocado a outro motorista', ordem: { veiculo_id: 10 } },
+    { recurso: 'veículo em deslocamento', ordem: { veiculo_id: 10, status: 'EM_DESLOCAMENTO' } },
+    { recurso: 'motorista alocado em outro veículo', ordem: { motorista_id: 20 } },
+  ])('deve rejeitar sobreposição por $recurso', async ({ ordem }) => {
+    ref.estado.ordensDaAgenda = [{ ...reserva, equipe_id: 9, ...ordem }];
 
-    await expect(
-      viagemService.criar(dados, gestorSvo)
-    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(viagemService.criar(dados, gestorSvo))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+    expect(ref.estado.updates).toEqual([]);
+    expect(ref.estado.inserts).toEqual([]);
   });
 
   it('deve rejeitar equipe inexistente', async () => {
     ref.estado.equipe = undefined;
 
-    await expect(
-      viagemService.criar(dados, gestorSvo)
-    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(viagemService.criar(dados, gestorSvo)).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('deve alocar a ordem existente com a capacidade informada sem criar outra', async () => {
-    ref.estado.ordensDoVeiculo = [{ motorista_id: 20, capacidade_utilizada: 2, status: 'ALOCADA' }];
+  it('deve rejeitar equipe já reservada em outra coleta, mesmo com veículo e motorista diferentes', async () => {
+    ref.estado.ordensDaAgenda = [reserva];
+
+    await expect(viagemService.criar(dados, gestorSvo))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+    expect(ref.estado.updates).toEqual([]);
+    expect(ref.estado.inserts).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+    expect(reavaliarFilaSvo).not.toHaveBeenCalled();
+  });
+
+  it('deve alocar equipe sem escala quando a reserva sobreposta é de outra equipe com recursos distintos', async () => {
+    ref.estado.ordensDaAgenda = [{ ...reserva, equipe_id: 9 }];
 
     await expect(viagemService.criar(dados, gestorSvo)).resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(mockTrx).not.toHaveBeenCalledWith('escalas_svo');
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({ status: 'ALOCADA', equipe_id: 2, veiculo_id: 10, motorista_id: 20 }),
+    });
+    expect(ref.estado.inserts).toEqual([{
+      tabela: 'ordens_svo_integrantes',
+      valores: expect.objectContaining({ ordem_id: 99, equipe_id: 2, usuario_id: 40 }),
+    }]);
+  });
+
+  it.each([
+    { caso: 'reserva da mesma equipe fora do período', ordem: { inicio_previsto: '2099-11-20T19:00:00Z', fim_previsto: '2099-11-20T21:00:00Z' } },
+    { caso: 'coleta da mesma equipe já concluída', ordem: { status: 'CONCLUIDA' } },
+  ])('deve alocar a equipe com $caso', async ({ ordem }) => {
+    ref.estado.ordensDaAgenda = [{ ...reserva, ...ordem }];
+
+    await expect(viagemService.criar(dados, gestorSvo)).resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({ status: 'ALOCADA', equipe_id: 2 }),
+    });
+  });
+
+  it('deve rejeitar integrante reservado em outra coleta com equipe, veículo e motorista distintos', async () => {
+    ref.estado.ordensDaAgenda = [{ ...reserva, equipe_id: 9 }];
+    ref.estado.designacoes = [designacao];
+
+    await expect(viagemService.criar(dados, gestorSvo))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+    expect(ref.estado.updates).toEqual([]);
+    expect(ref.estado.inserts).toEqual([]);
+  });
+
+  it('deve reprogramar a ordem sem conflito com a própria reserva e preservar sua designação', async () => {
+    const atual = { ...reserva, id: 99, solicitacao_id: 7, veiculo_id: 10, motorista_id: 20 };
+    ref.estado.solicitacaoSvo = { id: 7, status: 'EM_ANDAMENTO' };
+    ref.estado.viagem = atual;
+    ref.estado.ordensDaAgenda = [atual];
+    ref.estado.designacoes = [{ ...designacao, ordem_id: 99, equipe_id: 2 }];
+
+    await expect(viagemService.reprogramarOrdemSvo(99, { ...dados, integrantes_ids: undefined }, gestorSvo))
+      .resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
+    expect(ref.estado.inserts).toEqual([]);
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({
+        status: 'ALOCADA', equipe_id: 2, inicio_previsto: new Date(dados.inicio_previsto),
+        fim_previsto: new Date(dados.fim_previsto),
+      }),
+    });
+    expect(ref.estado.updates.some(({ tabela }) => tabela === 'ordens_svo_integrantes')).toBe(false);
+  });
+
+  it('deve alocar sem equipe a ordem existente com a capacidade informada sem criar outra', async () => {
+    await expect(viagemService.criar({ ...dados, equipe_id: null, integrantes_ids: undefined }, gestorSvo))
+      .resolves.toEqual({ id: 99, tipo_operacao: 'SVO' });
     expect(ref.estado.inserts).toEqual([]);
     expect(ref.estado.updates).toContainEqual({
       tabela: 'ordens_svo',
       valores: expect.objectContaining({
         status: 'ALOCADA',
         capacidade_utilizada: 2,
-        equipe_id: 2,
+        equipe_id: null,
       }),
     });
 
@@ -779,6 +885,10 @@ describe('viagemService.iniciarViagem', () => {
       veiculo_id: 10,
       motorista_id: 20,
     };
+  });
+
+  it('impede gestor de iniciar coleta SVO', async () => {
+    await expect(viagemService.iniciarViagem('SVO', 5, 1000, gestorSvo)).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it('deve rejeitar viagem que não está agendada', async () => {
@@ -815,7 +925,7 @@ describe('viagemService.iniciarViagem', () => {
     ref.estado.viagem = { id: 5, status: 'ALOCADA', veiculo_id: 10, motorista_id: 20 };
     ref.estado.solicitacaoSvo = { id: 7, status: 'EM_ANDAMENTO', local_ocorrencia: ' ' };
 
-    await expect(viagemService.iniciarViagem('SVO', 5, 1000, gestorSvo)).rejects.toMatchObject({
+    await expect(viagemService.iniciarViagem('SVO', 5, 1000, motoristaSvo)).rejects.toMatchObject({
       statusCode: 400,
     });
     expect(ref.estado.updates).toEqual([]);
@@ -891,7 +1001,7 @@ describe('viagemService.iniciarViagem', () => {
       'SVO',
       5,
       1000,
-      gestorSvo
+      motoristaSvo
     );
 
     expect(ref.estado.updates).toContainEqual({
@@ -980,6 +1090,9 @@ describe('viagemService.iniciarViagem', () => {
 });
 
 describe('viagemService.finalizarViagem', () => {
+  it('impede gestor de finalizar coleta SVO', async () => {
+    await expect(viagemService.finalizarViagem('SVO', 5, 1000, gestorSvo)).rejects.toMatchObject({ statusCode: 403 });
+  });
   beforeEach(() => {
     ref.estado.viagem = {
       id: 5,
@@ -1012,7 +1125,7 @@ describe('viagemService.finalizarViagem', () => {
   // BL17: a API valida a quilometragem final, sem depender da interface
   it.each([
     ['ADMINISTRATIVA', 'EM_ANDAMENTO', () => gestorFrota],
-    ['SVO', 'EM_DESLOCAMENTO', () => gestorSvo],
+    ['SVO', 'EM_DESLOCAMENTO', () => motoristaSvo],
   ] as const)('deve rejeitar km final menor que o km inicial (%s) sem gravar nada', async (tipo, status, autor) => {
     ref.estado.viagem = { ...ref.estado.viagem, status };
 
@@ -1102,11 +1215,11 @@ describe('viagemService.finalizarViagem', () => {
     );
   });
 
-  it('deve concluir a solicitação SVO junto com a ordem', async () => {
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('deve concluir a solicitação SVO junto com a ordem em %s', async (status) => {
     ref.estado.viagem = {
       id: 5,
       solicitacao_id: 7,
-      status: 'EM_DESLOCAMENTO',
+      status,
       km_inicial: 1000,
       veiculo_id: 10,
       motorista_id: 20,
@@ -1116,7 +1229,7 @@ describe('viagemService.finalizarViagem', () => {
       'SVO',
       5,
       1050,
-      gestorSvo
+      motoristaSvo
     );
 
     expect(ref.estado.updates).toContainEqual({
@@ -1381,5 +1494,128 @@ describe('viagemService.cancelarViagem', () => {
       tabela: 'solicitacoes_svo',
       valores: { status: 'CANCELADA' },
     });
+  });
+});
+
+describe('BL31 - registrarChegadaLocalSvo', () => {
+  beforeEach(() => {
+    ref.estado.viagem = {
+      id: 5,
+      status: 'EM_DESLOCAMENTO',
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+  });
+
+  it('deve permitir que o motorista SVO registre a chegada ao local', async () => {
+    await viagemService.registrarChegadaLocalSvo(5, motoristaSvo);
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: { status: 'NO_LOCAL' },
+    });
+
+    expect(auditoriaModel.registrar).toHaveBeenCalled();
+  });
+
+  it('BL31 - deve finalizar uma coleta SVO com status NO_LOCAL', async () => {
+    ref.estado.viagem = {
+      id: 5,
+      solicitacao_id: 7,
+      status: 'NO_LOCAL',
+      km_inicial: 1000,
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+
+    await viagemService.finalizarViagem(
+      'SVO',
+      5,
+      1050,
+      motoristaSvo
+    );
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({
+        status: 'CONCLUIDA',
+        data_hora_conclusao: expect.any(Date),
+      }),
+    });
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_svo',
+      valores: { status: 'CONCLUIDA' },
+    });
+  });
+
+  it.each(['ALOCADA', 'NO_LOCAL', 'CONCLUIDA', 'CANCELADA'])('rejeita chegada com status %s sem mutação', async (status) => {
+    ref.estado.viagem = {
+      id: 5,
+      status,
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+
+    await expect(
+      viagemService.registrarChegadaLocalSvo(5, motoristaSvo)
+    ).rejects.toMatchObject({
+      statusCode: 409,
+    });
+
+    expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+
+  it('deve impedir motorista SVO de registrar chegada de outro motorista', async () => {
+    const outroMotorista = {
+      id: 99,
+      perfil: PERFIS.MOTORISTA_SVO,
+    };
+
+    await expect(
+      viagemService.registrarChegadaLocalSvo(5, outroMotorista)
+    ).rejects.toMatchObject({
+      statusCode: 403,
+    });
+
+    expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('autorização operacional SVO independente da interface', () => {
+  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO, PERFIS.GESTOR_FROTA,
+    PERFIS.MOTORISTA_FROTA, PERFIS.SOLICITANTE])('nega todas as transições ao perfil %s sem efeitos', async (perfil) => {
+    const autor = { id: 30, perfil };
+    for (const operacao of [
+      () => viagemService.iniciarViagem('SVO', 5, 1000, autor),
+      () => viagemService.registrarChegadaLocalSvo(5, autor),
+      () => viagemService.finalizarViagem('SVO', 5, 1050, autor),
+    ]) await expect(operacao()).rejects.toMatchObject({ statusCode: 403 });
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(ref.estado.updates).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+    expect(veiculoModel.atualizarStatus).not.toHaveBeenCalled();
+    expect(motoristaModel.atualizarStatus).not.toHaveBeenCalled();
+  });
+  it.each(['iniciar', 'finalizar'] as const)('nega %s a outro motorista sem tocar evidências ou fila', async (acao) => {
+    ref.estado.viagem = { id: 5, motorista_id: 20, veiculo_id: 10,
+      status: acao === 'iniciar' ? 'ALOCADA' : 'NO_LOCAL', km_inicial: 1000 };
+    const outro = { id: 99, perfil: PERFIS.MOTORISTA_SVO };
+    await expect(acao === 'iniciar' ? viagemService.iniciarViagem('SVO', 5, 1000, outro)
+      : viagemService.finalizarViagem('SVO', 5, 1050, outro)).rejects.toMatchObject({ statusCode: 403 });
+    expect(ref.estado.updates).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+    expect(reavaliarFilaSvo).not.toHaveBeenCalled();
+    expect(registrarEvidenciaNaTransicao).not.toHaveBeenCalled();
+    expect(concluirOperacao).not.toHaveBeenCalled();
+  });
+  it('retorna 404 quando a ordem não existe', async () => {
+    await expect(viagemService.registrarChegadaLocalSvo(404, motoristaSvo))
+      .rejects.toMatchObject({ statusCode: 404 });
+    expect(ref.estado.updates).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
   });
 });

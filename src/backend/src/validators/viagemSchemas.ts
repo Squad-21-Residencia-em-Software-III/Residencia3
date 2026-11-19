@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { CAPACIDADE_MAXIMA_SVO } from '../constants/veiculoSvo';
 
 const idSchema = (campo: string) =>
   z
@@ -36,11 +35,16 @@ export const criarViagemSchema = z.discriminatedUnion(
       tipo_operacao: z.literal('SVO'),
       ...recursosViagem,
       equipe_id: idSchema('equipe_id').nullish(),
+      integrantes_ids: z.array(idSchema('integrante')).max(100).optional(),
+      inicio_previsto: z.iso.datetime({ offset: true }),
+      fim_previsto: z.iso.datetime({ offset: true }),
+      confirmar_intervalo_reduzido: z.boolean().optional(),
+      token_confirmacao: z.string().max(8192).optional(),
       capacidade_utilizada: z
         .number({ error: 'A capacidade utilizada deve ser um número' })
         .int('A capacidade utilizada deve ser um número inteiro')
         .min(1, 'A capacidade utilizada deve ser de no mínimo 1')
-        .max(CAPACIDADE_MAXIMA_SVO, `A capacidade utilizada não pode passar de ${CAPACIDADE_MAXIMA_SVO} óbitos por veículo`)
+        .max(4, 'A capacidade utilizada deve ser de no máximo 4')
         .default(1),
     }),
   ],
@@ -52,14 +56,24 @@ const tipoDaViagem = {
   tipo_operacao: tipoOperacaoSchema.default('ADMINISTRATIVA'),
 };
 
+// Id da foto do odômetro enviada antes (SCRUM-208). O front envia como texto.
+const evidenciaIdSchema = z
+  .union([
+    z.number().int().positive(),
+    z.string().regex(/^[1-9][0-9]{0,9}$/).transform(Number),
+  ], { error: 'O campo evidencia_id é inválido' })
+  .optional();
+
 export const iniciarViagemSchema = z.object({
   ...tipoDaViagem,
   km_inicial: kmSchema('km_inicial'),
+  evidencia_id: evidenciaIdSchema,
 });
 
 export const finalizarViagemSchema = z.object({
   ...tipoDaViagem,
   km_final: kmSchema('km_final'),
+  evidencia_id: evidenciaIdSchema,
 });
 
 export const cancelarViagemSchema = z.object({

@@ -28,8 +28,13 @@ const mockTrx = Object.assign(
   vi.fn((tabela: string) => {
     let whereClause: any = {};
     const builder: any = {
+      forUpdate: () => builder,
       where: (arg: any) => {
         whereClause = { ...whereClause, ...arg };
+        return builder;
+      },
+      whereIn: (campo: string, valores: string[]) => {
+        whereClause = { ...whereClause, [campo]: valores[0], [`${campo}_lista`]: valores };
         return builder;
       },
       update: async (valores: any) => {
@@ -127,6 +132,17 @@ describe('manutencaoService e recalcularStatusVeiculo', () => {
     estado.manutencaoAtual = { id: 10, veiculo_id: 1, status: 'EM_ANDAMENTO' };
   });
 
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('nega início de manutenção durante coleta %s sem gravar', async (status) => {
+    estado.ordemEmAndamento = { id: 100, status };
+    await expect(manutencaoService.criar({ veiculo_id: 1, tipo_manutencao: 'PREVENTIVA',
+      data_manutencao: '2099-01-01', status: 'EM_ANDAMENTO' }, 1)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(manutencaoService.atualizar(10, { status: 'EM_ANDAMENTO' }, 1)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(manutencaoService.atualizarStatus(10, 'EM_ANDAMENTO', 1)).rejects.toMatchObject({ statusCode: 409 });
+    expect(manutencaoModel.cadastrar).not.toHaveBeenCalled();
+    expect(manutencaoModel.atualizar).not.toHaveBeenCalled();
+    expect(manutencaoModel.atualizarStatus).not.toHaveBeenCalled();
+  });
+
   describe('recalcularStatusVeiculo', () => {
     it('NÃO deve alterar o status se o veículo estiver INATIVO', async () => {
       estado.veiculo = { id: 1, status: 'INATIVO' };
@@ -157,6 +173,15 @@ describe('manutencaoService e recalcularStatusVeiculo', () => {
     it('deve atualizar para EM_USO se houver ordem SVO em deslocamento', async () => {
       estado.veiculo = { id: 1, status: 'MANUTENCAO' };
       estado.ordemEmAndamento = { id: 200, status: 'EM_DESLOCAMENTO' };
+
+      await recalcularStatusVeiculo(mockTrx as any, 1);
+
+      expect(estado.veiculoAtualizado).toEqual({ status: 'EM_USO' });
+    });
+
+    it('deve atualizar para EM_USO se houver ordem SVO no local da coleta', async () => {
+      estado.veiculo = { id: 1, status: 'MANUTENCAO' };
+      estado.ordemEmAndamento = { id: 201, status: 'NO_LOCAL' };
 
       await recalcularStatusVeiculo(mockTrx as any, 1);
 

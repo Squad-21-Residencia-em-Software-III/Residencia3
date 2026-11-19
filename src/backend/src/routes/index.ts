@@ -1,3 +1,4 @@
+
 import { Router } from 'express';
 import { db } from '../config/database';
 import { authRoutes } from './authRoutes';
@@ -14,6 +15,11 @@ import { unidadeRoutes } from './unidadeRoutes';
 import { dashboardRoutes } from './dashboardRoutes';
 import { solicitacaoSvoRoutes } from './solicitacaoSvoRoutes';
 import { auditoriaRoutes } from './auditoriaRoutes';
+import { equipeSvoRoutes } from './equipeSvoRoutes';
+import { relatorioRoutes } from './relatorioRoutes';
+import { diagnosticoRoutes } from './diagnosticoRoutes';
+import { evidenciaOdometroRoutes } from './evidenciaOdometroRoutes';
+import { logFalha } from '../middlewares/logRequisicao';
 
 export const routes = Router();
 
@@ -21,8 +27,8 @@ routes.get('/status', async (_req, res) => {
   try {
     const { rows } = await db.raw<{ rows: { now: Date }[] }>('SELECT NOW()');
     res.json({ status: 'API funcionando perfeitamente!', banco_conectado: true, horario_banco: rows[0]?.now });
-  } catch (erro) {
-    console.error('Erro ao conectar ao banco:', erro);
+  } catch {
+    logFalha(res, 'STATUS_BANCO');
     res.status(500).json({ status: 'Erro', banco_conectado: false });
   }
 });
@@ -41,3 +47,7 @@ routes.use('/unidades', unidadeRoutes);
 routes.use('/dashboard', dashboardRoutes);
 routes.use('/solicitacoes-svo', solicitacaoSvoRoutes);
 routes.use('/auditorias', auditoriaRoutes);
+routes.use('/equipes-svo', equipeSvoRoutes);
+routes.use('/relatorios', relatorioRoutes);
+routes.use('/diagnostico', diagnosticoRoutes);
+routes.use('/evidencias-odometro', evidenciaOdometroRoutes);

@@ -8,7 +8,7 @@ export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO
 export type StatusSolicitacaoSvo = (typeof STATUS_SOLICITACAO_SVO)[number];
 
 // Ordens de coleta que ainda ocupam a solicitação (BL27)
-export const ORDENS_SVO_ATIVAS = ['AGUARDANDO_ALOCACAO', 'ALOCADA', 'EM_DESLOCAMENTO'];
+export const ORDENS_SVO_ATIVAS = ['AGUARDANDO_ALOCACAO', 'ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'] as const;
 
 export interface NovaSolicitacaoSvo {
   registrante_id: number;
@@ -20,6 +20,9 @@ export interface NovaSolicitacaoSvo {
 
 export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
   id: number;
+  observacoes?: string | null;
+  motivo_recusa?: string | null;
+  criado_em?: Date | string;
   confirmado_por?: number | null;
   confirmado_em?: Date | null;
 }
@@ -27,7 +30,7 @@ export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
 export interface OrdemSvo {
   id: number;
   solicitacao_id: number;
-  status: 'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+  status: 'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
   veiculo_id: number | null;
   motorista_id: number | null;
   equipe_id: number | null;
@@ -80,6 +83,14 @@ export const solicitacaoSvoModel = {
     const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
       .where({ id })
       .update({ status: 'CONFIRMADA', confirmado_por: autorId, confirmado_em: trx.fn.now() })
+      .returning('*');
+    return solicitacao!;
+  },
+
+  async recusar(id: number, motivoRecusa: string, trx: Knex.Transaction): Promise<SolicitacaoSvo> {
+    const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
+      .where({ id })
+      .update({ status: 'RECUSADA', motivo_recusa: motivoRecusa })
       .returning('*');
     return solicitacao!;
   },

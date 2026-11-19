@@ -46,6 +46,7 @@ O front-end está **conectado e homologado com o back-end para todos os módulos
 - **Manutenções**: `POST /api/manutencoes`, `PUT /api/manutencoes/:id`, `PATCH /api/manutencoes/:id/status`, `DELETE /api/manutencoes/:id`, `GET /api/manutencoes/veiculo/:id` com bloqueio e liberação de pátio sincronizados.
 - **Multas & Infrações**: `GET /api/multas`, `POST /api/multas`, `PUT /api/multas/:id`, `DELETE /api/multas/:id`, `GET /api/documentos/vencimentos` (RN15).
 - **Capacidade SVO (BL30 / SCRUM-108)**: `GET /api/veiculos/svo/ocupacao` alimenta a ocupação (`x/y vagas ocupadas`) e a mensagem de bloqueio (veículo lotado, em manutenção ou em deslocamento) no modal Agendar Viagem, operação SVO. A consulta exibe carregamento e erro, sem habilitar o agendamento SVO antes da integração com as solicitações.
+- **Alocação de equipe SVO (BL29 / SCRUM-145)**: no modal Agendar Viagem, a operação SVO só aparece para Administrador e Gestor SVO (Gestor de Frota vê apenas a frota administrativa, como no backend). O gestor escolhe a solicitação SVO confirmada (`GET /api/solicitacoes-svo?status=CONFIRMADA`, todas as páginas), o veículo, o motorista e, opcionalmente, a equipe (`SeletorEquipeSvo`). As equipes vêm de `GET /api/equipes-svo/disponibilidade?inicio=&fim=` (PR #116; datas ISO com fuso), que devolve `{ periodo, equipes: [{ id, nome_equipe }] }` só com equipes disponíveis; o backend só suporta a consulta operacional imediata (`inicio` a até 15 min do horário atual; ordens ativas ainda não têm previsão de término, SCRUM-166). Por isso o frontend envia uma janela mínima de 1 minuto a partir de agora (`utils/periodoEquipesSvo.ts`): ela verifica a escala vigente **no momento da alocação** e não representa a duração de uma coleta, então a lista não garante disponibilidade em uma coleta futura (a tela diz "disponível(is) no momento"). Quando a SCRUM-166 trouxer início e término previstos informados pelo gestor, o período passará a vir desses campos. O envio usa `POST /api/viagens` com `tipo_operacao: 'SVO'` e `equipe_id` (omitido quando nenhuma equipe é escolhida). A equipe é opcional: se a consulta falhar ou não houver equipe disponível, aparece um aviso e a ordem pode ser alocada sem equipe. A validação definitiva da disponibilidade fica no backend (SCRUM-105). Perfis fora da tabela local de permissões (Motorista Frota, Motorista SVO, Solicitante ou sem usuário) veem apenas o aviso de que não podem agendar viagens, sem formulário nem consultas; essa tabela espelha o backend e deve migrar para a matriz central de permissões (PR #115) após o merge, o que exige uma permissão que inclua o Gestor SVO (hoje `viagens.agendar` o exclui). A listagem de solicitações falha com erro explícito se passar de 5.000 registros, em vez de truncar em silêncio.
 - **Agenda**: O módulo `/agenda` é o único que permanece com estrutura visual de Gantt consumindo dados simulados (`agendaMock.ts`), aguardando endpoint especializado de consolidação de janelas de ocupação da API.
 
 ---
@@ -193,7 +194,7 @@ A autenticação utiliza tokens **JWT (JSON Web Tokens)** fornecidos pelo endpoi
 | **Abastecimento** (`/abastecimento`) | API REST Real | `abastecimentosApi.ts` | `POST /api/abastecimentos` com Zod estrito e `GET /api/abastecimentos/veiculo/:id`. |
 | **Multas & Infrações** (`/multas`) | API REST Real | `multasApi.ts`, `documentosApi.ts` | `GET /api/multas`, `POST /api/multas`, `PUT /:id`, `DELETE /:id` e `GET /api/documentos/vencimentos`. |
 | **Usuários** (`/equipe?aba=usuarios`) | API REST Real | `usuariosApi.ts` | `GET /api/usuarios` (paginado), `POST`, `PATCH /:id`, `PATCH /:id/senha`. |
-| **Agenda** (`/agenda`) | Mocks (`agendaMock.ts`) | Estrutura de Gantt em transição para `/api/viagens/agenda`. |
+| **Agenda** (`/agenda`) | API REST Real | `viagensApi.ts`, `veiculosApi.ts` | Grade 24h (Hoje, Semana, Mês), polling inteligente (30s) e `DrawerDetalhesViagem`. |
 | **Sobre Nós** (`/sobre`) | Componente Estático | Apresentação institucional da FSPH e Squad 21. |
 
 ---
@@ -428,3 +429,28 @@ flowchart TD
    - Exclusão de `storageService.ts` e arquivos de mock legados após a conexão da Agenda.
 5. **Especialização do Módulo SVO**:
    - Fluxo completo de ordens de remoção com trava máxima de 4 corpos e escalas de plantão 24h.
+
+---
+
+## 21. Tela de Agenda (`/agenda`) e Melhorias Futuras
+
+A tela de Agenda passou a consumir diretamente os dados reais da API REST, eliminando os últimos arquivos legados (`storageService.ts` e `agendaMock.ts`):
+
+- **Fontes de dados e acesso:** restrita a `ADMINISTRADOR`, `GESTOR_FROTA` e `GESTOR_SVO` (`routes/index.tsx`), consumindo `GET /api/viagens` (`viagensApi.listar()`) e `GET /api/veiculos` (`veiculosApi.listar()`) em paralelo (`Promise.all`). Veículos em `MANUTENCAO` não aparecem na lista operacional (exceto em dias históricos em que possuam viagem registrada); `GESTOR_SVO` visualiza apenas a frota `SVO` na lateral, enquanto `GESTOR_FROTA` e `ADMINISTRADOR` visualizam toda a frota. Os detalhes da viagem reutilizam o `DrawerDetalhesViagem.tsx`.
+- **Grade 24h e regra de horários:** janela `00:00`–`24:00` com destaque para o expediente comercial (`07:00`–`17:00`, Hemose/Lacen) e cobertura contínua de plantão 24h (SVO), marcador dinâmico do horário atual e auto-scroll horizontal. Ordens SVO ou viagens sem `fim_previsto` e ainda não concluídas estendem a barra até `23:59` do mesmo dia; ordens SVO simultâneas no mesmo veículo são empilhadas em sub-faixas verticais, e viagens `CANCELADA` são ocultadas da grade e dos contadores.
+- **Atualização automática (*polling* inteligente):** revalidação em segundo plano a cada `30s` (pausada quando `document.hidden === true`) e atualização imediata ao retornar à aba (`visibilitychange` / `focus`).
+
+### Melhorias Futuras Planejadas para a Agenda
+1. **Filtro por período no `GET /api/viagens`:** adicionar query params opcionais `data_inicio` e `data_fim` no back-end para evitar truncamento pelo limite atual de 200 registros em navegações distantes no histórico.
+2. **Estimativa de distância (`km_estimado`):** integrar cálculo prévio de distância após futura adoção de API de mapas/rotas (atualmente são exibidos apenas `km_inicial` e `km_final` efetivos no drawer).
+3. **Push em tempo real (SSE / WebSocket):** avaliar apenas se surgir demanda de atualização em sub-segundo (considerando que rewrites HTTP da Vercel não fazem proxy de WebSocket e exigem endpoint direto no Render autenticado por Bearer token).
+4. **Bloqueios de manutenção:** avaliar exibição de janelas de manutenção programada diretamente na grade horária dos veículos.
+
+## 22. Solicitações Administrativo e SVO
+
+Em Solicitações, Administrador entra em Administrativo e Gestor SVO entra em SVO; ambos podem alternar nas abas autorizadas. Gestor de Frota e Solicitante acessam somente Administrativo. O parâmetro `?aba=administrativo|svo` seleciona uma aba permitida; valores inválidos ou proibidos retornam à primeira opção permitida. A alternância cria entradas no histórico do navegador. A rota antiga `/triagem-svo` exige a permissão de triagem e redireciona para `/solicitacoes?aba=svo`; não há item separado no menu.
+
+O cadastro interno SVO envia somente `dados_solicitante`, `local_ocorrencia` e `material_sensivel` para `POST /api/solicitacoes-svo`. O servidor define registrante e status. Após resposta de sucesso, a tela mostra o ID retornado e atualiza a fila em triagem. Confirmação e recusa reutilizam o drawer existente; a ordem mostrada é a resposta do servidor. O link para Viagens abre SVO.
+
+Em Viagens, a consulta de viagens administrativas próprias do Gestor SVO continua bloqueada pela SCRUM-179. A listagem provisória de ordens verifica detalhes de solicitações confirmadas e falha explicitamente se exceder uma página de 100; não é a paginação definitiva da SCRUM-182. A alocação atual não comprova agendamento temporal, conflitos de horário ou exceção de 20 minutos. SCRUM-182 e SCRUM-183 continuam pendentes. A capacidade de corpos SVO e a lotação da cabine são campos independentes; a última inclui o motorista.
+

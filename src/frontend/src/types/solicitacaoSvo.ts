@@ -6,7 +6,7 @@ export type StatusSolicitacaoSvo =
   'EM_TRIAGEM' | 'CONFIRMADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'RECUSADA' | 'CANCELADA';
 
 export type StatusOrdemSvo =
-  'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+  'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
 
 export interface SolicitacaoSvo {
   id: number;
@@ -19,6 +19,8 @@ export interface SolicitacaoSvo {
   criado_em?: string;
   confirmado_por?: number | null; // nulo em dados legados e quando volta à triagem
   confirmado_em?: string | null;
+  /** Justificativa da recusa (coluna já existente; preenchida pela recusa da SCRUM-178). */
+  motivo_recusa?: string | null;
 }
 
 /** Ordem de coleta gerada na confirmação; nasce sem veículo, motorista ou equipe. */
@@ -55,7 +57,7 @@ export interface ConfirmacaoSvo {
 }
 
 export const LABELS_STATUS_SOLICITACAO_SVO: Record<StatusSolicitacaoSvo, string> = {
-  EM_TRIAGEM: 'Em triagem',
+  EM_TRIAGEM: 'Aguardando análise',
   CONFIRMADA: 'Confirmada',
   EM_ANDAMENTO: 'Em andamento',
   CONCLUIDA: 'Concluída',
@@ -67,6 +69,7 @@ export const LABELS_STATUS_ORDEM_SVO: Record<StatusOrdemSvo, string> = {
   AGUARDANDO_ALOCACAO: 'Aguardando alocação',
   ALOCADA: 'Alocada',
   EM_DESLOCAMENTO: 'Em deslocamento',
+  NO_LOCAL: 'No local',
   CONCLUIDA: 'Concluída',
   CANCELADA: 'Cancelada',
 };

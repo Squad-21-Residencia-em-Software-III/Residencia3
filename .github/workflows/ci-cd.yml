@@ -47,6 +47,11 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      - name: Auditar dependencias
+        run: |
+          node --test ../../scripts/audit-ci.test.cjs
+          node ../../scripts/audit-ci.cjs
+
       - name: Executar testes automatizados
         run: npm test
 
@@ -75,6 +80,11 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
+
+      - name: Auditar dependencias
+        run: |
+          node --test ../../scripts/audit-ci.test.cjs
+          node ../../scripts/audit-ci.cjs
 
       - name: Executar testes automatizados
         run: npm test

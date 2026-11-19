@@ -99,14 +99,17 @@ describe('POST /api/auth/login', () => {
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('SameSite=Strict');
     expect(cookie).toContain('Path=/api/auth');
-    expect(cookie).toMatch(/Max-Age=(3599|3600)/);
+    // Max-Age = tempo restante da sessão (1h no mock), com folga para a lentidão do teste
+    const maxAge = Number(/Max-Age=(\d+)/.exec(cookie)?.[1]);
+    expect(maxAge).toBeGreaterThan(3500);
+    expect(maxAge).toBeLessThanOrEqual(3600);
     expect(cookie).not.toMatch(/Domain=/i);
   });
 
   it('marca o cookie como Secure quando COOKIE_SECURE está ativo (produção)', async () => {
     ambiente.cookieSecure = true;
 
-    const res = await request(app).post('/api/auth/login').send({ email: 'g@exemplo.com', senha: 'Senha123' });
+    const res = await request(app).post('/api/auth/login').set('Origin', ORIGEM_FRONT).send({ email: 'g@exemplo.com', senha: 'Senha123' });
 
     expect(cookieRefresh(res)).toContain('Secure');
   });
@@ -114,7 +117,7 @@ describe('POST /api/auth/login', () => {
   it('não emite cookie quando as credenciais são recusadas', async () => {
     vi.mocked(authService.login).mockRejectedValueOnce(new AppError('E-mail ou senha inválidos', 401));
 
-    const res = await request(app).post('/api/auth/login').send({ email: 'g@exemplo.com', senha: 'errada' });
+    const res = await request(app).post('/api/auth/login').set('Origin', ORIGEM_FRONT).send({ email: 'g@exemplo.com', senha: 'errada' });
 
     expect(res.status).toBe(401);
     expect(cookieRefresh(res)).toBeUndefined();
@@ -135,7 +138,7 @@ describe('POST /api/auth/refresh', () => {
   });
 
   it('recusa quando não há cookie', async () => {
-    const res = await request(app).post('/api/auth/refresh');
+    const res = await request(app).post('/api/auth/refresh').set('Origin', ORIGEM_FRONT);
 
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ erro: 'Token inválido ou expirado' });
@@ -143,7 +146,7 @@ describe('POST /api/auth/refresh', () => {
   });
 
   it('ignora refresh token enviado no corpo', async () => {
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: 'refresh.no.body' });
+    const res = await request(app).post('/api/auth/refresh').set('Origin', ORIGEM_FRONT).send({ refreshToken: 'refresh.no.body' });
 
     expect(res.status).toBe(401);
     expect(authService.renovarSessao).not.toHaveBeenCalled();
@@ -152,7 +155,7 @@ describe('POST /api/auth/refresh', () => {
   it.each(['expirado', 'adulterado'])('devolve 401 genérico para cookie %s, sem emitir cookie novo', async () => {
     vi.mocked(authService.renovarSessao).mockRejectedValueOnce(new AppError('Token inválido ou expirado', 401));
 
-    const res = await request(app).post('/api/auth/refresh').set('Cookie', 'refreshToken=token.recusado');
+    const res = await request(app).post('/api/auth/refresh').set('Origin', ORIGEM_FRONT).set('Cookie', 'refreshToken=token.recusado');
 
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ erro: 'Token inválido ou expirado' });
@@ -165,7 +168,7 @@ describe('POST /api/auth/refresh', () => {
     );
     vi.mocked(authService.renovarSessao).mockRejectedValueOnce(new Error('falha inesperada'));
 
-    await request(app).post('/api/auth/refresh').set('Cookie', 'refreshToken=cookie.que.nao.pode.vazar');
+    await request(app).post('/api/auth/refresh').set('Origin', ORIGEM_FRONT).set('Cookie', 'refreshToken=cookie.que.nao.pode.vazar');
 
     expect(JSON.stringify(espioes.flatMap((e) => e.mock.calls))).not.toContain('cookie.que.nao.pode.vazar');
     espioes.forEach((e) => e.mockRestore());
@@ -245,12 +248,66 @@ describe('Proteção contra CSRF nas rotas de sessão', () => {
   it('aceita a mesma origem da API (frontend servido pelo proxy /api)', async () => {
     const res = await request(app)
       .post('/api/auth/refresh')
-      .set('Host', 'fsph.exemplo.com')
-      .set('Origin', 'http://fsph.exemplo.com')
+      .set('Host', 'backend.internal')
+      .set('X-Forwarded-Host', 'forjado.example')
+      .set('X-Forwarded-Proto', 'https')
+      .set('Origin', ORIGEM_FRONT)
       .set('Sec-Fetch-Site', 'same-origin')
       .set('Cookie', `refreshToken=${REFRESH}`);
 
     expect(res.status).toBe(200);
+  });
+
+  it.each(rotas)('%s %s rejeita cabeçalhos ausentes mesmo com cookie', async (metodo, rota) => {
+    const res = await request(app)[metodo](rota).set('Cookie', `refreshToken=${REFRESH}`).set('Authorization', 'Bearer token').send({});
+    expect(res.status).toBe(403);
+    expect(cookieRefresh(res)).toBeUndefined();
+    expect(authService.renovarSessao).not.toHaveBeenCalled();
+    expect(authService.login).not.toHaveBeenCalled();
+  });
+
+  it.each(['same-origin', 'same-site', 'none'])('não confia apenas em Sec-Fetch-Site: %s', async (site) => {
+    const res = await request(app).post('/api/auth/refresh').set('Sec-Fetch-Site', site).set('Cookie', `refreshToken=${REFRESH}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('aceita Referer autorizado quando Origin está ausente', async () => {
+    const res = await request(app).post('/api/auth/refresh').set('Referer', `${ORIGEM_FRONT}/pagina`).set('Cookie', `refreshToken=${REFRESH}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.vary).toContain('Referer');
+  });
+
+  it.each(['null', 'invalid', 'https://localhost:5173', 'http://localhost:5174', 'http://localhost:5173.evil.example'])('rejeita Origin %s mesmo com Referer autorizado', async (origin) => {
+    const res = await request(app).post('/api/auth/refresh').set('Origin', origin).set('Referer', `${ORIGEM_FRONT}/`).set('Cookie', `refreshToken=${REFRESH}`);
+    expect(res.status).toBe(403);
+  });
+
+  it.each(['invalid', 'http://localhost:5173.evil.example/', 'https://localhost:5173/', 'http://localhost:5174/', 'http://localhost:5173@evil.example/'])('rejeita Referer %s', async (referer) => {
+    const res = await request(app).post('/api/auth/refresh').set('Referer', referer).set('Cookie', `refreshToken=${REFRESH}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('aceita origem HTTPS configurada em produção por trás do proxy', async () => {
+    const origemProducao = 'https://frontend.example';
+    env.corsOrigens.push(origemProducao);
+    ambiente.cookieSecure = true;
+    try {
+      const res = await request(app).post('/api/auth/refresh').set('Host', 'render.internal').set('X-Forwarded-Proto', 'https').set('Origin', origemProducao).set('Sec-Fetch-Site', 'same-origin').set('Cookie', `refreshToken=${REFRESH}`);
+      expect(res.status).toBe(200);
+      expect(cookieRefresh(res)).toContain('Secure');
+    } finally {
+      env.corsOrigens.pop();
+    }
+  });
+
+  it('não confia em Host ou cabeçalhos encaminhados manipulados', async () => {
+    const res = await request(app).post('/api/auth/refresh').set('Host', 'evil.example').set('X-Forwarded-Host', 'evil.example').set('X-Forwarded-Proto', 'https').set('Origin', 'https://evil.example').set('Cookie', `refreshToken=${REFRESH}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('recusa cross-site mesmo com origem autorizada', async () => {
+    const res = await request(app).post('/api/auth/refresh').set('Origin', ORIGEM_FRONT).set('Sec-Fetch-Site', 'cross-site').set('Cookie', `refreshToken=${REFRESH}`);
+    expect(res.status).toBe(403);
   });
 
   it('não altera as rotas autenticadas por Bearer', async () => {

@@ -2,16 +2,24 @@ import type { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 
-// Proteção contra CSRF nas rotas de autenticação que usam o cookie de sessão. Complementa o
-// SameSite=Strict: navegadores sempre enviam Origin em POST/PATCH, então uma origem presente e
-// não autorizada, ou um pedido marcado como cross-site, é recusado. Clientes fora do navegador
-// (sem Origin) seguem permitidos, pois não carregam cookies da vítima.
-export function verificarOrigem(req: Request, _res: Response, next: NextFunction): void {
-  const origem = req.get('origin');
-  const crossSite = req.get('sec-fetch-site') === 'cross-site';
-  const mesmaOrigem = origem !== undefined && origem === `${req.protocol}://${req.get('host')}`;
+// A origem pública é configurada explicitamente: Host e X-Forwarded-* não são prova de origem.
+export function verificarOrigem(req: Request, res: Response, next: NextFunction): void {
+  res.vary('Origin');
+  res.vary('Referer');
+  res.vary('Sec-Fetch-Site');
+  const origin = req.get('origin');
+  const referer = req.get('referer');
+  let origem = origin;
+  if (origin === undefined && referer !== undefined) {
+    try {
+      const url = new URL(referer);
+      origem = ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.origin : undefined;
+    } catch {
+      origem = undefined;
+    }
+  }
 
-  if (crossSite || (origem !== undefined && !mesmaOrigem && !env.corsOrigens.includes(origem))) {
+  if (req.get('sec-fetch-site') === 'cross-site' || !origem || !env.corsOrigens.includes(origem)) {
     next(new AppError('Origem não autorizada', 403));
     return;
   }

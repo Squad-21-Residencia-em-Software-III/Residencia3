@@ -91,22 +91,23 @@ O navegador acessa o frontend na Vercel. A Vercel encaminha `/api/*` para a API 
 | Variável | Padrão | Função |
 |---|---|---|
 | `CORS_ORIGIN` | `http://localhost:5173` em desenvolvimento; vazio em produção | Lista, separada por vírgula, das origens autorizadas a fazer requisições com credenciais. Cada item é `https://dominio[:porta]`. `*` é recusado na inicialização. |
-| `TRUST_PROXY` | `0` | Quantidade de proxies reversos à frente da API. Define `req.ip`, usado no limite de tentativas, e `req.protocol`. |
+| `TRUST_PROXY` | `0` fora de produção; obrigatório em produção | Proxies reversos confiáveis do caminho direto (número de saltos ou IPs/CIDRs). Define `req.ip`, usado no limite de tentativas, e `req.protocol`. Veja [seguranca-http.md](seguranca-http.md). |
+| `PROXY_SECRET` | não definido | Segredo enviado pela Vercel em `X-Proxy-Secret` no rewrite `/api`. Com ele, a API identifica o cliente real no caminho da Vercel. Deve ser idêntico na Vercel e no Render. Veja [seguranca-http.md](seguranca-http.md#decisão-e-validação). |
+| `DIAGNOSTICO_PROXY_TOKEN` | não definido | Liga temporariamente `GET /api/diagnostico/ip`, usado para validar a cadeia de proxies. Remova após a validação. |
 | `COOKIE_SECURE` | `true` em produção, `false` fora dela | Atributo `Secure` do cookie. `false` em produção é recusado. |
 
 ### CSRF
 
-As rotas que emitem, leem ou removem o cookie (`/login`, `/refresh`, `/logout`, `/senha`) passam por `verificarOrigem`, além do `SameSite=Strict`. A requisição é recusada com **403 "Origem não autorizada"** se:
+As rotas `/login`, `/refresh`, `/logout` e `/senha` exigem uma origem confiável explicitamente listada em `CORS_ORIGIN`. `Origin` tem precedência: se presente, deve corresponder exatamente à lista; `null`, valores inválidos e divergências de protocolo, domínio ou porta são recusados. Na ausência de `Origin`, a origem HTTP(S) do `Referer` é validada. Se ambos faltarem ou forem inválidos, a resposta é 403. `Sec-Fetch-Site: cross-site` também é recusado, mesmo para origem listada. O middleware não usa `Host`, `X-Forwarded-Host` ou `X-Forwarded-Proto` como prova de origem, inclusive atrás do proxy.
 
-- o cabeçalho `Origin` vier com uma origem que não é a da própria API nem está em `CORS_ORIGIN` (inclusive `null`);
-- o navegador marcar a requisição como `Sec-Fetch-Site: cross-site`.
+O navegador controla esses cabeçalhos no modelo de CSRF; clientes HTTP independentes podem forjá-los e devem informar `Origin` ou `Referer` autorizado. Esta verificação não autentica clientes nem protege credenciais roubadas ou XSS. A ausência de ambos bloqueia também clientes legítimos que os removam; configure-os explicitamente e valide os proxies. SameSite=Strict e CORS restrito são camadas adicionais, mas CORS sozinho não impede CSRF. As demais rotas usam Bearer, que o navegador não acrescenta automaticamente. O login também é protegido contra login CSRF; a troca de senha exige Bearer e atualiza o cookie.
 
-Requisições sem `Origin`, como as de Postman ou de scripts, são aceitas, porque não carregam cookies de uma vítima. As demais rotas são autenticadas apenas por `Authorization: Bearer`, que o navegador não envia sozinho, e não mudam.
+A regra CodeQL `js/missing-token-validation` aponta o uso de cookies e pode não reconhecer a validação personalizada: a mitigação não garante que o alerta desapareça. Não houve classificação automática como falso positivo. Referências: [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) e [CodeQL](https://codeql.github.com/codeql-query-help/javascript/js-missing-token-validation/).
 
 ### Configuração em produção
 
 - Inclua a origem do frontend em `CORS_ORIGIN`, por exemplo `CORS_ORIGIN=https://fsph-web.vercel.app`. Atrás do rewrite, o `Host` recebido pelo Render pode não coincidir com o `Origin` do navegador.
-- Ajuste `TRUST_PROXY` ao número de proxies da infraestrutura.
+- Defina `TRUST_PROXY` conforme a cadeia real de proxies, como descrito em [seguranca-http.md](seguranca-http.md#como-calibrar-no-render).
 - Mantenha `NODE_ENV=production`, para que o cookie seja `Secure`.
 
 ## Segredo de assinatura

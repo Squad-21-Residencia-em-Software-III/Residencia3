@@ -1,12 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { authApi } from '../services/api/authApi'
 import { EVENTO_SESSAO_EXPIRADA, tokenStorage } from '../services/api/http'
 import type { Perfil, Usuario } from '../types/usuario'
 
+const CANAL_AUTENTICACAO = 'fsph_auth'
+
 interface AuthContextValue {
   usuario: Usuario | null
-  /** true enquanto a sessão salva (token) está sendo verificada na API. */
+  /** true enquanto a sessão (cookie HttpOnly) está sendo verificada via silent refresh. */
   carregando: boolean
   login: (email: string, senha: string) => Promise<void>
   logout: () => void
@@ -15,30 +17,73 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+function criarCanalAutenticacao(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === 'undefined') return null
+  try {
+    return new BroadcastChannel(CANAL_AUTENTICACAO)
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
-  const [carregando, setCarregando] = useState(() => tokenStorage.get() !== null)
+  const [carregando, setCarregando] = useState(true)
+  const canalRef = useRef<BroadcastChannel | null>(null)
 
-  // Restaura a sessão ao abrir/recarregar a página.
+  // Cold start / F5: tenta restaurar a sessão em memória usando o cookie HttpOnly de refresh.
   useEffect(() => {
-    if (!tokenStorage.get()) return
     let cancelado = false
     authApi
-      .me()
-      .then((u) => !cancelado && setUsuario(u))
-      .catch(() => tokenStorage.clear())
-      .finally(() => !cancelado && setCarregando(false))
+      .refresh()
+      .then((sessao) => {
+        if (cancelado) return
+        tokenStorage.set(sessao.token)
+        setUsuario(sessao.usuario)
+      })
+      .catch(() => {
+        if (cancelado) return
+        tokenStorage.clear()
+        setUsuario(null)
+      })
+      .finally(() => {
+        if (!cancelado) setCarregando(false)
+      })
     return () => {
       cancelado = true
     }
   }, [])
 
-  // Token expirado/invalidado em qualquer chamada: volta para o login.
-  useEffect(() => {
-    const aoExpirar = () => setUsuario(null)
-    window.addEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar)
-    return () => window.removeEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar)
+  const limparEstadoLocal = useCallback(() => {
+    tokenStorage.clear()
+    setUsuario(null)
   }, [])
+
+  // Token expirado/invalidado em qualquer chamada: limpa memória e volta para o login.
+  useEffect(() => {
+    window.addEventListener(EVENTO_SESSAO_EXPIRADA, limparEstadoLocal)
+    return () => window.removeEventListener(EVENTO_SESSAO_EXPIRADA, limparEstadoLocal)
+  }, [limparEstadoLocal])
+
+  // Sincronização multi-aba: ao deslogar em uma aba, todas as demais encerram a sessão local.
+  useEffect(() => {
+    const canal = criarCanalAutenticacao()
+    canalRef.current = canal
+    if (!canal) return
+
+    const aoReceberMensagem = (evento: MessageEvent<{ tipo?: string }>) => {
+      if (evento.data?.tipo === 'LOGOUT') {
+        limparEstadoLocal()
+      }
+    }
+
+    canal.addEventListener('message', aoReceberMensagem)
+    return () => {
+      canal.removeEventListener('message', aoReceberMensagem)
+      canal.close()
+      if (canalRef.current === canal) canalRef.current = null
+    }
+  }, [limparEstadoLocal])
 
   const login = useCallback(async (email: string, senha: string) => {
     const resultado = await authApi.login(email, senha)
@@ -47,9 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
-    tokenStorage.clear()
-    setUsuario(null)
-  }, [])
+    limparEstadoLocal()
+    void authApi.logout().catch(() => {})
+    canalRef.current?.postMessage({ tipo: 'LOGOUT' })
+  }, [limparEstadoLocal])
 
   const value = useMemo<AuthContextValue>(
     () => ({

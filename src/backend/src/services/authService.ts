@@ -52,8 +52,8 @@ const TOKEN_INVALIDO = 'Token inválido ou expirado';
 async function registrarTentativaRecusada(usuarioId: number | null, acao: string): Promise<void> {
   try {
     await auditoriaModel.registrar({ usuario_id: usuarioId, acao, modulo: MODULOS_AUDITORIA.AUTENTICACAO });
-  } catch (erro) {
-    console.error('Falha ao registrar auditoria de autenticação:', erro);
+  } catch {
+    console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: 'ERROR', codigo: 'AUDITORIA_AUTENTICACAO_FALHOU' }));
   }
 }
 

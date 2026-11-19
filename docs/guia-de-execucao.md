@@ -48,7 +48,7 @@ TRUST_PROXY=0
 COOKIE_SECURE=false
 ```
 
-O `JWT_SECRET` assina os tokens de login e é **obrigatório**. A API não sobe sem ele, nem com um valor fraco: são exigidos pelo menos 32 caracteres, e os valores de exemplo deste guia são recusados. `JWT_EXPIRES_IN` (padrão 2h, máximo 8h) define a validade do token de acesso e `JWT_REFRESH_EXPIRES_IN` (padrão 12h, máximo 24h) define a duração máxima da sessão. O refresh token é entregue em cookie `HttpOnly`. `CORS_ORIGIN` lista as origens do frontend autorizadas (nunca `*`), `TRUST_PROXY` informa quantos proxies reversos ficam à frente da API e `COOKIE_SECURE` exige HTTPS para o cookie (obrigatório em produção). A política completa está em [seguranca-sessoes.md](seguranca-sessoes.md). Para gerar um valor aleatório:
+O `JWT_SECRET` assina os tokens de login e é **obrigatório**. A API não sobe sem ele, nem com um valor fraco: são exigidos pelo menos 32 caracteres, e os valores de exemplo deste guia são recusados. `JWT_EXPIRES_IN` (padrão 2h, máximo 8h) define a validade do token de acesso e `JWT_REFRESH_EXPIRES_IN` (padrão 12h, máximo 24h) define a duração máxima da sessão. O refresh token é entregue em cookie `HttpOnly`. `CORS_ORIGIN` lista as origens do frontend autorizadas (nunca `*`), `TRUST_PROXY` informa os proxies reversos confiáveis à frente da API (número de saltos ou lista de IPs/CIDRs; obrigatório em produção; o IP encaminhado pela Vercel é autenticado pelo `PROXY_SECRET`, veja [seguranca-http.md](seguranca-http.md#decisão-e-validação)) e `COOKIE_SECURE` exige HTTPS para o cookie (obrigatório em produção). A política completa está em [seguranca-sessoes.md](seguranca-sessoes.md). Os limites de requisição e os tempos máximos (`RATE_LIMIT_*`, `MAX_REQUISICOES_SIMULTANEAS`, `REQUEST_TIMEOUT_MS`, `POSTGRES_STATEMENT_TIMEOUT_MS`) têm padrões seguros e estão descritos em [limites-e-timeouts.md](limites-e-timeouts.md). Para gerar um valor aleatório:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
@@ -64,7 +64,7 @@ Com o Docker Desktop aberto, na raiz do projeto:
 docker compose up -d
 ```
 
-O banco sobe **vazio**. As tabelas são criadas pelas migrations (passo 4).
+Na primeira criação do volume `pgdata`, o banco começa vazio. As tabelas são criadas pelas migrations (passo 4). Se o volume já existir, o PostgreSQL reutiliza os dados nele armazenados.
 
 Para conferir as tabelas depois das migrations (use os valores do seu `.env`):
 
@@ -79,7 +79,7 @@ docker compose down
 ```
 
 > [!WARNING]
-> O banco não tem volume persistente. Se o container for removido (`docker compose down`), os dados são apagados e é preciso rodar `npm run migrate` de novo.
+> O Compose usa o volume nomeado `pgdata` para persistir os dados. `docker compose down` remove os contêineres, mas preserva esse volume. Remover o volume, inclusive com `docker compose down --volumes`, apaga os dados armazenados nele. Não use essa opção em um ambiente com dados que precisam ser preservados.
 
 ## 4. Rodar o back-end (API)
 Em outro terminal:
@@ -213,4 +213,4 @@ npm run build
 ## Problemas comuns
 - **`docker compose` não encontra o `.env`**: o arquivo precisa estar na **raiz** do projeto, não dentro de `src/backend`.
 - **Porta 5432 ou 3000 em uso**: pare o serviço que está usando a porta ou ajuste a porta.
-- **Erro de autenticação no banco depois de trocar a senha**: recrie o container com `docker compose down` e `docker compose up -d`, pois a senha é definida só na primeira criação.
+- **Erro de autenticação no banco depois de trocar a senha**: as variáveis de inicialização do PostgreSQL são aplicadas quando o diretório de dados é criado. Recriar apenas o contêiner preserva o volume e não altera a senha existente. Em ambiente compartilhado, solicite a alteração ao responsável pelo banco; em ambiente local, confira as credenciais já configuradas antes de tomar qualquer medida sobre os dados.

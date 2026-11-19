@@ -15,6 +15,7 @@ function normalizarLimite(limite?: number): number {
 export type StatusViagem =
   | 'AGENDADA'
   | 'EM_ANDAMENTO'
+  | 'NO_LOCAL'
   | 'CONCLUIDA'
   | 'CANCELADA';
 
@@ -33,6 +34,9 @@ export interface ViagemDetalhada {
   veiculo_placa: string;
   motorista_id: number;
   motorista_nome: string;
+  equipe_id: number | null;
+  liberada_em: Date | null;
+  capacidade_utilizada: number | null;
   km_inicial: number | null;
   km_final: number | null;
   data_hora_efetiva_saida: Date | null;
@@ -42,7 +46,7 @@ export interface ViagemDetalhada {
 
 // Viagens administrativas e ordens SVO no mesmo formato.
 // Os status das ordens SVO são convertidos para os equivalentes de viagem.
-const VIAGENS_UNIFICADAS_SQL = `
+export const VIAGENS_UNIFICADAS_SQL = `
   SELECT
     vf.id,
     vf.solicitacao_id,
@@ -50,6 +54,7 @@ const VIAGENS_UNIFICADAS_SQL = `
     sv.origem,
     sv.destino,
     sv.finalidade,
+    (to_jsonb(sv)->>'material_sensivel')::boolean AS material_sensivel,
     us.nome AS solicitante_nome,
     sv.data_saida_desejada AS inicio_previsto,
     sv.data_chegada_desejada AS fim_previsto,
@@ -58,6 +63,9 @@ const VIAGENS_UNIFICADAS_SQL = `
     v.placa AS veiculo_placa,
     vf.motorista_id,
     um.nome AS motorista_nome,
+    NULL::integer AS equipe_id,
+    NULL::timestamptz AS liberada_em,
+    NULL::integer AS capacidade_utilizada,
     vf.km_inicial,
     vf.km_final,
     vf.data_hora_efetiva_saida,
@@ -80,14 +88,18 @@ const VIAGENS_UNIFICADAS_SQL = `
     NULL AS origem,
     ss.local_ocorrencia AS destino,
     NULL AS finalidade,
+    NULL::boolean AS material_sensivel,
     ur.nome AS solicitante_nome,
-    o.data_hora_chamado AS inicio_previsto,
-    NULL AS fim_previsto,
+    o.inicio_previsto,
+    o.fim_previsto,
     o.veiculo_id,
     v.modelo AS veiculo_modelo,
     v.placa AS veiculo_placa,
     o.motorista_id,
     um.nome AS motorista_nome,
+    o.equipe_id,
+    (to_jsonb(o)->>'liberada_em')::timestamptz AS liberada_em,
+    o.capacidade_utilizada,
     o.km_inicial,
     o.km_final,
     o.data_hora_saida AS data_hora_efetiva_saida,
@@ -108,6 +120,42 @@ const VIAGENS_UNIFICADAS_SQL = `
 `;
 
 export const viagemModel = {
+  async listarOrdensPendentesSvo(pagina: number, limite: number) {
+    const base = () => db('ordens_svo as o')
+      .innerJoin('solicitacoes_svo as s', 's.id', 'o.solicitacao_id')
+      .where('o.status', 'AGUARDANDO_ALOCACAO')
+      .where('s.status', 'CONFIRMADA');
+    const [dados, contagem] = await Promise.all([
+      base().select('o.id as ordem_id', 'o.solicitacao_id', 's.local_ocorrencia',
+        's.material_sensivel', 's.confirmado_em', 'o.status',
+        'o.veiculo_id', 'o.motorista_id', 'o.equipe_id')
+        .orderBy('s.confirmado_em', 'asc', 'last').orderBy('o.id', 'asc')
+        .limit(limite).offset((pagina - 1) * limite),
+      base().count<{ total: string }[]>({ total: 'o.id' }).first(),
+    ]);
+    const total = Number(contagem?.total ?? 0);
+    return { dados, paginacao: { pagina, limite, total, totalPaginas: Math.ceil(total / limite) } };
+  },
+  /** Consulta reduzida, vinculada ao solicitante autenticado antes da paginação. */
+  async listarAdministrativasDoSolicitante(usuarioId: number, pagina: number, limite: number) {
+    const base = () => db('viagens_frota as vf')
+      .innerJoin('solicitacoes_viagem as sv', 'sv.id', 'vf.solicitacao_id')
+      .where('sv.solicitante_id', usuarioId);
+    const [dados, contagem] = await Promise.all([
+      base()
+        .select('vf.id', 'vf.solicitacao_id', 'sv.origem', 'sv.destino', 'sv.finalidade',
+          'vf.status', 'vf.data_hora_efetiva_saida', 'vf.data_hora_efetiva_chegada')
+        .select(db.raw("'ADMINISTRATIVA' as tipo_operacao"))
+        .select(db.raw("(to_jsonb(sv)->>'material_sensivel')::boolean as material_sensivel"))
+        .select('sv.data_saida_desejada as inicio_previsto', 'sv.data_chegada_desejada as fim_previsto')
+        .orderBy('sv.data_saida_desejada', 'desc', 'last')
+        .orderBy('vf.id', 'desc')
+        .limit(limite).offset((pagina - 1) * limite),
+      base().count<{ total: string }[]>({ total: 'vf.id' }).first(),
+    ]);
+    const total = Number(contagem?.total ?? 0);
+    return { dados, paginacao: { pagina, limite, total, totalPaginas: Math.ceil(total / limite) } };
+  },
   async listar(
     tipos: TipoOperacao[],
     usuarioMotoristaId?: number,
@@ -121,6 +169,7 @@ export const viagemModel = {
         'origem',
         'destino',
         'finalidade',
+        'material_sensivel',
         'solicitante_nome',
         'inicio_previsto',
         'fim_previsto',
@@ -129,6 +178,9 @@ export const viagemModel = {
         'veiculo_placa',
         'motorista_id',
         'motorista_nome',
+        'equipe_id',
+        'liberada_em',
+        'capacidade_utilizada',
         'km_inicial',
         'km_final',
         'data_hora_efetiva_saida',
@@ -166,6 +218,7 @@ export const viagemModel = {
         'origem',
         'destino',
         'finalidade',
+        'material_sensivel',
         'solicitante_nome',
         'inicio_previsto',
         'fim_previsto',
@@ -174,6 +227,9 @@ export const viagemModel = {
         'veiculo_placa',
         'motorista_id',
         'motorista_nome',
+        'equipe_id',
+        'liberada_em',
+        'capacidade_utilizada',
         'km_inicial',
         'km_final',
         'data_hora_efetiva_saida',

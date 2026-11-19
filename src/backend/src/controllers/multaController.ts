@@ -5,8 +5,8 @@ import { criarMultaSchema, atualizarMultaSchema } from '../validators/multaSchem
 import { AppError } from '../errors/AppError';
 
 export const multaController = {
-  async listar(_req: Request, res: Response): Promise<void> {
-    res.json(await multaService.listar());
+  async listar(req: Request, res: Response): Promise<void> {
+    res.json(await multaService.listar(usuarioAutenticado(req).perfil));
   },
 
   async criar(req: Request, res: Response): Promise<void> {

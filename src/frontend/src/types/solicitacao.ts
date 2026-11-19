@@ -27,6 +27,7 @@ export interface SolicitacaoViagem {
   origem: string; // varchar(255)
   destino: string; // varchar(255)
   finalidade: string; // text
+  material_sensivel?: boolean | null;
   data_saida_desejada: string; // timestamp (ISO string YYYY-MM-DDTHH:mm:ss)
   data_chegada_desejada?: string | null; // timestamp
   status: StatusSolicitacao; // padrão: PENDENTE_APROVACAO
@@ -39,6 +40,7 @@ export type NovaSolicitacaoInput = Omit<SolicitacaoViagem, 'id' | 'status' | 'mo
 
 /** Corpo de POST /solicitacoes-viagem; o solicitante vem do usuário autenticado. */
 export interface NovaSolicitacaoApiInput {
+  material_sensivel?: boolean;
   unidade_id: number;
   origem: string;
   destino: string;

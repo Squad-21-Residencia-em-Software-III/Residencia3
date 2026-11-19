@@ -5,6 +5,7 @@ export const PERFIS = {
   GESTOR_SVO: 'GESTOR_SVO',
   MOTORISTA_FROTA: 'MOTORISTA_FROTA',
   MOTORISTA_SVO: 'MOTORISTA_SVO',
+  INTEGRANTE_SVO: 'INTEGRANTE_SVO',
 } as const;
 
 export type Perfil = (typeof PERFIS)[keyof typeof PERFIS];
@@ -18,6 +19,7 @@ export const DESCRICAO_PERFIS: Record<Perfil, string> = {
   GESTOR_SVO: 'Registro e triagem das solicitações da população e geração de ordens de coleta.',
   MOTORISTA_FROTA: 'Registro de viagens, abastecimentos e consulta dos veículos a ele vinculados.',
   MOTORISTA_SVO: 'Visualização das ordens alocadas e atualização do andamento dos atendimentos.',
+  INTEGRANTE_SVO: 'Consulta das coletas para as quais foi designado individualmente.',
 };
 
 export function tipoUsuarioDoPerfil(perfil: Perfil): string {

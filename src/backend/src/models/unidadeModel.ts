@@ -58,6 +58,16 @@ export const unidadeModel = {
     return Boolean(encontrado);
   },
 
+  // Associação do gestor a uma unidade identificada pelo nome (ex.: SVO)
+  async estaAssociadoPorNome(nome: string, usuarioId: number, conexao: Knex = db): Promise<boolean> {
+    const encontrado = await conexao('gestores_unidades as gu')
+      .join('unidades as u', 'u.id', 'gu.unidade_id')
+      .select('gu.unidade_id')
+      .where({ 'u.nome': nome, 'gu.usuario_id': usuarioId })
+      .first();
+    return Boolean(encontrado);
+  },
+
   async idsDasUnidadesDoGestor(usuarioId: number, conexao: Knex = db): Promise<number[]> {
     const linhas = await conexao('gestores_unidades').select('unidade_id').where({ usuario_id: usuarioId });
     return linhas.map((linha: { unidade_id: number }) => linha.unidade_id);

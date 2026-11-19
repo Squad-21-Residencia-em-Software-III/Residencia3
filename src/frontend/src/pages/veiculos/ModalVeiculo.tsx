@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal, Select } from '../../components/ui';
+import { recursoAtivo } from '../../config/recursosBackend';
 import { mensagemDeErro } from '../../services/api/http';
 import type { NovoVeiculoInput, TipoFrota, Veiculo } from '../../types/veiculo';
 
@@ -8,14 +9,29 @@ interface ModalVeiculoProps {
   onClose: () => void;
   onSalvar: (veiculo: NovoVeiculoInput) => Promise<void>;
   veiculoParaEditar?: Veiculo | null;
+  /** Fixa a frota (cada gestor só cadastra veículos da própria frota). */
+  apenasFrota?: TipoFrota;
 }
 
-export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeiculoProps) {
+export function ModalVeiculo({
+  onClose,
+  onSalvar,
+  veiculoParaEditar,
+  apenasFrota,
+}: ModalVeiculoProps) {
   const [placa, setPlaca] = useState(veiculoParaEditar?.placa ?? '');
   const [modelo, setModelo] = useState(veiculoParaEditar?.modelo ?? '');
-  const [tipoFrota, setTipoFrota] = useState<TipoFrota>(veiculoParaEditar?.tipo_frota ?? 'ADMINISTRATIVA');
+  const [tipoFrota, setTipoFrota] = useState<TipoFrota>(
+    veiculoParaEditar?.tipo_frota ?? apenasFrota ?? 'ADMINISTRATIVA',
+  );
   const [capacidade, setCapacidade] = useState(String(veiculoParaEditar?.capacidade_maxima ?? '4'));
   const [kmAtual, setKmAtual] = useState(String(veiculoParaEditar?.km_atual ?? '0'));
+  // Lotação da cabine SVO (motorista incluído): coluna nova da SCRUM-175/181
+  const [cabine, setCabine] = useState(
+    veiculoParaEditar?.lotacao_cabine != null ? String(veiculoParaEditar.lotacao_cabine) : '',
+  );
+  const isSvo = tipoFrota === 'SVO';
+  const comCabine = isSvo && recursoAtivo('lotacaoCabine');
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
@@ -26,6 +42,9 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
       setTipoFrota(veiculoParaEditar.tipo_frota);
       setCapacidade(String(veiculoParaEditar.capacidade_maxima));
       setKmAtual(String(veiculoParaEditar.km_atual));
+      setCabine(
+        veiculoParaEditar.lotacao_cabine != null ? String(veiculoParaEditar.lotacao_cabine) : '',
+      );
     }
   }, [veiculoParaEditar]);
 
@@ -42,8 +61,15 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
       setErro('A capacidade deve ser um número inteiro de no mínimo 1 pessoa/óbito.');
       return;
     }
-    if (tipoFrota === 'SVO' && capacidadeNum > 4) {
+    if (isSvo && capacidadeNum > 4) {
       setErro('Veículos da frota SVO podem ter capacidade máxima de até 4.');
+      return;
+    }
+
+    const cabineNum = Number(cabine);
+    const cabineObrigatoria = !veiculoParaEditar || veiculoParaEditar.tipo_frota !== 'SVO';
+    if (comCabine && ((cabineObrigatoria && !cabine.trim()) || (cabine.trim() !== '' && (!Number.isInteger(cabineNum) || cabineNum < 1)))) {
+      setErro('Informe a lotação da cabine: número inteiro de pessoas, contando o motorista.');
       return;
     }
     if (capacidadeNum > 20) {
@@ -65,6 +91,8 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
         tipo_frota: tipoFrota,
         capacidade_maxima: capacidadeNum,
         km_atual: kmAtualNum,
+        // Corpos e cabine são medidas diferentes e vão em campos separados
+        ...(comCabine && cabine.trim() !== '' ? { lotacao_cabine: cabineNum } : {}),
       });
       onClose();
     } catch (error) {
@@ -76,7 +104,7 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
   const isEdicao = Boolean(veiculoParaEditar);
 
   return (
-    <Modal title={isEdicao ? `Editar Veículo — ${veiculoParaEditar?.placa}` : 'Cadastrar Veículo'} onClose={onClose}>
+    <Modal title={isEdicao ? `Editar Veículo — ${veiculoParaEditar?.placa}` : 'Cadastrar Veículo'} onClose={onClose} telaInteira>
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
           <Alert tone="danger" className="mb-4">
@@ -109,16 +137,18 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
             onChange={(e: ChangeEvent<HTMLSelectElement>) =>
               setTipoFrota(e.target.value as TipoFrota)
             }
+            disabled={Boolean(apenasFrota)}
+            title={apenasFrota ? 'Seu perfil só gerencia veículos desta frota' : undefined}
           >
             <option value="ADMINISTRATIVA">Administrativa</option>
             <option value="SVO">SVO</option>
           </Select>
 
           <Input
-            label="Capacidade Máxima *"
+            label={isSvo ? 'Capacidade Máxima de corpos * (1 a 4)' : 'Capacidade Máxima de passageiros *'}
             type="number"
             min="1"
-            max={tipoFrota === 'SVO' ? '4' : '20'}
+            max={isSvo ? '4' : '20'}
             step="1"
             value={capacidade}
             onChange={(e: ChangeEvent<HTMLInputElement>) => {
@@ -129,6 +159,19 @@ export function ModalVeiculo({ onClose, onSalvar, veiculoParaEditar }: ModalVeic
             }}
           />
         </div>
+
+        {comCabine && (
+          <Input
+            label={`Lotação da cabine${!isEdicao || veiculoParaEditar?.tipo_frota !== 'SVO' ? ' *' : ''} (pessoas, contando o motorista)`}
+            type="number"
+            min="1"
+            step="1"
+            value={cabine}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              if (e.target.value.length <= 2) setCabine(e.target.value);
+            }}
+          />
+        )}
 
         <Input
           label="Quilometragem Atual *"

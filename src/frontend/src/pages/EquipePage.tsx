@@ -1,29 +1,32 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { UserCheck, Shield } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { PERFIS } from '../types/usuario';
+import { UserCheck, Shield, Users } from 'lucide-react';
+import { usePermissao } from '../utils/permissoes';
 import MotoristasPage from './MotoristasPage';
 import UsuariosPage from './UsuariosPage';
+import EquipesSvoPage from './EquipesSvoPage';
 import { cn } from '../utils/cn';
 
-type AbaEquipe = 'motoristas' | 'usuarios';
+type AbaEquipe = 'motoristas' | 'usuarios' | 'equipes-svo';
 
 export default function EquipePage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { usuario } = useAuth();
-  const isAdmin = usuario?.perfil === PERFIS.ADMINISTRADOR;
+  const { pode } = usePermissao();
+  // Aba de usuários e perfis: só o Administrador
+  const isAdmin = pode('usuarios.gerenciar');
+  const podeGerenciarEquipesSvo = pode('equipeSvo.gerenciar');
 
   const abaUrl = searchParams.get('aba') as AbaEquipe | null;
   const abaAtiva: AbaEquipe =
-    abaUrl === 'usuarios' && isAdmin ? 'usuarios' : 'motoristas';
+    abaUrl === 'usuarios' && isAdmin ? 'usuarios' :
+    abaUrl === 'equipes-svo' && podeGerenciarEquipesSvo ? 'equipes-svo' : 'motoristas';
 
   useEffect(() => {
     // Se o usuário tentar acessar ?aba=usuarios sem ser admin, corrige a URL
-    if (abaUrl === 'usuarios' && !isAdmin) {
+    if ((abaUrl === 'usuarios' && !isAdmin) || (abaUrl === 'equipes-svo' && !podeGerenciarEquipesSvo)) {
       setSearchParams({ aba: 'motoristas' }, { replace: true });
     }
-  }, [abaUrl, isAdmin, setSearchParams]);
+  }, [abaUrl, isAdmin, podeGerenciarEquipesSvo, setSearchParams]);
 
   const mudarAba = (aba: AbaEquipe) => {
     setSearchParams({ aba }, { replace: true });
@@ -32,7 +35,7 @@ export default function EquipePage() {
   return (
     <div className="space-y-6">
       {/* Seletor de Abas - Alinhado à esquerda, visual de pílulas com alto contraste, sem contadores */}
-      {isAdmin && (
+      {(isAdmin || podeGerenciarEquipesSvo) && (
         <div className="flex items-center">
           <div className="inline-flex items-center rounded-xl bg-slate-200/70 p-1.5 border border-slate-300/50 shadow-2xs">
             <button
@@ -49,7 +52,7 @@ export default function EquipePage() {
               <span>Motoristas</span>
             </button>
 
-            <button
+            {isAdmin && <button
               type="button"
               onClick={() => mudarAba('usuarios')}
               className={cn(
@@ -61,14 +64,19 @@ export default function EquipePage() {
             >
               <Shield size={16} />
               <span>Usuários</span>
-            </button>
+            </button>}
+            {podeGerenciarEquipesSvo && <button type="button" onClick={() => mudarAba('equipes-svo')}
+              className={cn('flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-all duration-200 cursor-pointer whitespace-nowrap',
+                abaAtiva === 'equipes-svo' ? 'bg-white text-navy-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900 active:bg-slate-200/50')}>
+              <Users size={16} /><span>Equipes SVO</span>
+            </button>}
           </div>
         </div>
       )}
 
       {/* Conteúdo da Aba com Transição Suave */}
       <div key={abaAtiva} className="animate-tab-fade">
-        {abaAtiva === 'motoristas' ? <MotoristasPage /> : <UsuariosPage />}
+        {abaAtiva === 'motoristas' ? <MotoristasPage /> : abaAtiva === 'usuarios' ? <UsuariosPage /> : <EquipesSvoPage />}
       </div>
     </div>
   );

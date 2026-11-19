@@ -125,7 +125,7 @@ export function ModalUsuario({
   const tipoPrevisao = tipoUsuarioDoPerfil(perfil);
 
   return (
-    <Modal title={isEdicao ? 'Editar Usuário' : 'Cadastrar Usuário'} onClose={onClose}>
+    <Modal title={isEdicao ? 'Editar Usuário' : 'Cadastrar Usuário'} onClose={onClose} telaInteira>
       <form onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">

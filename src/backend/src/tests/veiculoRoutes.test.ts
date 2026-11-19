@@ -3,6 +3,12 @@ import request from 'supertest';
 
 import { PERFIS, type Perfil } from '../constants/perfis';
 
+// Gestor SVO associado à unidade SVO (exigirAssociacaoSvo)
+vi.mock('../models/unidadeModel', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../models/unidadeModel')>();
+  return { ...original, unidadeModel: { ...original.unidadeModel, estaAssociadoPorNome: vi.fn(async () => true) } };
+});
+
 vi.mock('../services/authService', () => ({
   authService: {
     usuarioDoToken: vi.fn(),
@@ -48,6 +54,7 @@ describe('Rotas de Veículos (/api/veiculos)', () => {
           modelo: 'Fiat Mobi',
           tipo_frota: 'ADMINISTRATIVA',
           capacidade_maxima: 4,
+          lotacao_cabine: null,
           km_atual: 45000,
           status: 'DISPONIVEL',
         },
@@ -76,6 +83,14 @@ describe('Rotas de Veículos (/api/veiculos)', () => {
       km_atual: 52000,
     };
 
+    it('encaminha o perfil do gestor SVO ao serviço de atualização', async () => {
+      autenticarComo(PERFIS.GESTOR_SVO, 3);
+      vi.mocked(veiculoService.atualizar).mockResolvedValueOnce({ id: 1, ...atualizacaoValida } as any);
+      const resposta = await request(app).put('/api/veiculos/1').set('Authorization', token).send(atualizacaoValida);
+      expect(resposta.status).toBe(200);
+      expect(veiculoService.atualizar).toHaveBeenCalledWith(1, atualizacaoValida, 3, PERFIS.GESTOR_SVO);
+    });
+
     it('deve atualizar dados permitidos do veículo e retornar 200', async () => {
       vi.mocked(veiculoService.atualizar).mockResolvedValueOnce({
         id: 1,
@@ -83,6 +98,7 @@ describe('Rotas de Veículos (/api/veiculos)', () => {
         modelo: 'Fiat Mobi Like 1.0',
         tipo_frota: 'ADMINISTRATIVA',
         capacidade_maxima: 4,
+        lotacao_cabine: null,
         km_atual: 52000,
         status: 'DISPONIVEL',
       });
@@ -94,7 +110,7 @@ describe('Rotas de Veículos (/api/veiculos)', () => {
 
       expect(resposta.status).toBe(200);
       expect(resposta.body.modelo).toBe('Fiat Mobi Like 1.0');
-      expect(veiculoService.atualizar).toHaveBeenCalledWith(1, atualizacaoValida, 1);
+      expect(veiculoService.atualizar).toHaveBeenCalledWith(1, atualizacaoValida, 1, PERFIS.GESTOR_FROTA);
     });
 
     it('deve rejeitar capacidade superior a 4 para frota SVO', async () => {
@@ -185,97 +201,107 @@ describe('Rotas de Veículos (/api/veiculos)', () => {
       expect(veiculoService.atualizar).not.toHaveBeenCalled();
     });
   });
-});
 
-describe('GET /api/veiculos/svo/ocupacao', () => {
-  const endpoint = '/api/veiculos/svo/ocupacao';
+  describe('GET /api/veiculos/svo/ocupacao', () => {
+    const endpoint = '/api/veiculos/svo/ocupacao';
 
-  beforeEach(() => {
-    autenticarComo(PERFIS.GESTOR_SVO, 3);
+    beforeEach(() => {
+      autenticarComo(PERFIS.GESTOR_SVO, 3);
 
-    vi.mocked(veiculoService.listarOcupacaoSvo).mockResolvedValue([
-      {
-        id: 1,
-        placa: 'ABC1D23',
-        modelo: 'Van SVO 1',
-        capacidade_maxima: 4,
-        status: 'DISPONIVEL',
+      vi.mocked(veiculoService.listarOcupacaoSvo).mockResolvedValue([
+        {
+          id: 1,
+          placa: 'ABC1D23',
+          modelo: 'Van SVO 1',
+          capacidade_maxima: 4,
+          lotacao_cabine: 3,
+          status: 'DISPONIVEL',
+          capacidade_utilizada: 0,
+          vagas_disponiveis: 4,
+        },
+        {
+          id: 2,
+          placa: 'DEF4G56',
+          modelo: 'Van SVO 2',
+          capacidade_maxima: 4,
+          lotacao_cabine: 3,
+          status: 'RESERVADO',
+          capacidade_utilizada: 2,
+          vagas_disponiveis: 2,
+        },
+        {
+          id: 3,
+          placa: 'GHI7J89',
+          modelo: 'Van SVO 3',
+          capacidade_maxima: 4,
+          lotacao_cabine: 3,
+          status: 'RESERVADO',
+          capacidade_utilizada: 4,
+          vagas_disponiveis: 0,
+        },
+        {
+          id: 4,
+          placa: 'JKL1M23',
+          modelo: 'Van SVO 4',
+          capacidade_maxima: 4,
+          lotacao_cabine: 3,
+          status: 'MANUTENCAO',
+          capacidade_utilizada: 0,
+          vagas_disponiveis: 4,
+        },
+      ]);
+    });
+
+    it('deve retornar a ocupacao de todos os veiculos SVO', async () => {
+      const resposta = await request(app)
+        .get(endpoint)
+        .set('Authorization', 'Bearer token-teste');
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body).toHaveLength(4);
+      expect(resposta.body[0]).toMatchObject({
         capacidade_utilizada: 0,
         vagas_disponiveis: 4,
-      },
-      {
-        id: 2,
-        placa: 'DEF4G56',
-        modelo: 'Van SVO 2',
-        capacidade_maxima: 4,
-        status: 'RESERVADO',
+      });
+      expect(resposta.body[1]).toMatchObject({
         capacidade_utilizada: 2,
         vagas_disponiveis: 2,
-      },
-      {
-        id: 3,
-        placa: 'GHI7J89',
-        modelo: 'Van SVO 3',
-        capacidade_maxima: 4,
-        status: 'RESERVADO',
+      });
+      expect(resposta.body[2]).toMatchObject({
         capacidade_utilizada: 4,
         vagas_disponiveis: 0,
-      },
-      {
-        id: 4,
-        placa: 'JKL1M23',
-        modelo: 'Van SVO 4',
-        capacidade_maxima: 4,
+      });
+      expect(resposta.body[3]).toMatchObject({
         status: 'MANUTENCAO',
         capacidade_utilizada: 0,
         vagas_disponiveis: 4,
-      },
-    ]);
+      });
+
+      expect(veiculoService.listarOcupacaoSvo).toHaveBeenCalledOnce();
+    });
+
+    it('deve retornar 401 sem autenticacao', async () => {
+      const resposta = await request(app).get(endpoint);
+
+      expect(resposta.status).toBe(401);
+      expect(veiculoService.listarOcupacaoSvo).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar 403 para usuario sem permissao', async () => {
+      autenticarComo(PERFIS.SOLICITANTE, 2);
+
+      const resposta = await request(app)
+        .get(endpoint)
+        .set('Authorization', 'Bearer token-teste');
+
+      expect(resposta.status).toBe(403);
+      expect(veiculoService.listarOcupacaoSvo).not.toHaveBeenCalled();
+    });
   });
 
-  it('deve retornar a ocupacao de todos os veiculos SVO', async () => {
-    const resposta = await request(app)
-      .get(endpoint)
-      .set('Authorization', 'Bearer token-teste');
-
-    expect(resposta.status).toBe(200);
-    expect(resposta.body).toHaveLength(4);
-    expect(resposta.body[0]).toMatchObject({
-      capacidade_utilizada: 0,
-      vagas_disponiveis: 4,
-    });
-    expect(resposta.body[1]).toMatchObject({
-      capacidade_utilizada: 2,
-      vagas_disponiveis: 2,
-    });
-    expect(resposta.body[2]).toMatchObject({
-      capacidade_utilizada: 4,
-      vagas_disponiveis: 0,
-    });
-    expect(resposta.body[3]).toMatchObject({
-      status: 'MANUTENCAO',
-      capacidade_utilizada: 0,
-      vagas_disponiveis: 4,
-    });
-
-    expect(veiculoService.listarOcupacaoSvo).toHaveBeenCalledOnce();
-  });
-
-  it('deve retornar 401 sem autenticacao', async () => {
-    const resposta = await request(app).get(endpoint);
-
-    expect(resposta.status).toBe(401);
-    expect(veiculoService.listarOcupacaoSvo).not.toHaveBeenCalled();
-  });
-
-  it('deve retornar 403 para usuario sem permissao', async () => {
-    autenticarComo(PERFIS.SOLICITANTE, 2);
-
-    const resposta = await request(app)
-      .get(endpoint)
-      .set('Authorization', 'Bearer token-teste');
-
+  it.each(['/api/veiculos/svo/ocupacao', '/api/veiculos/svo/disponiveis'])('impede Gestor Frota na rota SVO %s', async (rota) => {
+    autenticarComo(PERFIS.GESTOR_FROTA);
+    const resposta = await request(app).get(rota).set('Authorization', token);
     expect(resposta.status).toBe(403);
-    expect(veiculoService.listarOcupacaoSvo).not.toHaveBeenCalled();
   });
 });

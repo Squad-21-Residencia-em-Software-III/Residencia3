@@ -1,20 +1,29 @@
 import { useEffect, useState } from 'react';
-import { Download, Flag, MapPin, Play } from 'lucide-react';
-import { Avatar, Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
-import { LABELS_STATUS_VIAGEM, type StatusViagem, type Viagem } from '../../types/viagem';
+import { Camera, Download, Flag, MapPin, Play } from 'lucide-react';
+import { Alert, Avatar, Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
+import { rotuloStatusViagem, viagemEmCurso, type StatusViagem, type Viagem } from '../../types/viagem';
 
 interface DrawerDetalhesViagemProps {
   viagem: Viagem | null;
+  somentePropria?: boolean;
   onClose: () => void;
   onIniciar?: (viagem: Viagem) => void;
+  onRegistrarChegada?: (viagem: Viagem) => Promise<void>;
+  registrandoChegada?: boolean;
+  mensagemSucesso?: string | null;
+  mensagemErro?: string | null;
   onFinalizar?: (viagem: Viagem) => void;
   onCancelar?: (viagem: Viagem) => void;
+  /** Fotos do odômetro (SCRUM-203); só é passado a quem pode vê-las na operação da viagem. */
+  onVerFotos?: (viagem: Viagem) => void;
 }
 
 function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
     case 'EM_ANDAMENTO':
       return 'info';
+    case 'NO_LOCAL':
+      return 'warning';
     case 'AGENDADA':
       return 'purple';
     case 'CONCLUIDA':
@@ -57,8 +66,14 @@ export function DrawerDetalhesViagem({
   viagem: viagemProp,
   onClose,
   onIniciar,
+  onRegistrarChegada,
+  registrandoChegada = false,
+  mensagemSucesso,
+  mensagemErro,
   onFinalizar,
   onCancelar,
+  onVerFotos,
+  somentePropria = false,
 }: DrawerDetalhesViagemProps) {
   const [viagemState, setViagemState] = useState<Viagem | null>(viagemProp);
 
@@ -94,6 +109,7 @@ export function DrawerDetalhesViagem({
 
   return (
     <Drawer
+      telaInteira
       isOpen={Boolean(viagemProp)}
       onClose={onClose}
       width="max-w-[460px]"
@@ -101,14 +117,14 @@ export function DrawerDetalhesViagem({
         <div className="flex items-center gap-2.5">
           <span>Viagem #{viagem.id}</span>
           <Badge tone={obterBadgeToneStatus(viagem.status)}>
-            {LABELS_STATUS_VIAGEM[viagem.status]}
+            {rotuloStatusViagem(viagem)}
           </Badge>
         </div>
       }
       subtitle={subtitulo}
       footer={
         <div className="flex items-center justify-between gap-3">
-          {viagem.status === 'AGENDADA' && onCancelar ? (
+          {viagem.status === 'AGENDADA' && onCancelar && !somentePropria ? (
             <Button
               variant="danger-outline"
               size="sm"
@@ -123,8 +139,8 @@ export function DrawerDetalhesViagem({
             <div />
           )}
 
-          <div className="flex items-center gap-2.5">
-            <Button
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
+            {!somentePropria && <Button
               variant="outline"
               size="sm"
               onClick={() => {
@@ -133,7 +149,20 @@ export function DrawerDetalhesViagem({
               title="Baixar Ficha da Viagem em PDF"
             >
               <Download size={13} className="mr-1" /> Baixar Ficha
-            </Button>
+            </Button>}
+
+            {onVerFotos && viagem.status !== 'AGENDADA' && viagem.status !== 'CANCELADA' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onVerFotos(viagem);
+                }}
+              >
+                <Camera size={13} className="mr-1" /> Fotos do odômetro
+              </Button>
+            )}
 
             {viagem.status === 'AGENDADA' && onIniciar && (
               <Button
@@ -148,7 +177,19 @@ export function DrawerDetalhesViagem({
               </Button>
             )}
 
-            {viagem.status === 'EM_ANDAMENTO' && onFinalizar && (
+            {!somentePropria && viagem.tipo_operacao === 'SVO' && viagem.status === 'EM_ANDAMENTO' && onRegistrarChegada && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={registrandoChegada}
+                aria-busy={registrandoChegada}
+                onClick={() => void onRegistrarChegada(viagem)}
+              >
+                {registrandoChegada ? 'Registrando chegada…' : 'Cheguei ao local'}
+              </Button>
+            )}
+
+            {viagemEmCurso(viagem.status) && onFinalizar && (
               <Button
                 variant="primary"
                 size="sm"
@@ -156,6 +197,7 @@ export function DrawerDetalhesViagem({
                   onClose();
                   onFinalizar(viagem);
                 }}
+                disabled={registrandoChegada}
               >
                 <Flag size={13} className="mr-1" /> Finalizar viagem
               </Button>
@@ -164,6 +206,8 @@ export function DrawerDetalhesViagem({
         </div>
       }
     >
+      {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
+      {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
       <div className="flex flex-col gap-6">
         {/* 1. Card de Partida e Destino (Fundo suave estilizado) */}
         <div className="rounded-2xl border border-blue-100 bg-[#f4f8fe] p-5">
@@ -205,7 +249,7 @@ export function DrawerDetalhesViagem({
         </div>
 
         {/* 2. Equipe e Veículo */}
-        <div>
+        {!somentePropria && <div>
           <h3 className="mb-3 font-display text-xs font-bold tracking-wider text-slate-400 uppercase">
             Equipe e Veículo
           </h3>
@@ -253,9 +297,10 @@ export function DrawerDetalhesViagem({
               </div>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* 3. Finalidade Institucional (se houver) */}
+        {viagem.tipo_operacao === 'ADMINISTRATIVA' && viagem.material_sensivel && <p className="text-sm font-semibold text-amber-700">Material sensível</p>}
         {viagem.finalidade && (
           <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
             <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
@@ -267,10 +312,10 @@ export function DrawerDetalhesViagem({
           </div>
         )}
 
-        <div className="h-px w-full bg-slate-100" />
+        {!somentePropria && <div className="h-px w-full bg-slate-100" />}
 
         {/* 4. Odômetro e Duração */}
-        <div>
+        {!somentePropria && <div>
           <h3 className="mb-3 font-display text-xs font-bold tracking-wider text-slate-400 uppercase">
             Odômetro e Duração
           </h3>
@@ -304,13 +349,15 @@ export function DrawerDetalhesViagem({
               <div className="mt-1 text-sm font-bold text-slate-900">
                 {duracao
                   ? duracao
-                  : viagem.status === 'EM_ANDAMENTO'
+                  : viagem.status === 'NO_LOCAL'
+                    ? 'No local da coleta'
+                    : viagem.status === 'EM_ANDAMENTO'
                     ? 'Em trânsito'
                     : 'Aguardando partida'}
               </div>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </Drawer>
   );
