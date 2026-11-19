@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import { Check } from 'lucide-react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
-import { mensagemDeErro } from '../../services/api/http';
 import type { Viagem } from '../../types/viagem';
+import { SituacaoFotoOdometro } from './SituacaoFotoOdometro';
+import { mensagemFalhaTransicao, useFotoOdometro } from './useFotoOdometro';
 
 interface ModalFinalizarViagemProps {
   viagem: Viagem;
   onClose: () => void;
-  onSalvar: (kmFinal: number) => Promise<void>;
+  /** `evidenciaId`: foto da chegada já enviada (SCRUM-206), quando `fotosOdometro` está ligado. */
+  onSalvar: (kmFinal: number, evidenciaId?: string) => Promise<void>;
 }
 
 export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinalizarViagemProps) {
@@ -16,6 +19,9 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
   const [kmFinal, setKmFinal] = useState<string>('');
   const [erro, setErro] = useState<string>('');
   const [salvando, setSalvando] = useState(false);
+  const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
+  const envioEmCurso = useRef(false);
+  const foto = useFotoOdometro(viagem, 'CHEGADA');
 
   const kmFinalNum = Number(kmFinal);
   const kmRodados =
@@ -23,7 +29,9 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (envioEmCurso.current || foto.consultando || foto.validandoArquivo) return;
     setErro('');
+    setFalhaAoSalvar(false);
 
     if (!kmFinal || !Number.isInteger(kmFinalNum)) {
       setErro('Informe o odômetro final como um número inteiro.');
@@ -36,19 +44,36 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
       );
       return;
     }
+    if (foto.fotoExigida && !foto.arquivo) {
+      setErro('Tire ou carregue a foto do odômetro na chegada.');
+      return;
+    }
 
+    envioEmCurso.current = true;
     setSalvando(true);
     try {
-      await onSalvar(kmFinalNum);
+      const evidenciaId = await foto.obterEvidenciaId();
+      if (evidenciaId) await onSalvar(kmFinalNum, evidenciaId);
+      else await onSalvar(kmFinalNum);
       onClose();
     } catch (error) {
-      setErro(mensagemDeErro(error));
+      foto.tratarErroTransicao(error);
+      setErro(mensagemFalhaTransicao(error, 'chegada'));
+      setFalhaAoSalvar(true);
+      envioEmCurso.current = false;
       setSalvando(false);
     }
   };
 
   return (
-    <Modal title={`Registrar Retorno da Viagem #${viagem.id}`} onClose={onClose} telaInteira>
+    <Modal
+      title={`Registrar Retorno da Viagem #${viagem.id}`}
+      onClose={onClose}
+      telaInteira
+      gerenciarFoco
+      ajustarAoTeclado
+      bloquearFechamento={salvando}
+    >
       <form onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">
@@ -75,25 +100,43 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
         <Input
           label="Odômetro Final (Km de Retorno) *"
           type="number"
+          inputMode="numeric"
+          className="min-h-11 text-base md:text-sm"
           placeholder={`Maior que ${kmInicial}`}
           value={kmFinal}
+          readOnly={salvando}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmFinal(e.target.value)}
           min={kmInicial}
           required
         />
 
         {kmRodados !== null && (
-          <div className="-mt-2 mb-4 rounded-md bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700">
-            ✓ Distância percorrida apurada: {kmRodados.toLocaleString('pt-BR')} km
+          <div className="-mt-2 mb-4 flex items-center gap-1.5 rounded-md bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700">
+            <Check size={13} aria-hidden="true" /> Distância percorrida apurada:{' '}
+            {kmRodados.toLocaleString('pt-BR')} km
           </div>
         )}
 
-        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
-          <Button variant="ghost" type="button" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={salvando}>
-            {salvando ? 'Concluindo...' : 'Confirmar Chegada e Concluir'}
+        <SituacaoFotoOdometro fase="CHEGADA" foto={foto} disabled={salvando} />
+
+        {foto.enviando && (
+          <p role="status" className="mb-3 text-xs font-semibold text-primary">
+            Enviando a foto... Em rede lenta isso pode levar alguns segundos.
+          </p>
+        )}
+
+        <div className="mt-4 flex flex-col gap-2 md:mt-5 md:flex-row md:justify-end md:gap-3 [&>button]:min-h-11">
+          {foto.enviando ? (
+            <Button variant="ghost" type="button" onClick={foto.cancelarEnvio}>
+              Cancelar envio
+            </Button>
+          ) : (
+            <Button variant="ghost" type="button" onClick={onClose} disabled={salvando}>
+              Cancelar
+            </Button>
+          )}
+          <Button type="submit" disabled={salvando || foto.consultando || foto.validandoArquivo}>
+            {salvando ? (foto.enviando ? 'Enviando foto...' : 'Concluindo...') : falhaAoSalvar ? 'Tentar novamente' : 'Confirmar Chegada e Concluir'}
           </Button>
         </div>
       </form>

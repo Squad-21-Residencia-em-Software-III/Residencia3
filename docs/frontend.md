@@ -33,7 +33,7 @@ npm run format:check # Verifica conformidade de formatação sem alterar arquivo
 > 2. Crie ou configure o arquivo `src/frontend/.env` com a variável `VITE_API_URL=http://localhost:3000/api` para comunicação com o back-end Express local.
 
 ### Status Geral de Conexão à API REST
-O front-end está **conectado e homologado com o back-end para todos os módulos operacionais e administrativos**:
+Os módulos abaixo usam a API do projeto. Agenda temporal e fotos do odômetro dependem da configuração e da homologação de cada ambiente.
 - **Autenticação & Sessão**: `POST /api/auth/login`, `GET /api/auth/me`, `PATCH /api/auth/senha`.
 - **Veículos**: `GET /api/veiculos`, `POST /api/veiculos`, `PUT /api/veiculos/:id`, `PATCH /api/veiculos/:id/status`, além do Drawer lateral e atalhos contextuais integrados.
 - **Motoristas**: `GET /api/motoristas` com dados relacionais e alerta computado de CNH.
@@ -452,5 +452,7 @@ Em Solicitações, Administrador entra em Administrativo e Gestor SVO entra em S
 
 O cadastro interno SVO envia somente `dados_solicitante`, `local_ocorrencia` e `material_sensivel` para `POST /api/solicitacoes-svo`. O servidor define registrante e status. Após resposta de sucesso, a tela mostra o ID retornado e atualiza a fila em triagem. Confirmação e recusa reutilizam o drawer existente; a ordem mostrada é a resposta do servidor. O link para Viagens abre SVO.
 
-Em Viagens, a consulta de viagens administrativas próprias do Gestor SVO continua bloqueada pela SCRUM-179. A listagem provisória de ordens verifica detalhes de solicitações confirmadas e falha explicitamente se exceder uma página de 100; não é a paginação definitiva da SCRUM-182. A alocação atual não comprova agendamento temporal, conflitos de horário ou exceção de 20 minutos. SCRUM-182 e SCRUM-183 continuam pendentes. A capacidade de corpos SVO e a lotação da cabine são campos independentes; a última inclui o motorista.
+Em Viagens, o Gestor SVO consulta as viagens administrativas que solicitou em `GET /api/viagens/minhas`. A fila SVO usa `GET /api/viagens/ordens-svo/pendentes` com paginação. O agendamento temporal, a reprogramação, os conflitos por recurso e a confirmação de intervalo reduzido usam o contrato [SCRUM-166](scrum-166-contrato-backend.md) após habilitar `VITE_AGENDA_SVO_ATIVA=true`. A capacidade de corpos SVO e a lotação da cabine são campos independentes. A lotação inclui o motorista.
+
+Em **Viagens**, a configuração do backend determina a disponibilidade de foto, a obrigatoriedade e a fila **Pedidos sem foto**. O build precisa de `VITE_FOTOS_ODOMETRO_ATIVAS=true`. Consulte o [guia de ativação e retenção](operacao-odometro-e-agenda-svo.md).
 

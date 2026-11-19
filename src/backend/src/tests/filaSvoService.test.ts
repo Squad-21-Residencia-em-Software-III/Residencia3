@@ -22,6 +22,7 @@ function banco(tabelas: Record<string, Linha[]>, agora: Date) {
         return q;
       },
       whereIn(campo: string, valores: unknown[]) { filtros.push((item) => valores.includes(item[campo])); return q; },
+      whereNull(campo: string) { filtros.push((item) => item[campo] == null); return q; },
       select() { return q; },
       orderBy() { return q; },
       forUpdate() { return q; },
@@ -47,9 +48,9 @@ const ordem = (id: number, inicio: string, fim: string, status = 'ALOCADA') => (
 
 describe('fila de coletas SVO', () => {
   beforeEach(() => auditoria.mockReset());
-  it('mantém recursos ocupados no atraso e libera somente a próxima elegível após a conclusão', async () => {
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('mantém recursos ocupados no atraso e libera somente a próxima elegível após a conclusão (%s)', async (status) => {
     const tabelas = {
-      ordens_svo: [ordem(1, '14:00', '16:00', 'EM_DESLOCAMENTO'), ordem(2, '16:20', '17:00'), ordem(3, '16:30', '17:30')],
+      ordens_svo: [ordem(1, '14:00', '16:00', status), ordem(2, '16:20', '17:00'), ordem(3, '16:30', '17:30')],
       veiculos: [{ id: 1, status: 'DISPONIVEL', tipo_frota: 'SVO', capacidade_maxima: 4 }],
       motoristas: [{ id: 2, status: 'DISPONIVEL', tipo_motorista: 'SVO', validade_cnh: '2099-12-31' }],
       equipes_svo: [{ id: 3 }],
@@ -72,7 +73,7 @@ describe('fila de coletas SVO', () => {
     await reavaliarFilaSvo(trx, 7);
     expect(tabelas.ordens_svo[2].liberada_em).toEqual(momento('16:40'));
   });
-  it('não libera quando falta escala válida para a equipe', async () => {
+  it('libera equipe existente sem escala cadastrada', async () => {
     const tabelas = {
       ordens_svo: [ordem(2, '16:20', '17:00')],
       veiculos: [{ id: 1, status: 'DISPONIVEL', tipo_frota: 'SVO', capacidade_maxima: 4 }],
@@ -80,7 +81,23 @@ describe('fila de coletas SVO', () => {
       equipes_svo: [{ id: 3 }], escalas_svo: [], alertas_atraso_svo: [],
     };
     await reavaliarFilaSvo(banco(tabelas, momento('16:40')), 7);
-    expect(tabelas.ordens_svo[0].liberada_em).toBeNull();
+    expect(tabelas.ordens_svo[0].liberada_em).toEqual(momento('16:40'));
+  });
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('mantém integrante ocupado entre equipes diferentes até a conclusão real (%s)', async (status) => {
+    const tabelas = {
+      ordens_svo: [ordem(1, '14:00', '16:00', status),
+        { ...ordem(2, '16:20', '17:00'), equipe_id: 4, veiculo_id: 5, motorista_id: 6 }],
+      ordens_svo_integrantes: [{ ordem_id: 1, usuario_id: 9, revogado_em: null }, { ordem_id: 2, usuario_id: 9, revogado_em: null }],
+      veiculos: [{ id: 5, status: 'DISPONIVEL', tipo_frota: 'SVO', capacidade_maxima: 4 }],
+      motoristas: [{ id: 6, status: 'DISPONIVEL', tipo_motorista: 'SVO', validade_cnh: '2099-12-31' }],
+      equipes_svo: [{ id: 4 }], alertas_atraso_svo: [] as Linha[],
+    };
+    const trx = banco(tabelas, momento('16:40'));
+    await reavaliarFilaSvo(trx, 7);
+    expect(tabelas.ordens_svo[1].liberada_em).toBeNull();
+    tabelas.ordens_svo[0].status = 'CONCLUIDA';
+    await reavaliarFilaSvo(trx, 7);
+    expect(tabelas.ordens_svo[1].liberada_em).toEqual(momento('16:40'));
   });
   it('não libera quando a capacidade disponível caiu abaixo da ordem', async () => {
     const tabelas = {

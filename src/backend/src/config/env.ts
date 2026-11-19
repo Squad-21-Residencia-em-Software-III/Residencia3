@@ -37,17 +37,24 @@ function obrigatoria(origem: Origem, nome: string): string {
 }
 
 // As mensagens nunca incluem o valor do segredo
-function validarSegredo(segredo: string): string {
+function validarSegredo(segredo: string, nome = 'JWT_SECRET'): string {
   if (segredo.length < TAMANHO_MINIMO_SEGREDO) {
-    throw new Error(`JWT_SECRET deve ter pelo menos ${TAMANHO_MINIMO_SEGREDO} caracteres`);
+    throw new Error(`${nome} deve ter pelo menos ${TAMANHO_MINIMO_SEGREDO} caracteres`);
   }
   if (SEGREDOS_DE_EXEMPLO.includes(segredo)) {
-    throw new Error('JWT_SECRET não pode usar o valor de exemplo da documentação');
+    throw new Error(`${nome} não pode usar o valor de exemplo da documentação`);
   }
   if (new Set(segredo).size < CARACTERES_DISTINTOS_MINIMOS) {
-    throw new Error('JWT_SECRET é previsível demais; gere um valor aleatório');
+    throw new Error(`${nome} é previsível demais; gere um valor aleatório`);
   }
   return segredo;
+}
+
+// Segredo opcional: ausente ou vazio desativa o recurso; definido, segue as mesmas regras do JWT_SECRET
+function segredoOpcional(origem: Origem, nome: string): string | undefined {
+  const valor = origem[nome];
+  if (valor === undefined || valor === '') return undefined;
+  return validarSegredo(valor, nome);
 }
 
 // Converte durações como "30m", "2h" ou "1d" em segundos
@@ -163,6 +170,50 @@ function limitesAtivos(valor: string | undefined, nodeEnv: string, producao: boo
   return valor === 'on';
 }
 
+// Fotos do odômetro (SCRUM-208/209, docs/evidencias-odometro.md).
+// desativado: as rotas de foto respondem 503 e iniciar/finalizar funcionam como antes.
+// local: arquivos numa pasta do servidor (desenvolvimento, testes ou disco persistente montado).
+const DRIVERS_ARMAZENAMENTO_EVIDENCIAS = ['desativado', 'local', 'postgres'] as const;
+export type DriverArmazenamentoEvidencias = (typeof DRIVERS_ARMAZENAMENTO_EVIDENCIAS)[number];
+
+function configuracaoEvidenciasOdometro(origem: Origem, nodeEnv: string) {
+  const valor = (origem.EVIDENCIAS_STORAGE ?? '').trim() || 'desativado';
+  if (!(DRIVERS_ARMAZENAMENTO_EVIDENCIAS as readonly string[]).includes(valor)) {
+    throw new Error(`EVIDENCIAS_STORAGE deve ser um destes: ${DRIVERS_ARMAZENAMENTO_EVIDENCIAS.join(', ')}`);
+  }
+  const driver = valor as DriverArmazenamentoEvidencias;
+  const pasta = (origem.EVIDENCIAS_STORAGE_DIR ?? '').trim();
+  // Em produção a pasta precisa ser declarada e absoluta: o disco padrão do Render é apagado a cada deploy
+  if (driver === 'local' && nodeEnv === 'production' && !path.isAbsolute(pasta)) {
+    throw new Error('Com EVIDENCIAS_STORAGE=local em produção, EVIDENCIAS_STORAGE_DIR deve ser o caminho absoluto de um disco persistente');
+  }
+  const obrigatorias = (origem.FOTOS_ODOMETRO_OBRIGATORIAS ?? '').trim() || 'false';
+  if (obrigatorias !== 'true' && obrigatorias !== 'false') {
+    throw new Error('FOTOS_ODOMETRO_OBRIGATORIAS deve ser true ou false');
+  }
+  if (obrigatorias === 'true' && driver === 'desativado') {
+    throw new Error('FOTOS_ODOMETRO_OBRIGATORIAS=true exige EVIDENCIAS_STORAGE configurado');
+  }
+  const excecoes = (origem.EXCECOES_ODOMETRO_ATIVAS ?? '').trim() || 'false';
+  if (excecoes !== 'true' && excecoes !== 'false') {
+    throw new Error('EXCECOES_ODOMETRO_ATIVAS deve ser true ou false');
+  }
+  if (excecoes === 'true' && driver === 'desativado') {
+    throw new Error('EXCECOES_ODOMETRO_ATIVAS=true exige EVIDENCIAS_STORAGE configurado');
+  }
+  if (nodeEnv === 'production' && obrigatorias === 'true' && excecoes !== 'true') {
+    throw new Error('Fotos obrigatórias em produção exigem EXCECOES_ODOMETRO_ATIVAS=true');
+  }
+  return {
+    excecoesOdometroAtivas: excecoes === 'true',
+    evidenciasStorage: driver,
+    evidenciasStorageDir: path.resolve(pasta || path.join(__dirname, '../../storage/evidencias')),
+    evidenciasPostgresLimiteBytes:
+      inteiroNaFaixa('EVIDENCIAS_POSTGRES_LIMITE_MIB', origem.EVIDENCIAS_POSTGRES_LIMITE_MIB, 128, 1, 512) * 1024 * 1024,
+    fotosOdometroObrigatorias: obrigatorias === 'true',
+  };
+}
+
 export function carregarEnv(origem: Origem = process.env) {
   const nodeEnv = origem.NODE_ENV ?? 'development';
   const producao = nodeEnv === 'production';
@@ -189,6 +240,10 @@ export function carregarEnv(origem: Origem = process.env) {
     jwtRefreshExpiraEmSegundos,
     corsOrigens: origensCors(origem.CORS_ORIGIN, producao),
     trustProxy: confiancaProxy(origem.TRUST_PROXY, producao),
+    // Enviado pela Vercel no rewrite /api (docs/seguranca-http.md): identifica o caminho via proxy
+    proxySecret: segredoOpcional(origem, 'PROXY_SECRET'),
+    // Liga a rota /api/diagnostico/ip, usada só para validar a cadeia de proxies
+    diagnosticoProxyToken: segredoOpcional(origem, 'DIAGNOSTICO_PROXY_TOKEN'),
     cookieSecure: cookieSeguro(origem.COOKIE_SECURE, producao),
     limitarRequisicoes: limitesAtivos(origem.RATE_LIMIT, nodeEnv, producao),
     rateLimitLeituraPorMin: inteiroNaFaixa('RATE_LIMIT_LEITURA_POR_MIN', origem.RATE_LIMIT_LEITURA_POR_MIN, 300, 10, 10000),
@@ -196,6 +251,7 @@ export function carregarEnv(origem: Origem = process.env) {
     rateLimitPesadasPorMin: inteiroNaFaixa('RATE_LIMIT_PESADAS_POR_MIN', origem.RATE_LIMIT_PESADAS_POR_MIN, 30, 1, 1000),
     maxRequisicoesSimultaneas: inteiroNaFaixa('MAX_REQUISICOES_SIMULTANEAS', origem.MAX_REQUISICOES_SIMULTANEAS, 50, 1, 1000),
     requestTimeoutMs: inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000),
+    ...configuracaoEvidenciasOdometro(origem, nodeEnv),
   };
 }
 

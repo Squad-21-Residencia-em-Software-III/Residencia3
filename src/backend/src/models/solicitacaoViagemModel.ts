@@ -47,7 +47,38 @@ export interface FiltrosSolicitacoesViagem {
   unidadeIds?: number[];
 }
 
+const TOLERANCIA_SQL = "interval '30 minutes'";
+
 export const solicitacaoViagemModel = {
+  async buscarAprovadasVencidas(trx: Knex.Transaction, limite: number): Promise<{ id: number }[]> {
+    return trx('solicitacoes_viagem as sv')
+      .select('sv.id')
+      .where('sv.status', 'APROVADA')
+      .where('sv.data_saida_desejada', '<=', trx.raw(`transaction_timestamp() - ${TOLERANCIA_SQL}`))
+      .whereNotExists(
+        trx('viagens_frota as vf')
+          .select('vf.id')
+          .whereRaw('?? = ??', ['vf.solicitacao_id', 'sv.id'])
+          .whereNot('vf.status', 'CANCELADA'),
+      )
+      .orderBy(['sv.data_saida_desejada', 'sv.id'])
+      .limit(limite)
+      .forUpdate('sv')
+      .skipLocked();
+  },
+
+  async marcarExpiradas(trx: Knex.Transaction, ids: number[]): Promise<{ id: number }[]> {
+    return trx('solicitacoes_viagem').whereIn('id', ids).update({ status: 'EXPIRADA' }).returning('id');
+  },
+
+  // Consultar após obter o lock da solicitação, com o relógio atual do PostgreSQL.
+  async prazoDeAgendamentoVencido(trx: Knex.Transaction, id: number): Promise<boolean> {
+    return Boolean(await trx('solicitacoes_viagem')
+      .where({ id })
+      .where('data_saida_desejada', '<=', trx.raw(`clock_timestamp() - ${TOLERANCIA_SQL}`))
+      .first('id'));
+  },
+
   async listar(
     filtros: FiltrosSolicitacoesViagem
   ): Promise<{ dados: SolicitacaoViagemDetalhada[]; total: number }> {

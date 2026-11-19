@@ -24,9 +24,9 @@ const ordenar = (perfis: Perfil[]) => [...perfis].sort();
 
 // Documento "Permissões e acesso a telas do sistema" + regras confirmadas com o líder
 describe('matriz de permissões por perfil', () => {
-  it('Administrador tem acesso a tudo', () => {
+  it('Administrador tem acesso a tudo, exceto executar coletas SVO (do Motorista SVO)', () => {
     for (const permissao of Object.keys(PERMISSOES) as Permissao[]) {
-      expect(perfilPode(ADMINISTRADOR, permissao), permissao).toBe(true);
+      expect(perfilPode(ADMINISTRADOR, permissao), permissao).toBe(!['coletasProprias.acessar', 'viagens.executarSvo'].includes(permissao));
     }
   });
 
@@ -91,10 +91,25 @@ describe('matriz de permissões por perfil', () => {
     }
   });
 
+  it('executar viagem administrativa: Administrador, Gestor de Frota e Motorista de Frota', () => {
+    expect(ordenar(quemPode('viagens.executar'))).toEqual(
+      ordenar([ADMINISTRADOR, GESTOR_FROTA, MOTORISTA_FROTA]),
+    );
+  });
+
+  it('executar coleta SVO (iniciar e finalizar): só o Motorista SVO', () => {
+    expect(quemPode('viagens.executarSvo')).toEqual([MOTORISTA_SVO]);
+    for (const perfil of [ADMINISTRADOR, GESTOR_SVO, GESTOR_FROTA, MOTORISTA_FROTA, SOLICITANTE]) {
+      expect(perfilPode(perfil, 'viagens.executarSvo'), perfil).toBe(false);
+    }
+  });
+
   it('Motoristas executam viagens e registram abastecimentos, sem agendar nem cancelar', () => {
     for (const motorista of [MOTORISTA_FROTA, MOTORISTA_SVO]) {
       expect(perfilPode(motorista, 'viagens.acessar')).toBe(true);
-      expect(perfilPode(motorista, 'viagens.executar')).toBe(true);
+      expect(
+        perfilPode(motorista, motorista === MOTORISTA_SVO ? 'viagens.executarSvo' : 'viagens.executar'),
+      ).toBe(true);
       expect(perfilPode(motorista, 'abastecimentos.registrar')).toBe(true);
       expect(perfilPode(motorista, 'viagens.agendar')).toBe(false);
       expect(perfilPode(motorista, 'viagens.alocarSvo')).toBe(false);
@@ -106,7 +121,7 @@ describe('matriz de permissões por perfil', () => {
   });
 
   it('Veículos: todos consultam; o Solicitante não vê detalhes; gestores cadastram', () => {
-    expect(quemPode('veiculos.acessar')).toEqual(LISTA_PERFIS);
+    expect(quemPode('veiculos.acessar')).toEqual(LISTA_PERFIS.filter((perfil) => perfil !== PERFIS.INTEGRANTE_SVO));
     expect(perfilPode(SOLICITANTE, 'veiculos.detalhes')).toBe(false);
     expect(ordenar(quemPode('veiculos.cadastrar'))).toEqual(
       ordenar([ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO]),

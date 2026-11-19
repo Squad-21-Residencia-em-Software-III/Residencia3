@@ -33,6 +33,14 @@ export const RECURSOS_BACKEND = {
    * Desligado, a lista verifica o estado real da ordem no detalhe de cada solicitação confirmada. Serviço: `viagensApi.listarOrdensPendentesSvo`.
    */
   ordensPendentesSvo: true,
+
+  /**
+   * SCRUM-203: fotos do odômetro na saída e na chegada. Depende do back (SCRUM-208/209), do banco
+   * (SCRUM-210) e do armazenamento privado (SCRUM-211), conforme docs/scrum-203-contrato-backend.md.
+   * Desligado, iniciar e finalizar funcionam como antes, sem foto e sem `evidencia_id`.
+   * Serviço: `evidenciasOdometroApi`.
+   */
+  fotosOdometro: import.meta.env.VITE_FOTOS_ODOMETRO_ATIVAS === 'true',
 };
 
 export type RecursoBackend = keyof typeof RECURSOS_BACKEND;

@@ -1,14 +1,19 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { PERFIS, type Perfil } from '../constants/perfis';
+import { ORDENS_SVO_EM_CURSO, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { motoristaModel } from '../models/motoristaModel';
+import { solicitacaoViagemModel } from '../models/solicitacaoViagemModel';
 import { veiculoModel } from '../models/veiculoModel';
 import { viagemModel, type ViagemDetalhada } from '../models/viagemModel';
 import type { CriarViagemInput, TipoOperacao } from '../validators/viagemSchemas';
 import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
+import { garantirPerfilOperacional } from './autorizacaoOperacionalSvo';
+import { concluirOperacao, registrarEvidenciaNaTransicao } from './evidenciaOdometroTransicao';
 import { reavaliarFilaSvo } from './filaSvoService';
+import { atualizarDesignacoesSvo } from './designacoesSvoService';
 import {
   periodoDaSolicitacao,
   STATUS_MOTORISTA_BLOQUEADO,
@@ -29,7 +34,7 @@ type AlocarOrdemSvoInput = Extract<CriarViagemInput, { tipo_operacao: 'SVO' }>;
 // solicitacao*: status que a solicitação recebe em cada etapa (null = não muda).
 // A solicitação administrativa fica AGENDADA durante a viagem, CONCLUIDA ao final
 // e volta a APROVADA (pode ser agendada de novo) quando a viagem é cancelada.
-const OPERACOES = {
+export const OPERACOES = {
   ADMINISTRATIVA: {
     tabela: 'viagens_frota',
     agendada: 'AGENDADA',
@@ -79,7 +84,7 @@ export const TIPOS_POR_PERFIL: Partial<Record<Perfil, TipoOperacao[]>> = {
   [PERFIS.GESTOR_SVO]: ['SVO'],
 };
 
-function garantirAcesso(perfil: Perfil, tipo: TipoOperacao): void {
+export function garantirAcesso(perfil: Perfil, tipo: TipoOperacao): void {
   if (!(TIPOS_POR_PERFIL[perfil] ?? []).includes(tipo)) {
     throw new AppError(
       'Você não tem permissão para gerenciar este tipo de viagem',
@@ -88,7 +93,7 @@ function garantirAcesso(perfil: Perfil, tipo: TipoOperacao): void {
   }
 }
 
-async function garantirAcessoAoRegistro(
+export async function garantirAcessoAoRegistro(
   trx: Knex.Transaction,
   autor: Autor,
   tipo: TipoOperacao,
@@ -137,7 +142,7 @@ async function situacaoDoRecurso(
   const { rows } = await trx.raw<{ rows: { em_andamento: boolean | null; agendada: boolean | null }[] }>(
     `
     SELECT
-      bool_or(status IN ('EM_ANDAMENTO', 'EM_DESLOCAMENTO')) AS em_andamento,
+      bool_or(status IN ('EM_ANDAMENTO', ?, ?)) AS em_andamento,
       bool_or(status IN ('AGENDADA', 'ALOCADA')) AS agendada
     FROM (
       SELECT status FROM viagens_frota WHERE ${coluna} = ?
@@ -145,7 +150,7 @@ async function situacaoDoRecurso(
       SELECT status FROM ordens_svo WHERE ${coluna} = ?
     ) AS viagens
     `,
-    [id, id]
+    [...ORDENS_SVO_EM_CURSO, id, id]
   );
 
   return {
@@ -205,12 +210,21 @@ async function garantirCnhValida(trx: Knex.Transaction, motoristaId: number, ult
   }
 }
 
+function erroSolicitacaoExpirada(): AppError {
+  return new AppError(
+    'A solicitação expirou 30 minutos após a saída pretendida e não pode mais ser agendada.',
+    409,
+    'SOLICITACAO_EXPIRADA',
+  );
+}
+
 async function criarViagemFrota(trx: Knex.Transaction, dados: CriarViagemFrotaInput) {
   // 1. Valida a solicitação
   const solicitacao = await trx('solicitacoes_viagem').where({ id: dados.solicitacao_id }).forUpdate().first();
   if (!solicitacao) {
     throw new AppError('Solicitação de viagem não encontrada', 404);
   }
+  if (solicitacao.status === 'EXPIRADA') throw erroSolicitacaoExpirada();
   if (solicitacao.status !== 'APROVADA') {
     throw new AppError('Apenas solicitações aprovadas podem ser agendadas', 400);
   }
@@ -220,6 +234,9 @@ async function criarViagemFrota(trx: Knex.Transaction, dados: CriarViagemFrotaIn
     .first('id');
   if (viagemAtiva) {
     throw new AppError('A solicitação já possui uma viagem ativa', 409);
+  }
+  if (await solicitacaoViagemModel.prazoDeAgendamentoVencido(trx, solicitacao.id)) {
+    throw erroSolicitacaoExpirada();
   }
   const { inicio, fim } = periodoDaSolicitacao(solicitacao);
 
@@ -246,6 +263,11 @@ async function criarViagemFrota(trx: Knex.Transaction, dados: CriarViagemFrotaIn
     .first('vf.id');
   if (conflitoMotorista) {
     throw new AppError('O motorista já possui viagem no período solicitado', 409);
+  }
+
+  // Os locks dos recursos podem ter demorado. Confira o prazo junto da gravação.
+  if (await solicitacaoViagemModel.prazoDeAgendamentoVencido(trx, solicitacao.id)) {
+    throw erroSolicitacaoExpirada();
   }
 
   // 4. Cria o registro da viagem
@@ -275,7 +297,7 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
     .where({ status: ordemReprogramada ? 'ALOCADA' : 'AGUARDANDO_ALOCACAO' })
     .modify((q) => { if (ordemReprogramada) q.where('id', ordemReprogramada); })
     .forUpdate()
-    .first('id');
+    .first('id', 'equipe_id');
   if (!ordemPendente) {
     throw new AppError('A solicitação SVO não possui ordem aguardando alocação', 409);
   }
@@ -302,14 +324,17 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
   }));
 
   // 4. Valida a equipe, se informada
+  const mesmaEquipe = ordemReprogramada !== undefined && ordemPendente.equipe_id === (dados.equipe_id ?? null);
+  const designacoesAtuais: { usuario_id: number }[] = mesmaEquipe && dados.integrantes_ids === undefined && dados.equipe_id
+    ? await trx('ordens_svo_integrantes').where({ ordem_id: ordemPendente.id })
+      .whereNull('revogado_em').select('usuario_id')
+    : [];
+  const integrantes = dados.integrantes_ids ?? designacoesAtuais.map((d) => d.usuario_id);
   if (dados.equipe_id) {
     const equipe = await trx('equipes_svo').where({ id: dados.equipe_id }).forUpdate().first('id');
     if (!equipe) {
       throw new AppError('Equipe SVO não encontrada', 404);
     }
-    const escala = await trx('escalas_svo').where({ equipe_id: dados.equipe_id })
-      .where('data_inicio', '<=', inicio).where('data_fim', '>=', fim).forUpdate().first('id');
-    if (!escala) throw new AppError('Equipe sem escala para todo o período', 409);
   }
 
   const conflitoAdministrativo = await viagensConflitantes(trx, inicio, fim)
@@ -318,9 +343,14 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
   if (conflitoAdministrativo) throw new AppError('Um recurso já está reservado no período solicitado', 409, 'CONFLITO_AGENDA');
   const conflitos = await validarAgendaSvo(trx, {
     ordemId: ordemPendente.id, autorId, veiculoId: dados.veiculo_id,
-    motoristaId: dados.motorista_id, equipeId: dados.equipe_id, inicio, fim,
+    motoristaId: dados.motorista_id, equipeId: dados.equipe_id, integrantesIds: integrantes, inicio, fim,
     confirmar: dados.confirmar_intervalo_reduzido, token: dados.token_confirmacao,
   });
+
+  if (dados.equipe_id || integrantes.length || ordemReprogramada) {
+    await atualizarDesignacoesSvo(trx, { ordemId: ordemPendente.id, equipeId: dados.equipe_id ?? null,
+      integrantes, lotacao: veiculo.lotacao_cabine, inicio, fim, autorId });
+  }
 
   // 5. Aloca a ordem gerada na confirmação, preservando seu identificador.
   await trx('ordens_svo')
@@ -356,7 +386,7 @@ async function registrarAuditoria(trx: Knex.Transaction, autorId: number, acao: 
   );
 }
 
-async function buscarParaAtualizar(trx: Knex.Transaction, tipo: TipoOperacao, id: number) {
+export async function buscarParaAtualizar(trx: Knex.Transaction, tipo: TipoOperacao, id: number) {
   const viagem = await trx(OPERACOES[tipo].tabela).where({ id }).forUpdate().first();
   if (!viagem) {
     throw new AppError('Viagem não encontrada', 404);
@@ -373,6 +403,36 @@ async function detalhar(trx: Knex.Transaction, tipo: TipoOperacao, id: number): 
 }
 
 export const viagemService = {
+  async registrarChegadaLocalSvo(ordemId: number, autor: Autor) {
+    garantirPerfilOperacional('SVO', autor);
+    return db.transaction(async (trx) => {
+      await travarAgendaSvo(trx);
+
+      const ordem = await buscarParaAtualizar(trx, 'SVO', ordemId);
+
+      await garantirAcessoAoRegistro(trx, autor, 'SVO', ordem);
+
+      if (ordem.status !== 'EM_DESLOCAMENTO') {
+        throw new AppError(
+          'Apenas coletas em deslocamento podem registrar chegada ao local',
+          409
+        );
+      }
+
+      await trx('ordens_svo')
+        .where({ id: ordemId })
+        .update({ status: 'NO_LOCAL' });
+
+      await registrarAuditoria(
+        trx,
+        autor.id,
+        `CHEGOU_LOCAL_SVO id=${ordemId}`
+      );
+
+      return detalhar(trx, 'SVO', ordemId);
+    });
+  },
+
   async reprogramarOrdemSvo(id: number, dados: AlocarOrdemSvoInput, autor: Autor) {
     garantirAcesso(autor.perfil, 'SVO');
     return db.transaction(async (trx) => {
@@ -464,18 +524,23 @@ export const viagemService = {
     });
   },
 
-  async iniciarViagem(tipo: TipoOperacao, viagemId: number, kmInicial: number, autor: Autor) {
+  // evidenciaId: foto do odômetro enviada antes em POST /evidencias-odometro (SCRUM-208)
+  async iniciarViagem(tipo: TipoOperacao, viagemId: number, kmInicial: number, autor: Autor, evidenciaId?: number) {
+    garantirPerfilOperacional(tipo, autor);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
       if (tipo === 'SVO') {
         await travarAgendaSvo(trx);
-        await reavaliarFilaSvo(trx, autor.id);
       }
-      const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
+      let viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
       if (viagem.status !== operacao.agendada) {
         throw new AppError('Apenas viagens agendadas podem ser iniciadas', 400);
+      }
+      if (tipo === 'SVO') {
+        await reavaliarFilaSvo(trx, autor.id);
+        viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       }
       if (tipo === 'SVO' && viagem.inicio_previsto && !viagem.liberada_em) {
         throw new AppError('Coleta ainda não liberada: verifique prioridade e disponibilidade dos recursos', 409);
@@ -511,6 +576,11 @@ export const viagemService = {
         }
       }
 
+      // Foto da saída: confirmada na mesma transação, ou a transição não acontece
+      const evidenciaSaida = await registrarEvidenciaNaTransicao(trx, {
+        tipo, viagemId, viagem, fase: 'SAIDA', km: kmInicial, evidenciaId, autorId: autor.id,
+      });
+
       // Atualiza a viagem
       await trx(operacao.tabela)
         .where({ id: viagemId })
@@ -523,20 +593,23 @@ export const viagemService = {
       // Veículo → EM_USO e motorista → EM_VIAGEM
       await sincronizarStatus(trx, viagem.veiculo_id, viagem.motorista_id);
 
-      await registrarAuditoria(trx, autor.id, `INICIOU_VIAGEM tipo=${tipo} id=${viagemId} km_inicial=${kmInicial}`);
+      await registrarAuditoria(trx, autor.id,
+        `INICIOU_VIAGEM tipo=${tipo} id=${viagemId} km_inicial=${kmInicial}${evidenciaSaida ? ` evidencia=${evidenciaSaida}` : ''}`);
 
       return detalhar(trx, tipo, viagemId);
     });
   },
 
-  async finalizarViagem(tipo: TipoOperacao, viagemId: number, kmFinal: number, autor: Autor) {
+  async finalizarViagem(tipo: TipoOperacao, viagemId: number, kmFinal: number, autor: Autor, evidenciaId?: number) {
+    garantirPerfilOperacional(tipo, autor);
     const operacao = OPERACOES[tipo];
 
     return db.transaction(async (trx) => {
       if (tipo === 'SVO') await travarAgendaSvo(trx);
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
-      if (viagem.status !== operacao.emAndamento) {
+      const emAndamento = tipo === 'SVO' ? ordemSvoEmCurso(viagem.status) : viagem.status === operacao.emAndamento;
+      if (!emAndamento) {
         throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
       }
 
@@ -548,6 +621,12 @@ export const viagemService = {
         throw new AppError(`O km final não pode ser menor que o km inicial (${viagem.km_inicial})`, 400);
       }
 
+      // Foto da chegada: confirmada na mesma transação, ou a transição não acontece
+      const transicao = {
+        tipo, viagemId, viagem, fase: 'CHEGADA' as const, km: kmFinal, evidenciaId, autorId: autor.id,
+      };
+      const evidenciaChegada = await registrarEvidenciaNaTransicao(trx, transicao);
+
       // Atualiza a viagem
       await trx(operacao.tabela)
         .where({ id: viagemId })
@@ -556,6 +635,8 @@ export const viagemService = {
           km_final: kmFinal,
           [operacao.colunaChegada]: new Date(),
         });
+      // Prazo de guarda das fotos (12 meses) conta da conclusão real
+      await concluirOperacao(trx, transicao);
 
       // Atualiza km do veiculo sem reduzir o valor já registrado
       await trx('veiculos')
@@ -571,7 +652,8 @@ export const viagemService = {
         await reavaliarFilaSvo(trx, autor.id);
       }
 
-      await registrarAuditoria(trx, autor.id, `FINALIZOU_VIAGEM tipo=${tipo} id=${viagemId} km_final=${kmFinal}`);
+      await registrarAuditoria(trx, autor.id,
+        `FINALIZOU_VIAGEM tipo=${tipo} id=${viagemId} km_final=${kmFinal}${evidenciaChegada ? ` evidencia=${evidenciaChegada}` : ''}`);
 
       return detalhar(trx, tipo, viagemId);
     });

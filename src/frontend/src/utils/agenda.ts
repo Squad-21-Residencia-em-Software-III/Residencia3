@@ -5,6 +5,7 @@ import type {
   LinhaRecursoAgenda,
 } from '../types/agenda';
 import type { Veiculo } from '../types/veiculo';
+import { viagemEmCurso } from '../types/viagem';
 import type { Viagem } from '../types/viagem';
 import { PERFIS, type Perfil } from '../types/usuario';
 
@@ -113,6 +114,7 @@ function formatarHoraMinuto(data: Date): string {
 
 export function obterIntervaloViagem(
   viagem: Viagem,
+  agora: Date = new Date(),
 ): { inicio: Date; fim: Date; semPrevisaoFim: boolean } | null {
   const inicioBruto = viagem.data_hora_efetiva_saida ?? viagem.inicio_previsto;
   if (!inicioBruto) return null;
@@ -124,6 +126,15 @@ export function obterIntervaloViagem(
   if (fimBruto) {
     const fim = new Date(fimBruto);
     if (!Number.isNaN(fim.getTime()) && fim.getTime() > inicio.getTime()) {
+      // Coleta SVO ainda em curso (A caminho ou No local): o término previsto não libera o
+      // veículo; a ocupação segue até a conclusão real (BL31), então o bloco vai até agora.
+      const emCursoSvo =
+        viagem.tipo_operacao === 'SVO' &&
+        viagem.data_hora_efetiva_chegada == null &&
+        viagemEmCurso(viagem.status);
+      if (emCursoSvo && agora.getTime() > fim.getTime()) {
+        return { inicio, fim: agora, semPrevisaoFim: false };
+      }
       return { inicio, fim, semPrevisaoFim: false };
     }
   }
@@ -141,7 +152,11 @@ export function obterIntervaloViagem(
   return { inicio, fim: fimDoDia, semPrevisaoFim: true };
 }
 
-export function projetarViagensNoDia(viagens: Viagem[], dataIso: string): BlocoAgendaDia[] {
+export function projetarViagensNoDia(
+  viagens: Viagem[],
+  dataIso: string,
+  agora: Date = new Date(),
+): BlocoAgendaDia[] {
   const inicioDia = parseDataIsoLocal(dataIso);
   const fimDia = new Date(inicioDia);
   fimDia.setDate(inicioDia.getDate() + 1);
@@ -153,7 +168,7 @@ export function projetarViagensNoDia(viagens: Viagem[], dataIso: string): BlocoA
 
   for (const viagem of viagens) {
     if (viagem.status === 'CANCELADA') continue;
-    const intervalo = obterIntervaloViagem(viagem);
+    const intervalo = obterIntervaloViagem(viagem, agora);
     if (!intervalo) continue;
 
     const inicioMs = intervalo.inicio.getTime();

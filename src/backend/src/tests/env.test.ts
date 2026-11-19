@@ -165,3 +165,19 @@ describe('Limites de requisição e tempo (env)', () => {
     );
   });
 });
+
+describe('Segredos da cadeia de proxies (env)', () => {
+  it('PROXY_SECRET e DIAGNOSTICO_PROXY_TOKEN são opcionais', () => {
+    expect(carregar()).toMatchObject({ proxySecret: undefined, diagnosticoProxyToken: undefined });
+    expect(carregar({ PROXY_SECRET: '', DIAGNOSTICO_PROXY_TOKEN: '' }).proxySecret).toBeUndefined();
+  });
+
+  it('aceita segredos fortes', () => {
+    expect(carregar({ PROXY_SECRET: SEGREDO_VALIDO }).proxySecret).toBe(SEGREDO_VALIDO);
+  });
+
+  it.each(['PROXY_SECRET', 'DIAGNOSTICO_PROXY_TOKEN'])('%s fraco é recusado sem exibir o valor', (nome) => {
+    expect(() => carregar({ [nome]: 'curto' })).toThrow(nome);
+    expect(() => carregar({ [nome]: 'a'.repeat(40) })).toThrow('previsível');
+  });
+});

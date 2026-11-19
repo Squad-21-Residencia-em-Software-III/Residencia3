@@ -5,6 +5,7 @@ import { app } from '../app';
 import { authService } from '../services/authService';
 import { PERFIS } from '../constants/perfis';
 
+vi.mock('../models/unidadeModel', () => ({ unidadeModel: { estaAssociadoPorNome: vi.fn(async () => true) } }));
 vi.mock('../services/authService', () => ({
   authService: {
     usuarioDoToken: vi.fn(),

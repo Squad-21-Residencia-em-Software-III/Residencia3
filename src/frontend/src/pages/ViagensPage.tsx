@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CalendarClock, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
 import {
@@ -19,8 +19,9 @@ import {
   type BadgeTone,
 } from '../components/ui';
 import { BotaoExportarRelatorio } from '../components/relatorios/BotaoExportarRelatorio';
-import { mensagemDeErro } from '../services/api/http';
+import { ApiError, mensagemDeErro } from '../services/api/http';
 import { recursoAtivo } from '../config/recursosBackend';
+import { evidenciasOdometroApi } from '../services/api/evidenciasOdometroApi';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { solicitacoesApi } from '../services/api/solicitacoesApi';
 import { veiculosApi } from '../services/api/veiculosApi';
@@ -29,7 +30,8 @@ import type { Motorista } from '../types/motorista';
 import type { SolicitacaoViagem } from '../types/solicitacao';
 import type { Veiculo } from '../types/veiculo';
 import {
-  LABELS_STATUS_VIAGEM,
+  rotuloStatusViagem,
+  viagemEmCurso,
   type NovaViagemInput,
   type OrdemPendenteSvo,
   type StatusViagem,
@@ -42,15 +44,18 @@ import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
 import { ModalFinalizarViagem } from './viagens/ModalFinalizarViagem';
 import { ModalAgendarColetaSvo } from './viagens/ModalAgendarColetaSvo';
 import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
+import { ModalExcecoesOdometro } from './viagens/ModalExcecoesOdometro';
+import { ModalEvidenciasOdometro } from './viagens/ModalEvidenciasOdometro';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
 import { usePermissao } from '../utils/permissoes';
 
-type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
 
 interface DadosNovaViagem {
   veiculos: Veiculo[];
   motoristas: Motorista[];
   solicitacoes: SolicitacaoViagem[];
+  expiradasNaSessao: number[];
   erroSolicitacoes: string | null;
 }
 
@@ -87,6 +92,8 @@ function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
     case 'EM_ANDAMENTO':
       return 'info';
+    case 'NO_LOCAL':
+      return 'warning';
     case 'AGENDADA':
       return 'purple';
     case 'CONCLUIDA':
@@ -148,16 +155,38 @@ interface PainelViagensProps {
 
 function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const location = useLocation();
-  const { pode } = usePermissao();
+  const { pode, podeNaFrota } = usePermissao();
   const isSvo = operacao === 'SVO';
   const agendaSvoAtiva = recursoAtivo('agendamentoTemporalSvo');
+  // Fotos do odômetro (SCRUM-203): cada gestor só na própria operação; o Administrador nas duas
+  const podeConsultarOdometro =
+    recursoAtivo('fotosOdometro') && !somenteProprias && podeNaFrota('evidenciasOdometro.ver', operacao);
+  const [configuracaoOdometro, setConfiguracaoOdometro] =
+    useState<Awaited<ReturnType<typeof evidenciasOdometroApi.configuracao>> | null>(null);
+  const podeVerFotos = podeConsultarOdometro && configuracaoOdometro?.fotos_disponiveis;
+  const podeDecidirExcecoes = podeConsultarOdometro && configuracaoOdometro?.excecoes_disponiveis;
+
+  useEffect(() => {
+    if (!podeConsultarOdometro) return;
+    let ativo = true;
+    evidenciasOdometroApi.configuracao().then(
+      (dados) => { if (ativo) setConfiguracaoOdometro(dados); },
+      () => { if (ativo) setConfiguracaoOdometro(null); },
+    );
+    return () => { ativo = false; };
+  }, [podeConsultarOdometro]);
   const textos = TEXTOS_OPERACAO[operacao];
   // Agendar viagem administrativa (Admin e Gestor de Frota); alocar coleta SVO (Admin e Gestor SVO)
   const podeAgendar = !isSvo && !somenteProprias && pode('viagens.agendar');
   const podeAlocarSvo = isSvo && pode('viagens.alocarSvo');
   const podeCancelar = !somenteProprias && pode('viagens.cancelar');
-  // Motoristas registram saída e retorno das próprias viagens (a API só lista as deles)
-  const podeExecutar = !somenteProprias && pode('viagens.executar');
+  // Motoristas registram saída e retorno das próprias viagens (a API só lista as deles). Na SVO,
+  // só o Motorista SVO executa; gestores e Administrador acompanham sem as ações operacionais.
+  const podeExecutar =
+    !somenteProprias && (isSvo ? pode('viagens.executarSvo') : pode('viagens.executar'));
+  const podeRegistrarChegada = isSvo && agendaSvoAtiva && podeExecutar;
+  const chegadasEmEnvio = useRef(new Set<number>());
+  const [chegadasPendentes, setChegadasPendentes] = useState<ReadonlySet<number>>(() => new Set());
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -168,6 +197,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
+  const [filaExcecoesAberta, setFilaExcecoesAberta] = useState(false);
   const [dadosNovaViagem, setDadosNovaViagem] = useState<DadosNovaViagem | null>(null);
 
   // Ordens SVO aguardando agendamento (só para quem aloca coletas)
@@ -185,9 +215,11 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       setModalNovaAberto(true);
     }
   }, [location.state, podeAgendar]);
-  const [viagemDetalhes, setViagemDetalhes] = useState<Viagem | null>(null);
+  const [chaveDetalhes, setChaveDetalhes] = useState<string | null>(null);
+  const viagemDetalhes = viagens.find((v) => chaveViagem(v) === chaveDetalhes) ?? null;
   const [viagemIniciar, setViagemIniciar] = useState<Viagem | null>(null);
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
+  const [viagemFotos, setViagemFotos] = useState<Viagem | null>(null);
   const [viagemCancelar, setViagemCancelar] = useState<Viagem | null>(null);
   const [cancelandoViagem, setCancelandoViagem] = useState(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
@@ -303,7 +335,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         })),
     ])
       .then(([veiculos, motoristas, resultado]) => {
-        if (ativo) setDadosNovaViagem({ veiculos, motoristas, ...resultado });
+        if (ativo) setDadosNovaViagem({ veiculos, motoristas, ...resultado, expiradasNaSessao: [] });
       })
       .catch((error) => {
         if (!ativo) return;
@@ -319,7 +351,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const totais = useMemo(
     () => ({
       total: viagens.length,
-      emAndamento: viagens.filter((v) => v.status === 'EM_ANDAMENTO').length,
+      emAndamento: viagens.filter((v) => viagemEmCurso(v.status)).length,
       agendadas: viagens.filter((v) => v.status === 'AGENDADA').length,
       concluidas: viagens.filter((v) => v.status === 'CONCLUIDA').length,
     }),
@@ -390,21 +422,83 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   }, [filtradas, paginaSegura]);
 
   const handleSalvarNovaViagem = async (nova: NovaViagemInput) => {
-    await viagensApi.criar(nova);
+    try {
+      await viagensApi.criar(nova);
+    } catch (error) {
+      if (error instanceof ApiError && error.codigo === 'SOLICITACAO_EXPIRADA') {
+        let atualizadas: SolicitacaoViagem[] | undefined;
+        let erroSolicitacoes: string | null = null;
+        try {
+          atualizadas = await solicitacoesApi.listarAprovadas();
+        } catch (falhaDeConsulta) {
+          erroSolicitacoes = mensagemDeErro(falhaDeConsulta);
+        }
+        setDadosNovaViagem((dados) => {
+          if (!dados) return dados;
+          const expiradasNaSessao = [...dados.expiradasNaSessao, nova.solicitacao_id];
+          return {
+            ...dados, expiradasNaSessao, erroSolicitacoes,
+            solicitacoes: (atualizadas ?? dados.solicitacoes).filter(({ id }) => !expiradasNaSessao.includes(id)),
+          };
+        });
+      }
+      throw error;
+    }
     await carregarViagens();
     exibirFeedback(`Viagem agendada com sucesso!`);
   };
 
-  const handleIniciarViagem = async (kmInicial: number) => {
+  const handleIniciarViagem = async (kmInicial: number, evidenciaId?: string) => {
     if (!viagemIniciar) return;
-    await viagensApi.iniciar(viagemIniciar, kmInicial);
+    await viagensApi.iniciar(viagemIniciar, kmInicial, evidenciaId);
     await carregarViagens();
     exibirFeedback(`Viagem #${viagemIniciar.id} iniciada com sucesso.`);
   };
 
-  const handleFinalizarViagem = async (kmFinal: number) => {
+  const handleRegistrarChegada = async (viagem: Viagem) => {
+    const { id, status, tipo_operacao } = viagem;
+    const envios = chegadasEmEnvio.current;
+    if (!podeRegistrarChegada || tipo_operacao !== 'SVO' || status !== 'EM_ANDAMENTO' || envios.has(id)) return;
+
+    const chave = chaveViagem(viagem);
+    envios.add(id);
+    setChegadasPendentes(new Set(envios));
+
+    try {
+      const atualizada = await viagensApi.registrarChegadaLocalSvo(id);
+      if (atualizada?.status !== 'NO_LOCAL' || chaveViagem(atualizada) !== chave) {
+        throw new Error('O servidor não confirmou a chegada. Consulte o status da coleta.');
+      }
+      setViagens((lista) => lista.map((v) => chaveViagem(v) === chave ? atualizada : v));
+      exibirFeedback('Chegada ao local registrada.');
+    } catch (error) {
+      const statusHttp = error instanceof ApiError ? error.status : undefined;
+      const mensagem =
+        statusHttp !== undefined && statusHttp >= 500
+          ? 'O servidor não conseguiu confirmar a chegada. Tente novamente.'
+          : mensagemDeErro(error);
+      if (statusHttp === 409 || statusHttp === 404) {
+        try {
+          const listaAtual = await viagensApi.listar();
+          const coletaAtual = listaAtual.find((v) => chaveViagem(v) === chave);
+          setViagens((lista) => lista.flatMap((v) =>
+            chaveViagem(v) === chave ? (coletaAtual ? [coletaAtual] : []) : [v],
+          ));
+        } catch {
+          exibirFeedback(`${mensagem} Não foi possível atualizar o status da coleta.`, true);
+          return;
+        }
+      }
+      exibirFeedback(mensagem, true);
+    } finally {
+      envios.delete(id);
+      setChegadasPendentes(new Set(envios));
+    }
+  };
+
+  const handleFinalizarViagem = async (kmFinal: number, evidenciaId?: string) => {
     if (!viagemFinalizar) return;
-    await viagensApi.finalizar(viagemFinalizar, kmFinal);
+    await viagensApi.finalizar(viagemFinalizar, kmFinal, evidenciaId);
     await carregarViagens();
     exibirFeedback(`Viagem #${viagemFinalizar.id} finalizada com sucesso.`);
   };
@@ -432,7 +526,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
 
   return (
     <div className="grid w-full min-w-0 gap-5">
-      {isSvo && !agendaSvoAtiva && <Alert tone="info">Agendamento e operações de coleta SVO indisponíveis até a atualização do banco de dados.</Alert>}
+      {isSvo && !agendaSvoAtiva && <Alert tone="info">A agenda temporal e as operações de coleta SVO estão desabilitadas neste ambiente.</Alert>}
       {erroAlertas && <Alert tone="warning">Não foi possível atualizar os alertas SVO: {erroAlertas}</Alert>}
       {alertasSvo.map((alerta) => (
         <Alert key={alerta.id} tone="warning">
@@ -440,9 +534,8 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           prevista para {formatarDataHora(alerta.inicio_previsto_afetada)}.
         </Alert>
       ))}
-      {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
-
-      {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
+      {!viagemDetalhes && mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
+      {!viagemDetalhes && mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <MetricCard
@@ -542,7 +635,16 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         <TableToolbar
           title={textos.titulo}
           subtitle={`${filtradas.length} de ${viagens.length} ${textos.registro}`}
-          actions={!somenteProprias ? <BotaoExportarRelatorio tipo="viagens" /> : undefined}
+          actions={!somenteProprias ? (
+            <>
+              {podeDecidirExcecoes && (
+                <Button type="button" variant="outline" onClick={() => setFilaExcecoesAberta(true)}>
+                  Pedidos sem foto
+                </Button>
+              )}
+              <BotaoExportarRelatorio tipo="viagens" />
+            </>
+          ) : undefined}
           newLabel={podeAgendar ? 'Agendar Viagem' : undefined}
           onNew={podeAgendar ? () => setModalNovaAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
@@ -571,7 +673,8 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
             options={[
               { value: 'TODOS', label: 'Todos os status' },
               { value: 'AGENDADA', label: 'Agendadas' },
-              { value: 'EM_ANDAMENTO', label: 'Em Andamento' },
+              { value: 'EM_ANDAMENTO', label: isSvo ? 'A caminho' : 'Em Andamento' },
+              ...(isSvo ? [{ value: 'NO_LOCAL', label: 'No local' }] : []),
               { value: 'CONCLUIDA', label: 'Concluídas' },
               { value: 'CANCELADA', label: 'Canceladas' },
             ]}
@@ -655,7 +758,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                 return (
                   <tr
                     key={chave}
-                    onClick={() => setViagemDetalhes(v)}
+                    onClick={() => setChaveDetalhes(chave)}
                     className="group cursor-pointer transition-colors duration-150 hover:!bg-surface-hover"
                     title="Clique para ver os detalhes da viagem"
                   >
@@ -721,10 +824,10 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                                   {formatarDataHora(v.data_hora_efetiva_chegada)}
                                 </span>
                               ) : (
-                                v.status === 'EM_ANDAMENTO' && (
+                                viagemEmCurso(v.status) && (
                                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
                                     <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                                    Em trânsito
+                                    {v.status === 'NO_LOCAL' ? 'No local da coleta' : 'Em trânsito'}
                                   </span>
                                 )
                               )}
@@ -779,7 +882,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                       </td></>}
                       <td>
                         <Badge tone={obterBadgeToneStatus(v.status)}>
-                          {LABELS_STATUS_VIAGEM[v.status]}
+                          {rotuloStatusViagem(v)}
                         </Badge>
                         {isSvo && agendaSvoAtiva && v.status === 'AGENDADA' && v.inicio_previsto && (
                           <span className="block text-xs text-slate-500">
@@ -827,7 +930,21 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                               )}
                             </>
                           )}
-                          {v.status === 'EM_ANDAMENTO' && podeExecutar && (!isSvo || agendaSvoAtiva) && (
+                          {podeRegistrarChegada && v.tipo_operacao === 'SVO' && v.status === 'EM_ANDAMENTO' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={chegadasPendentes.has(v.id)}
+                              aria-busy={chegadasPendentes.has(v.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleRegistrarChegada(v);
+                              }}
+                            >
+                              {chegadasPendentes.has(v.id) ? 'Registrando chegada…' : 'Cheguei ao local'}
+                            </Button>
+                          )}
+                          {viagemEmCurso(v.status) && podeExecutar && (!isSvo || agendaSvoAtiva) && (
                             <Button
                               variant="primary"
                               size="sm"
@@ -835,18 +952,24 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                                 e.stopPropagation();
                                 setViagemFinalizar(v);
                               }}
+                              disabled={isSvo && chegadasPendentes.has(v.id)}
                               title="Registrar retorno da viagem"
                             >
                               <Flag size={13} className="mr-1" /> Finalizar
                             </Button>
                           )}
-                          <span
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:bg-primary/10 group-hover:text-primary"
+                          <button
+                            type="button"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary group-hover:translate-x-0.5 group-hover:bg-primary/10 group-hover:text-primary"
                             title="Ver detalhes da viagem"
-                            aria-hidden="true"
+                            aria-label="Ver detalhes da viagem"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setChaveDetalhes(chave);
+                            }}
                           >
-                            <ChevronRight size={15} />
-                          </span>
+                            <ChevronRight size={15} aria-hidden="true" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -897,11 +1020,15 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       <DrawerDetalhesViagem
         viagem={viagemDetalhes}
         somentePropria={somenteProprias}
-        onClose={() => setViagemDetalhes(null)}
+        onClose={() => setChaveDetalhes(null)}
+        onRegistrarChegada={podeRegistrarChegada ? handleRegistrarChegada : undefined}
+        registrandoChegada={isSvo && viagemDetalhes !== null && chegadasPendentes.has(viagemDetalhes.id)}
+        mensagemSucesso={mensagemSucesso}
+        mensagemErro={mensagemErro}
         onIniciar={
           podeExecutar && (!isSvo || agendaSvoAtiva)
             ? (v) => {
-                setViagemDetalhes(null);
+                setChaveDetalhes(null);
                 setViagemIniciar(v);
               }
             : undefined
@@ -909,7 +1036,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         onFinalizar={
           podeExecutar && (!isSvo || agendaSvoAtiva)
             ? (v) => {
-                setViagemDetalhes(null);
+                setChaveDetalhes(null);
                 setViagemFinalizar(v);
               }
             : undefined
@@ -917,12 +1044,27 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         onCancelar={
           podeCancelar && (!isSvo || agendaSvoAtiva)
             ? (v) => {
-                setViagemDetalhes(null);
+                setChaveDetalhes(null);
                 setViagemCancelar(v);
               }
             : undefined
         }
+        onVerFotos={
+          podeVerFotos
+            ? (v) => {
+                setChaveDetalhes(null);
+                setViagemFotos(v);
+              }
+            : undefined
+        }
       />
+
+      {filaExcecoesAberta && podeDecidirExcecoes && (
+        <ModalExcecoesOdometro tipo={operacao} onClose={() => setFilaExcecoesAberta(false)} />
+      )}
+      {viagemFotos && (
+        <ModalEvidenciasOdometro referencia={viagemFotos} onClose={() => setViagemFotos(null)} />
+      )}
 
       {viagemIniciar && (
         <ModalIniciarViagem

@@ -48,7 +48,7 @@ TRUST_PROXY=0
 COOKIE_SECURE=false
 ```
 
-O `JWT_SECRET` assina os tokens de login e é **obrigatório**. A API não sobe sem ele, nem com um valor fraco: são exigidos pelo menos 32 caracteres, e os valores de exemplo deste guia são recusados. `JWT_EXPIRES_IN` (padrão 2h, máximo 8h) define a validade do token de acesso e `JWT_REFRESH_EXPIRES_IN` (padrão 12h, máximo 24h) define a duração máxima da sessão. O refresh token é entregue em cookie `HttpOnly`. `CORS_ORIGIN` lista as origens do frontend autorizadas (nunca `*`), `TRUST_PROXY` informa os proxies reversos confiáveis à frente da API (número de saltos ou lista de IPs/CIDRs; obrigatório em produção, veja [seguranca-http.md](seguranca-http.md)) e `COOKIE_SECURE` exige HTTPS para o cookie (obrigatório em produção). A política completa está em [seguranca-sessoes.md](seguranca-sessoes.md). Os limites de requisição e os tempos máximos (`RATE_LIMIT_*`, `MAX_REQUISICOES_SIMULTANEAS`, `REQUEST_TIMEOUT_MS`, `POSTGRES_STATEMENT_TIMEOUT_MS`) têm padrões seguros e estão descritos em [limites-e-timeouts.md](limites-e-timeouts.md). Para gerar um valor aleatório:
+O `JWT_SECRET` assina os tokens de login e é **obrigatório**. A API não sobe sem ele, nem com um valor fraco: são exigidos pelo menos 32 caracteres, e os valores de exemplo deste guia são recusados. `JWT_EXPIRES_IN` (padrão 2h, máximo 8h) define a validade do token de acesso e `JWT_REFRESH_EXPIRES_IN` (padrão 12h, máximo 24h) define a duração máxima da sessão. O refresh token é entregue em cookie `HttpOnly`. `CORS_ORIGIN` lista as origens do frontend autorizadas (nunca `*`), `TRUST_PROXY` informa os proxies reversos confiáveis à frente da API (número de saltos ou lista de IPs/CIDRs; obrigatório em produção; o IP encaminhado pela Vercel é autenticado pelo `PROXY_SECRET`, veja [seguranca-http.md](seguranca-http.md#decisão-e-validação)) e `COOKIE_SECURE` exige HTTPS para o cookie (obrigatório em produção). A política completa está em [seguranca-sessoes.md](seguranca-sessoes.md). Os limites de requisição e os tempos máximos (`RATE_LIMIT_*`, `MAX_REQUISICOES_SIMULTANEAS`, `REQUEST_TIMEOUT_MS`, `POSTGRES_STATEMENT_TIMEOUT_MS`) têm padrões seguros e estão descritos em [limites-e-timeouts.md](limites-e-timeouts.md). Para gerar um valor aleatório:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
@@ -209,6 +209,10 @@ npm run build
 | Banco | raiz | `docker compose up -d` | porta 5433 (host) |
 | API | `src/backend` | `npm install`, `npm run migrate` e `npm run dev` | http://localhost:3000/api/status |
 | Front | `src/frontend` | `npm install` e `npm run dev` | http://localhost:5173/ |
+
+## Configuração dos fluxos por ambiente
+
+O [guia de operação](operacao-odometro-e-agenda-svo.md) informa as migrations, as flags da API e da Vercel, os crons e os passos de homologação. A interface está descrita no [manual do usuário](manual-fluxos-operacionais.md).
 
 ## Problemas comuns
 - **`docker compose` não encontra o `.env`**: o arquivo precisa estar na **raiz** do projeto, não dentro de `src/backend`.

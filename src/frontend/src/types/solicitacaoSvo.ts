@@ -6,7 +6,7 @@ export type StatusSolicitacaoSvo =
   'EM_TRIAGEM' | 'CONFIRMADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'RECUSADA' | 'CANCELADA';
 
 export type StatusOrdemSvo =
-  'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+  'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
 
 export interface SolicitacaoSvo {
   id: number;
@@ -69,6 +69,7 @@ export const LABELS_STATUS_ORDEM_SVO: Record<StatusOrdemSvo, string> = {
   AGUARDANDO_ALOCACAO: 'Aguardando alocação',
   ALOCADA: 'Alocada',
   EM_DESLOCAMENTO: 'Em deslocamento',
+  NO_LOCAL: 'No local',
   CONCLUIDA: 'Concluída',
   CANCELADA: 'Cancelada',
 };

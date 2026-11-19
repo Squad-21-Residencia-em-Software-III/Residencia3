@@ -12,5 +12,8 @@ backups/
 *.sql.gz
 *.dump
 
+# Fotos do odômetro no armazenamento local (EVIDENCIAS_STORAGE=local)
+src/backend/storage/
+
 # Protótipo Figma
 docs/figma-prototipo/

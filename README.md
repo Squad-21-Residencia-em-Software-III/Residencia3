@@ -46,9 +46,11 @@ O **FMS/TMS FSPH** unifica toda a governança da frota administrativa e especial
 ### 🚑 Módulo SVO (Serviço de Verificação de Óbito)
 - **Triagem de Solicitações de Óbito**: Acolhimento e validação de solicitações de coleta pela população e unidades de saúde.
 - **Ordens de Coleta**: Despacho de viatura SVO com controle rígido de lotação (capacidade estrita de até 4 corpos simultâneos).
-- **Escalas e Plantões**: Alocação de ordens apenas para equipes e motoristas escalados no plantão vigente.
+- **Equipes e integrantes**: Designação nominal de integrantes, com validação de disponibilidade e lotação da cabine. A agenda temporal tem ativação por ambiente.
 
 ---
+
+Consulte o [manual de operação](docs/manual-fluxos-operacionais.md) e o [guia de implantação](docs/guia-de-execucao.md).
 
 ## 🛠️ Stack Tecnológica
 

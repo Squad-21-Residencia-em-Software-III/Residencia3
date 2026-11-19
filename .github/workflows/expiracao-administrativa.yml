@@ -1,0 +1,56 @@
+name: Expiração administrativa
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fsph-expiracao-administrativa
+  cancel-in-progress: false
+
+jobs:
+  expirar:
+    if: >-
+      github.repository == 'Squad-21-Residencia-em-Software-III/Residencia3' &&
+      github.ref == 'refs/heads/main' &&
+      vars.FSPH_EXPIRACAO_ATIVA == 'true'
+    environment:
+      name: fsph-expiracao-neon
+      deployment: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: src/backend
+    env:
+      DB_ROLE: app
+      POSTGRES_SSL: 'true'
+      POSTGRES_POOL_MIN: '0'
+      POSTGRES_POOL_MAX: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/backend/package-lock.json
+      - name: Preparar comando
+        run: npm ci && npm run build
+      - name: Expirar solicitações vencidas
+        env:
+          POSTGRES_HOST: ${{ secrets.FSPH_CRON_PG_HOST }}
+          POSTGRES_DB: ${{ secrets.FSPH_CRON_PG_DATABASE }}
+          POSTGRES_APP_USER: ${{ secrets.FSPH_CRON_PG_USER }}
+          POSTGRES_APP_PASSWORD: ${{ secrets.FSPH_CRON_PG_PASSWORD }}
+        run: |
+          if [[ -z "$POSTGRES_HOST" || -z "$POSTGRES_DB" || -z "$POSTGRES_APP_USER" || -z "$POSTGRES_APP_PASSWORD" ]]; then
+            echo "::error::Configure os segredos de conexão no ambiente protegido deste workflow."
+            exit 1
+          fi
+          npm run solicitacoes:expirar

@@ -17,6 +17,7 @@ export { MetricCard } from './MetricCard';
 export type { MetricTone } from './MetricCard';
 export { Alert } from './Alert';
 export type { AlertTone } from './Alert';
+export { Checkbox } from './Checkbox';
 export { PageHeader } from './PageHeader';
 export { ConfirmDialog } from './ConfirmDialog';
 export { EmptyState } from './EmptyState';
