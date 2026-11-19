@@ -5,7 +5,6 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { ApiError } from '../services/api/http';
 import { Alert } from '../components/ui';
-import { SobreNosLink } from '../components/layout/SobreNosLink';
 
 interface FloatingInputProps {
   id: string;
@@ -126,7 +125,7 @@ export default function LoginPage() {
   return (
     <div
       ref={bgRef}
-      className="relative flex min-h-full w-full flex-col overflow-hidden bg-[#0b1228] font-sans [--mx:50%] [--my:50%]"
+      className="relative flex min-h-full w-full overflow-hidden bg-[#0b1228] font-sans [--mx:50%] [--my:50%]"
     >
       {/* Brilho interativo que acompanha o cursor */}
       <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(600px_circle_at_var(--mx)_var(--my),rgba(21,84,184,0.22)_0%,rgba(21,84,184,0.06)_45%,transparent_70%)]" />
@@ -134,12 +133,8 @@ export default function LoginPage() {
       {/* Luz ambiente estática */}
       <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_15%_50%,rgba(21,84,184,0.05)_0%,transparent_50%),radial-gradient(circle_at_85%_30%,rgba(14,23,46,0.08)_0%,transparent_50%)]" />
 
-      <header className="relative z-10 flex shrink-0 justify-end px-3.5 py-3 md:px-8">
-        <SobreNosLink />
-      </header>
-
       {/* Container principal em 2 colunas simétricas */}
-      <div className="relative z-10 mx-auto flex w-full max-w-[1400px] flex-1 flex-col items-center justify-center px-5 py-8 sm:px-10 lg:flex-row">
+      <div className="relative z-10 mx-auto flex min-h-full w-full max-w-[1400px] flex-col items-center justify-center px-5 py-8 sm:px-10 lg:flex-row">
         {/* Coluna esquerda — Logo institucional na proporção áurea (316px = 268px visíveis vs 420px do card) */}
         <div className="hidden flex-1 animate-login-left flex-col items-center justify-center gap-8 p-8 lg:flex">
           <img
