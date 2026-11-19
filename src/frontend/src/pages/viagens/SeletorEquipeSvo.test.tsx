@@ -18,7 +18,7 @@ describe('SeletorEquipeSvo', () => {
     expect(screen.getByRole('option', { name: 'Sem equipe definida' })).toBeEnabled();
     expect(screen.getByRole('option', { name: 'Equipe Plantão SVO - A' })).toBeEnabled();
     expect(screen.getByRole('option', { name: 'Equipe Plantão SVO - B' })).toBeEnabled();
-    expect(screen.getByText('2 equipe(s) disponível(is) no momento (escala vigente).')).toBeInTheDocument();
+    expect(screen.getByText('2 equipe(s) disponível(is) para o período consultado.')).toBeInTheDocument();
   });
 
   it('avisa quando nenhuma equipe está disponível e mantém a opção sem equipe', () => {

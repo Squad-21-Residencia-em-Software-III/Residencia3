@@ -3,7 +3,7 @@ import { Alert, Select } from '../../components/ui';
 import type { EquipeSvo } from '../../types/equipeSvo';
 
 interface SeletorEquipeSvoProps {
-  /** Somente equipes com escala vigente e sem ordem ativa no momento da consulta, como a API devolve. */
+  /** Equipes disponíveis para o período consultado, conforme a API. */
   equipes: EquipeSvo[];
   carregando: boolean;
   erro: string | null;
@@ -58,7 +58,7 @@ export function SeletorEquipeSvo({ equipes, carregando, erro, valor, onChange }:
           Nenhuma equipe disponível no momento. A ordem pode ser alocada sem equipe.
         </Alert>
       ) : (
-        <p className="-mt-2 text-xs text-slate-500">{equipes.length} equipe(s) disponível(is) no momento (escala vigente).</p>
+        <p className="-mt-2 text-xs text-slate-500">{equipes.length} equipe(s) disponível(is) para o período consultado.</p>
       )}
     </div>
   );

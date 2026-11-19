@@ -35,6 +35,7 @@ export const criarViagemSchema = z.discriminatedUnion(
       tipo_operacao: z.literal('SVO'),
       ...recursosViagem,
       equipe_id: idSchema('equipe_id').nullish(),
+      integrantes_ids: z.array(idSchema('integrante')).max(100).optional(),
       inicio_previsto: z.iso.datetime({ offset: true }),
       fim_previsto: z.iso.datetime({ offset: true }),
       confirmar_intervalo_reduzido: z.boolean().optional(),

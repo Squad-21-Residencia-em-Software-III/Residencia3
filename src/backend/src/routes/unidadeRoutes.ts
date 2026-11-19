@@ -8,8 +8,9 @@ export const unidadeRoutes = Router();
 
 unidadeRoutes.use(autenticar);
 
-// Qualquer usuário autenticado consulta as unidades para escolher a da solicitação
-unidadeRoutes.get('/', unidadeController.listar);
+// Perfis que podem acessar os fluxos existentes de unidades e solicitações.
+unidadeRoutes.get('/', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO,
+  PERFIS.SOLICITANTE, PERFIS.MOTORISTA_FROTA, PERFIS.MOTORISTA_SVO), unidadeController.listar);
 
 // A consulta e a associação de gestores às unidades são feitas apenas pelo Administrador
 unidadeRoutes.get('/gestores', autorizar(PERFIS.ADMINISTRADOR), unidadeController.listarComGestores);

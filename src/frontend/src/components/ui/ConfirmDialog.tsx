@@ -30,6 +30,7 @@ export interface ConfirmDialogProps
   confirmLabel?: string;
   cancelLabel?: string;
   isLoading?: boolean;
+  gerenciarFoco?: boolean;
 }
 
 export function ConfirmDialog({
@@ -42,12 +43,13 @@ export function ConfirmDialog({
   cancelLabel = 'Cancelar',
   variant = 'danger',
   isLoading = false,
+  gerenciarFoco = false,
 }: ConfirmDialogProps) {
   const resolvedVariant = variant ?? 'danger';
   const isDanger = resolvedVariant === 'danger';
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title}>
+    <Modal gerenciarFoco={gerenciarFoco} isOpen={isOpen} onClose={onClose} title={title}>
       <div className="space-y-4">
         <div className="flex items-start gap-3">
           <div className={cn(confirmIconVariants({ variant: resolvedVariant }))}>

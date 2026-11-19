@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import type { Knex } from 'knex';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
+import { ORDENS_SVO_COM_RESERVA, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 
 const VINTE_MINUTOS_MS = 20 * 60_000;
 
@@ -16,7 +17,7 @@ export function classificarIntervalo(a: Periodo, b: Periodo): { sobrepoe: boolea
 
 export interface ReservaSvo {
   id: number;
-  status: 'ALOCADA' | 'EM_DESLOCAMENTO' | 'NO_LOCAL';
+  status: (typeof ORDENS_SVO_COM_RESERVA)[number];
   veiculo_id: number | null;
   motorista_id: number | null;
   equipe_id: number | null;
@@ -74,7 +75,7 @@ export async function validarAgendaSvo(trx: Knex.Transaction, dados: DadosAgenda
       .orderBy('ordem_id').orderBy('usuario_id')
     : [];
   const reservas: ReservaSvo[] = await trx('ordens_svo')
-    .whereIn('status', ['ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'])
+    .whereIn('status', ORDENS_SVO_COM_RESERVA)
     .whereNot({ id: dados.ordemId })
     .andWhere((q) => {
       q.where('veiculo_id', dados.veiculoId).orWhere('motorista_id', dados.motoristaId);
@@ -101,10 +102,7 @@ export async function validarAgendaSvo(trx: Knex.Transaction, dados: DadosAgenda
     if (!Number.isFinite(existente.inicio.getTime()) || !Number.isFinite(existente.fim.getTime()) || existente.fim <= existente.inicio) {
       throw new AppError('Há uma reserva ativa com período inválido', 409, 'CONFLITO_AGENDA');
     }
-    if (
-      ['EM_DESLOCAMENTO', 'NO_LOCAL'].includes(reserva.status) &&
-      existente.fim.getTime() <= Date.now()
-    ) {
+    if (ordemSvoEmCurso(reserva.status) && existente.fim.getTime() <= Date.now()) {
       throw new AppError('Um recurso permanece ocupado por uma coleta em andamento e atrasada', 409, 'CONFLITO_AGENDA');
     }
     const resultado = classificarIntervalo({ inicio: dados.inicio, fim: dados.fim }, existente);

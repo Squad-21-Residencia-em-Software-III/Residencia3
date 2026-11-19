@@ -1,6 +1,10 @@
 
 import { z } from 'zod';
 
+export const nomeEquipeSvoSchema = z.strictObject({
+  nome_equipe: z.string().trim().min(1, 'Informe o nome da equipe').max(100),
+});
+
 const dataComFuso = z.iso.datetime({ offset: true });
 
 export const consultarDisponibilidadeEquipesQuerySchema = z

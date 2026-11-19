@@ -9,6 +9,7 @@ import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
 import AuditoriaPage from '../pages/AuditoriaPage'
 import EquipePage from '../pages/EquipePage'
+import MinhasColetasSvoPage from '../pages/MinhasColetasSvoPage'
 import ForbiddenPage from '../pages/ForbiddenPage'
 import HomePage from '../pages/HomePage'
 import LoginPage from '../pages/LoginPage'
@@ -41,6 +42,7 @@ export const navItems: NavItemComPermissao[] = [
     permissao: 'solicitacoes.acessar',
   },
   { path: '/viagens', label: 'Viagens', icon: RouteIcon, section: 'Operação', permissao: 'viagens.acessar' },
+  { path: '/minhas-coletas', label: 'Minhas coletas', icon: RouteIcon, section: 'Operação', permissao: 'coletasProprias.acessar' },
   { path: '/agenda', label: 'Agenda', icon: CalendarIcon, section: 'Operação', permissao: 'agenda.acessar' },
 
   // FROTA
@@ -92,6 +94,7 @@ const ROTAS_COM_PERMISSAO: { path: string; permissao: Permissao; elemento: React
   { path: '/solicitacoes', permissao: 'solicitacoes.acessar', elemento: <SolicitacoesPage /> },
   { path: '/triagem-svo', permissao: 'triagemSvo.acessar', elemento: <Navigate to="/solicitacoes?aba=svo" replace /> },
   { path: '/viagens', permissao: 'viagens.acessar', elemento: <ViagensPage /> },
+  { path: '/minhas-coletas', permissao: 'coletasProprias.acessar', elemento: <MinhasColetasSvoPage /> },
   { path: '/agenda', permissao: 'agenda.acessar', elemento: <AgendaPage /> },
   { path: '/abastecimento', permissao: 'abastecimentos.acessar', elemento: <AbastecimentoPage /> },
   { path: '/manutencoes', permissao: 'manutencoes.acessar', elemento: <ManutencoesPage /> },
@@ -118,7 +121,9 @@ export function AppRoutes() {
           <Route path="/inicio" element={<HomePage />} />
           <Route path="/dashboard" element={<Navigate to="/inicio" replace />} />
           <Route path="/sobre" element={<SobreNosPage />} />
-          <Route path="/veiculos" element={<VeiculosPage />} />
+          <Route element={<RotaComPermissao permissao="veiculos.acessar" />}>
+            <Route path="/veiculos" element={<VeiculosPage />} />
+          </Route>
 
           {/* Cada tela exige a permissão do seu perfil (utils/permissoes); o backend também bloqueia com 403 */}
           {ROTAS_COM_PERMISSAO.map(({ path, permissao, elemento }) => (

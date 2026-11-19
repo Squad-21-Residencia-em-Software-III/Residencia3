@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import { usuarioAutenticado } from '../middlewares/autenticar';
 import { viagemService } from '../services/viagemService';
+import { listarMinhasColetasSvo } from '../services/minhasColetasSvoService';
+import { consultarDesignacoesSvo } from '../services/designacoesSvoService';
 import { garantirPerfilOperacional } from '../services/autorizacaoOperacionalSvo';
 import { idParamSchema } from '../validators/comuns';
 import { z } from 'zod';
@@ -17,6 +19,14 @@ const paginacaoSchema = z.object({
 }).strict();
 
 export const viagemController = {
+  async listarDesignacoesSvo(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    res.json(await consultarDesignacoesSvo(id));
+  },
+  async listarMinhasColetasSvo(req: Request, res: Response): Promise<void> {
+    const { pagina, limite } = paginacaoSchema.parse(req.query);
+    res.json(await listarMinhasColetasSvo(usuarioAutenticado(req).id, pagina, limite));
+  },
   async reprogramarOrdemSvo(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
     const dados = criarViagemSchema.parse(req.body);

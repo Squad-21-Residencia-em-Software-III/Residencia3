@@ -1,6 +1,7 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { PERFIS, type Perfil } from '../constants/perfis';
+import { ORDENS_SVO_EM_CURSO, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { motoristaModel } from '../models/motoristaModel';
@@ -11,6 +12,7 @@ import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
 import { garantirPerfilOperacional } from './autorizacaoOperacionalSvo';
 import { concluirOperacao, registrarEvidenciaNaTransicao } from './evidenciaOdometroTransicao';
 import { reavaliarFilaSvo } from './filaSvoService';
+import { atualizarDesignacoesSvo } from './designacoesSvoService';
 import {
   periodoDaSolicitacao,
   STATUS_MOTORISTA_BLOQUEADO,
@@ -139,7 +141,7 @@ async function situacaoDoRecurso(
   const { rows } = await trx.raw<{ rows: { em_andamento: boolean | null; agendada: boolean | null }[] }>(
     `
     SELECT
-      bool_or(status IN ('EM_ANDAMENTO', 'EM_DESLOCAMENTO', 'NO_LOCAL')) AS em_andamento,
+      bool_or(status IN ('EM_ANDAMENTO', ?, ?)) AS em_andamento,
       bool_or(status IN ('AGENDADA', 'ALOCADA')) AS agendada
     FROM (
       SELECT status FROM viagens_frota WHERE ${coluna} = ?
@@ -147,7 +149,7 @@ async function situacaoDoRecurso(
       SELECT status FROM ordens_svo WHERE ${coluna} = ?
     ) AS viagens
     `,
-    [id, id]
+    [...ORDENS_SVO_EM_CURSO, id, id]
   );
 
   return {
@@ -277,7 +279,7 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
     .where({ status: ordemReprogramada ? 'ALOCADA' : 'AGUARDANDO_ALOCACAO' })
     .modify((q) => { if (ordemReprogramada) q.where('id', ordemReprogramada); })
     .forUpdate()
-    .first('id');
+    .first('id', 'equipe_id');
   if (!ordemPendente) {
     throw new AppError('A solicitação SVO não possui ordem aguardando alocação', 409);
   }
@@ -304,16 +306,12 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
   }));
 
   // 4. Valida a equipe, se informada
-  const designacoes: { usuario_id: number; equipe_id: number }[] = ordemReprogramada
+  const mesmaEquipe = ordemReprogramada !== undefined && ordemPendente.equipe_id === (dados.equipe_id ?? null);
+  const designacoesAtuais: { usuario_id: number }[] = mesmaEquipe && dados.integrantes_ids === undefined && dados.equipe_id
     ? await trx('ordens_svo_integrantes').where({ ordem_id: ordemPendente.id })
-      .whereNull('revogado_em').select('usuario_id', 'equipe_id')
+      .whereNull('revogado_em').select('usuario_id')
     : [];
-  if (designacoes.some((d) => d.equipe_id !== dados.equipe_id)) {
-    throw new AppError('A equipe possui integrantes designados: revise a designação antes de alterar a equipe', 409);
-  }
-  if (designacoes.length > 0 && (!Number.isInteger(veiculo.lotacao_cabine) || designacoes.length > veiculo.lotacao_cabine - 1)) {
-    throw new AppError('A lotação da cabine não comporta os integrantes designados e o motorista', 409);
-  }
+  const integrantes = dados.integrantes_ids ?? designacoesAtuais.map((d) => d.usuario_id);
   if (dados.equipe_id) {
     const equipe = await trx('equipes_svo').where({ id: dados.equipe_id }).forUpdate().first('id');
     if (!equipe) {
@@ -327,10 +325,14 @@ async function alocarOrdemSvo(trx: Knex.Transaction, dados: AlocarOrdemSvoInput,
   if (conflitoAdministrativo) throw new AppError('Um recurso já está reservado no período solicitado', 409, 'CONFLITO_AGENDA');
   const conflitos = await validarAgendaSvo(trx, {
     ordemId: ordemPendente.id, autorId, veiculoId: dados.veiculo_id,
-    motoristaId: dados.motorista_id, equipeId: dados.equipe_id, inicio, fim,
-    integrantesIds: designacoes.map((d) => d.usuario_id),
+    motoristaId: dados.motorista_id, equipeId: dados.equipe_id, integrantesIds: integrantes, inicio, fim,
     confirmar: dados.confirmar_intervalo_reduzido, token: dados.token_confirmacao,
   });
+
+  if (dados.equipe_id || integrantes.length || ordemReprogramada) {
+    await atualizarDesignacoesSvo(trx, { ordemId: ordemPendente.id, equipeId: dados.equipe_id ?? null,
+      integrantes, lotacao: veiculo.lotacao_cabine, inicio, fim, autorId });
+  }
 
   // 5. Aloca a ordem gerada na confirmação, preservando seu identificador.
   await trx('ordens_svo')
@@ -588,15 +590,9 @@ export const viagemService = {
       if (tipo === 'SVO') await travarAgendaSvo(trx);
       const viagem = await buscarParaAtualizar(trx, tipo, viagemId);
       await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
-      const statusValido =
-        viagem.status === operacao.emAndamento ||
-        (tipo === 'SVO' && viagem.status === 'NO_LOCAL');
-
-      if (!statusValido) {
-        throw new AppError(
-          'Apenas viagens em andamento podem ser finalizadas',
-          400
-        );
+      const emAndamento = tipo === 'SVO' ? ordemSvoEmCurso(viagem.status) : viagem.status === operacao.emAndamento;
+      if (!emAndamento) {
+        throw new AppError('Apenas viagens em andamento podem ser finalizadas', 400);
       }
 
       // A quilometragem final é validada aqui, independentemente da interface (BL17)
