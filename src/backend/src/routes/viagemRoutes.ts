@@ -37,11 +37,7 @@ viagemRoutes.get('/ordens-svo/alertas', autorizar(PERFIS.ADMINISTRADOR, PERFIS.G
 viagemRoutes.post('/ordens-svo/:id/reprogramar', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.reprogramarOrdemSvo);
 viagemRoutes.patch(
   '/ordens-svo/:id/chegar-local',
-  autorizar(
-    PERFIS.ADMINISTRADOR,
-    PERFIS.GESTOR_SVO,
-    PERFIS.MOTORISTA_SVO
-  ),
+  autorizar(PERFIS.MOTORISTA_SVO),
   viagemController.registrarChegadaLocalSvo
 );
 

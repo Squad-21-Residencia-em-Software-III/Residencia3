@@ -44,6 +44,8 @@ A matriz é verificada rota a rota por `src/backend/src/tests/matrizAcesso.test.
 | `GET /viagens` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | 🔗⁷ | 🔗⁷ |
 | `POST /viagens`, `PATCH /viagens/:id/cancelar` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | ❌ | ❌ |
 | `PATCH /viagens/:id/iniciar`, `/finalizar` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | 🔗⁷ | 🔗⁷ |
+| `POST /evidencias-odometro`, `GET /evidencias-odometro` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | 🔗⁷ | 🔗⁷ |
+| `GET /evidencias-odometro/:id/arquivo` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | ❌ | ❌ |
 | `GET /motoristas/me` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `GET /motoristas` | ✅ | ❌ | ✅ | 🔗² | ❌ | ❌ |
 | `GET /unidades` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |

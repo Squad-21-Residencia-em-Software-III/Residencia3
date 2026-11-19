@@ -1,6 +1,7 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
+import { travarAgendaSvo } from './agendaSvoService';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import {
   manutencaoModel,
@@ -19,6 +20,15 @@ async function garantirVeiculoExiste(veiculoId: number) {
     throw new AppError('Veículo não encontrado', 404);
   }
   return veiculo;
+}
+
+async function validarInicioManutencaoSvo(trx: Knex.Transaction, veiculoId: number, status?: StatusManutencao) {
+  if (status !== 'EM_ANDAMENTO') return;
+  await travarAgendaSvo(trx);
+  await trx('veiculos').where({ id: veiculoId }).forUpdate().first('id');
+  const coletaAtiva = await trx('ordens_svo').where({ veiculo_id: veiculoId })
+    .whereIn('status', ['EM_DESLOCAMENTO', 'NO_LOCAL']).first('id');
+  if (coletaAtiva) throw new AppError('O veículo permanece ocupado por uma coleta SVO em andamento', 409);
 }
 
 export async function recalcularStatusVeiculo(
@@ -104,6 +114,7 @@ export const manutencaoService = {
     }
 
     return db.transaction(async (trx) => {
+      await validarInicioManutencaoSvo(trx, dados.veiculo_id, dados.status);
       const manutencao = await manutencaoModel.cadastrar(
         {
           veiculo_id: dados.veiculo_id,
@@ -152,6 +163,7 @@ export const manutencaoService = {
     }
 
     return db.transaction(async (trx) => {
+      await validarInicioManutencaoSvo(trx, manutencao.veiculo_id, dados.status);
       const atualizada = await manutencaoModel.atualizar(id, dados, trx);
       if (!atualizada) {
         throw new AppError('Erro ao atualizar manutenção', 500);
@@ -184,6 +196,7 @@ export const manutencaoService = {
     }
 
     return db.transaction(async (trx) => {
+      await validarInicioManutencaoSvo(trx, manutencao.veiculo_id, novoStatus);
       const atualizada = await manutencaoModel.atualizarStatus(id, novoStatus, trx);
 
       if (!atualizada) {

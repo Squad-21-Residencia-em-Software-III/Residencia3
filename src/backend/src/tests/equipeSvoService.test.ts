@@ -107,27 +107,10 @@ describe('equipeSvoService.consultarDisponibilidade', () => {
     expect(resultado.equipes).toEqual([]);
   });
 
-  it('verifica se a escala cobre o período informado', async () => {
+  it('consulta equipes sem exigir cadastro de escalas', async () => {
     await equipeSvoService.consultarDisponibilidade(filtros);
-
-    expect(consultas).toContainEqual(
-      expect.objectContaining({
-        tabela: 'equipes_svo as e',
-        metodo: 'whereExists',
-      }),
-    );
-
-    expect(consultas).toContainEqual({
-      tabela: 'escalas_svo as es',
-      metodo: 'where',
-      argumentos: ['es.data_inicio', '<=', new Date(filtros.inicio)],
-    });
-
-    expect(consultas).toContainEqual({
-      tabela: 'escalas_svo as es',
-      metodo: 'where',
-      argumentos: ['es.data_fim', '>=', new Date(filtros.fim)],
-    });
+    expect(consultas.some((c) => c.tabela.startsWith('escalas_svo'))).toBe(false);
+    expect(consultas.some((c) => c.metodo === 'whereExists')).toBe(false);
   });
 
   it('exclui equipes com ordens ativas', async () => {

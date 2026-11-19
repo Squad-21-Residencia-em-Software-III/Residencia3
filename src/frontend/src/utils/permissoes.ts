@@ -94,6 +94,11 @@ export const PERMISSOES = {
 
   // Auditoria
   'auditoria.acessar': [ADMINISTRADOR],
+  /**
+   * Fotos do odômetro (SCRUM-203): use com `podeNaFrota`. Administrador nas duas operações, Gestor
+   * de Frota só nas administrativas e Gestor SVO só nas SVO, sem abrir a Auditoria aos gestores.
+   */
+  'evidenciasOdometro.ver': [ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO],
 
   // Relatórios gerenciais (BL35 / RF18 / RN20)
   'relatorios.exportar': [ADMINISTRADOR, GESTOR_FROTA],

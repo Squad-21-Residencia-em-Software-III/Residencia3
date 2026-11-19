@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECURSOS_BACKEND } from '../config/recursosBackend';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { veiculosApi } from '../services/api/veiculosApi';
+import { ApiError } from '../services/api/http';
 import { viagensApi } from '../services/api/viagensApi';
+import { evidenciasOdometroApi } from '../services/api/evidenciasOdometroApi';
 import type { Viagem } from '../types/viagem';
 import ViagensPage from './ViagensPage';
 
@@ -21,6 +23,7 @@ vi.mock('../services/api/viagensApi', () => ({
     criar: vi.fn(),
     iniciar: vi.fn(),
     finalizar: vi.fn(),
+    registrarChegadaLocalSvo: vi.fn(),
     cancelar: vi.fn(),
   },
 }));
@@ -211,11 +214,14 @@ describe('ViagensPage: status e ações da coleta SVO por perfil (SCRUM-110)', (
   const coleta = (status: Viagem['status']): Viagem => ({
     ...viagem(7, 'SVO', 'Rua das Flores, 10'),
     status,
+    solicitacao_id: 31,
   });
   const linhaDaColeta = () => screen.getByText('Rua das Flores, 10').closest('tr')!;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    api.listar.mockReset();
+    api.registrarChegadaLocalSvo.mockReset();
     RECURSOS_BACKEND.agendamentoTemporalSvo = true;
     sessao.perfil = 'ADMINISTRADOR';
     api.listarAlertasSvo.mockResolvedValue([]);
@@ -316,6 +322,142 @@ describe('ViagensPage: status e ações da coleta SVO por perfil (SCRUM-110)', (
     expect(within(linha).queryByText('A caminho')).not.toBeInTheDocument();
   });
 
+  it.each(['GESTOR_SVO', 'ADMINISTRADOR', 'GESTOR_FROTA', 'MOTORISTA_FROTA', 'SOLICITANTE', 'INTEGRANTE_SVO'])(
+    '%s não registra a chegada na lista ou nos detalhes',
+    async (perfil) => {
+      sessao.perfil = perfil;
+      api.listar.mockResolvedValue([coleta('EM_ANDAMENTO')]);
+      abrir('/viagens?aba=svo');
+      if (['GESTOR_SVO', 'ADMINISTRADOR'].includes(perfil)) {
+        await screen.findByText('Rua das Flores, 10');
+        await userEvent.click(within(linhaDaColeta()).getByRole('button', { name: 'Ver detalhes da viagem' }));
+        expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      }
+      expect(screen.queryByRole('button', { name: 'Cheguei ao local' })).not.toBeInTheDocument();
+      expect(api.registrarChegadaLocalSvo).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['AGENDADA', 'NO_LOCAL', 'CONCLUIDA', 'CANCELADA'] as const)(
+    'Motorista SVO não registra chegada com status %s',
+    async (status) => {
+      sessao.perfil = 'MOTORISTA_SVO';
+      api.listar.mockResolvedValue([coleta(status)]);
+      abrir();
+      await screen.findByText('Rua das Flores, 10');
+      await userEvent.click(within(linhaDaColeta()).getByRole('button', { name: 'Ver detalhes da viagem' }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cheguei ao local' })).not.toBeInTheDocument();
+    },
+  );
+
+  it('sincroniza lista e drawer após confirmar o PATCH, sem depender de recarregar a lista', async () => {
+    sessao.perfil = 'MOTORISTA_SVO';
+    api.listar.mockResolvedValueOnce([coleta('EM_ANDAMENTO')]).mockRejectedValueOnce(new Error('GET indisponível'));
+    let confirmar!: (viagemAtualizada: Viagem) => void;
+    api.registrarChegadaLocalSvo.mockReturnValueOnce(new Promise((resolve) => { confirmar = resolve; }));
+    abrir();
+
+    await screen.findByText('Rua das Flores, 10');
+    const linha = within(linhaDaColeta());
+    const chegadaNaLista = linha.getByRole('button', { name: 'Cheguei ao local' });
+    const detalhes = linha.getByRole('button', { name: 'Ver detalhes da viagem' });
+    detalhes.focus();
+    await userEvent.keyboard('{Enter}');
+    const drawer = within(await screen.findByRole('dialog'));
+    const chegadaNoDrawer = drawer.getByRole('button', { name: 'Cheguei ao local' });
+
+    act(() => {
+      fireEvent.click(chegadaNoDrawer);
+      fireEvent.click(chegadaNaLista);
+    });
+
+    expect(api.registrarChegadaLocalSvo).toHaveBeenCalledExactlyOnceWith(7);
+    expect(drawer.getByText('A caminho')).toBeInTheDocument();
+    expect(linha.getByText('A caminho')).toBeInTheDocument();
+    expect(drawer.getByRole('button', { name: 'Registrando chegada…' })).toBeDisabled();
+    expect(linha.getByRole('button', { name: 'Registrando chegada…' })).toBeDisabled();
+
+    await act(async () => confirmar(coleta('NO_LOCAL')));
+    expect(drawer.getByText('No local')).toBeInTheDocument();
+    expect(drawer.getByText('Chegada ao local registrada.')).toBeInTheDocument();
+    expect(drawer.queryByRole('button', { name: 'Cheguei ao local' })).not.toBeInTheDocument();
+    expect(drawer.getByRole('button', { name: 'Finalizar viagem' })).toBeEnabled();
+    expect(linha.getByText('No local')).toBeInTheDocument();
+    expect(linha.getByRole('button', { name: 'Finalizar' })).toBeEnabled();
+    expect(api.listar).toHaveBeenCalledTimes(1);
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(detalhes);
+    expect(within(await screen.findByRole('dialog')).getByText('No local')).toBeInTheDocument();
+  });
+
+  it.each([
+    new ApiError('Sua sessão expirou.', 401),
+    new ApiError('Acesso negado.', 403),
+    new ApiError('Não foi possível conectar ao servidor.', 0),
+    new ApiError('O servidor demorou a responder. Tente novamente.', 0),
+  ])('exibe a falha %s com o status original e libera o botão', async (error) => {
+    sessao.perfil = 'MOTORISTA_SVO';
+    api.listar.mockResolvedValue([coleta('EM_ANDAMENTO')]);
+    api.registrarChegadaLocalSvo.mockRejectedValueOnce(error);
+    abrir();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cheguei ao local' }));
+    expect(await screen.findByText(error.message)).toBeInTheDocument();
+    expect(within(linhaDaColeta()).getByText('A caminho')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cheguei ao local' })).toBeEnabled();
+  });
+
+  it('revalida a coleta com o servidor após receber 409', async () => {
+    sessao.perfil = 'MOTORISTA_SVO';
+    api.listar.mockResolvedValueOnce([coleta('EM_ANDAMENTO')]).mockResolvedValueOnce([coleta('NO_LOCAL')]);
+    api.registrarChegadaLocalSvo.mockRejectedValueOnce(new ApiError('A coleta mudou de status.', 409));
+    abrir();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cheguei ao local' }));
+    expect(await screen.findByText('A coleta mudou de status.')).toBeInTheDocument();
+    expect(within(linhaDaColeta()).getByText('No local')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cheguei ao local' })).not.toBeInTheDocument();
+    expect(api.listar).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserva o status e apresenta a falha de atualização após um conflito', async () => {
+    sessao.perfil = 'MOTORISTA_SVO';
+    api.listar.mockResolvedValueOnce([coleta('EM_ANDAMENTO')]).mockRejectedValueOnce(new Error('Sem conexão'));
+    api.registrarChegadaLocalSvo.mockRejectedValueOnce(new ApiError('A coleta mudou de status.', 409));
+    abrir();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cheguei ao local' }));
+    expect(await screen.findByText(/Não foi possível atualizar o status/)).toBeInTheDocument();
+    expect(within(linhaDaColeta()).getByText('A caminho')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cheguei ao local' })).toBeEnabled();
+  });
+
+  it('remove a ordem da lista quando o PATCH retorna 404 e a consulta confirma a ausência', async () => {
+    sessao.perfil = 'MOTORISTA_SVO';
+    api.listar.mockResolvedValueOnce([coleta('EM_ANDAMENTO')]).mockResolvedValueOnce([]);
+    api.registrarChegadaLocalSvo.mockRejectedValueOnce(new ApiError('Coleta inexistente.', 404));
+    abrir();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cheguei ao local' }));
+    expect(await screen.findByText('Coleta inexistente.')).toBeInTheDocument();
+    expect(screen.queryByText('Rua das Flores, 10')).not.toBeInTheDocument();
+  });
+
+  it('exibe uma mensagem segura quando a API falha internamente', async () => {
+    sessao.perfil = 'MOTORISTA_SVO';
+    api.listar.mockResolvedValue([coleta('EM_ANDAMENTO')]);
+    api.registrarChegadaLocalSvo.mockRejectedValueOnce(new ApiError('Detalhes internos do servidor', 500));
+    abrir();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cheguei ao local' }));
+    expect(await screen.findByText(/O servidor não conseguiu confirmar a chegada/)).toBeInTheDocument();
+    expect(screen.queryByText('Detalhes internos do servidor')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cheguei ao local' })).toBeEnabled();
+  });
+
   const opcoesDoFiltroDeStatus = () =>
     Array.from(
       (screen.getByLabelText('Filtrar por status') as HTMLSelectElement).querySelectorAll('option'),
@@ -342,5 +484,42 @@ describe('ViagensPage: status e ações da coleta SVO por perfil (SCRUM-110)', (
     expect(opcoes).toContain('Em Andamento');
     expect(opcoes).not.toContain('No local');
     expect(opcoes).not.toContain('A caminho');
+  });
+});
+
+vi.mock('../services/api/evidenciasOdometroApi', () => ({
+  evidenciasOdometroApi: { enviar: vi.fn(), consultar: vi.fn(), arquivo: vi.fn() },
+}));
+
+describe('ViagensPage: fotos do odômetro no detalhe (SCRUM-207)', () => {
+  const concluida = { ...viagem(7, 'ADMINISTRATIVA', 'Hospital de Lagarto'), status: 'CONCLUIDA' as const, km_inicial: 100, km_final: 150 };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessao.perfil = 'GESTOR_FROTA';
+    api.listar.mockResolvedValue([concluida]);
+    api.listarAlertasSvo.mockResolvedValue([]);
+    vi.mocked(evidenciasOdometroApi.consultar).mockReturnValue(new Promise(() => {}));
+  });
+
+  afterEach(() => {
+    RECURSOS_BACKEND.fotosOdometro = false;
+    sessao.perfil = 'ADMINISTRADOR';
+  });
+
+  it('desligado, o detalhe não oferece as fotos', async () => {
+    abrir();
+    fireEvent.click(await screen.findByTitle('Ver detalhes da viagem'));
+    expect(await screen.findByText('Viagem #7')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Fotos do odômetro/ })).not.toBeInTheDocument();
+  });
+
+  it('Gestor de Frota abre as fotos da viagem administrativa', async () => {
+    RECURSOS_BACKEND.fotosOdometro = true;
+    abrir();
+    fireEvent.click(await screen.findByTitle('Ver detalhes da viagem'));
+    fireEvent.click(await screen.findByRole('button', { name: /Fotos do odômetro/ }));
+    expect(await screen.findByText(/Fotos do odômetro · Viagem administrativa #7/)).toBeInTheDocument();
+    expect(evidenciasOdometroApi.consultar).toHaveBeenCalledWith(expect.objectContaining({ id: 7, tipo_operacao: 'ADMINISTRATIVA' }));
   });
 });

@@ -20,6 +20,14 @@ exports.up = async (knex) => {
 /** @param {import('knex').Knex} knex */
 exports.down = async (knex) => {
   await knex.raw(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM ordens_svo WHERE status = 'NO_LOCAL') THEN
+        RAISE EXCEPTION 'Existem ordens NO_LOCAL. Resolva-as antes do rollback dos índices BL31';
+      END IF;
+    END
+    $$;
+
     DROP INDEX IF EXISTS idx_ordens_svo_veiculo_status_ativo;
     CREATE INDEX idx_ordens_svo_veiculo_status_ativo
       ON ordens_svo (veiculo_id, status)

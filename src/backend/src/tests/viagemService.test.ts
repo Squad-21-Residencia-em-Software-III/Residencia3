@@ -42,6 +42,11 @@ vi.mock('../config/database', () => ({
   db: mockDb,
 }));
 vi.mock('../services/filaSvoService', () => ({ reavaliarFilaSvo: vi.fn() }));
+// O vínculo das fotos do odômetro tem testes próprios (evidenciaOdometroTransicao.test.ts)
+vi.mock('../services/evidenciaOdometroTransicao', () => ({
+  registrarEvidenciaNaTransicao: vi.fn(async () => undefined),
+  concluirOperacao: vi.fn(async () => undefined),
+}));
 
 vi.mock('../models/veiculoModel', () => ({
   veiculoModel: { atualizarStatus: vi.fn() },
@@ -67,6 +72,8 @@ vi.mock('../models/viagemModel', () => ({
   },
 }));
 
+import { reavaliarFilaSvo } from '../services/filaSvoService';
+import { registrarEvidenciaNaTransicao, concluirOperacao } from '../services/evidenciaOdometroTransicao';
 import { viagemService } from '../services/viagemService';
 import { veiculoModel } from '../models/veiculoModel';
 import { motoristaModel } from '../models/motoristaModel';
@@ -131,8 +138,8 @@ function responder(
 
     case 'equipes_svo':
       return estado.equipe;
-    case 'escalas_svo':
-      return { id: 1 };
+    case 'ordens_svo_integrantes':
+      return [];
 
     case 'veiculos':
       return estado.veiculo;
@@ -763,7 +770,7 @@ describe('viagemService.iniciarViagem', () => {
     ref.estado.viagem = { id: 5, status: 'ALOCADA', veiculo_id: 10, motorista_id: 20 };
     ref.estado.solicitacaoSvo = { id: 7, status: 'EM_ANDAMENTO', local_ocorrencia: ' ' };
 
-    await expect(viagemService.iniciarViagem('SVO', 5, 1000, gestorSvo)).rejects.toMatchObject({
+    await expect(viagemService.iniciarViagem('SVO', 5, 1000, motoristaSvo)).rejects.toMatchObject({
       statusCode: 400,
     });
     expect(ref.estado.updates).toEqual([]);
@@ -839,7 +846,7 @@ describe('viagemService.iniciarViagem', () => {
       'SVO',
       5,
       1000,
-      gestorSvo
+      motoristaSvo
     );
 
     expect(ref.estado.updates).toContainEqual({
@@ -960,7 +967,7 @@ describe('viagemService.finalizarViagem', () => {
   // BL17: a API valida a quilometragem final, sem depender da interface
   it.each([
     ['ADMINISTRATIVA', 'EM_ANDAMENTO', () => gestorFrota],
-    ['SVO', 'EM_DESLOCAMENTO', () => gestorSvo],
+    ['SVO', 'EM_DESLOCAMENTO', () => motoristaSvo],
   ] as const)('deve rejeitar km final menor que o km inicial (%s) sem gravar nada', async (tipo, status, autor) => {
     ref.estado.viagem = { ...ref.estado.viagem, status };
 
@@ -1064,7 +1071,7 @@ describe('viagemService.finalizarViagem', () => {
       'SVO',
       5,
       1050,
-      gestorSvo
+      motoristaSvo
     );
 
     expect(ref.estado.updates).toContainEqual({
@@ -1351,43 +1358,43 @@ describe('BL31 - registrarChegadaLocalSvo', () => {
     });
 
     expect(auditoriaModel.registrar).toHaveBeenCalled();
-    });
+  });
 
-    it('BL31 - deve finalizar uma coleta SVO com status NO_LOCAL', async () => {
-      ref.estado.viagem = {
-        id: 5,
-        solicitacao_id: 7,
-        status: 'NO_LOCAL',
-        km_inicial: 1000,
-        veiculo_id: 10,
-        motorista_id: 20,
-      };
-
-      await viagemService.finalizarViagem(
-        'SVO',
-        5,
-        1050,
-        gestorSvo
-      );
-
-      expect(ref.estado.updates).toContainEqual({
-        tabela: 'ordens_svo',
-        valores: expect.objectContaining({
-          status: 'CONCLUIDA',
-          data_hora_conclusao: expect.any(Date),
-        }),
-      });
-
-      expect(ref.estado.updates).toContainEqual({
-        tabela: 'solicitacoes_svo',
-        valores: { status: 'CONCLUIDA' },
-      });
-    });
-
-  it('deve rejeitar chegada quando a ordem nao esta em deslocamento', async () => {
+  it('BL31 - deve finalizar uma coleta SVO com status NO_LOCAL', async () => {
     ref.estado.viagem = {
       id: 5,
-      status: 'ALOCADA',
+      solicitacao_id: 7,
+      status: 'NO_LOCAL',
+      km_inicial: 1000,
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+
+    await viagemService.finalizarViagem(
+      'SVO',
+      5,
+      1050,
+      motoristaSvo
+    );
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'ordens_svo',
+      valores: expect.objectContaining({
+        status: 'CONCLUIDA',
+        data_hora_conclusao: expect.any(Date),
+      }),
+    });
+
+    expect(ref.estado.updates).toContainEqual({
+      tabela: 'solicitacoes_svo',
+      valores: { status: 'CONCLUIDA' },
+    });
+  });
+
+  it.each(['ALOCADA', 'NO_LOCAL', 'CONCLUIDA', 'CANCELADA'])('rejeita chegada com status %s sem mutação', async (status) => {
+    ref.estado.viagem = {
+      id: 5,
+      status,
       veiculo_id: 10,
       motorista_id: 20,
     };
@@ -1415,6 +1422,42 @@ describe('BL31 - registrarChegadaLocalSvo', () => {
     });
 
     expect(ref.estado.updates).toHaveLength(0);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('autorização operacional SVO independente da interface', () => {
+  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO, PERFIS.GESTOR_FROTA,
+    PERFIS.MOTORISTA_FROTA, PERFIS.SOLICITANTE])('nega todas as transições ao perfil %s sem efeitos', async (perfil) => {
+    const autor = { id: 30, perfil };
+    for (const operacao of [
+      () => viagemService.iniciarViagem('SVO', 5, 1000, autor),
+      () => viagemService.registrarChegadaLocalSvo(5, autor),
+      () => viagemService.finalizarViagem('SVO', 5, 1050, autor),
+    ]) await expect(operacao()).rejects.toMatchObject({ statusCode: 403 });
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(ref.estado.updates).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+    expect(veiculoModel.atualizarStatus).not.toHaveBeenCalled();
+    expect(motoristaModel.atualizarStatus).not.toHaveBeenCalled();
+  });
+  it.each(['iniciar', 'finalizar'] as const)('nega %s a outro motorista sem tocar evidências ou fila', async (acao) => {
+    ref.estado.viagem = { id: 5, motorista_id: 20, veiculo_id: 10,
+      status: acao === 'iniciar' ? 'ALOCADA' : 'NO_LOCAL', km_inicial: 1000 };
+    const outro = { id: 99, perfil: PERFIS.MOTORISTA_SVO };
+    await expect(acao === 'iniciar' ? viagemService.iniciarViagem('SVO', 5, 1000, outro)
+      : viagemService.finalizarViagem('SVO', 5, 1050, outro)).rejects.toMatchObject({ statusCode: 403 });
+    expect(ref.estado.updates).toEqual([]);
+    expect(auditoriaModel.registrar).not.toHaveBeenCalled();
+    expect(reavaliarFilaSvo).not.toHaveBeenCalled();
+    expect(registrarEvidenciaNaTransicao).not.toHaveBeenCalled();
+    expect(concluirOperacao).not.toHaveBeenCalled();
+  });
+  it('retorna 404 quando a ordem não existe', async () => {
+    await expect(viagemService.registrarChegadaLocalSvo(404, motoristaSvo))
+      .rejects.toMatchObject({ statusCode: 404 });
+    expect(ref.estado.updates).toEqual([]);
     expect(auditoriaModel.registrar).not.toHaveBeenCalled();
   });
 });

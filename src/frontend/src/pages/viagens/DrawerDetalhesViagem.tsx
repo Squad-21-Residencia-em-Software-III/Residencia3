@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Download, Flag, MapPin, Play } from 'lucide-react';
-import { Avatar, Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
+import { Camera, Download, Flag, MapPin, Play } from 'lucide-react';
+import { Alert, Avatar, Badge, Button, Drawer, PlacaMercosul, type BadgeTone } from '../../components/ui';
 import { rotuloStatusViagem, viagemEmCurso, type StatusViagem, type Viagem } from '../../types/viagem';
 
 interface DrawerDetalhesViagemProps {
@@ -8,8 +8,14 @@ interface DrawerDetalhesViagemProps {
   somentePropria?: boolean;
   onClose: () => void;
   onIniciar?: (viagem: Viagem) => void;
+  onRegistrarChegada?: (viagem: Viagem) => Promise<void>;
+  registrandoChegada?: boolean;
+  mensagemSucesso?: string | null;
+  mensagemErro?: string | null;
   onFinalizar?: (viagem: Viagem) => void;
   onCancelar?: (viagem: Viagem) => void;
+  /** Fotos do odômetro (SCRUM-203); só é passado a quem pode vê-las na operação da viagem. */
+  onVerFotos?: (viagem: Viagem) => void;
 }
 
 function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
@@ -60,8 +66,13 @@ export function DrawerDetalhesViagem({
   viagem: viagemProp,
   onClose,
   onIniciar,
+  onRegistrarChegada,
+  registrandoChegada = false,
+  mensagemSucesso,
+  mensagemErro,
   onFinalizar,
   onCancelar,
+  onVerFotos,
   somentePropria = false,
 }: DrawerDetalhesViagemProps) {
   const [viagemState, setViagemState] = useState<Viagem | null>(viagemProp);
@@ -128,7 +139,7 @@ export function DrawerDetalhesViagem({
             <div />
           )}
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
             {!somentePropria && <Button
               variant="outline"
               size="sm"
@@ -139,6 +150,19 @@ export function DrawerDetalhesViagem({
             >
               <Download size={13} className="mr-1" /> Baixar Ficha
             </Button>}
+
+            {onVerFotos && viagem.status !== 'AGENDADA' && viagem.status !== 'CANCELADA' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onVerFotos(viagem);
+                }}
+              >
+                <Camera size={13} className="mr-1" /> Fotos do odômetro
+              </Button>
+            )}
 
             {viagem.status === 'AGENDADA' && onIniciar && (
               <Button
@@ -153,6 +177,18 @@ export function DrawerDetalhesViagem({
               </Button>
             )}
 
+            {!somentePropria && viagem.tipo_operacao === 'SVO' && viagem.status === 'EM_ANDAMENTO' && onRegistrarChegada && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={registrandoChegada}
+                aria-busy={registrandoChegada}
+                onClick={() => void onRegistrarChegada(viagem)}
+              >
+                {registrandoChegada ? 'Registrando chegada…' : 'Cheguei ao local'}
+              </Button>
+            )}
+
             {viagemEmCurso(viagem.status) && onFinalizar && (
               <Button
                 variant="primary"
@@ -161,6 +197,7 @@ export function DrawerDetalhesViagem({
                   onClose();
                   onFinalizar(viagem);
                 }}
+                disabled={registrandoChegada}
               >
                 <Flag size={13} className="mr-1" /> Finalizar viagem
               </Button>
@@ -169,6 +206,8 @@ export function DrawerDetalhesViagem({
         </div>
       }
     >
+      {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
+      {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}
       <div className="flex flex-col gap-6">
         {/* 1. Card de Partida e Destino (Fundo suave estilizado) */}
         <div className="rounded-2xl border border-blue-100 bg-[#f4f8fe] p-5">

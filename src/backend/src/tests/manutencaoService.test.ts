@@ -28,6 +28,7 @@ const mockTrx = Object.assign(
   vi.fn((tabela: string) => {
     let whereClause: any = {};
     const builder: any = {
+      forUpdate: () => builder,
       where: (arg: any) => {
         whereClause = { ...whereClause, ...arg };
         return builder;
@@ -129,6 +130,17 @@ describe('manutencaoService e recalcularStatusVeiculo', () => {
     estado.veiculoAtualizado = null;
     estado.manutencaoCriada = null;
     estado.manutencaoAtual = { id: 10, veiculo_id: 1, status: 'EM_ANDAMENTO' };
+  });
+
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('nega início de manutenção durante coleta %s sem gravar', async (status) => {
+    estado.ordemEmAndamento = { id: 100, status };
+    await expect(manutencaoService.criar({ veiculo_id: 1, tipo_manutencao: 'PREVENTIVA',
+      data_manutencao: '2099-01-01', status: 'EM_ANDAMENTO' }, 1)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(manutencaoService.atualizar(10, { status: 'EM_ANDAMENTO' }, 1)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(manutencaoService.atualizarStatus(10, 'EM_ANDAMENTO', 1)).rejects.toMatchObject({ statusCode: 409 });
+    expect(manutencaoModel.cadastrar).not.toHaveBeenCalled();
+    expect(manutencaoModel.atualizar).not.toHaveBeenCalled();
+    expect(manutencaoModel.atualizarStatus).not.toHaveBeenCalled();
   });
 
   describe('recalcularStatusVeiculo', () => {
