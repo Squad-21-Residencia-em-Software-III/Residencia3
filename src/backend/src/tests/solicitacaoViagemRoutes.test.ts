@@ -96,6 +96,23 @@ describe('POST /api/solicitacoes-viagem', () => {
     );
   });
 
+  it('encaminha a marcação de material sensível da solicitação administrativa', async () => {
+    const dados = { ...dadosValidos, material_sensivel: true };
+    const resposta = await request(app).post(endpoint)
+      .set('Authorization', 'Bearer token-teste').send(dados);
+
+    expect(resposta.status).toBe(201);
+    expect(solicitacaoViagemService.criar).toHaveBeenCalledWith(dados, 1);
+  });
+
+  it('rejeita material sensível com valor que não seja booleano', async () => {
+    const resposta = await request(app).post(endpoint)
+      .set('Authorization', 'Bearer token-teste').send({ ...dadosValidos, material_sensivel: 'true' });
+
+    expect(resposta.status).toBe(400);
+    expect(solicitacaoViagemService.criar).not.toHaveBeenCalled();
+  });
+
   it('deve retornar 400 quando faltar um campo obrigatório', async () => {
     const resposta = await request(app)
       .post(endpoint)
