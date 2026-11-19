@@ -83,42 +83,25 @@ Valores recusados na inicialização:
 
 ### Decisão
 
-- `TRUST_PROXY=1`: só a borda do Render é confiável. Vale para os dois caminhos e define `req.protocol`.
-- A Vercel se identifica com o cabeçalho `X-Proxy-Secret`, definido no `src/frontend/vercel.json` com `"op": "set"`. O `set` substitui qualquer valor enviado pelo visitante. O valor vem da variável de ambiente `PROXY_SECRET` da Vercel e não fica no repositório.
-- A API (`src/backend/src/middlewares/identificarCliente.ts`) compara o cabeçalho com o seu `PROXY_SECRET` em tempo constante:
-  - **segredo válido:** confia em mais um salto (o da Vercel), e `req.ip` passa a ser o endereço anterior a ele, que é o cliente. Segundo a documentação da Vercel, no rewrite para uma origem externa ela envia `X-Forwarded-For` com o IP público do visitante;
-  - **sem segredo, ou com segredo errado:** é tratado como acesso direto, sem confiar em nenhum salto extra.
-- O cabeçalho é removido antes das rotas e nunca aparece em logs.
-- O rate limit continua usando o `keyGenerator` padrão do `express-rate-limit`, porque é nele que rodam as validações `ERR_ERL_*`. Um `keyGenerator` próprio as desligaria.
-- O mesmo cliente tem um só contador nos dois caminhos.
-
-Se o `PROXY_SECRET` não estiver configurado, a API funciona como antes: no caminho da Vercel, o IP identificado é o da Vercel. Isso é seguro, mas os limites ficam compartilhados. Por isso a variável deve ser definida nos dois lados.
+- Configure o `TRUST_PROXY` para a topologia direta do Render e confira o valor em homologação. O Express usa essa configuração para determinar o IP direto e o protocolo.
+- O rewrite estático em `src/frontend/vercel.json` substitui `X-Proxy-Secret` pela variável `PROXY_SECRET` no encaminhamento da API. O segredo precisa ser aleatório e igual nos dois provedores. O recurso trata o valor literal da variável ausente como credencial inválida.
+- Com segredo válido, a API aceita somente um endereço IPv4 ou IPv6 de `X-Vercel-Forwarded-For`, o cabeçalho de IP da borda descrito pela [Vercel](https://vercel.com/docs/headers/request-headers). Confirme em homologação que a borda define esse cabeçalho e que o rewrite o entrega ao Render.
+- Com credencial ou endereço inválido, vale a seleção direta do Express. Se o endereço da Vercel faltar, os clientes encaminhados podem compartilhar o contador da borda. O limitador padrão continua agrupando IPv6 por sub-rede.
+- O roteamento estático preserva o caminho de upload de fotos de até 10 MB. A etapa `filesystem` mantém a precedência dos arquivos estáticos antes do fallback para a SPA.
 
 ### Como validar (e revalidar após mudanças na hospedagem)
 
-1. Gere dois segredos aleatórios, por exemplo com `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
-2. Configure as variáveis:
-   - Render: `PROXY_SECRET`, que deve ser idêntico ao da Vercel, e `DIAGNOSTICO_PROXY_TOKEN`. Este último é temporário e liga a rota `/api/diagnostico/ip`.
-   - Vercel: `PROXY_SECRET`, em Production e Preview. Depois, faça um redeploy.
-3. De uma rede, rode:
+1. Configure `PROXY_SECRET` na Vercel em Preview e Production, e no Render. Use um valor aleatório de alta entropia e uma variável sem prefixo `VITE_`. Aplique as configurações com um novo deploy dos ambientes autorizados.
+2. Em ambiente autorizado, configure temporariamente `DIAGNOSTICO_PROXY_TOKEN` no Render. A rota devolve somente IP e caminho e usa `Cache-Control: no-store`.
+3. Exporte o token por um meio seguro e rode a partir de `src/backend`:
+
    ```bash
-   cd src/backend
-   DIAGNOSTICO_PROXY_TOKEN=... node scripts/diagnosticar-proxy.cjs \
-     --direto https://fsph-api.onrender.com --vercel https://fsph-web.vercel.app --rede wifi
+   node scripts/diagnosticar-proxy.cjs --direto <origem-https-render> --vercel <origem-https-vercel>
    ```
-   Repita de outra rede, por exemplo `--rede 4g`, para provar que os limites são por cliente.
-4. O script salva `docs/evidencias/proxy-<data>-<rede>.json`, com o último bloco dos IPs mascarado, e termina com código 1 se alguma verificação falhar. Verificações:
-   - `diretoIdentificaTestador` e `vercelIdentificaTestador`: o IP identificado é o IP público do testador;
-   - `forjadoIgnoradoNosDois` e `segredoFalsoIgnoradoNosDois`: um `X-Forwarded-For` ou `X-Proxy-Secret` enviado pelo cliente não muda nada;
-   - `diretoComecouLiberado` e `diretoBloqueouNaTentativa11`: um IP novo tem o próprio contador e é bloqueado após 10 falhas de login;
-   - `forjadoNaoLiberou*`: trocar o `X-Forwarded-For` depois do bloqueio não libera novas tentativas;
-   - `vercelHerdouBloqueioDoMesmoCliente`: o caminho da Vercel já começa bloqueado, porque conta pelo IP do testador, e não pelo da Vercel.
-5. Nos logs do Render, no período do teste, confirme que não há `ERR_ERL_*`.
-6. Remova `DIAGNOSTICO_PROXY_TOKEN` do Render. A rota volta a responder 404.
 
-O teste consome as 10 falhas de login da janela de 15 minutos do IP do testador. Cada falha gera um registro de auditoria `LOGIN_FALHOU` com e-mail inexistente.
-
-Se o resultado medido divergir do esperado, por exemplo se a borda do Render não acrescentar o IP da Vercel, o `identificarCliente` mantém o `req.ip`. Nesse caso, o JSON do diagnóstico (`cabecalhos`, `reqIps`, `ipPeloTrustProxy`) mostra a cadeia real. Ajuste o `TRUST_PROXY` com base nele e registre aqui a nova decisão.
+   O script consulta uma vez cada caminho e retorna erro se o IP ou o caminho não for consistente. Ele publica apenas a família do IP e o resultado. Repita em redes com IPv4 e IPv6, conforme disponíveis.
+4. Verifique filtros e paginação, leitura e escrita, rotas internas da SPA, cabeçalhos, login, refresh, logout e upload do odômetro no preview. Execute a suíte local do backend para validar o rate limit.
+5. Remova `DIAGNOSTICO_PROXY_TOKEN` após a validação. A rota volta a responder 404.
 
 ## Rate limit
 

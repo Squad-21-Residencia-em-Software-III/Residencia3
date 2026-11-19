@@ -11,8 +11,8 @@
       "continue": true
     },
     {
-      "src": "/api/(.*)",
-      "dest": "https://fsph-api.onrender.com/api/$1",
+      "src": "^(/api(?:/.*)?)$",
+      "dest": "https://fsph-api.onrender.com$1",
       "transforms": [
         {
           "type": "request.headers",

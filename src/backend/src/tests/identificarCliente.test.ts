@@ -41,7 +41,7 @@ const viaVercel = (alvo: Alvo, cliente: string, segredo = SEGREDO) =>
   request(alvo)
     .get('/api/diagnostico/ip')
     .set('X-Forwarded-For', `${cliente}, ${VERCEL}`)
-    .set('X-Proxy-Secret', segredo);
+    .set('X-Proxy-Secret', segredo).set('X-Vercel-Forwarded-For', cliente);
 
 describe('IP do cliente nos dois caminhos de acesso', () => {
   it('caminho direto: usa o IP acrescentado pela borda e ignora o forjado', async () => {
@@ -53,13 +53,14 @@ describe('IP do cliente nos dois caminhos de acesso', () => {
   it('caminho da Vercel com o segredo: identifica o cliente, e não a Vercel', async () => {
     const res = await viaVercel(app, CLIENTE_A).set('X-Diagnostico-Token', TOKEN);
 
-    expect(res.body).toMatchObject({ clienteIdentificado: CLIENTE_A, caminho: 'vercel', ipPeloTrustProxy: VERCEL });
+    expect(res.body).toMatchObject({ clienteIdentificado: CLIENTE_A, caminho: 'vercel' });
   });
 
   it('caminho da Vercel, se a borda não acrescentar a Vercel: mantém o req.ip', async () => {
     const res = await request(app)
       .get('/api/diagnostico/ip')
       .set('X-Forwarded-For', CLIENTE_A)
+      .set('X-Vercel-Forwarded-For', CLIENTE_A)
       .set('X-Proxy-Secret', SEGREDO)
       .set('X-Diagnostico-Token', TOKEN);
 
@@ -82,6 +83,47 @@ describe('IP do cliente nos dois caminhos de acesso', () => {
     expect(res.body).toMatchObject({ clienteIdentificado: VERCEL, caminho: 'direto' });
   });
 
+  it.each([
+    ['ausente', undefined],
+    ['múltiplos valores', '203.0.113.10, 198.51.100.7'],
+    ['com porta', '203.0.113.10:443'],
+    ['malformado', 'desconhecido'],
+  ])('IP Vercel %s usa o caminho direto', async (_caso, ip) => {
+    const consulta = direto(app, VERCEL).set('X-Proxy-Secret', SEGREDO).set('X-Diagnostico-Token', TOKEN);
+    if (ip) consulta.set('X-Vercel-Forwarded-For', ip);
+
+    const res = await consulta;
+    expect(res.body).toEqual({ clienteIdentificado: VERCEL, caminho: 'direto' });
+  });
+
+  it('ignora IP Vercel sem prova de proxy', async () => {
+    const res = await direto(app, CLIENTE_A)
+      .set('X-Vercel-Forwarded-For', CLIENTE_B)
+      .set('X-Diagnostico-Token', TOKEN);
+
+    expect(res.body).toEqual({ clienteIdentificado: CLIENTE_A, caminho: 'direto' });
+  });
+
+  it('rejeita cabeçalhos de segredo duplicados', async () => {
+    const res = await viaVercel(app, CLIENTE_A)
+      .set('X-Proxy-Secret', [SEGREDO, SEGREDO] as unknown as string)
+      .set('X-Diagnostico-Token', TOKEN);
+
+    expect(res.body).toEqual({ clienteIdentificado: VERCEL, caminho: 'direto' });
+  });
+
+  it('usa o socket quando o endereço selecionado do caminho direto é inválido', async () => {
+    const res = await direto(app, 'invalido').set('X-Diagnostico-Token', TOKEN);
+    expect(res.body).toEqual({ clienteIdentificado: '127.0.0.1', caminho: 'direto' });
+  });
+
+  it('mantém o IP da Vercel independente da quantidade de entradas no XFF do Render', async () => {
+    const res = await viaVercel(app, '2001:db8::10')
+      .set('X-Forwarded-For', '203.0.113.10, 198.51.100.7, 192.0.2.4')
+      .set('X-Diagnostico-Token', TOKEN);
+
+    expect(res.body).toEqual({ clienteIdentificado: '2001:db8::10', caminho: 'vercel' });
+  });
   it('o segredo não chega às rotas', async () => {
     const alvo = express()
       .set('trust proxy', 1)
@@ -114,7 +156,7 @@ describe('Rota de diagnóstico /api/diagnostico/ip', () => {
     expect(res.status).toBe(401);
   });
 
-  it('expõe só os cabeçalhos de proxy, sem cookies, Authorization ou o segredo', async () => {
+  it('retorna apenas o IP e caminho, sem cookies, Authorization ou segredo', async () => {
     const res = await viaVercel(app, CLIENTE_A)
       .set('X-Diagnostico-Token', TOKEN)
       .set('Cookie', 'refreshToken=abc')
@@ -122,15 +164,7 @@ describe('Rota de diagnóstico /api/diagnostico/ip', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
-    expect(Object.keys(res.body.cabecalhos)).toEqual([
-      'x-forwarded-for',
-      'x-forwarded-proto',
-      'x-forwarded-host',
-      'x-real-ip',
-      'x-vercel-forwarded-for',
-      'cf-connecting-ip',
-      'true-client-ip',
-    ]);
+    expect(res.body).toEqual({ clienteIdentificado: CLIENTE_A, caminho: 'vercel' });
     const corpo = JSON.stringify(res.body);
     expect(corpo).not.toContain(SEGREDO);
     expect(corpo).not.toContain('refreshToken');
@@ -149,7 +183,7 @@ describe('Rate limit por cliente nos dois caminhos', () => {
   }
   const loginDireto = (alvo: Alvo, xff: string) => request(alvo).post('/login').set('X-Forwarded-For', xff);
   const loginVercel = (alvo: Alvo, cliente: string) =>
-    request(alvo).post('/login').set('X-Forwarded-For', `${cliente}, ${VERCEL}`).set('X-Proxy-Secret', SEGREDO);
+    request(alvo).post('/login').set('X-Forwarded-For', `${cliente}, ${VERCEL}`).set('X-Proxy-Secret', SEGREDO).set('X-Vercel-Forwarded-For', cliente);
 
   function espionarLogs() {
     const erros = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -185,6 +219,25 @@ describe('Rate limit por cliente nos dois caminhos', () => {
     expect(logs()).not.toContain('ERR_ERL');
   });
 
+  it('aplica a sub-rede IPv6 do limitador padrão e normaliza IPv4 mapeado', async () => {
+    const ipv6 = appLimitado();
+    await loginDireto(ipv6, '2001:db8:1234:5600::1');
+    await loginVercel(ipv6, '2001:db8:1234:5600::2');
+    expect((await loginVercel(ipv6, '2001:db8:1234:5600::3')).status).toBe(429);
+    expect((await loginVercel(ipv6, '2001:db8:1234:5800::1')).status).toBe(401);
+
+    const ipv4 = appLimitado();
+    await loginDireto(ipv4, CLIENTE_A);
+    await loginVercel(ipv4, '::ffff:203.0.113.10');
+    expect((await loginVercel(ipv4, CLIENTE_A)).status).toBe(429);
+  });
+
+  it('mantém o alerta do limitador para confiança irrestrita', async () => {
+    const logs = espionarLogs();
+    const alvo = appLimitado().set('trust proxy', true);
+    await loginDireto(alvo, CLIENTE_A);
+    expect(logs()).toContain('ERR_ERL_PERMISSIVE_TRUST_PROXY');
+  });
   it('o mesmo cliente compartilha o limite entre os dois caminhos', async () => {
     const alvo = appLimitado();
 
