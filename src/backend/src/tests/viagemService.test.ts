@@ -19,6 +19,7 @@ interface Estado {
   solicitacaoSvo?: object;
   viagem?: object;
   viagemAtivaDaSolicitacao?: object;
+  resultadosPrazo?: boolean[];
   ordemAtivaDaSolicitacao?: object;
   ordemPendente?: object;
   veiculo?: Record<string, unknown>;
@@ -169,6 +170,9 @@ function responder(
 
   switch (tabela) {
     case 'solicitacoes_viagem':
+      if (temChamada(chamadas, 'where', 'data_saida_desejada')) {
+        return estado.resultadosPrazo?.shift() ? estado.solicitacao : undefined;
+      }
       return estado.solicitacao;
 
     case 'solicitacoes_svo':
@@ -574,6 +578,14 @@ describe('viagemService.criar (administrativa)', () => {
     await expect(
       viagemService.criar(dados, gestorFrota)
     ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('rejeita se o prazo venceu enquanto a transação aguardava os recursos', async () => {
+    ref.estado.resultadosPrazo = [false, true];
+    await expect(viagemService.criar(dados, gestorFrota)).rejects.toMatchObject({
+      statusCode: 409, codigo: 'SOLICITACAO_EXPIRADA',
+    });
+    expect(ref.estado.inserts).toEqual([]);
   });
 
   it('deve agendar, reservar os recursos e auditar no módulo de viagens', async () => {

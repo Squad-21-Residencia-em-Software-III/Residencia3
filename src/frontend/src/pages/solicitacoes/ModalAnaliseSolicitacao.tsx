@@ -92,7 +92,7 @@ export function ModalAnaliseSolicitacao({
   // Consulta de disponibilidade no período pretendido (SCRUM-73).
   // A API libera essa rota somente para o Gestor de Frota.
   // A disponibilidade só interessa a quem decide a solicitação
-  const podeConsultarDisponibilidade = podeDecidir;
+  const podeConsultarDisponibilidade = podeDecidir && solicitacao?.status !== 'EXPIRADA';
   const solicitacaoId = solicitacao?.id;
 
   useEffect(() => {
