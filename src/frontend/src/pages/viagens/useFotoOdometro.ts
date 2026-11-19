@@ -9,7 +9,7 @@ import {
   type FaseOdometro,
 } from '../../types/evidenciaOdometro';
 import type { Viagem } from '../../types/viagem';
-import { novaChaveIdempotencia } from '../../utils/fotoOdometro';
+import { novaChaveIdempotencia, validarFotoOdometro } from '../../utils/fotoOdometro';
 
 /**
  * Foto do odômetro de uma fase (SCRUM-205/206). A foto é enviada antes da transição e o id
@@ -26,6 +26,8 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
   const [consultando, setConsultando] = useState(ativo);
   const [erroConsulta, setErroConsulta] = useState<string | null>(null);
   const [arquivo, setArquivoAtual] = useState<File | null>(null);
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
+  const [validandoArquivo, setValidandoArquivo] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
   const chave = useRef<string>(novaChaveIdempotencia());
@@ -58,7 +60,17 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
     evidencia?.situacao === 'REGISTRADA' || evidencia?.situacao === 'EXCECAO_AUTORIZADA';
   const fotoExigida = ativo && !fotoDispensada;
 
-  const setArquivo = (novo: File | null) => {
+  const setArquivo = async (novo: File | null) => {
+    setErroArquivo(null);
+    if (novo) {
+      setValidandoArquivo(true);
+      const problema = await validarFotoOdometro(novo);
+      setValidandoArquivo(false);
+      if (problema) {
+        setErroArquivo(problema);
+        return;
+      }
+    }
     setArquivoAtual(novo);
     // Outra foto é outra evidência
     enviada.current = null;
@@ -105,6 +117,8 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
     consultar,
     fotoExigida,
     arquivo,
+    erroArquivo,
+    validandoArquivo,
     setArquivo,
     enviando,
     cancelarEnvio: () => envio.current?.abort(),
@@ -113,13 +127,13 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
   };
 }
 
-/** Mensagem da falha, deixando claro que nada foi registrado. */
+/** Uma falha de rede pode ocorrer depois que o servidor recebeu a transição. */
 export function mensagemFalhaTransicao(erro: unknown, acao: string): string {
   if (erro instanceof ApiError && erro.codigo === CODIGO_CANCELADO) {
     return `O envio da foto foi cancelado. A ${acao} não foi registrada.`;
   }
   if (erro instanceof ApiError && erro.status === 0) {
-    return `${erro.message} A ${acao} não foi registrada; seus dados continuam aqui para tentar de novo.`;
+    return `${erro.message} A ${acao} não foi confirmada; seus dados continuam aqui para tentar de novo.`;
   }
   return mensagemDeErro(erro);
 }

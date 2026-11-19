@@ -38,9 +38,9 @@ const situacao = (saida: Partial<EvidenciaOdometro> = {}, chegada: Partial<Evide
 
 const fotoJpeg = () => new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])], 'odo.jpg', { type: 'image/jpeg' });
 
-function abrir(onSalvar = vi.fn().mockResolvedValue(undefined)) {
+function abrir(onSalvar = vi.fn().mockResolvedValue(undefined), referencia = viagem) {
   const onClose = vi.fn();
-  render(<ModalIniciarViagem viagem={viagem} onClose={onClose} onSalvar={onSalvar} />);
+  render(<ModalIniciarViagem viagem={referencia} onClose={onClose} onSalvar={onSalvar} />);
   return { onSalvar, onClose };
 }
 
@@ -53,6 +53,7 @@ async function escolherFoto(arquivo = fotoJpeg(), fase = 'SAIDA', valida = true)
 const informarKm = (valor: string) =>
   fireEvent.change(screen.getByLabelText(/Odômetro de Saída/), { target: { value: valor } });
 const confirmar = () => fireEvent.click(screen.getByRole('button', { name: /Confirmar Saída/ }));
+const tentarNovamente = () => fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -64,6 +65,7 @@ beforeEach(() => {
 
 afterEach(() => {
   RECURSOS_BACKEND.fotosOdometro = false;
+  vi.unstubAllGlobals();
 });
 
 describe('ModalIniciarViagem sem o back das fotos (interruptor desligado)', () => {
@@ -125,6 +127,58 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     expect(screen.queryByAltText(/Prévia/)).not.toBeInTheDocument();
   });
 
+  it('permite repetir a captura e bloqueia a confirmação enquanto valida a substituição', async () => {
+    const { onSalvar } = abrir();
+    await screen.findByRole('button', { name: /Carregar foto/ });
+    await escolherFoto();
+    informarKm('35000');
+
+    const substituta = new File([fotoJpeg()], 'substituta.jpg', { type: 'image/jpeg' });
+    const camera = screen.getByTestId('foto-camera-SAIDA');
+    const abrirCamera = vi.spyOn(camera, 'click');
+    fireEvent.click(screen.getByRole('button', { name: 'Tirar outra foto' }));
+    expect(abrirCamera).toHaveBeenCalledTimes(1);
+    fireEvent.change(camera, { target: { files: [substituta] } });
+
+    expect(screen.getByText('Verificando a foto...')).toBeVisible();
+    expect(screen.getByRole('button', { name: /Confirmar Saída/ })).toBeDisabled();
+    fireEvent.submit(screen.getByLabelText(/Odômetro de Saída/).closest('form')!);
+    expect(api.enviar).not.toHaveBeenCalled();
+
+    await screen.findByText('Foto selecionada: substituta.jpg');
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:previa');
+    confirmar();
+    await waitFor(() => expect(onSalvar).toHaveBeenCalled());
+    expect(api.enviar).toHaveBeenCalledWith(viagem, 'SAIDA', substituta, expect.anything());
+  });
+
+  it('mantém o km e revoga a prévia ao remover a foto', async () => {
+    const { onSalvar } = abrir();
+    await screen.findByRole('button', { name: /Carregar foto/ });
+    await escolherFoto();
+    informarKm('35000');
+    fireEvent.click(screen.getByRole('button', { name: 'Remover foto' }));
+
+    expect(screen.queryByAltText(/Prévia/)).not.toBeInTheDocument();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:previa');
+    expect(screen.getByLabelText(/Odômetro de Saída/)).toHaveValue(35000);
+    confirmar();
+    expect(screen.getByText(/Tire ou carregue a foto/)).toBeInTheDocument();
+    expect(onSalvar).not.toHaveBeenCalled();
+  });
+
+  it('ajusta o diálogo quando o teclado reduz a área visual', () => {
+    const viewport = Object.assign(new EventTarget(), { height: 640, offsetTop: 0 });
+    vi.stubGlobal('visualViewport', viewport);
+    abrir();
+    const fundo = screen.getByRole('dialog').parentElement;
+    expect(fundo).toHaveStyle({ height: '640px', top: '0px' });
+
+    Object.assign(viewport, { height: 290, offsetTop: 80 });
+    viewport.dispatchEvent(new Event('resize'));
+    expect(fundo).toHaveStyle({ height: '290px', top: '80px' });
+  });
+
   it('falha na transição: mantém km e foto e não reenvia a mesma foto', async () => {
     const onSalvar = vi.fn()
       .mockRejectedValueOnce(new ApiError('O km inicial é menor que o km atual do veículo', 400))
@@ -140,7 +194,7 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     expect(screen.getByLabelText(/Odômetro de Saída/)).toHaveValue(35000);
     expect(screen.getByAltText(/Prévia/)).toBeInTheDocument();
 
-    confirmar();
+    tentarNovamente();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(api.enviar).toHaveBeenCalledTimes(1);
     expect(onSalvar).toHaveBeenNthCalledWith(2, 35000, 'ev-1');
@@ -160,7 +214,7 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     confirmar();
     expect(await screen.findByText(/expirou/)).toBeInTheDocument();
 
-    confirmar();
+    tentarNovamente();
     await waitFor(() => expect(onSalvar).toHaveBeenCalledTimes(2));
     expect(api.enviar).toHaveBeenCalledTimes(2);
     const [, , , primeira] = api.enviar.mock.calls[0];
@@ -169,7 +223,7 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     expect(onSalvar).toHaveBeenLastCalledWith(35000, 'ev-2');
   });
 
-  it('sem conexão no envio da foto: avisa que a saída não foi registrada', async () => {
+  it('sem conexão no envio da foto: mantém os dados e permite reenviar com a mesma chave', async () => {
     api.enviar.mockRejectedValueOnce(new ApiError('Não foi possível conectar ao servidor. Verifique sua conexão.', 0));
     const { onSalvar } = abrir();
     await screen.findByRole('button', { name: /Carregar foto/ });
@@ -177,19 +231,27 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     informarKm('35000');
     confirmar();
 
-    expect(await screen.findByText(/A saída não foi registrada/)).toBeInTheDocument();
+    expect(await screen.findByText(/A saída não foi confirmada/)).toBeInTheDocument();
     expect(onSalvar).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Odômetro de Saída/)).toHaveValue(35000);
+    expect(screen.getByAltText(/Prévia/)).toBeInTheDocument();
+    tentarNovamente();
+    await waitFor(() => expect(onSalvar).toHaveBeenCalledWith(35000, 'ev-1'));
+    expect(api.enviar.mock.calls[1][3].chaveIdempotencia).toBe(api.enviar.mock.calls[0][3].chaveIdempotencia);
   });
 
   it('impede envio duplicado com clique repetido', async () => {
     let concluir!: () => void;
     const onSalvar = vi.fn(() => new Promise<void>((r) => { concluir = r; }));
-    abrir(onSalvar);
+    const { onClose } = abrir(onSalvar);
     await screen.findByRole('button', { name: /Carregar foto/ });
     await escolherFoto();
     informarKm('35000');
     confirmar();
     await waitFor(() => expect(onSalvar).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeDisabled();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
     fireEvent.submit(screen.getByLabelText(/Odômetro de Saída/).closest('form')!);
     concluir();
     await waitFor(() => expect(api.enviar).toHaveBeenCalledTimes(1));
@@ -197,8 +259,12 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
   });
 
   it('deslocamento SVO compartilhado: a foto já registrada não é pedida de novo', async () => {
-    api.consultar.mockResolvedValue(situacao({ situacao: 'REGISTRADA', id: 'ev-9', compartilhada: true }));
-    const { onSalvar, onClose } = abrir();
+    api.consultar.mockResolvedValue({
+      ...situacao({ situacao: 'REGISTRADA', id: 'ev-9', compartilhada: true }),
+      tipo_operacao: 'SVO',
+    });
+    const coleta: Viagem = { ...viagem, tipo_operacao: 'SVO' };
+    const { onSalvar, onClose } = abrir(undefined, coleta);
 
     expect(await screen.findByText(/já foi registrada em outra coleta do mesmo veículo/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Tirar foto agora/ })).not.toBeInTheDocument();
@@ -206,6 +272,7 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     confirmar();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(onSalvar).toHaveBeenCalledWith(35000);
+    expect(api.consultar).toHaveBeenCalledWith(coleta);
     expect(api.enviar).not.toHaveBeenCalled();
   });
 

@@ -55,13 +55,20 @@ export function SituacaoFotoOdometro({ fase, foto, disabled }: SituacaoFotoOdome
         <Alert tone="warning" className="mb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span>Não foi possível verificar a situação da foto. Ela continua obrigatória.</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => void foto.consultar()}>
+            <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={disabled || foto.validandoArquivo} onClick={() => void foto.consultar()}>
               Tentar novamente
             </Button>
           </div>
         </Alert>
       )}
-      <CampoFotoOdometro fase={fase} arquivo={foto.arquivo} onChange={foto.setArquivo} disabled={disabled} />
+      <CampoFotoOdometro
+        fase={fase}
+        arquivo={foto.arquivo}
+        erro={foto.erroArquivo}
+        validando={foto.validandoArquivo}
+        onChange={foto.setArquivo}
+        disabled={disabled}
+      />
       <p className="-mt-2 mb-4 text-xs text-slate-500">
         Sem foto, a {rotulo} só pode ser registrada com autorização do gestor responsável pela operação.
       </p>
