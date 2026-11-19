@@ -232,7 +232,7 @@ function SolicitacoesAdministrativas() {
 
       {/* Cards de Métricas Superiores */}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="Total de Solicitações" value={totais.total} tone="neutral" />
 
         <MetricCard label="Pendentes de Decisão" value={totais.pendentes} tone="warning" />
@@ -249,8 +249,8 @@ function SolicitacoesAdministrativas() {
           label="Solicitações Recusadas"
           value={totais.recusadas}
           tone="danger"
-          className="col-span-2 lg:col-span-1"
         />
+        <MetricCard label="Solicitações Expiradas" value={totais.expiradas} tone="warning" />
       </div>
 
       {/* Tabela e Filtros Principais */}

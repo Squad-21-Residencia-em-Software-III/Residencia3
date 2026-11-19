@@ -53,6 +53,7 @@ interface DadosNovaViagem {
   veiculos: Veiculo[];
   motoristas: Motorista[];
   solicitacoes: SolicitacaoViagem[];
+  expiradasNaSessao: number[];
   erroSolicitacoes: string | null;
 }
 
@@ -317,7 +318,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         })),
     ])
       .then(([veiculos, motoristas, resultado]) => {
-        if (ativo) setDadosNovaViagem({ veiculos, motoristas, ...resultado });
+        if (ativo) setDadosNovaViagem({ veiculos, motoristas, ...resultado, expiradasNaSessao: [] });
       })
       .catch((error) => {
         if (!ativo) return;
@@ -408,13 +409,21 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       await viagensApi.criar(nova);
     } catch (error) {
       if (error instanceof ApiError && error.codigo === 'SOLICITACAO_EXPIRADA') {
-        const removerExpirada = (solicitacoes: SolicitacaoViagem[]) =>
-          solicitacoes.filter(({ id }) => id !== nova.solicitacao_id);
-        setDadosNovaViagem((dados) => dados && { ...dados, solicitacoes: removerExpirada(dados.solicitacoes) });
-        void solicitacoesApi.listarAprovadas().then(
-          (solicitacoes) => setDadosNovaViagem((dados) => dados && { ...dados, solicitacoes: removerExpirada(solicitacoes) }),
-          (erro) => setDadosNovaViagem((dados) => dados && { ...dados, erroSolicitacoes: mensagemDeErro(erro) }),
-        );
+        let atualizadas: SolicitacaoViagem[] | undefined;
+        let erroSolicitacoes: string | null = null;
+        try {
+          atualizadas = await solicitacoesApi.listarAprovadas();
+        } catch (falhaDeConsulta) {
+          erroSolicitacoes = mensagemDeErro(falhaDeConsulta);
+        }
+        setDadosNovaViagem((dados) => {
+          if (!dados) return dados;
+          const expiradasNaSessao = [...dados.expiradasNaSessao, nova.solicitacao_id];
+          return {
+            ...dados, expiradasNaSessao, erroSolicitacoes,
+            solicitacoes: (atualizadas ?? dados.solicitacoes).filter(({ id }) => !expiradasNaSessao.includes(id)),
+          };
+        });
       }
       throw error;
     }

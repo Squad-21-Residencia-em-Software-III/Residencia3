@@ -101,6 +101,24 @@ describe.skipIf(!habilitado)('Expiração administrativa em PostgreSQL descartá
     expect(await db('solicitacoes_viagem').where({ id }).first('status')).toEqual({ status: 'AGENDADA' });
   });
 
+  it('mantém uma única expiração quando o job e o POST disputam a solicitação vencida', async () => {
+    const id = await criarSolicitacao('APROVADA', 31);
+    const token = await gestor();
+    const [contagem, resposta] = await Promise.all([
+      solicitacaoViagemService.expirarAprovadas(),
+      request(app).post('/api/viagens').set('Authorization', `Bearer ${token}`)
+        .send({ tipo_operacao: 'ADMINISTRATIVA', solicitacao_id: id, veiculo_id: 1, motorista_id: 1 }),
+    ]);
+    // A rotina pode pular o registro se o HTTP tiver obtido o lock primeiro.
+    expect(contagem + await solicitacaoViagemService.expirarAprovadas()).toBe(1);
+    expect(resposta.status).toBe(409);
+    expect(resposta.body.codigo).toBe('SOLICITACAO_EXPIRADA');
+    expect(await db('solicitacoes_viagem').where({ id }).first('status')).toEqual({ status: 'EXPIRADA' });
+    expect(await db('viagens_frota').where({ solicitacao_id: id })).toHaveLength(0);
+    expect(await db('auditorias').where('acao', `EXPIROU_SOLICITACAO_VIAGEM id=${id} origem=ROTINA_AUTOMATICA`))
+      .toHaveLength(1);
+  });
+
   it.each(['APROVADA', 'EXPIRADA'])('bloqueia POST direto de solicitação %s já fora do prazo', async (status) => {
     const id = await criarSolicitacao(status, 31);
     const resposta = await request(app).post('/api/viagens').set('Authorization', `Bearer ${await gestor()}`)

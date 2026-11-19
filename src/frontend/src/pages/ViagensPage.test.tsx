@@ -4,11 +4,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RECURSOS_BACKEND } from '../config/recursosBackend';
+import { solicitacoesApi } from '../services/api/solicitacoesApi';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { ApiError } from '../services/api/http';
 import { viagensApi } from '../services/api/viagensApi';
 import { evidenciasOdometroApi } from '../services/api/evidenciasOdometroApi';
+import type { SolicitacaoViagem } from '../types/solicitacao';
 import type { Viagem } from '../types/viagem';
 import ViagensPage from './ViagensPage';
 
@@ -134,6 +136,40 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     expect(screen.queryByRole('button', { name: /Agendar Viagem/ })).not.toBeInTheDocument();
     expect(await screen.findByText('Av. Beira Mar, 500')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Agendar coleta/ })).toBeInTheDocument();
+  });
+
+  it('atualiza a lista após o prazo vencer e permite escolher outra solicitação', async () => {
+    const aprovada: SolicitacaoViagem = {
+      id: 21, solicitante_id: 3, solicitante_nome: 'Maria', origem: 'Sede', destino: 'Centro',
+      finalidade: 'Atendimento', data_saida_desejada: '2099-01-01T12:00:00Z', status: 'APROVADA',
+    };
+    vi.mocked(solicitacoesApi.listarAprovadas).mockResolvedValueOnce([aprovada, { ...aprovada, id: 22 }])
+      .mockResolvedValueOnce([aprovada, { ...aprovada, id: 22 }]);
+    vi.mocked(veiculosApi.listar).mockResolvedValueOnce([{
+      id: 1, modelo: 'Spin', placa: 'ABC1D23', tipo_frota: 'ADMINISTRATIVA',
+      capacidade_maxima: 4, km_atual: 100, status: 'DISPONIVEL',
+    }]);
+    vi.mocked(motoristasApi.listar).mockResolvedValueOnce([{
+      id: 1, nome: 'Marcos', usuario_id: 10, numero_cnh: '1234', categoria_cnh: 'B',
+      validade_cnh: '2099-12-31', tipo_motorista: 'FROTA', status: 'DISPONIVEL',
+    }]);
+    api.criar.mockRejectedValueOnce(new ApiError('A solicitação expirou.', 409, [], 'SOLICITACAO_EXPIRADA'));
+    abrir();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Agendar Viagem' }));
+    const modal = within(await screen.findByRole('dialog', { name: 'Agendar Viagem' }));
+    const seletor = modal.getByLabelText('Solicitação Vinculada *');
+    const agendar = modal.getByRole('button', { name: 'Agendar Viagem' });
+    expect(seletor).toHaveValue('21');
+    await userEvent.click(agendar);
+
+    expect(await modal.findByText('A solicitação expirou.')).toBeInTheDocument();
+    expect(solicitacoesApi.listarAprovadas).toHaveBeenCalledTimes(2);
+    expect(modal.queryByRole('option', { name: /#21/ })).not.toBeInTheDocument();
+    expect(seletor).toHaveValue('');
+    expect(agendar).toBeDisabled();
+    await userEvent.selectOptions(seletor, '22');
+    expect(agendar).toBeEnabled();
   });
 
   it('Gestor de Frota só vê o Administrativo, sem seletor e sem ordens SVO', async () => {

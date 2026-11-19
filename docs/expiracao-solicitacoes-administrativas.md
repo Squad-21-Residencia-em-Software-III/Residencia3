@@ -2,7 +2,7 @@
 
 Uma solicitação **Aprovada** que continua aguardando agendamento expira quando o relógio do PostgreSQL chega à saída desejada mais 30 minutos. Por exemplo, saída prevista às 10h implica vencimento às 10h30 no mesmo fuso. A data persistida é `timestamptz`; o intervalo é comparado como tempo decorrido.
 
-O status **Expirada** aparece em **Solicitações → Administrativo**, para o gestor e para o solicitante. O filtro mostra a contagem. A ação de agendamento fica indisponível. Uma tela aberta que tenta agendar após o limite recebe HTTP 409, código `SOLICITACAO_EXPIRADA` e atualiza a lista elegível. A API bloqueia a operação mesmo entre duas execuções do job. A regra abrange somente solicitações administrativas aprovadas sem viagem válida associada. Uma viagem cancelada que reabriu a solicitação segue o prazo original.
+O status **Expirada** aparece em **Solicitações → Administrativo**, para o gestor e para o solicitante. O painel mostra a contagem e o filtro permite consultar somente as expiradas. A ação de agendamento fica indisponível. Uma tela aberta que tenta agendar após o limite recebe HTTP 409, código `SOLICITACAO_EXPIRADA` e atualiza a lista elegível. A API bloqueia a operação mesmo entre duas execuções do job. A regra abrange somente solicitações administrativas aprovadas sem viagem válida associada. Uma viagem cancelada que reabriu a solicitação segue o prazo original.
 
 ## Implantação para revisão de Gabriel Arruda
 
