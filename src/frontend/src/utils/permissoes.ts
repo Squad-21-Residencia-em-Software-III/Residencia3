@@ -1,6 +1,6 @@
 import { recursoAtivo } from '../config/recursosBackend';
 import { useAuth } from '../contexts/AuthContext';
-import { LISTA_PERFIS, PERFIS } from '../types/usuario';
+import { PERFIS } from '../types/usuario';
 import type { Perfil } from '../types/usuario';
 import type { TipoFrota } from '../types/veiculo';
 
@@ -46,6 +46,7 @@ export const PERMISSOES = {
 
   // Viagens e quilometragem
   'viagens.acessar': [...GESTORES, ...MOTORISTAS],
+  'coletasProprias.acessar': [PERFIS.INTEGRANTE_SVO],
   /** Agendar viagem administrativa a partir de solicitação aprovada (sem o Gestor SVO). */
   'viagens.agendar': [ADMINISTRADOR, GESTOR_FROTA],
   /** Alocar veículo e equipe numa ordem de coleta SVO (RF22/RF23). */
@@ -60,14 +61,19 @@ export const PERMISSOES = {
    * Administrativo completa, como o Administrador, não usa essa visão.
    */
   'viagens.acompanharProprias': [ADMINISTRADOR, GESTOR_SVO],
-  /** Registrar saída e retorno (iniciar e finalizar com quilometragem). */
-  'viagens.executar': [...GESTORES, ...MOTORISTAS],
+  /** Registrar saída e retorno (iniciar e finalizar) das viagens da operação administrativa. */
+  'viagens.executar': [ADMINISTRADOR, GESTOR_FROTA, MOTORISTA_FROTA],
+  /**
+   * Registrar saída, chegada e retorno das coletas SVO. Pertence ao Motorista SVO responsável;
+   * Administrador e Gestor SVO só acompanham o andamento (SCRUM-110, revisão de QA).
+   */
+  'viagens.executarSvo': [MOTORISTA_SVO],
 
   // Disponibilidade da frota por data e horário
   'agenda.acessar': GESTORES,
 
   // Veículos: consulta para todos (Solicitante em versão reduzida); cadastro para os gestores
-  'veiculos.acessar': LISTA_PERFIS,
+  'veiculos.acessar': [...GESTORES, SOLICITANTE, ...MOTORISTAS],
   /** Placa, km, histórico e demais dados do veículo. */
   'veiculos.detalhes': [...GESTORES, ...MOTORISTAS],
   /** Cadastrar e editar: cada gestor só na própria frota (`podeNaFrota`). */
@@ -85,10 +91,16 @@ export const PERMISSOES = {
 
   // Equipe: motoristas (gestores) e usuários/perfis (só Administrador)
   'equipe.acessar': GESTORES,
+  'equipeSvo.gerenciar': [ADMINISTRADOR, GESTOR_SVO],
   'usuarios.gerenciar': [ADMINISTRADOR],
 
   // Auditoria
   'auditoria.acessar': [ADMINISTRADOR],
+  /**
+   * Fotos do odômetro (SCRUM-203): use com `podeNaFrota`. Administrador nas duas operações, Gestor
+   * de Frota só nas administrativas e Gestor SVO só nas SVO, sem abrir a Auditoria aos gestores.
+   */
+  'evidenciasOdometro.ver': [ADMINISTRADOR, GESTOR_FROTA, GESTOR_SVO],
 
   // Relatórios gerenciais (BL35 / RF18 / RN20)
   'relatorios.exportar': [ADMINISTRADOR, GESTOR_FROTA],

@@ -7,6 +7,7 @@ import { autorizar, exigirAssociacaoSvo } from '../middlewares/autorizar';
 export const viagemRoutes = Router();
 
 viagemRoutes.use(autenticar);
+viagemRoutes.get('/coletas-svo/minhas', autorizar(PERFIS.INTEGRANTE_SVO), viagemController.listarMinhasColetasSvo);
 // A consulta administrativa é limitada ao titular pelo service e não é operação SVO.
 viagemRoutes.get('/minhas', autorizar(PERFIS.GESTOR_SVO), viagemController.listarMinhasAdministrativas);
 // O Gestor SVO só opera viagens SVO se estiver associado à unidade SVO
@@ -34,7 +35,13 @@ viagemRoutes.get('/', gestoresEMotoristas, viagemController.listar);
 // Consulta reduzida das viagens administrativas vinculadas às solicitações do JWT.
 viagemRoutes.get('/ordens-svo/pendentes', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.listarOrdensPendentesSvo);
 viagemRoutes.get('/ordens-svo/alertas', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.consultarAlertasSvo);
+viagemRoutes.get('/ordens-svo/:id/designacoes', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.listarDesignacoesSvo);
 viagemRoutes.post('/ordens-svo/:id/reprogramar', autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), viagemController.reprogramarOrdemSvo);
+viagemRoutes.patch(
+  '/ordens-svo/:id/chegar-local',
+  autorizar(PERFIS.MOTORISTA_SVO),
+  viagemController.registrarChegadaLocalSvo
+);
 
 viagemRoutes.post('/', gestores, viagemController.criar);
 

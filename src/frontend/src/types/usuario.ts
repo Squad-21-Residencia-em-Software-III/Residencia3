@@ -11,6 +11,7 @@ export const PERFIS = {
   GESTOR_SVO: 'GESTOR_SVO',
   MOTORISTA_FROTA: 'MOTORISTA_FROTA',
   MOTORISTA_SVO: 'MOTORISTA_SVO',
+  INTEGRANTE_SVO: 'INTEGRANTE_SVO',
 } as const;
 
 export type Perfil = (typeof PERFIS)[keyof typeof PERFIS];
@@ -22,9 +23,10 @@ export const LISTA_PERFIS: Perfil[] = [
   PERFIS.GESTOR_SVO,
   PERFIS.MOTORISTA_FROTA,
   PERFIS.MOTORISTA_SVO,
+  PERFIS.INTEGRANTE_SVO,
 ];
 
-export type TipoUsuario = 'ADMINISTRADOR' | 'SOLICITANTE' | 'GESTOR_FROTA' | 'GESTOR_SVO' | 'MOTORISTA';
+export type TipoUsuario = 'ADMINISTRADOR' | 'SOLICITANTE' | 'GESTOR_FROTA' | 'GESTOR_SVO' | 'MOTORISTA' | 'INTEGRANTE_SVO';
 
 export const LABELS_PERFIS: Record<Perfil, string> = {
   ADMINISTRADOR: 'Administrador',
@@ -33,6 +35,7 @@ export const LABELS_PERFIS: Record<Perfil, string> = {
   GESTOR_SVO: 'Gestor SVO',
   MOTORISTA_FROTA: 'Motorista Frota',
   MOTORISTA_SVO: 'Motorista SVO',
+  INTEGRANTE_SVO: 'Integrante SVO',
 };
 
 export const DESCRICAO_PERFIS: Record<Perfil, string> = {
@@ -42,6 +45,7 @@ export const DESCRICAO_PERFIS: Record<Perfil, string> = {
   GESTOR_SVO: 'Registro e triagem das solicitações e geração de ordens de serviço do SVO.',
   MOTORISTA_FROTA: 'Registro de viagens, abastecimentos e consulta dos veículos vinculados.',
   MOTORISTA_SVO: 'Visualização das ordens alocadas e atualização do andamento no SVO.',
+  INTEGRANTE_SVO: 'Consulta das coletas designadas individualmente.',
 };
 
 /**

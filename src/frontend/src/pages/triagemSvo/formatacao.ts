@@ -25,6 +25,7 @@ export function toneStatusOrdem(status: StatusOrdemSvo): BadgeTone {
     case 'ALOCADA':
       return 'info';
     case 'EM_DESLOCAMENTO':
+    case 'NO_LOCAL':
       return 'purple';
     case 'CONCLUIDA':
       return 'success';

@@ -4,15 +4,28 @@
  * Não adicionar campos que não existam na modelagem oficial.
  */
 
-export type StatusViagem = 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+// NO_LOCAL existe só nas ordens SVO (BL31): a equipe chegou ao local da coleta
+export type StatusViagem = 'AGENDADA' | 'EM_ANDAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
 export type TipoOperacaoViagem = 'ADMINISTRATIVA' | 'SVO';
 
 export const LABELS_STATUS_VIAGEM: Record<StatusViagem, string> = {
   AGENDADA: 'Agendada',
   EM_ANDAMENTO: 'Em Andamento',
+  NO_LOCAL: 'No local',
   CONCLUIDA: 'Concluída',
   CANCELADA: 'Cancelada',
 };
+
+/** Na coleta SVO, "em andamento" é o deslocamento até o local (status "A caminho", BL31). */
+export function rotuloStatusViagem(viagem: Pick<Viagem, 'status' | 'tipo_operacao'>): string {
+  if (viagem.tipo_operacao === 'SVO' && viagem.status === 'EM_ANDAMENTO') return 'A caminho';
+  return LABELS_STATUS_VIAGEM[viagem.status];
+}
+
+/** Viagem ou coleta já iniciada e ainda não concluída: aceita o registro de retorno. */
+export function viagemEmCurso(status: StatusViagem): boolean {
+  return status === 'EM_ANDAMENTO' || status === 'NO_LOCAL';
+}
 
 export interface Viagem {
   material_sensivel?: boolean | null;
@@ -68,6 +81,7 @@ export interface OrdemPendenteSvo {
  */
 export interface AgendamentoColetaSvoInput {
   equipe_id?: number;
+  integrantes_ids?: number[];
   capacidade_utilizada?: number;
   solicitacao_id: number;
   veiculo_id: number;
@@ -81,7 +95,7 @@ export interface AgendamentoColetaSvoInput {
 
 /** Recurso em conflito informado pelo servidor ao pedir confirmação de intervalo curto. */
 export interface ConflitoIntervaloSvo {
-  recurso: 'VEICULO' | 'MOTORISTA' | 'EQUIPE';
+  recurso: 'VEICULO' | 'MOTORISTA' | 'EQUIPE' | 'INTEGRANTE';
   descricao: string; // ex.: "Fiat Ducato (ABC1D23)"
   inicio: string; // reserva vizinha, ISO 8601
   fim: string;

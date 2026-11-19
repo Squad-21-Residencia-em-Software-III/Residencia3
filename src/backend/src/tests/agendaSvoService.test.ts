@@ -13,9 +13,25 @@ const dados = (minutos: number): DadosAgendaSvo => ({
   fim: new Date(Date.parse('2099-01-01T17:00:00Z') + minutos * 60_000),
 });
 function conexao(reservas: ReservaSvo[]): Knex.Transaction {
-  const q: Record<string, unknown> = {};
-  for (const nome of ['whereIn', 'whereNot', 'andWhere', 'select']) q[nome] = () => q;
-  q.orderBy = async () => reservas;
+  let linhas = [...reservas];
+  const q: Record<string, any> = {
+    whereIn(campo: keyof ReservaSvo, valores: unknown[]) { linhas = linhas.filter((r) => valores.includes(r[campo])); return q; },
+    whereNot(filtro: Partial<ReservaSvo>) {
+      linhas = linhas.filter((r) => !Object.entries(filtro).every(([c, v]) => r[c as keyof ReservaSvo] === v)); return q;
+    },
+    andWhere(callback: Function) {
+      const filtros: ((r: ReservaSvo) => boolean)[] = [];
+      const grupo: Record<string, any> = {};
+      grupo.where = grupo.orWhere = (campo: keyof ReservaSvo, valor: unknown) => {
+        filtros.push((r) => r[campo] === valor); return grupo;
+      };
+      callback(grupo);
+      linhas = linhas.filter((r) => filtros.some((f) => f(r)));
+      return q;
+    },
+    select() { return q; },
+    async orderBy() { return linhas; },
+  };
   return (() => q) as unknown as Knex.Transaction;
 }
 async function desafio(input: DadosAgendaSvo, reservas = [reserva]) {
@@ -27,14 +43,20 @@ describe('agenda temporal SVO', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2099-01-01T12:00:00Z')); });
   afterEach(() => vi.useRealTimers());
 
-  it.each(['veiculo', 'motorista', 'equipe'])('bloqueia %s ocupado por coleta atrasada mesmo após o horário previsto', async (recurso) => {
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'] as const)('bloqueia cada recurso ocupado por coleta atrasada em %s', async (status) => {
     vi.setSystemTime(new Date('2099-01-01T16:40:00Z'));
-    const ocupada = { ...reserva, status: 'EM_DESLOCAMENTO' as const,
-      veiculo_id: recurso === 'veiculo' ? 2 : 20,
-      motorista_id: recurso === 'motorista' ? 3 : 30,
-      equipe_id: recurso === 'equipe' ? 4 : 40 };
-    await expect(validarAgendaSvo(conexao([ocupada]), dados(45)))
-      .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+    for (const recurso of ['veiculo', 'motorista', 'equipe']) {
+      const ocupada = { ...reserva, status,
+        veiculo_id: recurso === 'veiculo' ? 2 : 20,
+        motorista_id: recurso === 'motorista' ? 3 : 30,
+        equipe_id: recurso === 'equipe' ? 4 : 40 };
+      await expect(validarAgendaSvo(conexao([ocupada]), dados(45)))
+        .rejects.toMatchObject({ statusCode: 409, codigo: 'CONFLITO_AGENDA' });
+    }
+  });
+
+  it('ignora recursos diferentes', async () => {
+    expect(await validarAgendaSvo(conexao([{ ...reserva, veiculo_id: 20, motorista_id: 30, equipe_id: 40 }]), dados(-10))).toEqual([]);
   });
 
   it.each([0, 10, 19])('exige confirmação para folga de %i minutos', async (minutos) => {

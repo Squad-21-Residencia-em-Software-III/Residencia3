@@ -202,3 +202,70 @@ describe('agenda utils (grade 24h e projeção de viagens)', () => {
     expect(filtrarVeiculosPorPerfil(frota, 'ADMINISTRADOR')).toHaveLength(2);
   });
 });
+
+describe('projetarViagensNoDia: coleta SVO em curso não é liberada pelo término previsto (BL31)', () => {
+  const coleta = (parcial: Partial<Viagem> = {}) =>
+    criarViagemBase({
+      id: 9,
+      tipo_operacao: 'SVO',
+      origem: null,
+      destino: 'Rua das Flores, 10',
+      inicio_previsto: '2026-10-19T14:00:00',
+      fim_previsto: '2026-10-19T16:00:00',
+      data_hora_efetiva_saida: '2026-10-19T14:05:00',
+      status: 'NO_LOCAL',
+      ...parcial,
+    });
+
+  it('NO_LOCAL antes do término previsto mantém o término previsto', () => {
+    const agora = new Date('2026-10-19T15:00:00');
+    const [bloco] = projetarViagensNoDia([coleta()], '2026-10-19', agora);
+    expect(bloco.horaFimLabel).toBe('16:00');
+    expect(bloco.fimMin).toBe(16 * 60);
+  });
+
+  it.each(['NO_LOCAL', 'EM_ANDAMENTO'] as const)(
+    '%s depois do término previsto continua ocupando até agora',
+    (status) => {
+      const agora = new Date('2026-10-19T17:00:00');
+      const [bloco] = projetarViagensNoDia([coleta({ status })], '2026-10-19', agora);
+      expect(bloco.horaFimLabel).toBe('17:00');
+      expect(bloco.fimMin).toBe(17 * 60);
+    },
+  );
+
+  it('coleta concluída mantém a chegada real e libera o recurso', () => {
+    const agora = new Date('2026-10-19T17:00:00');
+    const [bloco] = projetarViagensNoDia(
+      [
+        coleta({
+          status: 'CONCLUIDA',
+          data_hora_efetiva_chegada: '2026-10-19T15:30:00',
+        }),
+      ],
+      '2026-10-19',
+      agora,
+    );
+    expect(bloco.horaFimLabel).toBe('15:30');
+  });
+
+  it('coleta agendada atrasada não é estendida', () => {
+    const agora = new Date('2026-10-19T17:00:00');
+    const [bloco] = projetarViagensNoDia(
+      [coleta({ status: 'AGENDADA', data_hora_efetiva_saida: null })],
+      '2026-10-19',
+      agora,
+    );
+    expect(bloco.horaFimLabel).toBe('16:00');
+  });
+
+  it('viagem administrativa em andamento mantém o comportamento anterior', () => {
+    const agora = new Date('2026-10-19T17:00:00');
+    const [bloco] = projetarViagensNoDia(
+      [coleta({ tipo_operacao: 'ADMINISTRATIVA', status: 'EM_ANDAMENTO', origem: 'Sede FSPH' })],
+      '2026-10-19',
+      agora,
+    );
+    expect(bloco.horaFimLabel).toBe('16:00');
+  });
+});

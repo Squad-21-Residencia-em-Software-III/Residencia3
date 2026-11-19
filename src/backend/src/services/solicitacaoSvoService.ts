@@ -119,7 +119,7 @@ export const solicitacaoSvoService = {
       const existente = await solicitacaoSvoModel.buscarOrdemAtiva(id, trx);
       if (solicitacao.status !== 'EM_TRIAGEM') {
         const estadosPermitidos =
-          solicitacao.status === 'CONFIRMADA' ? ['AGUARDANDO_ALOCACAO'] : ['ALOCADA', 'EM_DESLOCAMENTO'];
+          solicitacao.status === 'CONFIRMADA' ? ['AGUARDANDO_ALOCACAO'] : ['ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'];
         if (!existente || !estadosPermitidos.includes(existente.status)) {
           throw new AppError('O estado da ordem não corresponde ao da solicitação SVO', 409);
         }

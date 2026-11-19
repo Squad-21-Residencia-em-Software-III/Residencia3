@@ -35,6 +35,7 @@ export const criarViagemSchema = z.discriminatedUnion(
       tipo_operacao: z.literal('SVO'),
       ...recursosViagem,
       equipe_id: idSchema('equipe_id').nullish(),
+      integrantes_ids: z.array(idSchema('integrante')).max(100).optional(),
       inicio_previsto: z.iso.datetime({ offset: true }),
       fim_previsto: z.iso.datetime({ offset: true }),
       confirmar_intervalo_reduzido: z.boolean().optional(),
@@ -55,14 +56,24 @@ const tipoDaViagem = {
   tipo_operacao: tipoOperacaoSchema.default('ADMINISTRATIVA'),
 };
 
+// Id da foto do odômetro enviada antes (SCRUM-208). O front envia como texto.
+const evidenciaIdSchema = z
+  .union([
+    z.number().int().positive(),
+    z.string().regex(/^[1-9][0-9]{0,9}$/).transform(Number),
+  ], { error: 'O campo evidencia_id é inválido' })
+  .optional();
+
 export const iniciarViagemSchema = z.object({
   ...tipoDaViagem,
   km_inicial: kmSchema('km_inicial'),
+  evidencia_id: evidenciaIdSchema,
 });
 
 export const finalizarViagemSchema = z.object({
   ...tipoDaViagem,
   km_final: kmSchema('km_final'),
+  evidencia_id: evidenciaIdSchema,
 });
 
 export const cancelarViagemSchema = z.object({
