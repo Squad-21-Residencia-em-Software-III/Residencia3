@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { Knex } from 'knex';
+import { env } from '../config/env';
 import { db } from '../config/database';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { viagemModel } from '../models/viagemModel';
 import type { TipoOperacao } from '../validators/viagemSchemas';
-import { armazenamentoEvidencias } from './armazenamentoEvidencias';
+import { armazenamentoEvidencias, lerEvidenciaVerificada } from './armazenamentoEvidencias';
+import { chavePostgresEvidencia } from './chavesEvidencias';
+import { normalizarFotoOdometro, type FormatoFoto } from './imagemEvidencias';
 import {
   deslocamentoDaOrdem,
   deslocamentoEmCursoDoVeiculo,
@@ -30,27 +33,11 @@ interface Autor {
   perfil: Perfil;
 }
 
-export const TAMANHO_MAXIMO_FOTO_BYTES = 10 * 1024 * 1024;
-
-export type FormatoFoto = 'image/jpeg' | 'image/png' | 'image/webp';
-
 const EXTENSOES: Record<FormatoFoto, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
 };
-
-/** Tipo real pelo conteúdo (assinatura), nunca pelo nome ou pelo Content-Type do cliente. */
-export function detectarFormato(bytes: Buffer): FormatoFoto | null {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
-  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-    return 'image/png';
-  }
-  if (bytes.length >= 12 && bytes.toString('latin1', 0, 4) === 'RIFF' && bytes.toString('latin1', 8, 12) === 'WEBP') {
-    return 'image/webp';
-  }
-  return null;
-}
 
 const PERFIS_GESTORES: Perfil[] = [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO];
 const ehGestor = (perfil: Perfil) => PERFIS_GESTORES.includes(perfil);
@@ -83,16 +70,6 @@ const respostaEnvio = (evidencia: Pick<EvidenciaOdometroRow, 'id' | 'fase' | 'cr
   fase: evidencia.fase,
   expira_em: expiraEm(evidencia.criado_em).toISOString(),
 });
-
-// Mesmo envio repetido (mesma chave do mesmo usuário): devolve a evidência já criada
-async function envioAnterior(storageKey: string, dados: EnvioFoto): Promise<EvidenciaEnviada | undefined> {
-  const anterior = await db<EvidenciaOdometroRow>('evidencias_odometro').where({ storage_key: storageKey }).first();
-  if (!anterior) return undefined;
-  if (anterior.tipo_operacao !== dados.tipo_operacao || anterior.fase !== dados.fase || idDaViagem(anterior) !== dados.viagem_id) {
-    throw new AppError('Esta chave de envio já foi usada para outra foto. Gere uma nova chave.', 409);
-  }
-  return respostaEnvio(anterior);
-}
 
 async function criarProvisoria(
   trx: Knex.Transaction,
@@ -158,11 +135,8 @@ async function criarProvisoria(
       sha256: arquivo.sha256,
       registrado_por: autor.id,
     })
-    .returning(['id', 'fase', 'criado_em']);
-
-  await registrarAuditoria(trx, autor.id,
-    `ENVIOU_FOTO_ODOMETRO tipo=${tipo} id=${dados.viagem_id} fase=${dados.fase} evidencia=${evidencia.id}`);
-  return evidencia as Pick<EvidenciaOdometroRow, 'id' | 'fase' | 'criado_em'>;
+    .returning<EvidenciaOdometroRow[]>('*');
+  return evidencia!;
 }
 
 // ---------- Consulta (GET /evidencias-odometro) ----------
@@ -245,37 +219,57 @@ async function garantirConsulta(autor: Autor, tipo: TipoOperacao, viagemId: numb
 
 export const evidenciaOdometroService = {
   async enviar(dados: EnvioFoto, conteudo: Buffer, autor: Autor): Promise<EvidenciaEnviada> {
-    const formato = detectarFormato(conteudo);
-    if (!formato) {
-      throw new AppError('Envie uma foto JPG, PNG ou WebP. Fotos HEIC do iPhone precisam ser convertidas.', 400);
-    }
-    if (conteudo.length > TAMANHO_MAXIMO_FOTO_BYTES) {
-      throw new AppError('A foto deve ter no máximo 10 MB', 413);
-    }
-    const storageKey = `odometro/${autor.id}/${dados.chave_idempotencia}`;
-
-    const anterior = await envioAnterior(storageKey, dados);
-    if (anterior) return anterior;
-
+    const { formato, bytes } = await normalizarFotoOdometro(conteudo);
+    const idempotencia = dados.chave_idempotencia.toLowerCase();
+    const postgres = env.evidenciasStorage === 'postgres';
+    const storageKey = postgres
+      ? chavePostgresEvidencia(autor.id, idempotencia)
+      : `odometro/${autor.id}/${idempotencia}`;
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    const reservar = async (trx: Knex.Transaction) => {
+      await trx.raw('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [storageKey]);
+      const anterior = await trx<EvidenciaOdometroRow>('evidencias_odometro')
+        .where({ storage_key: storageKey }).first();
+      return anterior ?? criarProvisoria(trx, dados, autor, { storageKey, formato, tamanho: bytes.length, sha256 });
+    };
     const armazenamento = armazenamentoEvidencias();
-    await armazenamento.salvar(storageKey, conteudo);
-    try {
-      const evidencia = await db.transaction((trx) =>
-        criarProvisoria(trx, dados, autor, {
-          storageKey,
-          formato,
-          tamanho: conteudo.length,
-          sha256: createHash('sha256').update(conteudo).digest('hex'),
-        })
-      );
+    const salvar = async (trx: Knex.Transaction, reserva: EvidenciaOdometroRow) => {
+      const evidencia = await trx<EvidenciaOdometroRow>('evidencias_odometro')
+        .where({ id: reserva.id }).forUpdate().first();
+      if (!evidencia || evidencia.registrado_por !== autor.id || evidencia.tipo_operacao !== dados.tipo_operacao ||
+        evidencia.fase !== dados.fase || idDaViagem(evidencia) !== dados.viagem_id) {
+        throw new AppError('Esta chave de envio já foi usada para outra foto. Gere uma nova chave.', 409);
+      }
+      if (evidencia.status !== 'ATIVA' &&
+        (evidencia.status !== 'STAGING' || expiraEm(evidencia.criado_em).getTime() <= Date.now())) {
+        throw new AppError('A foto enviada expirou. Envie a foto com uma nova chave.', 409);
+      }
+      const legadoSemNormalizacao = !postgres && evidencia.auditoria_id === null &&
+        evidencia.sha256 === createHash('sha256').update(conteudo).digest('hex') && evidencia.sha256 !== sha256;
+      if (!legadoSemNormalizacao && evidencia.sha256 !== sha256) {
+        throw new AppError('Esta chave de envio já foi usada para outra foto. Gere uma nova chave.', 409);
+      }
+      if (evidencia.status === 'ATIVA' || evidencia.auditoria_id !== null) return respostaEnvio(evidencia);
+      if (legadoSemNormalizacao) {
+        await lerEvidenciaVerificada(storageKey, evidencia.tamanho_bytes!, evidencia.sha256!, trx);
+      } else {
+        await armazenamento.salvar(storageKey, bytes, trx);
+      }
+      const [auditoria] = await trx('auditorias').insert({
+        usuario_id: autor.id,
+        modulo: MODULOS_AUDITORIA.VIAGENS,
+        acao: `ENVIOU_FOTO_ODOMETRO tipo=${dados.tipo_operacao} id=${dados.viagem_id} fase=${dados.fase} evidencia=${evidencia.id}`,
+      }).returning<{ id: number }[]>('id');
+      await trx('evidencias_odometro').where({ id: evidencia.id }).update({ auditoria_id: auditoria!.id });
       return respostaEnvio(evidencia);
-    } catch (erro) {
-      // Dois envios simultâneos com a mesma chave: o arquivo é do que venceu, não apagar
-      const concorrente = await envioAnterior(storageKey, dados).catch(() => undefined);
-      if (concorrente) return concorrente;
-      await armazenamento.remover(storageKey).catch(() => undefined);
-      throw erro;
+    };
+    if (postgres) {
+      // No mesmo banco, bytes, metadados e auditoria confirmam juntos ou sofrem rollback juntos.
+      return db.transaction(async (trx) => salvar(trx, await reservar(trx)));
     }
+    // Preserva a reserva para retry quando o destino for o disco local.
+    const reserva = await db.transaction(reservar);
+    return db.transaction((trx) => salvar(trx, reserva));
   },
 
   async consultar(tipo: TipoOperacao, viagemId: number, autor: Autor) {
@@ -320,10 +314,11 @@ export const evidenciaOdometroService = {
     if (!ehGestor(autor.perfil)) throw new AppError('Você não tem permissão para ver as fotos do odômetro', 403);
     garantirAcesso(autor.perfil, evidencia.tipo_operacao);
     // Provisórias, rejeitadas, exceções e expurgadas não têm arquivo para mostrar
-    if (evidencia.modalidade !== 'FOTO' || evidencia.status !== 'ATIVA' || !evidencia.storage_key || !evidencia.mime_type) {
+    if (evidencia.modalidade !== 'FOTO' || evidencia.status !== 'ATIVA' || !evidencia.storage_key ||
+      !evidencia.mime_type || !evidencia.sha256 || !evidencia.tamanho_bytes) {
       throw new AppError('Foto não disponível', 404);
     }
-    const conteudo = await armazenamentoEvidencias().ler(evidencia.storage_key);
+    const conteudo = await lerEvidenciaVerificada(evidencia.storage_key, evidencia.tamanho_bytes, evidencia.sha256);
     const viagemId = idDaViagem(evidencia);
     if (baixar) {
       await registrarAuditoria(db, autor.id,

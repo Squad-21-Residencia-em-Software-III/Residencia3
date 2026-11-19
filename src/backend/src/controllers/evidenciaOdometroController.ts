@@ -29,12 +29,16 @@ export const evidenciaOdometroController = {
     const { download } = arquivoEvidenciaSchema.parse(req.query);
     const baixar = download === '1';
     const foto = await evidenciaOdometroService.arquivo(id, usuarioAutenticado(req), baixar);
+    if (res.headersSent || res.destroyed) return;
     // Imagem de prova: nunca em cache (nem do navegador nem de proxy) e só pelo proxy autenticado
     res
       .set('Cache-Control', 'no-store')
+      .set('CDN-Cache-Control', 'no-store')
+      .set('Vercel-CDN-Cache-Control', 'no-store')
+      .set('X-Content-Type-Options', 'nosniff')
       .set('Content-Type', foto.mimeType)
       .set('Content-Length', String(foto.conteudo.length))
       .set('Content-Disposition', `${baixar ? 'attachment' : 'inline'}; filename="${foto.nomeArquivo}"`)
-      .send(foto.conteudo);
+      .end(foto.conteudo);
   },
 };

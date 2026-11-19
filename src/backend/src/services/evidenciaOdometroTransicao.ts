@@ -2,6 +2,7 @@ import type { Knex } from 'knex';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 import type { TipoOperacao } from '../validators/viagemSchemas';
+import { lerEvidenciaVerificada } from './armazenamentoEvidencias';
 
 /**
  * Vínculo das fotos do odômetro com o início e o fim das viagens (SCRUM-208).
@@ -37,6 +38,9 @@ export interface EvidenciaOdometroRow {
   status: string;
   storage_key: string | null;
   mime_type: string | null;
+  tamanho_bytes: number | null;
+  sha256: string | null;
+  auditoria_id: number | null;
   registrado_por: number;
   excecao_aprovada_por: number | null;
   excecao_aprovada_em: Date | null;
@@ -139,9 +143,13 @@ async function confirmarProvisoria(trx: Knex.Transaction, t: Transicao, deslocam
   ) {
     throw erroEvidencia('A foto informada não pertence a esta viagem ou já foi usada. Envie a foto novamente.', CODIGOS_EVIDENCIA.INVALIDA);
   }
-  if (Date.now() > expiraEm(evidencia.criado_em).getTime()) {
+  if (Date.now() >= expiraEm(evidencia.criado_em).getTime()) {
     throw erroEvidencia('A foto enviada expirou. Envie a foto novamente.', CODIGOS_EVIDENCIA.EXPIRADA);
   }
+  if (!evidencia.storage_key || !evidencia.sha256 || !evidencia.tamanho_bytes) {
+    throw erroEvidencia('O envio da foto ainda não foi concluído.', CODIGOS_EVIDENCIA.INVALIDA);
+  }
+  await lerEvidenciaVerificada(evidencia.storage_key, evidencia.tamanho_bytes, evidencia.sha256, trx);
   await trx('evidencias_odometro')
     .where({ id: evidencia.id })
     .update({

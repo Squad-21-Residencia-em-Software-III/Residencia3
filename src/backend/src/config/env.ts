@@ -173,11 +173,10 @@ function limitesAtivos(valor: string | undefined, nodeEnv: string, producao: boo
 // Fotos do odômetro (SCRUM-208/209, docs/evidencias-odometro.md).
 // desativado: as rotas de foto respondem 503 e iniciar/finalizar funcionam como antes.
 // local: arquivos numa pasta do servidor (desenvolvimento, testes ou disco persistente montado).
-// O armazenamento definitivo (ex.: bucket privado) entra como outro driver quando a SCRUM-211 decidir.
-export const DRIVERS_ARMAZENAMENTO_EVIDENCIAS = ['desativado', 'local'] as const;
+const DRIVERS_ARMAZENAMENTO_EVIDENCIAS = ['desativado', 'local', 'postgres'] as const;
 export type DriverArmazenamentoEvidencias = (typeof DRIVERS_ARMAZENAMENTO_EVIDENCIAS)[number];
 
-function configuracaoEvidenciasOdometro(origem: Origem, producao: boolean) {
+function configuracaoEvidenciasOdometro(origem: Origem, nodeEnv: string) {
   const valor = (origem.EVIDENCIAS_STORAGE ?? '').trim() || 'desativado';
   if (!(DRIVERS_ARMAZENAMENTO_EVIDENCIAS as readonly string[]).includes(valor)) {
     throw new Error(`EVIDENCIAS_STORAGE deve ser um destes: ${DRIVERS_ARMAZENAMENTO_EVIDENCIAS.join(', ')}`);
@@ -185,7 +184,7 @@ function configuracaoEvidenciasOdometro(origem: Origem, producao: boolean) {
   const driver = valor as DriverArmazenamentoEvidencias;
   const pasta = (origem.EVIDENCIAS_STORAGE_DIR ?? '').trim();
   // Em produção a pasta precisa ser declarada e absoluta: o disco padrão do Render é apagado a cada deploy
-  if (driver === 'local' && producao && !path.isAbsolute(pasta)) {
+  if (driver === 'local' && nodeEnv === 'production' && !path.isAbsolute(pasta)) {
     throw new Error('Com EVIDENCIAS_STORAGE=local em produção, EVIDENCIAS_STORAGE_DIR deve ser o caminho absoluto de um disco persistente');
   }
   const obrigatorias = (origem.FOTOS_ODOMETRO_OBRIGATORIAS ?? '').trim() || 'false';
@@ -198,6 +197,8 @@ function configuracaoEvidenciasOdometro(origem: Origem, producao: boolean) {
   return {
     evidenciasStorage: driver,
     evidenciasStorageDir: path.resolve(pasta || path.join(__dirname, '../../storage/evidencias')),
+    evidenciasPostgresLimiteBytes:
+      inteiroNaFaixa('EVIDENCIAS_POSTGRES_LIMITE_MIB', origem.EVIDENCIAS_POSTGRES_LIMITE_MIB, 128, 1, 512) * 1024 * 1024,
     fotosOdometroObrigatorias: obrigatorias === 'true',
   };
 }
@@ -239,7 +240,7 @@ export function carregarEnv(origem: Origem = process.env) {
     rateLimitPesadasPorMin: inteiroNaFaixa('RATE_LIMIT_PESADAS_POR_MIN', origem.RATE_LIMIT_PESADAS_POR_MIN, 30, 1, 1000),
     maxRequisicoesSimultaneas: inteiroNaFaixa('MAX_REQUISICOES_SIMULTANEAS', origem.MAX_REQUISICOES_SIMULTANEAS, 50, 1, 1000),
     requestTimeoutMs: inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000),
-    ...configuracaoEvidenciasOdometro(origem, producao),
+    ...configuracaoEvidenciasOdometro(origem, nodeEnv),
   };
 }
 

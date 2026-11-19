@@ -6,12 +6,13 @@ import { evidenciaOdometroController } from '../controllers/evidenciaOdometroCon
 import { AppError } from '../errors/AppError';
 import { autenticar } from '../middlewares/autenticar';
 import { autorizar, exigirAssociacaoSvo } from '../middlewares/autorizar';
+import { criarLimitadorConcorrencia } from '../middlewares/limitarConcorrencia';
 import { criarLimitadorTempo } from '../middlewares/limitarTempoRequisicao';
 import {
   armazenamentoConfigurado,
   MENSAGEM_ARMAZENAMENTO_DESATIVADO,
 } from '../services/armazenamentoEvidencias';
-import { TAMANHO_MAXIMO_FOTO_BYTES } from '../services/evidenciaOdometroService';
+import { TAMANHO_MAXIMO_FOTO_BYTES } from '../services/imagemEvidencias';
 
 // Fotos do odômetro (SCRUM-208/209). Contrato: docs/evidencias-odometro.md
 export const evidenciaOdometroRoutes = Router();
@@ -31,6 +32,8 @@ const gestoresEMotoristas = autorizar(
   PERFIS.MOTORISTA_FROTA,
   PERFIS.MOTORISTA_SVO
 );
+const limitarEnvios = criarLimitadorConcorrencia(() => 2);
+const limitarLeituras = criarLimitadorConcorrencia(() => 4);
 
 // Arquivo só na memória (nunca no disco temporário); um arquivo e poucos campos curtos
 const receberArquivo = multer({
@@ -68,6 +71,7 @@ evidenciaOdometroRoutes.post(
   criarLimitadorTempo(() => TEMPO_ENVIO_FOTO_MS),
   gestoresEMotoristas,
   exigirArmazenamento,
+  limitarEnvios,
   receberFoto,
   evidenciaOdometroController.enviar
 );
@@ -75,4 +79,4 @@ evidenciaOdometroRoutes.post(
 // Motoristas consultam só a situação da própria viagem (o modal sabe se a foto já foi registrada)
 evidenciaOdometroRoutes.get('/', gestoresEMotoristas, evidenciaOdometroController.consultar);
 
-evidenciaOdometroRoutes.get('/:id/arquivo', gestores, evidenciaOdometroController.arquivo);
+evidenciaOdometroRoutes.get('/:id/arquivo', gestores, limitarLeituras, evidenciaOdometroController.arquivo);

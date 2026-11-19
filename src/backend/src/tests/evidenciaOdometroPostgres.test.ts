@@ -1,21 +1,24 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
+import sharp from 'sharp';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../app';
 import { db } from '../config/database';
 import { env } from '../config/env';
-import { armazenamentoLocal, definirArmazenamentoEvidencias } from '../services/armazenamentoEvidencias';
+import { armazenamentoEvidencias, definirArmazenamentoEvidencias } from '../services/armazenamentoEvidencias';
+import { TABELA_ARQUIVOS_ODOMETRO } from '../services/armazenamentoEvidenciasPostgres';
+import { normalizarFotoOdometro } from '../services/imagemEvidencias';
+import { processarRetencaoEvidencias } from '../services/retencaoEvidencias';
+import { AppError } from '../errors/AppError';
 
 // Fluxo completo das fotos do odômetro (SCRUM-208/209) contra as tabelas da SCRUM-210.
 // Só executa num banco descartável explicitamente identificado (ver docs/evidencias-odometro.md).
 const habilitado = process.env.SCRUM208_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(4).toString('hex');
-const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), randomBytes(64)]);
-const configuravel = env as { fotosOdometroObrigatorias: boolean };
+let JPEG: Buffer;
+const driverOriginal = env.evidenciasStorage;
+const limiteOriginal = env.evidenciasPostgresLimiteBytes;
 
 type Perfil = 'ADMINISTRADOR' | 'GESTOR_FROTA' | 'GESTOR_SVO' | 'MOTORISTA_FROTA' | 'MOTORISTA_SVO';
 
@@ -82,28 +85,29 @@ const transicao = (token: string, acao: 'iniciar' | 'finalizar', id: number, cor
   request(app).patch(`/api/viagens/${id}/${acao}`).set('Authorization', token).send(corpo);
 
 describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autenticado', () => {
-  let pasta: string;
-
   beforeAll(async () => {
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('Banco de teste não autorizado');
     }
-    pasta = await mkdtemp(path.join(tmpdir(), 'evidencias-pg-'));
-    definirArmazenamentoEvidencias(armazenamentoLocal(pasta));
+    JPEG = await sharp({ create: { width: 16, height: 16, channels: 3, background: 'gold' } }).jpeg().toBuffer();
+    env.evidenciasStorage = 'postgres';
+    definirArmazenamentoEvidencias(undefined);
   });
 
   afterEach(() => {
-    configuravel.fotosOdometroObrigatorias = false;
+    env.fotosOdometroObrigatorias = false;
+    env.evidenciasPostgresLimiteBytes = limiteOriginal;
+    definirArmazenamentoEvidencias(undefined);
   });
 
   afterAll(async () => {
     definirArmazenamentoEvidencias(undefined);
-    await rm(pasta, { recursive: true, force: true });
+    env.evidenciasStorage = driverOriginal;
     await db.destroy();
   });
 
   it('viagem administrativa: envia, reaproveita no reenvio, confirma na transição e inicia a guarda de 12 meses', async () => {
-    configuravel.fotosOdometroObrigatorias = true;
+    env.fotosOdometroObrigatorias = true;
     const { condutor, viagem } = await viagemAdministrativa();
     const gestorFrota = await usuario('GESTOR_FROTA');
     const gestorSvo = await usuario('GESTOR_SVO');
@@ -153,7 +157,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
         res.on('end', () => cb(null, Buffer.concat(partes)));
       });
     expect(arquivo.status).toBe(200);
-    expect(Buffer.compare(arquivo.body as Buffer, JPEG)).toBe(0);
+    expect(arquivo.body).toEqual((await normalizarFotoOdometro(JPEG)).bytes);
     expect(arquivo.headers['cache-control']).toBe('no-store');
     expect(arquivo.headers['content-disposition']).toContain('attachment');
     expect((await request(app).get(`/api/evidencias-odometro/${saida.id}/arquivo`).set('Authorization', condutor.token)).status).toBe(403);
@@ -210,6 +214,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(expirada.status).toBe(400);
     expect(expirada.body.codigo).toBe('EVIDENCIA_EXPIRADA');
     expect((await db('viagens_frota').where({ id: a.viagem.id }).first()).status).toBe('AGENDADA');
+    await db('evidencias_odometro').where({ id: Number(propria.body.id) }).update({ criado_em: db.fn.now() });
 
     // Foto que não é imagem
     const pdf = await enviar(a.condutor.token, { tipo_operacao: 'ADMINISTRATIVA', viagem_id: a.viagem.id, fase: 'SAIDA' },
@@ -218,7 +223,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
   });
 
   it('coletas SVO no mesmo deslocamento compartilham as fotos e a guarda conta do fim do deslocamento', async () => {
-    configuravel.fotosOdometroObrigatorias = true;
+    env.fotosOdometroObrigatorias = true;
     const gestor = await usuario('GESTOR_SVO');
     const r = await recursos('SVO');
     const ordemA = await ordemSvo(r, gestor.id);
@@ -249,6 +254,15 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     // Ainda há coleta em andamento: o deslocamento continua e a guarda não começou
     expect((await db('deslocamentos_svo').where({ id: deslocamento.id }).first()).status).toBe('EM_CURSO');
     expect((await db('evidencias_odometro').where({ id: Number(chegada.body.id) }).first()).retencao_ate).toBeNull();
+    // Mesmo com datas inconsistentes, a rotina não apaga fotos de deslocamento em curso.
+    const evidenciasDoDeslocamento = db('evidencias_odometro').where({ deslocamento_svo_id: deslocamento.id });
+    await evidenciasDoDeslocamento.clone().update({
+      conclusao_operacao_em: db.raw("CURRENT_TIMESTAMP - interval '2 years'"),
+      retencao_ate: db.raw("CURRENT_TIMESTAMP - interval '1 year'"),
+    });
+    expect(await processarRetencaoEvidencias(db, { aplicar: true, limite: 25 }))
+      .toMatchObject({ candidatos: 0, removidas: 0 });
+    await evidenciasDoDeslocamento.clone().update({ conclusao_operacao_em: null, retencao_ate: null });
 
     // A ordem B finaliza sem nova foto: a chegada é a mesma
     const consultaGestor = await request(app).get(`/api/evidencias-odometro?tipo_operacao=SVO&viagem_id=${ordemB.id}`).set('Authorization', gestor.token);
@@ -259,5 +273,91 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     const fotos = await db('evidencias_odometro').where({ deslocamento_svo_id: deslocamento.id, status: 'ATIVA' });
     expect(fotos).toHaveLength(2);
     expect(fotos.every((f) => f.retencao_ate !== null)).toBe(true);
+  });
+
+  it('reverte os bytes e os metadados após falha no envio, retoma sem duplicar e expurga somente fotos elegíveis', async () => {
+    const storage = armazenamentoEvidencias();
+    const arquivosAntes = await db(TABELA_ARQUIVOS_ODOMETRO).count('* as total').first();
+    definirArmazenamentoEvidencias({
+      ...storage,
+      async salvar(...args) {
+        await storage.salvar(...args);
+        throw new AppError('Falha de armazenamento simulada', 503);
+      },
+    });
+    const { condutor, viagem } = await viagemAdministrativa();
+    const campos = { tipo_operacao: 'ADMINISTRATIVA', viagem_id: viagem.id, fase: 'SAIDA' };
+    const chave = randomUUID();
+    expect((await enviar(condutor.token, campos, chave)).status).toBe(503);
+    expect(await db('evidencias_odometro').where({ viagem_frota_id: viagem.id })).toHaveLength(0);
+    expect(await db(TABELA_ARQUIVOS_ODOMETRO).count('* as total').first()).toEqual(arquivosAntes);
+    expect((await db('viagens_frota').where({ id: viagem.id }).first()).status).toBe('AGENDADA');
+
+    definirArmazenamentoEvidencias(undefined);
+    const [reenvioA, reenvioB] = await Promise.all([
+      enviar(condutor.token, campos, chave), enviar(condutor.token, campos, chave),
+    ]);
+    const reserva = await db('evidencias_odometro').where({ viagem_frota_id: viagem.id }).first();
+    expect(reserva).toMatchObject({ status: 'STAGING', storage_key: expect.stringMatching(/^odometro\/pg\//) });
+    for (const resposta of [reenvioA, reenvioB]) {
+      expect(resposta.status).toBe(201);
+      expect(resposta.body.id).toBe(String(reserva.id));
+    }
+    expect(await db('auditorias').where('acao', `ENVIOU_FOTO_ODOMETRO tipo=ADMINISTRATIVA id=${viagem.id} fase=SAIDA evidencia=${reserva.id}`))
+      .toHaveLength(1);
+    expect(await db(TABELA_ARQUIVOS_ODOMETRO).where({ evidencia_id: reserva.id })).toHaveLength(1);
+
+    const temporaria = await enviar(condutor.token, campos);
+    expect(temporaria.status).toBe(201);
+    await db('evidencias_odometro').where({ id: Number(temporaria.body.id) })
+      .update({ criado_em: db.raw("CURRENT_TIMESTAMP - interval '40 minutes'") });
+    expect((await transicao(condutor.token, 'iniciar', viagem.id, { km_inicial: 1005, evidencia_id: reserva.id })).status).toBe(200);
+    const chegada = await enviar(condutor.token, { ...campos, fase: 'CHEGADA' });
+    expect(chegada.status).toBe(201);
+    expect((await transicao(condutor.token, 'finalizar', viagem.id, { km_final: 1015, evidencia_id: chegada.body.id })).status).toBe(200);
+
+    await db('viagens_frota').where({ id: viagem.id }).update({
+      data_hora_efetiva_saida: db.raw("CURRENT_TIMESTAMP - interval '2 years 1 day'"),
+      data_hora_efetiva_chegada: db.raw("CURRENT_TIMESTAMP - interval '2 years'"),
+    });
+    await db('evidencias_odometro').whereIn('id', [reserva.id, Number(chegada.body.id)]).update({
+      conclusao_operacao_em: db.raw("CURRENT_TIMESTAMP - interval '2 years'"),
+      retencao_ate: db.raw("CURRENT_TIMESTAMP - interval '1 year'"),
+    });
+    await db('evidencias_odometro').where({ id: reserva.id }).update({ preservacao_legal: true, preservacao_motivo: 'Teste' });
+
+    const simular = await processarRetencaoEvidencias(db, { aplicar: false, limite: 25 });
+    expect(simular).toMatchObject({ candidatos: 2, temporarias: 1, vencidas: 1, removidas: 0 });
+    const ids = [Number(temporaria.body.id), Number(chegada.body.id)];
+    await db.raw(`ALTER TABLE evidencias_odometro ADD CONSTRAINT teste_expurgo_rollback
+      CHECK (status NOT IN ('REJEITADA', 'EXPURGADA_RETENCAO')) NOT VALID`);
+    try {
+      const falha = await processarRetencaoEvidencias(db, { aplicar: true, limite: 25 });
+      expect(falha).toMatchObject({ falhas: 2, removidas: 0 });
+      expect(await db(TABELA_ARQUIVOS_ODOMETRO).whereIn('evidencia_id', ids)).toHaveLength(2);
+    } finally {
+      await db.raw('ALTER TABLE evidencias_odometro DROP CONSTRAINT teste_expurgo_rollback');
+    }
+
+    const aplicado = await processarRetencaoEvidencias(db, { aplicar: true, limite: 25 });
+    expect(aplicado).toMatchObject({ removidas: 2, falhas: 0 });
+    expect(await db('evidencias_odometro').where({ id: Number(chegada.body.id) }).first())
+      .toMatchObject({ status: 'EXPURGADA_RETENCAO', expurgo_motivo: 'PRAZO_RETENCAO_12_MESES', storage_key: null });
+    expect(await db('evidencias_odometro').where({ id: Number(temporaria.body.id) }).first())
+      .toMatchObject({ status: 'REJEITADA' });
+    expect(await db('evidencias_odometro').where({ id: reserva.id }).first()).toMatchObject({ status: 'ATIVA' });
+    expect(await db(TABELA_ARQUIVOS_ODOMETRO).whereIn('evidencia_id', ids)).toHaveLength(0);
+    await expect(storage.ler(reserva.storage_key)).resolves.toBeTruthy();
+  });
+
+  it('aplica o teto de bytes a uploads concorrentes de viagens diferentes sem gravar evidência incompleta', async () => {
+    const [{ total }] = await db(TABELA_ARQUIVOS_ODOMETRO).sum('tamanho_bytes as total');
+    env.evidenciasPostgresLimiteBytes = Number(total) + (await normalizarFotoOdometro(JPEG)).bytes.length;
+    const [a, b] = [await viagemAdministrativa(), await viagemAdministrativa()];
+    const envios = await Promise.all([a, b].map(({ condutor, viagem }) =>
+      enviar(condutor.token, { tipo_operacao: 'ADMINISTRATIVA', viagem_id: viagem.id, fase: 'SAIDA' })));
+    expect(envios.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(envios.find((r) => r.status === 409)?.body.codigo).toBe('EVIDENCIAS_LIMITE_ARMAZENAMENTO');
+    expect(await db('evidencias_odometro').whereIn('viagem_frota_id', [a.viagem.id, b.viagem.id])).toHaveLength(1);
   });
 });
