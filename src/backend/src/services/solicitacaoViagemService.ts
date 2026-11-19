@@ -66,15 +66,16 @@ export const solicitacaoViagemService = {
     for (let lote = 0; lote < 20; lote++) {
       const processadas = await db.transaction(async (trx) => {
         const vencidas = await solicitacaoViagemModel.buscarAprovadasVencidas(trx, tamanhoLote);
-        for (const { id } of vencidas) {
-          await solicitacaoViagemModel.atualizarStatus(id, 'EXPIRADA', trx);
+        if (!vencidas.length) return 0;
+        const expiradas = await solicitacaoViagemModel.marcarExpiradas(trx, vencidas.map(({ id }) => id));
+        for (const { id } of expiradas) {
           await auditoriaModel.registrar({
             usuario_id: null,
             acao: `EXPIROU_SOLICITACAO_VIAGEM id=${id} origem=ROTINA_AUTOMATICA`,
             modulo: MODULOS_AUDITORIA.SOLICITACOES_VIAGEM,
           }, trx);
         }
-        return vencidas.length;
+        return expiradas.length;
       });
       total += processadas;
       if (processadas < tamanhoLote) break;

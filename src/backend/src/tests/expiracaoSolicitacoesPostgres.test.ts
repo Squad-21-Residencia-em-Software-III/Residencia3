@@ -1,3 +1,6 @@
+import { execFile } from 'node:child_process';
+import { resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -118,6 +121,34 @@ describe.skipIf(!habilitado)('Expiração administrativa em PostgreSQL descartá
     expect(await db('auditorias').where('acao', `EXPIROU_SOLICITACAO_VIAGEM id=${id} origem=ROTINA_AUTOMATICA`))
       .toHaveLength(1);
   });
+
+  it.skipIf(process.env.GITHUB_ACTIONS !== 'true')('executa o cmd de expiração com a role restrita do cron', async () => {
+    const id = await criarSolicitacao('APROVADA', 31);
+    await db.raw(`
+      CREATE ROLE cron_expiracao_ci LOGIN PASSWORD 'cron-expiracao-ci-apenas';
+      GRANT CONNECT ON DATABASE frotas_teste TO cron_expiracao_ci;
+      GRANT USAGE ON SCHEMA public TO cron_expiracao_ci;
+      GRANT SELECT (id, status, data_saida_desejada), UPDATE (status)
+        ON solicitacoes_viagem TO cron_expiracao_ci;
+      GRANT SELECT (id, solicitacao_id, status) ON viagens_frota TO cron_expiracao_ci;
+      GRANT INSERT (usuario_id, acao, modulo) ON auditorias TO cron_expiracao_ci;
+      GRANT USAGE ON SEQUENCE auditorias_id_seq TO cron_expiracao_ci;
+    `);
+    const { stdout } = await promisify(execFile)(process.execPath, [
+      resolve(__dirname, '../../dist/scripts/expirarSolicitacoesViagem.js'),
+    ], {
+      timeout: 12_000,
+      env: {
+        ...process.env,
+        DB_ROLE: 'app', POSTGRES_APP_USER: 'cron_expiracao_ci', POSTGRES_APP_PASSWORD: 'cron-expiracao-ci-apenas',
+        POSTGRES_POOL_MIN: '0', POSTGRES_POOL_MAX: '1',
+      },
+    });
+    expect(JSON.parse(stdout.trim())).toMatchObject({ evento: 'expiracao_solicitacoes_viagem', expiradas: 1 });
+    expect(await db('solicitacoes_viagem').where({ id }).first('status')).toEqual({ status: 'EXPIRADA' });
+    expect(await db('auditorias').where('acao', `EXPIROU_SOLICITACAO_VIAGEM id=${id} origem=ROTINA_AUTOMATICA`))
+      .toHaveLength(1);
+  }, 15_000);
 
   it.each(['APROVADA', 'EXPIRADA'])('bloqueia POST direto de solicitação %s já fora do prazo', async (status) => {
     const id = await criarSolicitacao(status, 31);

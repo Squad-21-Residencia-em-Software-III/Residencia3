@@ -67,6 +67,10 @@ export const solicitacaoViagemModel = {
       .skipLocked();
   },
 
+  async marcarExpiradas(trx: Knex.Transaction, ids: number[]): Promise<{ id: number }[]> {
+    return trx('solicitacoes_viagem').whereIn('id', ids).update({ status: 'EXPIRADA' }).returning('id');
+  },
+
   // Consultar após obter o lock da solicitação, com o relógio atual do PostgreSQL.
   async prazoDeAgendamentoVencido(trx: Knex.Transaction, id: number): Promise<boolean> {
     return Boolean(await trx('solicitacoes_viagem')
