@@ -103,7 +103,11 @@ export async function validarAgendaSvo(trx: Knex.Transaction, dados: DadosAgenda
       throw new AppError('Há uma reserva ativa com período inválido', 409, 'CONFLITO_AGENDA');
     }
     if (ordemSvoEmCurso(reserva.status) && existente.fim.getTime() <= Date.now()) {
-      throw new AppError('Um recurso permanece ocupado por uma coleta em andamento e atrasada', 409, 'CONFLITO_AGENDA');
+      const apenasIntegrantes = recursos.every(([tipo, id]) => id === null || tipo === 'INTEGRANTE');
+      const mensagem = apenasIntegrantes
+        ? 'Um integrante permanece ocupado por uma coleta em andamento e atrasada'
+        : 'Um recurso permanece ocupado por uma coleta em andamento e atrasada';
+      throw new AppError(mensagem, 409, 'CONFLITO_AGENDA');
     }
     const resultado = classificarIntervalo({ inicio: dados.inicio, fim: dados.fim }, existente);
     if (resultado.sobrepoe) {

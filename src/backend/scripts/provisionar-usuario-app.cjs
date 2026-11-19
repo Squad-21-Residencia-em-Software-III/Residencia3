@@ -303,6 +303,9 @@ async function provisionarUsuarioAplicacao() {
           IF to_regclass('public.evidencias_odometro') IS NOT NULL THEN
             EXECUTE format('REVOKE DELETE ON TABLE public.evidencias_odometro FROM %I', '${appUser}');
           END IF;
+          IF to_regclass('public.excecoes_odometro') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.excecoes_odometro FROM %I', '${appUser}');
+          END IF;
           IF to_regclass('public.evidencias_odometro_arquivos') IS NOT NULL THEN
             EXECUTE format('REVOKE UPDATE ON TABLE public.evidencias_odometro_arquivos FROM %I', '${appUser}');
           END IF;

@@ -55,12 +55,13 @@ const fila = (id: number) => db.transaction(async (trx) => { await travarAgendaS
 
 describe.skipIf(!habilitado)('BL31 com PostgreSQL descartável e autenticação real', () => {
   beforeAll(async () => {
-    if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_PORT !== '55432' ||
+    const porta = process.env.POSTGRES_SVO_TEST_PORT ?? '55432';
+    if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_PORT !== porta ||
         process.env.POSTGRES_DB !== 'fsph_scrum166_teste') throw new Error('Banco BL31 não autorizado');
     const { rows } = await db.raw('SELECT current_database() AS db, inet_server_addr()::text AS host, inet_server_port() AS port');
     const ip = process.env.POSTGRES_TEST_CONTAINER_IP ?? '127.0.0.1';
     if (!/^(127\.|172\.(1[6-9]|2\d|3[01])\.|10\.|192\.168\.)/.test(ip)) throw new Error('IP de teste não privado');
-    expect(rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', host: `${ip}/32`, port: 55432 });
+    expect(rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', host: `${ip}/32`, port: Number(porta) });
   });
   afterAll(async () => { await db.destroy(); });
 
@@ -175,7 +176,13 @@ describe.skipIf(!habilitado)('BL31 com PostgreSQL descartável e autenticação 
       .set('Authorization', gestor.token).send({ ...corpo, ...alteracao });
     expect((await reprogramar({ inicio_previsto: instante(30).toISOString() })).status).toBe(409);
     expect((await reprogramar()).status).toBe(200); // Reserva futura compatível não é bloqueada pela ocupação atual.
-    expect((await reprogramar({ equipe_id: a.equipe.id })).status).toBe(409);
+    // Trocar de equipe exige informar nominalmente os integrantes; esses integrantes passam pela agenda.
+    expect((await reprogramar({ equipe_id: a.equipe.id })).status).toBe(400);
+    const choqueNaEquipe = await reprogramar({
+      equipe_id: a.equipe.id, integrantes_ids: [u.id], inicio_previsto: instante(30).toISOString(),
+    });
+    expect(choqueNaEquipe.status).toBe(409);
+    expect(choqueNaEquipe.body.codigo).toBe('CONFLITO_AGENDA');
     await db('veiculos').where({ id: b.veiculo.id }).update({ lotacao_cabine: 1 });
     expect((await reprogramar()).status).toBe(409);
     await db('veiculos').where({ id: b.veiculo.id }).update({ lotacao_cabine: 3 });

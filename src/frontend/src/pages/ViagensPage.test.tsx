@@ -102,10 +102,10 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     RECURSOS_BACKEND.agendamentoTemporalSvo = false;
   });
 
-  it('desativa operações de coleta e consulta de alertas enquanto o banco não estiver pronto', async () => {
+  it('desativa operações de coleta e consulta de alertas quando a flag está desligada', async () => {
     RECURSOS_BACKEND.agendamentoTemporalSvo = false;
     abrir('/viagens?aba=svo');
-    expect(await screen.findByText(/operações de coleta SVO indisponíveis/)).toBeInTheDocument();
+    expect(await screen.findByText(/operações de coleta SVO estão desabilitadas/)).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Agendar coleta/ })).toBeDisabled();
     expect(api.listarAlertasSvo).not.toHaveBeenCalled();
   });
@@ -524,7 +524,7 @@ describe('ViagensPage: status e ações da coleta SVO por perfil (SCRUM-110)', (
 });
 
 vi.mock('../services/api/evidenciasOdometroApi', () => ({
-  evidenciasOdometroApi: { enviar: vi.fn(), consultar: vi.fn(), arquivo: vi.fn() },
+  evidenciasOdometroApi: { enviar: vi.fn(), consultar: vi.fn(), arquivo: vi.fn(), configuracao: vi.fn() },
 }));
 
 describe('ViagensPage: fotos do odômetro no detalhe (SCRUM-207)', () => {
@@ -535,6 +535,7 @@ describe('ViagensPage: fotos do odômetro no detalhe (SCRUM-207)', () => {
     sessao.perfil = 'GESTOR_FROTA';
     api.listar.mockResolvedValue([concluida]);
     api.listarAlertasSvo.mockResolvedValue([]);
+    vi.mocked(evidenciasOdometroApi.configuracao).mockResolvedValue({ fotos_disponiveis: true, excecoes_disponiveis: false });
     vi.mocked(evidenciasOdometroApi.consultar).mockReturnValue(new Promise(() => {}));
   });
 

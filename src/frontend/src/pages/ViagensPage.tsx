@@ -21,6 +21,7 @@ import {
 import { BotaoExportarRelatorio } from '../components/relatorios/BotaoExportarRelatorio';
 import { ApiError, mensagemDeErro } from '../services/api/http';
 import { recursoAtivo } from '../config/recursosBackend';
+import { evidenciasOdometroApi } from '../services/api/evidenciasOdometroApi';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { solicitacoesApi } from '../services/api/solicitacoesApi';
 import { veiculosApi } from '../services/api/veiculosApi';
@@ -43,6 +44,7 @@ import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
 import { ModalFinalizarViagem } from './viagens/ModalFinalizarViagem';
 import { ModalAgendarColetaSvo } from './viagens/ModalAgendarColetaSvo';
 import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
+import { ModalExcecoesOdometro } from './viagens/ModalExcecoesOdometro';
 import { ModalEvidenciasOdometro } from './viagens/ModalEvidenciasOdometro';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
 import { usePermissao } from '../utils/permissoes';
@@ -157,8 +159,22 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const isSvo = operacao === 'SVO';
   const agendaSvoAtiva = recursoAtivo('agendamentoTemporalSvo');
   // Fotos do odômetro (SCRUM-203): cada gestor só na própria operação; o Administrador nas duas
-  const podeVerFotos =
+  const podeConsultarOdometro =
     recursoAtivo('fotosOdometro') && !somenteProprias && podeNaFrota('evidenciasOdometro.ver', operacao);
+  const [configuracaoOdometro, setConfiguracaoOdometro] =
+    useState<Awaited<ReturnType<typeof evidenciasOdometroApi.configuracao>> | null>(null);
+  const podeVerFotos = podeConsultarOdometro && configuracaoOdometro?.fotos_disponiveis;
+  const podeDecidirExcecoes = podeConsultarOdometro && configuracaoOdometro?.excecoes_disponiveis;
+
+  useEffect(() => {
+    if (!podeConsultarOdometro) return;
+    let ativo = true;
+    evidenciasOdometroApi.configuracao().then(
+      (dados) => { if (ativo) setConfiguracaoOdometro(dados); },
+      () => { if (ativo) setConfiguracaoOdometro(null); },
+    );
+    return () => { ativo = false; };
+  }, [podeConsultarOdometro]);
   const textos = TEXTOS_OPERACAO[operacao];
   // Agendar viagem administrativa (Admin e Gestor de Frota); alocar coleta SVO (Admin e Gestor SVO)
   const podeAgendar = !isSvo && !somenteProprias && pode('viagens.agendar');
@@ -181,6 +197,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
+  const [filaExcecoesAberta, setFilaExcecoesAberta] = useState(false);
   const [dadosNovaViagem, setDadosNovaViagem] = useState<DadosNovaViagem | null>(null);
 
   // Ordens SVO aguardando agendamento (só para quem aloca coletas)
@@ -509,7 +526,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
 
   return (
     <div className="grid w-full min-w-0 gap-5">
-      {isSvo && !agendaSvoAtiva && <Alert tone="info">Agendamento e operações de coleta SVO indisponíveis até a atualização do banco de dados.</Alert>}
+      {isSvo && !agendaSvoAtiva && <Alert tone="info">A agenda temporal e as operações de coleta SVO estão desabilitadas neste ambiente.</Alert>}
       {erroAlertas && <Alert tone="warning">Não foi possível atualizar os alertas SVO: {erroAlertas}</Alert>}
       {alertasSvo.map((alerta) => (
         <Alert key={alerta.id} tone="warning">
@@ -618,7 +635,16 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         <TableToolbar
           title={textos.titulo}
           subtitle={`${filtradas.length} de ${viagens.length} ${textos.registro}`}
-          actions={!somenteProprias ? <BotaoExportarRelatorio tipo="viagens" /> : undefined}
+          actions={!somenteProprias ? (
+            <>
+              {podeDecidirExcecoes && (
+                <Button type="button" variant="outline" onClick={() => setFilaExcecoesAberta(true)}>
+                  Pedidos sem foto
+                </Button>
+              )}
+              <BotaoExportarRelatorio tipo="viagens" />
+            </>
+          ) : undefined}
           newLabel={podeAgendar ? 'Agendar Viagem' : undefined}
           onNew={podeAgendar ? () => setModalNovaAberto(true) : undefined}
           onFilter={() => setFiltrosAbertos((f) => !f)}
@@ -1033,6 +1059,9 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         }
       />
 
+      {filaExcecoesAberta && podeDecidirExcecoes && (
+        <ModalExcecoesOdometro tipo={operacao} onClose={() => setFilaExcecoesAberta(false)} />
+      )}
       {viagemFotos && (
         <ModalEvidenciasOdometro referencia={viagemFotos} onClose={() => setViagemFotos(null)} />
       )}

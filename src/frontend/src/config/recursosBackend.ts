@@ -40,7 +40,7 @@ export const RECURSOS_BACKEND = {
    * Desligado, iniciar e finalizar funcionam como antes, sem foto e sem `evidencia_id`.
    * Serviço: `evidenciasOdometroApi`.
    */
-  fotosOdometro: false,
+  fotosOdometro: import.meta.env.VITE_FOTOS_ODOMETRO_ATIVAS === 'true',
 };
 
 export type RecursoBackend = keyof typeof RECURSOS_BACKEND;

@@ -13,6 +13,7 @@ interface CampoFotoOdometroProps {
   validando: boolean;
   onChange: (arquivo: File | null) => Promise<void>;
   disabled?: boolean;
+  obrigatoria: boolean;
 }
 
 /**
@@ -20,7 +21,7 @@ interface CampoFotoOdometroProps {
  * navegador permite; "Carregar foto" abre a galeria ou os arquivos. A prévia fica só na memória
  * da página (URL temporária revogada ao trocar ou fechar), nunca no armazenamento do navegador.
  */
-export function CampoFotoOdometro({ fase, arquivo, erro, validando, onChange, disabled = false }: CampoFotoOdometroProps) {
+export function CampoFotoOdometro({ fase, arquivo, erro, validando, onChange, obrigatoria, disabled = false }: CampoFotoOdometroProps) {
   const camera = useRef<HTMLInputElement>(null);
   const galeria = useRef<HTMLInputElement>(null);
   const idAjuda = useId();
@@ -51,7 +52,7 @@ export function CampoFotoOdometro({ fase, arquivo, erro, validando, onChange, di
   return (
     <fieldset className="mb-4 min-w-0 rounded-md border border-slate-200 p-3 md:p-4" aria-describedby={idAjuda}>
       <legend className="px-1 text-[13px] font-semibold text-slate-800">
-        Foto do odômetro na {rotuloFase} *
+        Foto do odômetro na {rotuloFase}{obrigatoria ? ' *' : ' (opcional)'}
       </legend>
       <p id={idAjuda} className="mb-3 text-xs text-slate-500">
         Fotografe o painel com os números legíveis, sem reflexo. {DESCRICAO_FORMATOS}, até{' '}

@@ -119,5 +119,20 @@ jobs:
         env:
           JWT_SECRET: ci-test-only-secret-not-for-production
 
+      - name: Validar agenda temporal e NO_LOCAL em PostgreSQL
+        env:
+          JWT_SECRET: ci-test-only-secret-not-for-production
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          POSTGRES_DB: fsph_scrum166_teste
+          POSTGRES_SVO_TEST_PORT: '5432'
+          SCRUM166_POSTGRES_TESTS: '1'
+          SCRUM196_BL31_POSTGRES_TESTS: '1'
+          BL31_POSTGRES_TESTS: '1'
+        run: |
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres fsph_scrum166_teste
+          export POSTGRES_TEST_CONTAINER_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$POSTGRES_CONTAINER")"
+          npm run migrate
+          npx vitest run src/tests/agendaSvoPostgres.test.ts src/tests/bl31Postgres.test.ts --no-file-parallelism
+
       - name: Verificar tipos TypeScript
         run: npm run typecheck

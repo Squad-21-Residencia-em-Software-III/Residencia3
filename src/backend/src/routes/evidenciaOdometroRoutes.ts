@@ -79,4 +79,9 @@ evidenciaOdometroRoutes.post(
 // Motoristas consultam só a situação da própria viagem (o modal sabe se a foto já foi registrada)
 evidenciaOdometroRoutes.get('/', gestoresEMotoristas, evidenciaOdometroController.consultar);
 
+evidenciaOdometroRoutes.get('/configuracao', gestoresEMotoristas, evidenciaOdometroController.configuracao);
+evidenciaOdometroRoutes.get('/excecoes', gestores, evidenciaOdometroController.listarExcecoes);
+evidenciaOdometroRoutes.post('/excecoes',
+  autorizar(PERFIS.MOTORISTA_FROTA, PERFIS.MOTORISTA_SVO), evidenciaOdometroController.solicitarExcecao);
+evidenciaOdometroRoutes.patch('/excecoes/:id', gestores, evidenciaOdometroController.decidirExcecao);
 evidenciaOdometroRoutes.get('/:id/arquivo', gestores, limitarLeituras, evidenciaOdometroController.arquivo);

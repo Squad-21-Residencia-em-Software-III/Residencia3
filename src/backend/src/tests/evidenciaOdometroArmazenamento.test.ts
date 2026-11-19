@@ -21,6 +21,16 @@ describe('Armazenamento local das fotos do odômetro', () => {
     await rm(pasta, { recursive: true, force: true });
   });
 
+  it('mantém a exceção desligada por padrão e coordena as flags de produção', () => {
+    const producao = { ...BASE_ENV, NODE_ENV: 'production', TRUST_PROXY: '1', EVIDENCIAS_STORAGE: 'postgres' };
+    expect(carregarEnv(producao).excecoesOdometroAtivas).toBe(false);
+    expect(() => carregarEnv({ ...BASE_ENV, EXCECOES_ODOMETRO_ATIVAS: 'true' })).toThrow('exige EVIDENCIAS_STORAGE');
+    expect(() => carregarEnv({ ...producao, FOTOS_ODOMETRO_OBRIGATORIAS: 'true' })).toThrow('EXCECOES_ODOMETRO_ATIVAS');
+    expect(carregarEnv({
+      ...producao, EXCECOES_ODOMETRO_ATIVAS: 'true', FOTOS_ODOMETRO_OBRIGATORIAS: 'true',
+    })).toMatchObject({ excecoesOdometroAtivas: true, fotosOdometroObrigatorias: true, evidenciasStorage: 'postgres' });
+  });
+
   it('salva, lê e remove pela chave, sem deixar temporários', async () => {
     const armazenamento = armazenamentoLocal(pasta);
     await armazenamento.salvar(CHAVE, Buffer.from([0xff, 0xd8, 0xff, 1, 2]));

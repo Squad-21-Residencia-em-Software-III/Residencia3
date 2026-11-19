@@ -42,7 +42,25 @@ export interface EvidenciaOdometro {
   pode_baixar: boolean;
 }
 
+export interface PedidoExcecaoOdometro {
+  id: number;
+  viagem_id: number;
+  tipo_operacao: TipoOperacaoViagem;
+  fase: FaseOdometro;
+  motivo: string;
+  solicitada_em: string;
+  status: 'PENDENTE' | DecisaoExcecaoOdometro;
+  justificativa: string | null;
+  decidida_em: string | null;
+}
+
+export type DecisaoExcecaoOdometro = 'APROVADA' | 'RECUSADA';
+
 export interface EvidenciasDaViagem {
+  fotos_disponiveis?: boolean;
+  fotos_obrigatorias?: boolean;
+  pode_solicitar_excecao?: boolean;
+  pedidos_excecao?: PedidoExcecaoOdometro[];
   tipo_operacao: TipoOperacaoViagem;
   viagem_id: number;
   veiculo_placa: string | null;

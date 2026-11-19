@@ -5,6 +5,7 @@ import { db } from '../config/database';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
+import { excecoesDoRegistro, apresentarExcecao } from '../models/excecaoOdometroModel';
 import { viagemModel } from '../models/viagemModel';
 import type { TipoOperacao } from '../validators/viagemSchemas';
 import { armazenamentoEvidencias, lerEvidenciaVerificada } from './armazenamentoEvidencias';
@@ -217,6 +218,15 @@ async function garantirConsulta(autor: Autor, tipo: TipoOperacao, viagemId: numb
   await db.transaction((trx) => garantirAcessoAoRegistro(trx, autor, tipo, viagem));
 }
 
+export function configuracaoOdometro() {
+  const fotosDisponiveis = env.evidenciasStorage !== 'desativado';
+  return {
+    fotos_disponiveis: fotosDisponiveis,
+    fotos_obrigatorias: fotosDisponiveis && env.fotosOdometroObrigatorias,
+    excecoes_disponiveis: fotosDisponiveis && env.excecoesOdometroAtivas,
+  };
+}
+
 export const evidenciaOdometroService = {
   async enviar(dados: EnvioFoto, conteudo: Buffer, autor: Autor): Promise<EvidenciaEnviada> {
     const { formato, bytes } = await normalizarFotoOdometro(conteudo);
@@ -281,10 +291,11 @@ export const evidenciaOdometroService = {
     const saiu = ['EM_ANDAMENTO', 'NO_LOCAL', 'CONCLUIDA'].includes(viagem.status);
     const chegou = viagem.status === 'CONCLUIDA';
 
+    const configuracao = configuracaoOdometro();
     let evidencias: EvidenciaComNomes[] = [];
-    if (tipo === 'ADMINISTRATIVA') {
+    if (configuracao.fotos_disponiveis && tipo === 'ADMINISTRATIVA') {
       evidencias = await evidenciasComNomes(tipo, viagemId);
-    } else {
+    } else if (configuracao.fotos_disponiveis) {
       // Coleta ainda não iniciada num veículo já em deslocamento: a saída vem do deslocamento em curso
       const deslocamento = (await deslocamentoDaOrdem(db, viagemId)) ??
         (viagem.status === 'AGENDADA'
@@ -295,12 +306,20 @@ export const evidenciaOdometroService = {
     }
 
     const contexto = { tipo, viagemId, gestor: ehGestor(autor.perfil) };
+    const solicitacoes = configuracao.excecoes_disponiveis
+      ? await excecoesDoRegistro(db, tipo, viagemId).whereNull('encerrada_em')
+        .modify((consulta) => { if (!contexto.gestor) consulta.where('solicitada_por', autor.id); })
+        .distinctOn('fase').orderBy([{ column: 'fase' }, { column: 'id', order: 'desc' }])
+      : [];
     if (contexto.gestor) {
       await registrarAuditoria(db, autor.id, `CONSULTOU_FOTOS_ODOMETRO tipo=${tipo} id=${viagemId}`);
     }
     return {
       tipo_operacao: tipo,
       viagem_id: viagemId,
+      ...configuracao,
+      pode_solicitar_excecao: configuracao.excecoes_disponiveis && !contexto.gestor,
+      pedidos_excecao: solicitacoes.map(apresentarExcecao),
       veiculo_placa: viagem.veiculo_placa ?? null,
       motorista_nome: viagem.motorista_nome ?? null,
       saida: montarFase('SAIDA', evidencias.find((e) => e.fase === 'SAIDA'), saiu, contexto),

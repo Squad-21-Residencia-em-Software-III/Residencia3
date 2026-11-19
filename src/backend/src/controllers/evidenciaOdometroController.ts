@@ -1,15 +1,41 @@
 import type { Request, Response } from 'express';
 import { AppError } from '../errors/AppError';
 import { usuarioAutenticado } from '../middlewares/autenticar';
-import { evidenciaOdometroService } from '../services/evidenciaOdometroService';
+import { excecaoOdometroService } from '../services/excecaoOdometroService';
+import { configuracaoOdometro, evidenciaOdometroService } from '../services/evidenciaOdometroService';
 import { idParamSchema } from '../validators/comuns';
 import {
   arquivoEvidenciaSchema,
   consultarEvidenciasSchema,
+  decidirExcecaoSchema,
+  listarExcecoesSchema,
+  solicitarExcecaoSchema,
   enviarEvidenciaSchema,
 } from '../validators/evidenciaOdometroSchemas';
 
 export const evidenciaOdometroController = {
+  configuracao(_req: Request, res: Response): void {
+    res.set('Cache-Control', 'no-store').json(configuracaoOdometro());
+  },
+
+  async listarExcecoes(req: Request, res: Response): Promise<void> {
+    const { tipo_operacao, pagina } = listarExcecoesSchema.parse(req.query);
+    res.set('Cache-Control', 'no-store').json(
+      await excecaoOdometroService.listarPendentes(tipo_operacao, pagina, usuarioAutenticado(req))
+    );
+  },
+
+  async solicitarExcecao(req: Request, res: Response): Promise<void> {
+    const pedido = solicitarExcecaoSchema.parse(req.body);
+    res.status(201).json(await excecaoOdometroService.solicitar(pedido, usuarioAutenticado(req)));
+  },
+
+  async decidirExcecao(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    const { tipo_operacao, decisao, justificativa } = decidirExcecaoSchema.parse(req.body);
+    res.json(await excecaoOdometroService.decidir(id, tipo_operacao, decisao, justificativa, usuarioAutenticado(req)));
+  },
+
   async enviar(req: Request, res: Response): Promise<void> {
     const dados = enviarEvidenciaSchema.parse(req.body ?? {});
     if (!req.file) {
@@ -21,7 +47,7 @@ export const evidenciaOdometroController = {
 
   async consultar(req: Request, res: Response): Promise<void> {
     const { tipo_operacao, viagem_id } = consultarEvidenciasSchema.parse(req.query);
-    res.json(await evidenciaOdometroService.consultar(tipo_operacao, viagem_id, usuarioAutenticado(req)));
+    res.set('Cache-Control', 'no-store').json(await evidenciaOdometroService.consultar(tipo_operacao, viagem_id, usuarioAutenticado(req)));
   },
 
   async arquivo(req: Request, res: Response): Promise<void> {

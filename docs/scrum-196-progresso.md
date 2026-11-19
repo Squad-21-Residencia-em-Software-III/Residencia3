@@ -1,8 +1,8 @@
 # SCRUM-196: implementação e pendências
 
-O PR #162 partiu de develop em ea08d75 e foi sincronizado com develop em 0336bec no commit 7532f0a. O PR segue em Draft para a revisão independente de QA.
+O PR #162 foi integrado à `develop`. O histórico abaixo registra as revisões da implementação.
 
-## Implementado na branch
+## Implementado na develop
 
 - Consulta de disponibilidade, agendamento e reavaliação da fila não exigem escala. `escalas_svo` e seu histórico não são alterados. São preservados os bloqueios existentes de equipe, veículo e motorista; a fila também considera integrantes comuns a equipes diferentes.
 - Administrador e Gestor SVO podem listar, criar e renomear equipes. `GET /api/equipes-svo`, `GET /api/equipes-svo/:id`, `POST /api/equipes-svo` e `PATCH /api/equipes-svo/:id` recebem ou retornam `id` e `nome_equipe`. Escritas têm auditoria e trava transacional entre operações da aplicação. A migration da SCRUM-198 define o índice único para o nome normalizado.
@@ -16,7 +16,7 @@ O PR #162 partiu de develop em ea08d75 e foi sincronizado com develop em 0336bec
 - **Migration integrada ao código.** A develop contém a migration `20261118113000_scrum_198_equipes_integrantes_designacoes_svo.js` pelo PR #169. A mesma develop inclui fila e alertas (#157), chegada e ocupação em NO_LOCAL (#164), apresentação operacional (#167), segurança do proxy (#168) e evidências do odômetro (#170–#172).
 - **Contrato analisado.** A implementação foi comparada com as tabelas, colunas, constraints, índices e relacionamentos definidos na migration, incluindo o perfil INTEGRANTE_SVO, a unicidade dos nomes e as tabelas de vínculos e designações. Consulte o [contrato da SCRUM-196](scrum-196-contrato-banco.md).
 - **Aplicação da migration no ambiente compartilhado:** não verificada nesta revisão. Isso inclui o Neon.
-- **Homologação integrada.** Sem evidência de execução das suítes PostgreSQL para o HEAD desta revisão. Permanecem pendentes persistência real, concorrência entre alocações, rollback transacional, histórico após desvinculação, compatibilidade com registros legados, funcionamento integrado da SCRUM-198 e homologação funcional e visual de ponta a ponta.
+- **Validação e homologação.** Os cenários de concorrência, persistência e designações foram executados no ambiente isolado descrito em [Validação da SCRUM-198](validacao-banco-scrum-198.md). A homologação funcional e visual no ambiente da equipe continua a cargo do QA.
 - A separação entre lotação da cabine e capacidade de corpos é mantida; com lotação ausente, a designação com equipe é bloqueada. Nenhum calendário de escala é criado.
 
 ## Histórico da primeira revisão de QA do PR #162

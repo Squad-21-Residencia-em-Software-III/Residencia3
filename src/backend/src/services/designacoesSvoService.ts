@@ -14,6 +14,7 @@ export function consultarOcupacaoIndividualSvo(
     .whereIn('o.status', ORDENS_SVO_COM_RESERVA)
     .andWhere((q) => q.whereNull('o.inicio_previsto').orWhereNull('o.fim_previsto')
       .orWhere((emCurso) => emCurso.whereIn('o.status', ORDENS_SVO_EM_CURSO).whereNull('o.data_hora_conclusao')
+        .where('o.fim_previsto', '<=', conn.fn.now())
         .andWhere((saida) => saida.whereNull('o.data_hora_saida').orWhere('o.data_hora_saida', '<', fim)))
       .orWhere((prevista) => prevista.where('o.inicio_previsto', '<', fim).where('o.fim_previsto', '>', inicio)));
   if (ignorarOrdem !== undefined) consulta.whereNot('o.id', ignorarOrdem);

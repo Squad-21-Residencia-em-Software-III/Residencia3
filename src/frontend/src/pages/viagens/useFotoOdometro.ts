@@ -7,6 +7,7 @@ import {
   LABELS_FASE_ODOMETRO,
   type EvidenciaOdometro,
   type FaseOdometro,
+  type PedidoExcecaoOdometro,
 } from '../../types/evidenciaOdometro';
 import type { Viagem } from '../../types/viagem';
 import { novaChaveIdempotencia, validarFotoOdometro } from '../../utils/fotoOdometro';
@@ -17,12 +18,17 @@ import { novaChaveIdempotencia, validarFotoOdometro } from '../../utils/fotoOdom
  * de novo: o id é reaproveitado, a menos que o servidor diga que ele não vale mais.
  *
  * A foto deixa de ser pedida só quando o servidor informa que a fase já tem evidência
- * (deslocamento SVO compartilhado) ou que o gestor autorizou a transição sem foto. Se a consulta
- * falhar, a foto continua obrigatória.
+ * (deslocamento SVO compartilhado) ou que o gestor autorizou a transição sem foto.
+ * A API é a autoridade quando a configuração não pôde ser consultada.
  */
 export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fase: FaseOdometro) {
   const ativo = recursoAtivo('fotosOdometro');
   const [evidencia, setEvidencia] = useState<EvidenciaOdometro | null>(null);
+  const [fotoDisponivel, setFotoDisponivel] = useState(false);
+  const [obrigatoria, setObrigatoria] = useState(false);
+  const [pedido, setPedido] = useState<PedidoExcecaoOdometro | null>(null);
+  const [podeSolicitar, setPodeSolicitar] = useState(false);
+  const { id, tipo_operacao } = viagem;
   const [consultando, setConsultando] = useState(ativo);
   const [erroConsulta, setErroConsulta] = useState<string | null>(null);
   const [arquivo, setArquivoAtual] = useState<File | null>(null);
@@ -39,15 +45,23 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
     setConsultando(true);
     setErroConsulta(null);
     try {
-      const resposta = await evidenciasOdometroApi.consultar(viagem);
+      const resposta = await evidenciasOdometroApi.consultar({ id, tipo_operacao });
+      setFotoDisponivel(resposta.fotos_disponiveis === true);
+      setObrigatoria(resposta.fotos_obrigatorias === true);
+      setPedido(resposta.pedidos_excecao?.find((p) => p.fase === fase) ?? null);
+      setPodeSolicitar(resposta.pode_solicitar_excecao === true);
       setEvidencia(fase === 'SAIDA' ? resposta.saida : resposta.chegada);
     } catch (e) {
       setEvidencia(null);
+      setFotoDisponivel(false);
+      setObrigatoria(false);
+      setPedido(null);
+      setPodeSolicitar(false);
       setErroConsulta(mensagemDeErro(e));
     } finally {
       setConsultando(false);
     }
-  }, [ativo, fase, viagem]);
+  }, [ativo, fase, id, tipo_operacao]);
 
   useEffect(() => {
     void consultar();
@@ -58,7 +72,11 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
 
   const fotoDispensada =
     evidencia?.situacao === 'REGISTRADA' || evidencia?.situacao === 'EXCECAO_AUTORIZADA';
-  const fotoExigida = ativo && !fotoDispensada;
+  const fotoExigida = ativo && fotoDisponivel && obrigatoria && !fotoDispensada && pedido?.status !== 'APROVADA';
+
+  const solicitarExcecao = async (motivo: string) => {
+    setPedido(await evidenciasOdometroApi.solicitarExcecao(viagem, fase, motivo));
+  };
 
   const setArquivo = async (novo: File | null) => {
     setErroArquivo(null);
@@ -79,8 +97,9 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
 
   /** Id da foto para a transição, enviando-a se ainda não foi. `undefined` quando não se aplica. */
   const obterEvidenciaId = async (): Promise<string | undefined> => {
-    if (!fotoExigida) return undefined;
+    if (!ativo || !fotoDisponivel || fotoDispensada) return undefined;
     if (!arquivo) {
+      if (!fotoExigida) return undefined;
       throw new Error(`Tire ou carregue a foto do odômetro na ${LABELS_FASE_ODOMETRO[fase].toLowerCase()}.`);
     }
     if (enviada.current?.arquivo === arquivo) return enviada.current.id;
@@ -103,6 +122,7 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
 
   /** Erro da transição: se a foto não vale mais, a próxima tentativa envia de novo. */
   const tratarErroTransicao = (erro: unknown) => {
+    if (erro instanceof ApiError && erro.codigo === 'EVIDENCIA_OBRIGATORIA') void consultar();
     if (erro instanceof ApiError && (CODIGOS_REENVIAR_FOTO as readonly string[]).includes(erro.codigo ?? '')) {
       enviada.current = null;
       chave.current = novaChaveIdempotencia();
@@ -116,6 +136,10 @@ export function useFotoOdometro(viagem: Pick<Viagem, 'id' | 'tipo_operacao'>, fa
     erroConsulta,
     consultar,
     fotoExigida,
+    fotoDisponivel,
+    pedido,
+    podeSolicitar,
+    solicitarExcecao,
     arquivo,
     erroArquivo,
     validandoArquivo,
