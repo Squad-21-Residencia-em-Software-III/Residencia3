@@ -55,12 +55,13 @@ const fila = (id: number) => db.transaction(async (trx) => { await travarAgendaS
 
 describe.skipIf(!habilitado)('BL31 com PostgreSQL descartável e autenticação real', () => {
   beforeAll(async () => {
-    if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_PORT !== '55432' ||
+    const porta = process.env.POSTGRES_SVO_TEST_PORT ?? '55432';
+    if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_PORT !== porta ||
         process.env.POSTGRES_DB !== 'fsph_scrum166_teste') throw new Error('Banco BL31 não autorizado');
     const { rows } = await db.raw('SELECT current_database() AS db, inet_server_addr()::text AS host, inet_server_port() AS port');
     const ip = process.env.POSTGRES_TEST_CONTAINER_IP ?? '127.0.0.1';
     if (!/^(127\.|172\.(1[6-9]|2\d|3[01])\.|10\.|192\.168\.)/.test(ip)) throw new Error('IP de teste não privado');
-    expect(rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', host: `${ip}/32`, port: 55432 });
+    expect(rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', host: `${ip}/32`, port: Number(porta) });
   });
   afterAll(async () => { await db.destroy(); });
 
