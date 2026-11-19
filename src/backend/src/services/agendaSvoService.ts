@@ -30,13 +30,14 @@ export interface DadosAgendaSvo {
   veiculoId: number;
   motoristaId: number;
   equipeId?: number | null;
+  integrantesIds?: number[];
   inicio: Date;
   fim: Date;
   confirmar?: boolean;
   token?: string;
 }
 
-type Recurso = 'VEICULO' | 'MOTORISTA' | 'EQUIPE';
+type Recurso = 'VEICULO' | 'MOTORISTA' | 'EQUIPE' | 'INTEGRANTE';
 interface Conflito {
   ordem_id: number;
   recurso: Recurso;
@@ -55,6 +56,7 @@ function assinatura(dados: DadosAgendaSvo, conflitos: Conflito[]): string {
   return createHash('sha256').update(JSON.stringify({
     ordem: dados.ordemId, autor: dados.autorId, veiculo: dados.veiculoId,
     motorista: dados.motoristaId, equipe: dados.equipeId ?? null,
+    integrantes: [...(dados.integrantesIds ?? [])].sort((a, b) => a - b),
     inicio: dados.inicio.toISOString(), fim: dados.fim.toISOString(), conflitos,
   })).digest('hex');
 }
@@ -66,12 +68,18 @@ export async function validarAgendaSvo(trx: Knex.Transaction, dados: DadosAgenda
     throw new AppError('Informe um período futuro válido para a coleta', 400);
   }
 
+  const designacoes: { ordem_id: number; usuario_id: number }[] = dados.integrantesIds?.length
+    ? await trx('ordens_svo_integrantes').whereIn('usuario_id', dados.integrantesIds)
+      .whereNull('revogado_em').whereNot({ ordem_id: dados.ordemId }).select('ordem_id', 'usuario_id')
+      .orderBy('ordem_id').orderBy('usuario_id')
+    : [];
   const reservas: ReservaSvo[] = await trx('ordens_svo')
     .whereIn('status', ['ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'])
     .whereNot({ id: dados.ordemId })
     .andWhere((q) => {
       q.where('veiculo_id', dados.veiculoId).orWhere('motorista_id', dados.motoristaId);
       if (dados.equipeId) q.orWhere('equipe_id', dados.equipeId);
+      if (designacoes.length) q.orWhereIn('id', designacoes.map((d) => d.ordem_id));
     })
     .select('id', 'status', 'veiculo_id', 'motorista_id', 'equipe_id', 'inicio_previsto', 'fim_previsto')
     .orderBy('id');
@@ -83,6 +91,9 @@ export async function validarAgendaSvo(trx: Knex.Transaction, dados: DadosAgenda
       ['MOTORISTA', reserva.motorista_id === dados.motoristaId ? dados.motoristaId : null],
       ['EQUIPE', dados.equipeId && reserva.equipe_id === dados.equipeId ? dados.equipeId : null],
     ];
+    for (const d of designacoes.filter((d) => d.ordem_id === reserva.id)) {
+      recursos.push(['INTEGRANTE', d.usuario_id]);
+    }
     if (!reserva.inicio_previsto || !reserva.fim_previsto) {
       throw new AppError('Há uma reserva ativa sem período previsto para um dos recursos', 409, 'CONFLITO_AGENDA');
     }

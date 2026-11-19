@@ -246,7 +246,7 @@ export async function concluirOperacao(trx: Knex.Transaction, t: Transicao): Pro
   const pendentes = await trx('deslocamentos_svo_ordens as dor')
     .join('ordens_svo as o', 'o.id', 'dor.ordem_svo_id')
     .where('dor.deslocamento_svo_id', deslocamento.id)
-    .where('o.status', 'EM_DESLOCAMENTO')
+    .whereIn('o.status', ['EM_DESLOCAMENTO', 'NO_LOCAL'])
     .first('o.id');
   if (pendentes) return;
 

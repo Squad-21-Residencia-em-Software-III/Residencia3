@@ -62,7 +62,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
   if (typeof err === 'object' && err !== null && 'code' in err && 'message' in err &&
       ((err.code === '42703' && String(err.message).includes('liberada_em')) ||
-       (err.code === '42P01' && String(err.message).includes('alertas_atraso_svo')))) {
+       (err.code === '42P01' && /alertas_atraso_svo|ordens_svo_integrantes/.test(String(err.message))))) {
     res.status(503).json({ erro: 'A agenda SVO ainda não está disponível: a estrutura do banco precisa ser atualizada pela equipe responsável.' });
     return;
   }

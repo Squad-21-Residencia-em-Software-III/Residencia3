@@ -62,7 +62,9 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_PORT !== '55432' ||
         process.env.POSTGRES_DB !== 'fsph_scrum166_teste') throw new Error('Banco de teste não autorizado');
     const resultado = await db.raw('SELECT current_database() AS db, inet_server_addr()::text AS endereco, inet_server_port() AS porta');
-    expect(resultado.rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', endereco: '127.0.0.1/32', porta: 55432 });
+    const ip = process.env.POSTGRES_TEST_CONTAINER_IP ?? '127.0.0.1';
+    if (!/^(127\.|172\.(1[6-9]|2\d|3[01])\.|10\.|192\.168\.)/.test(ip)) throw new Error('IP de teste não privado');
+    expect(resultado.rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', endereco: `${ip}/32`, porta: 55432 });
   });
   afterAll(async () => { await db.destroy(); });
 
@@ -142,7 +144,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     const saidaAntecipada = await request(app).patch(`/api/viagens/${b.ordem.id}/iniciar`)
       .set('Authorization', r.condutor.token).send({ tipo_operacao: 'SVO', km_inicial: 20 });
     expect(saidaAntecipada.status).toBe(409);
-    const finalizacao = await request(app).patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.gestor.token)
+    const finalizacao = await request(app).patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.condutor.token)
       .send({ tipo_operacao: 'SVO', km_final: 20 });
     expect(finalizacao.status).toBe(200);
     const proxima = await db('ordens_svo').where({ id: b.ordem.id }).first();
@@ -197,19 +199,19 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     expect(filtro.status).toBe(400);
   });
 
-  it('conclusões simultâneas liberam uma única vez somente após todos os recursos ficarem livres', async () => {
+  it.each(['EM_DESLOCAMENTO', 'NO_LOCAL'])('conclusões simultâneas em %s liberam somente após todos os recursos ficarem livres', async (status) => {
     const r1 = await recursos();
     const r2 = await recursos();
     const [a, d, b] = await Promise.all([pendente(r1.gestor.id), pendente(r1.gestor.id), pendente(r1.gestor.id)]);
     for (const item of [a, d, b]) await db('solicitacoes_svo').where({ id: item.solicitacao.id }).update({ status: 'EM_ANDAMENTO' });
     await db('ordens_svo').where({ id: a.ordem.id }).update({ veiculo_id: r1.veiculo.id, motorista_id: r1.motorista.id,
-      status: 'EM_DESLOCAMENTO', inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
+      status, inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
     await db('ordens_svo').where({ id: d.ordem.id }).update({ veiculo_id: r2.veiculo.id, motorista_id: r2.motorista.id,
-      status: 'EM_DESLOCAMENTO', inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
+      status, inicio_previsto: instante(-120), fim_previsto: instante(-60), data_hora_saida: instante(-120), km_inicial: 10 });
     await db('ordens_svo').where({ id: b.ordem.id }).update({ veiculo_id: r1.veiculo.id, motorista_id: r2.motorista.id,
       equipe_id: r1.equipe.id, status: 'ALOCADA', inicio_previsto: instante(-20), fim_previsto: instante(40) });
     const respostas = await Promise.all([a, d].map((item) =>
-      request(app).patch(`/api/viagens/${item.ordem.id}/finalizar`).set('Authorization', r1.gestor.token)
+      request(app).patch(`/api/viagens/${item.ordem.id}/finalizar`).set('Authorization', item.ordem.id === a.ordem.id ? r1.condutor.token : r2.condutor.token)
         .send({ tipo_operacao: 'SVO', km_final: 20 })));
     expect(respostas.map((resp) => resp.status)).toEqual([200, 200]);
     const proxima = await db('ordens_svo').where({ id: b.ordem.id }).first();
@@ -230,7 +232,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     await db('ordens_svo').where({ id: b.ordem.id }).update({ ...comum, status: 'ALOCADA',
       inicio_previsto: instante(-20), fim_previsto: instante(40) });
     const resultados = await Promise.all([1, 2].map(() => request(app)
-      .patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.gestor.token)
+      .patch(`/api/viagens/${a.ordem.id}/finalizar`).set('Authorization', r.condutor.token)
       .send({ tipo_operacao: 'SVO', km_final: 20 })));
     expect(resultados.map((resp) => resp.status).sort()).toEqual([200, 400]);
     expect(await db('auditorias').where({ acao: `LIBEROU_ORDEM_SVO id=${b.ordem.id}` })).toHaveLength(1);
@@ -280,19 +282,19 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     expect(await db('auditorias').where('acao', 'like', `REPROGRAMOU_SVO id=${b.ordem.id} %`)).toHaveLength(1);
   });
 
-  it('recusa equipe fora da escala e capacidade acima do veículo', async () => {
+  it('rejeita capacidade excedida e permite equipe sem escala', async () => {
     const r = await recursos();
     const ordem = await pendente(r.gestor.id);
-    await db('escalas_svo').where({ equipe_id: r.equipe.id }).update({ data_fim: instante(60) });
+    await db('escalas_svo').where({ equipe_id: r.equipe.id }).delete();
     const corpo = { tipo_operacao: 'SVO', solicitacao_id: ordem.solicitacao.id, veiculo_id: r.veiculo.id,
       motorista_id: r.motorista.id, equipe_id: r.equipe.id, inicio_previsto: instante(120).toISOString(),
       fim_previsto: instante(180).toISOString() };
-    const foraDaEscala = await request(app).post('/api/viagens').set('Authorization', r.gestor.token).send(corpo);
-    expect(foraDaEscala.status).toBe(409);
     const semCapacidade = await request(app).post('/api/viagens').set('Authorization', r.gestor.token)
-      .send({ ...corpo, equipe_id: null, capacidade_utilizada: 5 });
+      .send({ ...corpo, capacidade_utilizada: 5 });
     expect(semCapacidade.status).toBe(400);
     expect((await db('ordens_svo').where({ id: ordem.ordem.id }).first()).status).toBe('AGUARDANDO_ALOCACAO');
+    const semEscala = await request(app).post('/api/viagens').set('Authorization', r.gestor.token).send(corpo);
+    expect(semEscala.status).toBe(200);
   });
 
   it('não soma reservas futuras à ocupação atual e mantém coleta atrasada como ocupada', async () => {

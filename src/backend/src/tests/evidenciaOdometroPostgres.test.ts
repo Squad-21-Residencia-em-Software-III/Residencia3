@@ -237,6 +237,12 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     const deslocamento = await db('deslocamentos_svo').where({ veiculo_id: r.veiculo.id }).first();
     expect(await db('deslocamentos_svo_ordens').where({ deslocamento_svo_id: deslocamento.id })).toHaveLength(2);
 
+    // NO_LOCAL ainda mantém o deslocamento físico aberto e as fotos compartilhadas.
+    for (const ordem of [ordemA, ordemB]) {
+      const resposta = await request(app).patch(`/api/viagens/ordens-svo/${ordem.id}/chegar-local`).set('Authorization', token);
+      expect(resposta.status).toBe(200);
+    }
+
     const chegada = await enviar(token, { tipo_operacao: 'SVO', viagem_id: ordemA.id, fase: 'CHEGADA' });
     expect(chegada.status).toBe(201);
     expect((await transicao(token, 'finalizar', ordemA.id, { tipo_operacao: 'SVO', km_final: 1080, evidencia_id: chegada.body.id })).status).toBe(200);

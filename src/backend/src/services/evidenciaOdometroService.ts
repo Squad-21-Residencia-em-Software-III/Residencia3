@@ -106,7 +106,8 @@ async function criarProvisoria(
   await garantirAcessoAoRegistro(trx, autor, tipo, viagem);
 
   const statusEsperado = dados.fase === 'SAIDA' ? operacao.agendada : operacao.emAndamento;
-  if (viagem.status !== statusEsperado) {
+  const noLocal = dados.tipo_operacao === 'SVO' && dados.fase === 'CHEGADA' && viagem.status === 'NO_LOCAL';
+  if (viagem.status !== statusEsperado && !noLocal) {
     throw new AppError(
       dados.fase === 'SAIDA'
         ? 'A foto de saída só pode ser enviada para viagens agendadas'
@@ -283,7 +284,7 @@ export const evidenciaOdometroService = {
     if (!viagem) throw new AppError('Viagem não encontrada', 404);
 
     // Status da consulta unificada: a ordem SVO aparece como AGENDADA / EM_ANDAMENTO / CONCLUIDA
-    const saiu = viagem.status === 'EM_ANDAMENTO' || viagem.status === 'CONCLUIDA';
+    const saiu = ['EM_ANDAMENTO', 'NO_LOCAL', 'CONCLUIDA'].includes(viagem.status);
     const chegou = viagem.status === 'CONCLUIDA';
 
     let evidencias: EvidenciaComNomes[] = [];
