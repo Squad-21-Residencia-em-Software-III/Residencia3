@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
 import type { Viagem } from '../../types/viagem';
+import { ERRO_LIMITE_ODOMETRO, KM_ODOMETRO_MAXIMO } from './limiteOdometro';
 import { SituacaoFotoOdometro } from './SituacaoFotoOdometro';
 import { mensagemFalhaTransicao, useFotoOdometro } from './useFotoOdometro';
 
@@ -29,6 +30,10 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
     const kmInicialNum = Number(kmInicial);
     if (!kmInicial || !Number.isInteger(kmInicialNum) || kmInicialNum < 0) {
       setErro('Informe o odômetro de saída como um número inteiro.');
+      return;
+    }
+    if (kmInicialNum > KM_ODOMETRO_MAXIMO) {
+      setErro(ERRO_LIMITE_ODOMETRO);
       return;
     }
     if (foto.fotoExigida && !foto.arquivo) {
@@ -61,7 +66,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
       ajustarAoTeclado
       bloquearFechamento={salvando}
     >
-      <form onSubmit={handleSubmit}>
+      <form noValidate onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">
             {erro}
@@ -91,6 +96,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
           readOnly={salvando}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmInicial(e.target.value)}
           min={0}
+          max={KM_ODOMETRO_MAXIMO}
           required
         />
 
