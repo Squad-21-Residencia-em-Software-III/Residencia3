@@ -28,10 +28,22 @@ Como referência, 1.000 deslocamentos físicos por mês com duas fotos de 2 MB g
 | `EVIDENCIAS_R2_TIMEOUT_MS` | 4.000 ms por padrão para a operação do SDK, de 250 a 8.000. O PUT e a leitura após conflito compartilham o mesmo prazo. |
 | `FOTOS_ODOMETRO_OBRIGATORIAS` | Ativar somente após a homologação da integração e aprovação do fluxo de exceção. |
 
+### Isolamento do ambiente de QA
+
+O `src/frontend/vercel.json` encaminha `/api` para `fsph-api.onrender.com` também no preview do PR. Antes de enviar qualquer foto em homologação, disponibilizar uma API e um PostgreSQL descartáveis de QA. Usar um projeto ou configuração de deploy exclusivo de QA na Vercel, com o rewrite apontando para esse Render, `PROXY_SECRET` próprio nos dois serviços e a origem de QA na configuração da API. Confirmar o destino com uma consulta de leitura e correlacionar a requisição nos logs da API de QA antes de enviar fotos.
+
+O plano Free do Render compartilha a franquia de horas entre os serviços do workspace. Se ela acabar, todos os serviços Free do workspace são suspensos. Confirmar capacidade para o teste ou usar um workspace de QA separado da produção. [Limites do Render Free](https://render.com/docs/free#monthly-usage-limits)
+
+### Sequência de homologação
+
 1. Com aprovação institucional, criar um bucket Standard exclusivo de QA. Manter `r2.dev`, domínios públicos e CORS de bucket desativados. Usar outro bucket, outras credenciais e outro segredo de HMAC em produção. Manter os segredos no Render e fora de `VITE_*`, do repositório e dos logs.
 2. Provisionar credenciais efetivas de API limitadas a `PutObject` e `GetObject` no prefixo `odometro/v1/`. Usar uma credencial separada para `DeleteObject` na rotina de retenção. Para R2, ações individuais podem ser limitadas com credenciais temporárias assinadas localmente. O deploy deve fornecer credenciais válidas e renová-las antes de expirar. Objetos com chaves legadas precisam de plano de migração e leitura aprovado antes da troca de driver. [Credenciais privadas](https://developers.cloudflare.com/r2/api/tokens/) · [Ações e prefixos](https://developers.cloudflare.com/r2/api/s3/temporary-credentials/)
 3. Após `npm ci` e `npm run build`, testar o caminho Vercel → Render com imagens sintéticas de até 10 MiB incluindo o multipart. Verificar a resposta em dispositivos móveis, memória da instância, concorrência limitada por rota e latência p95 de PUT/GET. O limite de payload de Vercel Functions tem escopo próprio e não substitui o teste do rewrite externo. [Limites de Functions](https://vercel.com/docs/functions/limitations)
 4. Confirmar GET anônimo negado no R2, negação para credenciais de outro ambiente e para DELETE com a credencial da API. Enviar uma imagem, reiniciar o Render de QA e comparar os bytes recuperados com o SHA-256 registrado. Cobrir falha de rede após PUT, retry, download com ACL do aplicativo, preservação formal e SVO compartilhado. A API mantém a viagem no estado anterior quando a confirmação da foto falha.
+
+### Ensaio local de 19/11/2026
+
+Executado com as 24 migrations em PostgreSQL descartável, a API do PR em um processo separado e o emulador oficial de S3 do R2, Wrangler 4.165.0, com persistência local e fotos sintéticas. Passaram o envio concorrente sem duplicação, as transições de viagem, as recusas de acesso no proxy e na interface S3 local, a recuperação pelo SHA-256 após reiniciar ambos os processos, a restauração de uma cópia em bucket local com credenciais distintas e o expurgo em simulação e aplicação, com preservação legal. A privacidade do bucket Cloudflare hospedado, o rewrite de QA na Vercel e a persistência após reiniciar o Render continuam pendentes na infraestrutura real. [Emulador local de R2](https://developers.cloudflare.com/r2/local-development/#serve-buckets-over-the-s3-api)
 
 ## Retenção e recuperação
 
