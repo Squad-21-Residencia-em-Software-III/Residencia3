@@ -32,6 +32,7 @@ const TELAS = {
   Início: '/inicio',
   Solicitações: '/solicitacoes',
   Viagens: '/viagens',
+  'Minhas coletas': '/minhas-coletas',
   Agenda: '/agenda',
   Veículos: '/veiculos',
   Abastecimento: '/abastecimento',
@@ -46,7 +47,7 @@ const TODAS = Object.keys(TELAS) as Tela[];
 
 // Documento "Permissões e acesso a telas do sistema" + regras confirmadas com o líder
 const MENU_POR_PERFIL: Record<Perfil, Tela[]> = {
-  [PERFIS.ADMINISTRADOR]: TODAS,
+  [PERFIS.ADMINISTRADOR]: TODAS.filter((tela) => tela !== 'Minhas coletas'),
   [PERFIS.GESTOR_FROTA]: [
     'Início',
     'Solicitações',
@@ -63,7 +64,7 @@ const MENU_POR_PERFIL: Record<Perfil, Tela[]> = {
   [PERFIS.SOLICITANTE]: ['Início', 'Solicitações', 'Veículos'],
   [PERFIS.MOTORISTA_FROTA]: ['Início', 'Viagens', 'Veículos', 'Abastecimento'],
   [PERFIS.MOTORISTA_SVO]: ['Início', 'Viagens', 'Veículos', 'Abastecimento'],
-  [PERFIS.INTEGRANTE_SVO]: ['Início'],
+  [PERFIS.INTEGRANTE_SVO]: ['Início', 'Minhas coletas'],
 };
 
 const PERFIS_TESTADOS = Object.keys(MENU_POR_PERFIL) as Perfil[];

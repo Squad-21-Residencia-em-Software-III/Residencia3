@@ -114,17 +114,6 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     expect(within(drawer).queryByRole('button', { name: /Iniciar viagem|Finalizar viagem|Cancelar viagem/ })).not.toBeInTheDocument();
   });
 
-  it.each([['MOTORISTA_SVO', true], ['GESTOR_SVO', false]] as const)(
-    'exibe coleta no local e limita a ação de finalizar para %s', async (perfil, podeFinalizar) => {
-      sessao.perfil = perfil;
-      api.listar.mockResolvedValue([{ ...viagem(7, 'SVO', 'Rua das Flores'), status: 'NO_LOCAL' }]);
-      abrir('/viagens?aba=svo');
-      expect(await screen.findByText('No local')).toBeInTheDocument();
-      expect(screen.queryAllByRole('button', { name: /Finalizar/i })).toHaveLength(podeFinalizar ? 1 : 0);
-      expect(screen.queryByRole('button', { name: 'Reagendar coleta' })).not.toBeInTheDocument();
-    },
-  );
-
   it('Administrador alterna entre as abas sem misturar registros de mesmo id', async () => {
     abrir();
 

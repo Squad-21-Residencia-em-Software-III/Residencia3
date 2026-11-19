@@ -14,7 +14,7 @@ export async function listarMinhasColetasSvo(usuarioId: number, pagina: number, 
     consulta().select('o.id', 'o.status', 'o.inicio_previsto', 'o.fim_previsto', 'o.data_hora_saida',
       'o.data_hora_conclusao', 's.local_ocorrencia as origem', 'v.modelo as veiculo_modelo',
       'v.placa as veiculo_placa', 'u.nome as motorista_nome')
-      .orderBy('o.inicio_previsto', 'desc').orderBy('o.id', 'desc').limit(limite).offset((pagina - 1) * limite),
+      .orderBy('o.inicio_previsto', 'desc', 'last').orderBy('o.id', 'desc').limit(limite).offset((pagina - 1) * limite),
     consulta().count<{ total: string }[]>({ total: 'o.id' }).first(),
   ]);
   const total = Number(contagem?.total ?? 0);

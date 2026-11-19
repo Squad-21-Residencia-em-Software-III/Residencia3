@@ -2,8 +2,7 @@ import type { Request, Response } from 'express';
 import { usuarioAutenticado } from '../middlewares/autenticar';
 import { viagemService } from '../services/viagemService';
 import { listarMinhasColetasSvo } from '../services/minhasColetasSvoService';
-import { db } from '../config/database';
-import { AppError } from '../errors/AppError';
+import { consultarDesignacoesSvo } from '../services/designacoesSvoService';
 import { idParamSchema } from '../validators/comuns';
 import { z } from 'zod';
 import {
@@ -21,20 +20,7 @@ const paginacaoSchema = z.object({
 export const viagemController = {
   async listarDesignacoesSvo(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
-    const designacoes: { equipe_id: number | null; data_hora_saida: Date | null; usuario_id: number | null }[] =
-      await db('ordens_svo as o')
-        .leftJoin('ordens_svo_integrantes as d', function () {
-          this.on('d.ordem_id', '=', 'o.id').onNull('d.revogado_em');
-        })
-        .where('o.id', id)
-        .select('o.equipe_id', 'o.data_hora_saida', 'd.usuario_id')
-        .orderBy('d.usuario_id');
-    if (!designacoes.length) throw new AppError('Ordem SVO não encontrada', 404);
-    res.json({
-      equipe_id: designacoes[0].equipe_id,
-      iniciada: Boolean(designacoes[0].data_hora_saida),
-      integrantes_ids: designacoes.flatMap(({ usuario_id }) => usuario_id === null ? [] : [usuario_id]),
-    });
+    res.json(await consultarDesignacoesSvo(id));
   },
   async listarMinhasColetasSvo(req: Request, res: Response): Promise<void> {
     const { pagina, limite } = paginacaoSchema.parse(req.query);

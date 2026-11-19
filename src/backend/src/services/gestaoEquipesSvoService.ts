@@ -26,7 +26,7 @@ export const gestaoEquipesSvoService = {
       const [equipe] = id === undefined
         ? await trx('equipes_svo').insert({ nome_equipe: nome }).returning(['id', 'nome_equipe'])
         : await trx('equipes_svo').where({ id }).update({ nome_equipe: nome }).returning(['id', 'nome_equipe']);
-      await auditoriaModel.registrar({ usuario_id: autorId, modulo: MODULOS_AUDITORIA.VIAGENS,
+      await auditoriaModel.registrar({ usuario_id: autorId, modulo: MODULOS_AUDITORIA.USUARIOS,
         acao: `${id === undefined ? 'CRIOU' : 'ATUALIZOU'}_EQUIPE_SVO id=${equipe.id}` }, trx);
       return equipe;
     });

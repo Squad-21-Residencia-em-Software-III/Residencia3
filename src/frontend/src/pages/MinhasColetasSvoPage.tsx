@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card } from '../components/ui';
+import { Alert, Badge, Button, Card, PageHeader } from '../components/ui';
 import { mensagemDeErro, request } from '../services/api/http';
+import { toneStatusOrdem } from './triagemSvo/formatacao';
 import { LABELS_STATUS_ORDEM_SVO, type StatusOrdemSvo } from '../types/solicitacaoSvo';
 
 interface Coleta { id: number; status: StatusOrdemSvo; origem: string | null; inicio_previsto: string | null;
@@ -19,11 +20,14 @@ export default function MinhasColetasSvoPage() {
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
   }, [pagina]);
-  return <div className="space-y-4"><h1 className="text-xl font-bold">Minhas coletas</h1>
+  return <div className="space-y-4"><PageHeader title="Minhas coletas" />
     {erro && <Alert tone="danger">{erro}</Alert>}
     {carregando ? <p>Carregando coletas...</p> : !erro && resultado?.dados.length === 0 ? <p>Nenhuma coleta designada.</p> :
       !erro && resultado?.dados.map((c) => <Card key={c.id} className="p-4 space-y-1">
-        <h2 className="font-bold">Coleta #{c.id} — {LABELS_STATUS_ORDEM_SVO[c.status] ?? c.status}</h2>
+        <h2 className="flex flex-wrap items-center gap-2 font-bold">
+          Coleta #{c.id}
+          <Badge tone={toneStatusOrdem(c.status)}>{LABELS_STATUS_ORDEM_SVO[c.status] ?? c.status}</Badge>
+        </h2>
         <p>Origem: {c.origem ?? 'Não informada'}</p>
         <p>Veículo: {c.veiculo_modelo ?? 'Não informado'} {c.veiculo_placa ?? ''}</p>
         <p>Motorista: {c.motorista_nome ?? 'Não informado'}</p>

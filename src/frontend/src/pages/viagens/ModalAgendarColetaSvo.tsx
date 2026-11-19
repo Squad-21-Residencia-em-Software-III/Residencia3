@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { Alert, Button, IdBadge, Input, Modal, Select } from '../../components/ui';
+import { Alert, Button, Checkbox, IdBadge, Input, Modal, Select } from '../../components/ui';
 import { recursoAtivo } from '../../config/recursosBackend';
 import { ApiError, mensagemDeErro } from '../../services/api/http';
 import { equipesSvoApi, type IntegranteSvo } from '../../services/api/equipesSvoApi';
@@ -32,6 +32,7 @@ interface ModalAgendarColetaSvoProps {
   viagemReprogramar?: Viagem;
 }
 
+const CABINE_NAO_CADASTRADA = 'Cadastre a lotação da cabine deste veículo para agendar uma coleta com equipe.';
 const MOTORISTA_BLOQUEADO: StatusMotorista[] = ['AFASTADO', 'INATIVO'];
 const RECURSO_LABEL: Record<ConflitoIntervaloSvo['recurso'], string> = {
   VEICULO: 'Veículo',
@@ -203,6 +204,7 @@ export function ModalAgendarColetaSvo({
     if (aguardandoDesignacoes) return erroDesignacoes ?? 'Aguarde o carregamento das designações atuais.';
     if (!veiculosSvo.some((v) => String(v.id) === veiculoId) || !motoristasSvo.some((m) => String(m.id) === motoristaId)) return 'Selecione o veículo e o motorista da coleta.';
     if (bloqueio) return bloqueio;
+    if (equipeId && lotacaoCabine == null) return CABINE_NAO_CADASTRADA;
     if (equipeId && !equipes.some((e) => String(e.id) === equipeId)) return 'A equipe selecionada não está mais disponível.';
     if (equipeId && (carregandoIntegrantes || erroIntegrantes)) return 'Não foi possível confirmar os integrantes da equipe.';
     if (equipeId && (!disponibilidade || erroDisponibilidade)) return 'Aguarde ou verifique a disponibilidade dos integrantes.';
@@ -367,7 +369,9 @@ export function ModalAgendarColetaSvo({
 
         {equipeId && <fieldset className="mt-4 space-y-2">
           <legend className="font-semibold">Integrantes da coleta</legend>
-          <p className="text-sm text-slate-600">Vagas para integrantes: {maxIntegrantes} (uma vaga é reservada ao motorista).</p>
+          {lotacaoCabine == null
+            ? erro !== CABINE_NAO_CADASTRADA && <Alert tone="warning">{CABINE_NAO_CADASTRADA}</Alert>
+            : <p className="text-sm text-slate-600">Vagas para integrantes: {maxIntegrantes} (uma vaga é reservada ao motorista).</p>}
           {carregandoIntegrantes && <p>Carregando integrantes...</p>}
           {erroIntegrantes && <Alert tone="danger">{erroIntegrantes}</Alert>}
           {erroDisponibilidade && <Alert tone="danger">{erroDisponibilidade}</Alert>}
@@ -381,12 +385,11 @@ export function ModalAgendarColetaSvo({
               }}>Remover integrante #{id}</Button>
             </div>
           ))}
-          {integrantes.map((item) => <label key={item.id} className="flex items-center gap-2">
-            <input type="checkbox" checked={selecionados.includes(item.id)}
+          {integrantes.map((item) => <Checkbox key={item.id} checked={selecionados.includes(item.id)}
               disabled={!selecionados.includes(item.id) && (selecionados.length >= maxIntegrantes || disponibilidade?.[item.id] !== true)}
-              onChange={(e) => { setSelecionados((atual) => e.target.checked ? [...atual, item.id] : atual.filter((id) => id !== item.id)); setConflitos(null); setTokenConfirmacao(null); setCiente(false); }} />
+              onChange={(e) => { setSelecionados((atual) => e.target.checked ? [...atual, item.id] : atual.filter((id) => id !== item.id)); setConflitos(null); setTokenConfirmacao(null); setCiente(false); }}>
             {item.nome}{disponibilidade?.[item.id] === false ? ' — indisponível' : ''}
-          </label>)}
+          </Checkbox>)}
         </fieldset>}
 
         {erroOcupacao && (

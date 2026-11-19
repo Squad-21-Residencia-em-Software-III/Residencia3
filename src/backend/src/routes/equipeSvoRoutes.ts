@@ -4,14 +4,15 @@ import { equipeSvoController } from '../controllers/equipeSvoController';
 import { gestaoEquipesSvoController } from '../controllers/gestaoEquipesSvoController';
 import { integrantesSvoController } from '../controllers/integrantesSvoController';
 import { autenticar } from '../middlewares/autenticar';
-import { autorizar } from '../middlewares/autorizar';
+import { autorizar, exigirAssociacaoSvo } from '../middlewares/autorizar';
 
 export const equipeSvoRoutes = Router();
 
 // Somente usuários autorizados podem consultar equipes SVO
 equipeSvoRoutes.use(autenticar);
 equipeSvoRoutes.use(
-  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO)
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO),
+  exigirAssociacaoSvo,
 );
 
 // Consulta das equipes disponíveis para o período

@@ -1,4 +1,5 @@
 import type { Knex } from 'knex';
+import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
 import { PERFIS } from '../constants/perfis';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
@@ -61,4 +62,21 @@ export async function atualizarDesignacoesSvo(trx: Knex.Transaction, dados: Desi
     await auditoriaModel.registrar({ usuario_id: autorId, modulo: MODULOS_AUDITORIA.VIAGENS,
       acao: `DESIGNOU_INTEGRANTE_SVO ordem=${ordemId} usuario=${usuarioId}` }, trx);
   }
+}
+
+export async function consultarDesignacoesSvo(id: number) {
+  const designacoes: { equipe_id: number | null; data_hora_saida: Date | null; usuario_id: number | null }[] =
+    await db('ordens_svo as o')
+      .leftJoin('ordens_svo_integrantes as d', function () {
+        this.on('d.ordem_id', '=', 'o.id').onNull('d.revogado_em');
+      })
+      .where('o.id', id)
+      .select('o.equipe_id', 'o.data_hora_saida', 'd.usuario_id')
+      .orderBy('d.usuario_id');
+  if (!designacoes.length) throw new AppError('Ordem SVO não encontrada', 404);
+  return {
+    equipe_id: designacoes[0].equipe_id,
+    iniciada: Boolean(designacoes[0].data_hora_saida),
+    integrantes_ids: designacoes.flatMap(({ usuario_id }) => usuario_id === null ? [] : [usuario_id]),
+  };
 }

@@ -117,6 +117,16 @@ describe('ModalAgendarColetaSvo (SCRUM-172)', () => {
     expect(api.agendarColetaSvo).not.toHaveBeenCalled();
   });
 
+  it('orienta a cadastrar a lotação antes de agendar uma coleta com equipe', async () => {
+    render(<ModalAgendarColetaSvo ordem={ordem} veiculos={[{ ...veiculos[1], lotacao_cabine: null }]}
+      motoristas={motoristas} onClose={vi.fn()} onAgendada={vi.fn()} />);
+    await userEvent.selectOptions(await screen.findByLabelText('Equipe SVO (opcional)'), '12');
+    expect(screen.getByText(/Cadastre a lotação da cabine/)).toBeInTheDocument();
+    expect(await screen.findByRole('checkbox', { name: 'Maria' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Agendar coleta' }));
+    expect(api.agendarColetaSvo).not.toHaveBeenCalled();
+  });
+
   it('não permite selecionar integrante em cabine de um lugar', async () => {
     render(<ModalAgendarColetaSvo ordem={ordem} veiculos={[{ ...veiculos[1], lotacao_cabine: 1 }]} motoristas={motoristas}
       onClose={vi.fn()} onAgendada={vi.fn()} />);

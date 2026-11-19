@@ -86,7 +86,6 @@ const chaveViagem = (v: Viagem) => `${v.tipo_operacao}-${v.id}`;
 function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
     case 'EM_ANDAMENTO':
-    case 'NO_LOCAL':
       return 'info';
     case 'AGENDADA':
       return 'purple';
@@ -320,11 +319,11 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const totais = useMemo(
     () => ({
       total: viagens.length,
-      emAndamento: viagens.filter((v) => v.status === 'EM_ANDAMENTO' || (isSvo && v.status === 'NO_LOCAL')).length,
+      emAndamento: viagens.filter((v) => v.status === 'EM_ANDAMENTO').length,
       agendadas: viagens.filter((v) => v.status === 'AGENDADA').length,
       concluidas: viagens.filter((v) => v.status === 'CONCLUIDA').length,
     }),
-    [viagens, isSvo],
+    [viagens],
   );
 
   // Opções de motoristas e veículos extraídas das viagens registradas
@@ -354,8 +353,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
 
   const filtradas = useMemo(() => {
     return viagens.filter((v) => {
-      const statusFiltro = isSvo && v.status === 'NO_LOCAL' ? 'EM_ANDAMENTO' : v.status;
-      if (filtroStatus !== 'TODOS' && statusFiltro !== filtroStatus) return false;
+      if (filtroStatus !== 'TODOS' && v.status !== filtroStatus) return false;
       if (filtroMotorista !== 'TODOS' && String(v.motorista_id) !== filtroMotorista) return false;
       if (filtroVeiculo !== 'TODOS' && String(v.veiculo_id) !== filtroVeiculo) return false;
 
@@ -372,7 +370,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       }
       return true;
     });
-  }, [viagens, filtroStatus, filtroMotorista, filtroVeiculo, busca, isSvo]);
+  }, [viagens, filtroStatus, filtroMotorista, filtroVeiculo, busca]);
 
   const [paginaAtual, setPaginaAtual] = useState(1);
   const ITENS_POR_PAGINA = 10;
@@ -829,7 +827,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                               )}
                             </>
                           )}
-                          {(v.status === 'EM_ANDAMENTO' || (isSvo && v.status === 'NO_LOCAL')) && podeExecutar && (!isSvo || agendaSvoAtiva) && (
+                          {v.status === 'EM_ANDAMENTO' && podeExecutar && (!isSvo || agendaSvoAtiva) && (
                             <Button
                               variant="primary"
                               size="sm"

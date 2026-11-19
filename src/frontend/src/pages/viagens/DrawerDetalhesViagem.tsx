@@ -15,7 +15,6 @@ interface DrawerDetalhesViagemProps {
 function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
     case 'EM_ANDAMENTO':
-    case 'NO_LOCAL':
       return 'info';
     case 'AGENDADA':
       return 'purple';
@@ -152,7 +151,7 @@ export function DrawerDetalhesViagem({
               </Button>
             )}
 
-            {(viagem.status === 'EM_ANDAMENTO' || viagem.status === 'NO_LOCAL') && onFinalizar && (
+            {viagem.status === 'EM_ANDAMENTO' && onFinalizar && (
               <Button
                 variant="primary"
                 size="sm"
@@ -309,11 +308,9 @@ export function DrawerDetalhesViagem({
               <div className="mt-1 text-sm font-bold text-slate-900">
                 {duracao
                   ? duracao
-                  : viagem.status === 'NO_LOCAL'
-                    ? 'No local'
-                    : viagem.status === 'EM_ANDAMENTO'
-                      ? 'Em trânsito'
-                      : 'Aguardando partida'}
+                  : viagem.status === 'EM_ANDAMENTO'
+                    ? 'Em trânsito'
+                    : 'Aguardando partida'}
               </div>
             </div>
           </div>

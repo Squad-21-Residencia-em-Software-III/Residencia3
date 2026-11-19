@@ -1,3 +1,4 @@
+import { unidadeModel } from '../models/unidadeModel';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../app';
@@ -7,6 +8,7 @@ import { integrantesSvoService } from '../services/integrantesSvoService';
 import { listarMinhasColetasSvo } from '../services/minhasColetasSvoService';
 import { AppError } from '../errors/AppError';
 
+vi.mock('../models/unidadeModel', () => ({ unidadeModel: { estaAssociadoPorNome: vi.fn() } }));
 vi.mock('../services/authService', () => ({ authService: { usuarioDoToken: vi.fn() } }));
 vi.mock('../services/integrantesSvoService', () => ({ integrantesSvoService: {
   criar: vi.fn(), listar: vi.fn(), listarEquipe: vi.fn(), vincular: vi.fn(), desvincular: vi.fn(), atualizar: vi.fn(), disponibilidade: vi.fn(),
@@ -14,7 +16,17 @@ vi.mock('../services/integrantesSvoService', () => ({ integrantesSvoService: {
 vi.mock('../services/minhasColetasSvoService', () => ({ listarMinhasColetasSvo: vi.fn() }));
 
 describe('acesso de integrantes SVO', () => {
-  beforeEach(() => { vi.resetAllMocks(); vi.mocked(authService.usuarioDoToken).mockResolvedValue({ id: 7, perfil: PERFIS.GESTOR_SVO } as never); });
+  beforeEach(() => { vi.resetAllMocks(); vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValue(true); vi.mocked(authService.usuarioDoToken).mockResolvedValue({ id: 7, perfil: PERFIS.GESTOR_SVO } as never); });
+  it('nega criação de conta e vínculo ao gestor sem associação à unidade SVO', async () => {
+    vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValue(false);
+    const conta = await request(app).post('/api/equipes-svo/integrantes').set('Authorization', 'Bearer token')
+      .send({ nome: 'Maria Silva', email: 'maria@exemplo.com', senha: 'Senha123' });
+    const vinculo = await request(app).put('/api/equipes-svo/2/integrantes/3').set('Authorization', 'Bearer token');
+    expect(conta.status).toBe(403);
+    expect(vinculo.status).toBe(403);
+    expect(integrantesSvoService.criar).not.toHaveBeenCalled();
+    expect(integrantesSvoService.vincular).not.toHaveBeenCalled();
+  });
   it('não aceita perfil ou campos extras no cadastro específico', async () => {
     const r = await request(app).post('/api/equipes-svo/integrantes').set('Authorization', 'Bearer token')
       .send({ nome: 'Maria Silva', email: 'maria@exemplo.com', senha: 'Senha123', perfil: 'ADMINISTRADOR' });
