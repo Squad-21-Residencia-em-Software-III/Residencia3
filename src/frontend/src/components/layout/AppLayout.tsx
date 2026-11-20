@@ -10,6 +10,7 @@ import {
   MenuIcon,
   PlusIcon,
 } from '../ui';
+import { ModalPreferenciasPwa } from '../pwa/ModalPreferenciasPwa';
 import { cn } from '../../utils/cn';
 
 export type NavItem = {
@@ -69,6 +70,7 @@ export function AppLayout({
 }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [preferenciasOpen, setPreferenciasOpen] = useState(false);
   const location = useLocation();
 
   const isHomePage = location.pathname === '/' || location.pathname === '/inicio';
@@ -311,7 +313,9 @@ export function AppLayout({
             <button
               type="button"
               className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-all hover:border-border-strong hover:bg-surface-hover"
-              aria-label="Notificações"
+              aria-label="Preferências e permissões do aplicativo"
+              title="Preferências e permissões"
+              onClick={() => setPreferenciasOpen(true)}
             >
               <BellIcon />
             </button>
@@ -321,6 +325,10 @@ export function AppLayout({
           {children}
         </main>
       </div>
+      <ModalPreferenciasPwa
+        isOpen={preferenciasOpen}
+        onClose={() => setPreferenciasOpen(false)}
+      />
     </div>
   );
 }
