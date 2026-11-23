@@ -11,6 +11,8 @@ import {
 type ModalPreferenciasPwaProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** Motorista no celular: abre presa à parte de baixo da tela. */
+  folhaInferior?: boolean;
 };
 
 const ROTULO_PERMISSAO: Record<EstadoPermissao, { label: string; tone: BadgeTone }> = {
@@ -24,7 +26,7 @@ const ROTULO_PERMISSAO: Record<EstadoPermissao, { label: string; tone: BadgeTone
  * Central de preferências do aplicativo (PWA): status de rede, instalação
  * e preparação opt-in de permissões de Notificações e Localização.
  */
-export function ModalPreferenciasPwa({ isOpen, onClose }: ModalPreferenciasPwaProps) {
+export function ModalPreferenciasPwa({ isOpen, onClose, folhaInferior = false }: ModalPreferenciasPwaProps) {
   const online = useOnlineStatus();
   const { podeInstalar, instalado, mostrarGuiaIos, instalar } = useInstallPrompt();
   const {
@@ -36,6 +38,7 @@ export function ModalPreferenciasPwa({ isOpen, onClose }: ModalPreferenciasPwaPr
     solicitarGeolocalizacao,
   } = usePermissoesDispositivo();
 
+  const botaoToque = folhaInferior ? 'min-h-11' : undefined;
   const badgeNotif = ROTULO_PERMISSAO[notificacoes];
   const badgeGeo = ROTULO_PERMISSAO[geolocalizacao];
 
@@ -45,7 +48,10 @@ export function ModalPreferenciasPwa({ isOpen, onClose }: ModalPreferenciasPwaPr
       onClose={onClose}
       title="Preferências do Aplicativo"
       hideFooter
-      maxWidth={520}
+      maxWidth={folhaInferior ? undefined : 520}
+      telaInteira={folhaInferior}
+      ajustarAoTeclado={folhaInferior}
+      folhaInferior={folhaInferior}
     >
       <div className="space-y-4 text-sm text-text">
         {/* Status de conectividade */}
@@ -83,7 +89,7 @@ export function ModalPreferenciasPwa({ isOpen, onClose }: ModalPreferenciasPwaPr
               <Button
                 type="button"
                 variant="primary"
-                size="sm"
+                size="sm" className={botaoToque}
                 onClick={() => void instalar()}
               >
                 <Download size={14} aria-hidden="true" />
@@ -127,7 +133,7 @@ export function ModalPreferenciasPwa({ isOpen, onClose }: ModalPreferenciasPwaPr
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
+                  size="sm" className={botaoToque}
                   disabled={solicitandoNotif}
                   onClick={() => void solicitarNotificacoes()}
                 >
@@ -152,7 +158,7 @@ export function ModalPreferenciasPwa({ isOpen, onClose }: ModalPreferenciasPwaPr
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
+                  size="sm" className={botaoToque}
                   disabled={solicitandoGeo}
                   onClick={() => void solicitarGeolocalizacao()}
                 >
@@ -168,6 +174,11 @@ export function ModalPreferenciasPwa({ isOpen, onClose }: ModalPreferenciasPwaPr
             </p>
           )}
         </div>
+        {folhaInferior && (
+          <Button type="button" variant="outline" className="min-h-13 w-full" onClick={onClose}>
+            Voltar
+          </Button>
+        )}
       </div>
     </Modal>
   );

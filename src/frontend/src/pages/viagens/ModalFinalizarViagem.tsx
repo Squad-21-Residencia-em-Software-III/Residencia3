@@ -3,6 +3,8 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { Check } from 'lucide-react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
 import type { Viagem } from '../../types/viagem';
+import { cn } from '../../utils/cn';
+import { CLASSES_ACOES_FOLHA } from './acoesFolha';
 import { ERRO_LIMITE_ODOMETRO, KM_ODOMETRO_MAXIMO } from './limiteOdometro';
 import { SituacaoFotoOdometro } from './SituacaoFotoOdometro';
 import { mensagemFalhaTransicao, useFotoOdometro } from './useFotoOdometro';
@@ -12,9 +14,11 @@ interface ModalFinalizarViagemProps {
   onClose: () => void;
   /** `evidenciaId`: foto da chegada já enviada (SCRUM-206), quando `fotosOdometro` está ligado. */
   onSalvar: (kmFinal: number, evidenciaId?: string) => Promise<void>;
+  /** Motorista no celular: folha inferior, dados essenciais e botões maiores. */
+  compacto?: boolean;
 }
 
-export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinalizarViagemProps) {
+export function ModalFinalizarViagem({ viagem, onClose, onSalvar, compacto = false }: ModalFinalizarViagemProps) {
   const kmInicial = viagem.km_inicial ?? 0;
 
   const [kmFinal, setKmFinal] = useState<string>('');
@@ -80,6 +84,7 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
       gerenciarFoco
       ajustarAoTeclado
       bloquearFechamento={salvando}
+      folhaInferior={compacto}
     >
       <form noValidate onSubmit={handleSubmit}>
         {erro && (
@@ -90,14 +95,19 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
 
         <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-[13px]">
           <div className="font-bold text-slate-900">
-            {viagem.origem ?? '—'} → {viagem.destino ?? '—'}
+            {compacto && !viagem.origem ? '' : `${viagem.origem ?? '—'} → `}{viagem.destino ?? '—'}
           </div>
           <div className="mt-0.5 text-xs text-slate-500">
             Veículo:{' '}
             <strong>
               {viagem.veiculo_modelo} ({viagem.veiculo_placa})
-            </strong>{' '}
-            • Motorista: <strong>{viagem.motorista_nome}</strong>
+            </strong>
+            {!compacto && (
+              <>
+                {' '}
+                • Motorista: <strong>{viagem.motorista_nome}</strong>
+              </>
+            )}
           </div>
           <div className="mt-1 text-xs font-semibold text-primary">
             Odômetro de saída (Km inicial): {kmInicial.toLocaleString('pt-BR')} km
@@ -108,7 +118,7 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
           label="Odômetro Final (Km de Retorno) *"
           type="number"
           inputMode="numeric"
-          className="min-h-11 text-base md:text-sm"
+          className={cn('min-h-11 text-base md:text-sm', compacto && 'min-h-13 text-xl font-bold md:text-xl')}
           placeholder={`Maior que ${kmInicial}`}
           value={kmFinal}
           readOnly={salvando}
@@ -133,7 +143,13 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
           </p>
         )}
 
-        <div className="mt-4 flex flex-col gap-2 md:mt-5 md:flex-row md:justify-end md:gap-3 [&>button]:min-h-11">
+        <div
+          className={
+            compacto
+              ? CLASSES_ACOES_FOLHA
+              : 'mt-4 flex flex-col gap-2 md:mt-5 md:flex-row md:justify-end md:gap-3 [&>button]:min-h-11'
+          }
+        >
           {foto.enviando ? (
             <Button variant="ghost" type="button" onClick={foto.cancelarEnvio}>
               Cancelar envio
@@ -144,7 +160,7 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar }: ModalFinaliz
             </Button>
           )}
           <Button type="submit" disabled={salvando || foto.consultando || foto.validandoArquivo}>
-            {salvando ? (foto.enviando ? 'Enviando foto...' : 'Concluindo...') : falhaAoSalvar ? 'Tentar novamente' : 'Confirmar Chegada e Concluir'}
+            {salvando ? (foto.enviando ? 'Enviando foto...' : 'Concluindo...') : falhaAoSalvar ? 'Tentar novamente' : compacto ? 'Confirmar chegada' : 'Confirmar Chegada e Concluir'}
           </Button>
         </div>
       </form>

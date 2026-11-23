@@ -27,6 +27,9 @@ export function viagemEmCurso(status: StatusViagem): boolean {
   return status === 'EM_ANDAMENTO' || status === 'NO_LOCAL';
 }
 
+/** Viagens administrativas e ordens SVO têm ids independentes e podem repetir o mesmo número. */
+export const chaveViagem = (v: Pick<Viagem, 'id' | 'tipo_operacao'>) => `${v.tipo_operacao}-${v.id}`;
+
 export interface Viagem {
   material_sensivel?: boolean | null;
   id: number;

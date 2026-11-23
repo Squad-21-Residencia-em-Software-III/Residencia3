@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CalendarClock, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
 import {
@@ -30,6 +30,7 @@ import type { Motorista } from '../types/motorista';
 import type { SolicitacaoViagem } from '../types/solicitacao';
 import type { Veiculo } from '../types/veiculo';
 import {
+  chaveViagem,
   rotuloStatusViagem,
   viagemEmCurso,
   type NovaViagemInput,
@@ -47,6 +48,7 @@ import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
 import { ModalExcecoesOdometro } from './viagens/ModalExcecoesOdometro';
 import { ModalEvidenciasOdometro } from './viagens/ModalEvidenciasOdometro';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
+import { useRegistrarChegada } from './viagens/useRegistrarChegada';
 import { usePermissao } from '../utils/permissoes';
 
 type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
@@ -84,9 +86,6 @@ const TEXTOS_OPERACAO: Record<
     carregando: 'Carregando coletas...',
   },
 };
-
-// Viagens administrativas e ordens SVO têm ids independentes e podem repetir o mesmo número
-const chaveViagem = (v: Viagem) => `${v.tipo_operacao}-${v.id}`;
 
 function obterBadgeToneStatus(status: StatusViagem): BadgeTone {
   switch (status) {
@@ -185,8 +184,6 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const podeExecutar =
     !somenteProprias && (isSvo ? pode('viagens.executarSvo') : pode('viagens.executar'));
   const podeRegistrarChegada = isSvo && agendaSvoAtiva && podeExecutar;
-  const chegadasEmEnvio = useRef(new Set<number>());
-  const [chegadasPendentes, setChegadasPendentes] = useState<ReadonlySet<number>>(() => new Set());
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -238,6 +235,12 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       setMensagemErro(null);
     }, 4000);
   };
+
+  const { chegadasPendentes, registrarChegada: handleRegistrarChegada } = useRegistrarChegada({
+    habilitado: podeRegistrarChegada,
+    setViagens,
+    exibirFeedback,
+  });
 
   const carregarViagens = useCallback(async () => {
     if (podeAlocarSvo && agendaSvoAtiva) {
@@ -453,47 +456,6 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
     await viagensApi.iniciar(viagemIniciar, kmInicial, evidenciaId);
     await carregarViagens();
     exibirFeedback(`Viagem #${viagemIniciar.id} iniciada com sucesso.`);
-  };
-
-  const handleRegistrarChegada = async (viagem: Viagem) => {
-    const { id, status, tipo_operacao } = viagem;
-    const envios = chegadasEmEnvio.current;
-    if (!podeRegistrarChegada || tipo_operacao !== 'SVO' || status !== 'EM_ANDAMENTO' || envios.has(id)) return;
-
-    const chave = chaveViagem(viagem);
-    envios.add(id);
-    setChegadasPendentes(new Set(envios));
-
-    try {
-      const atualizada = await viagensApi.registrarChegadaLocalSvo(id);
-      if (atualizada?.status !== 'NO_LOCAL' || chaveViagem(atualizada) !== chave) {
-        throw new Error('O servidor não confirmou a chegada. Consulte o status da coleta.');
-      }
-      setViagens((lista) => lista.map((v) => chaveViagem(v) === chave ? atualizada : v));
-      exibirFeedback('Chegada ao local registrada.');
-    } catch (error) {
-      const statusHttp = error instanceof ApiError ? error.status : undefined;
-      const mensagem =
-        statusHttp !== undefined && statusHttp >= 500
-          ? 'O servidor não conseguiu confirmar a chegada. Tente novamente.'
-          : mensagemDeErro(error);
-      if (statusHttp === 409 || statusHttp === 404) {
-        try {
-          const listaAtual = await viagensApi.listar();
-          const coletaAtual = listaAtual.find((v) => chaveViagem(v) === chave);
-          setViagens((lista) => lista.flatMap((v) =>
-            chaveViagem(v) === chave ? (coletaAtual ? [coletaAtual] : []) : [v],
-          ));
-        } catch {
-          exibirFeedback(`${mensagem} Não foi possível atualizar o status da coleta.`, true);
-          return;
-        }
-      }
-      exibirFeedback(mensagem, true);
-    } finally {
-      envios.delete(id);
-      setChegadasPendentes(new Set(envios));
-    }
   };
 
   const handleFinalizarViagem = async (kmFinal: number, evidenciaId?: string) => {
