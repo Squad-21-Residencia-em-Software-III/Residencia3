@@ -3,14 +3,16 @@ import type { ComponentType, ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cva } from 'class-variance-authority';
 import {
-  BellIcon,
   ChevronLeftIcon,
   CloseIcon,
   LogoutIcon,
   MenuIcon,
   PlusIcon,
+  SettingsIcon,
 } from '../ui';
 import { ModalPreferenciasPwa } from '../pwa/ModalPreferenciasPwa';
+import { SinoNotificacoes } from './SinoNotificacoes';
+import type { NotificacaoItem } from './SinoNotificacoes';
 import { cn } from '../../utils/cn';
 
 export type NavItem = {
@@ -29,6 +31,8 @@ type AppLayoutProps = {
   onAction?: () => void;
   user?: { name: string; role: string };
   onLogout?: () => void;
+  /** Notificações reais (SCRUM-223); sem fonte ainda, o sino mostra o estado vazio. */
+  notificacoes?: NotificacaoItem[];
   children: ReactNode;
 };
 
@@ -66,6 +70,7 @@ export function AppLayout({
   onAction,
   user,
   onLogout,
+  notificacoes,
   children,
 }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -286,7 +291,7 @@ export function AppLayout({
             </h1>
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 md:gap-3">
             {actionLabel && (
               <button
                 type="button"
@@ -310,14 +315,15 @@ export function AppLayout({
                 Sobre Nós
               </NavLink>
             )}
+            <SinoNotificacoes notificacoes={notificacoes} />
             <button
               type="button"
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-all hover:border-border-strong hover:bg-surface-hover"
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-all hover:border-border-strong hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               aria-label="Preferências e permissões do aplicativo"
               title="Preferências e permissões"
               onClick={() => setPreferenciasOpen(true)}
             >
-              <BellIcon />
+              <SettingsIcon />
             </button>
           </div>
         </header>
