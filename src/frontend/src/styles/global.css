@@ -190,3 +190,20 @@
     transform: translateY(0);
   }
 }
+
+/* Motorista no celular (MotoristaLayout): altura visível da tela e espaço da barra inferior. */
+[data-layout='motorista'] {
+  --altura-barra-inferior: calc(60px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-height: 500px) {
+  [data-layout='motorista'] {
+    --altura-barra-inferior: calc(48px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+[data-layout='motorista'] #root {
+  display: flex;
+  height: 100dvh;
+  flex-direction: column;
+}

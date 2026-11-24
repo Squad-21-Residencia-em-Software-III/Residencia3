@@ -3,8 +3,10 @@ import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { ClipboardCheck, ScrollText, Wrench } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
+import { MotoristaLayout } from '../components/layout/MotoristaLayout'
 import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
+import { useMotoristaMobile } from '../hooks/useMotoristaMobile'
 import AbastecimentoPage from '../pages/AbastecimentoPage'
 import AgendaPage from '../pages/AgendaPage'
 import AuditoriaPage from '../pages/AuditoriaPage'
@@ -15,6 +17,10 @@ import HomePage from '../pages/HomePage'
 import LoginPage from '../pages/LoginPage'
 import ManutencoesPage from '../pages/ManutencoesPage'
 import MultasPage from '../pages/MultasPage'
+import MotoristaAbastecimento from '../pages/motorista/MotoristaAbastecimento'
+import MotoristaInicio from '../pages/motorista/MotoristaInicio'
+import MotoristaVeiculo from '../pages/motorista/MotoristaVeiculo'
+import MotoristaViagens from '../pages/motorista/MotoristaViagens'
 import NotFoundPage from '../pages/NotFoundPage'
 import ServerErrorPage from '../pages/ServerErrorPage'
 import SobreNosPage from '../pages/SobreNosPage'
@@ -72,11 +78,25 @@ function LayoutRoute() {
   const { pathname } = useLocation()
   const { usuario, logout } = useAuth()
   const { pode } = usePermissao()
+  const motoristaMobile = useMotoristaMobile()
 
   const itensVisiveis = navItems.filter((item) => !item.permissao || pode(item.permissao))
   const title = pathname.startsWith('/sobre')
     ? 'Sobre Nós'
     : itensVisiveis.find((item) => pathname.startsWith(item.path))?.label ?? 'FSPH'
+
+  if (motoristaMobile) {
+    return (
+      <MotoristaLayout
+        navItems={itensVisiveis}
+        title={title}
+        user={usuario ? { name: usuario.nome, role: LABELS_PERFIS[usuario.perfil] } : undefined}
+        onLogout={logout}
+      >
+        <Outlet />
+      </MotoristaLayout>
+    )
+  }
 
   return (
     <AppLayout
@@ -90,13 +110,18 @@ function LayoutRoute() {
   )
 }
 
+/** Motorista no celular usa a tela própria; computador e demais perfis seguem com a padrão. */
+function TelaPorDispositivo({ motorista, padrao }: { motorista: ReactElement; padrao: ReactElement }) {
+  return useMotoristaMobile() ? motorista : padrao
+}
+
 const ROTAS_COM_PERMISSAO: { path: string; permissao: Permissao; elemento: ReactElement }[] = [
   { path: '/solicitacoes', permissao: 'solicitacoes.acessar', elemento: <SolicitacoesPage /> },
   { path: '/triagem-svo', permissao: 'triagemSvo.acessar', elemento: <Navigate to="/solicitacoes?aba=svo" replace /> },
-  { path: '/viagens', permissao: 'viagens.acessar', elemento: <ViagensPage /> },
+  { path: '/viagens', permissao: 'viagens.acessar', elemento: <TelaPorDispositivo motorista={<MotoristaViagens />} padrao={<ViagensPage />} /> },
   { path: '/minhas-coletas', permissao: 'coletasProprias.acessar', elemento: <MinhasColetasSvoPage /> },
   { path: '/agenda', permissao: 'agenda.acessar', elemento: <AgendaPage /> },
-  { path: '/abastecimento', permissao: 'abastecimentos.acessar', elemento: <AbastecimentoPage /> },
+  { path: '/abastecimento', permissao: 'abastecimentos.acessar', elemento: <TelaPorDispositivo motorista={<MotoristaAbastecimento />} padrao={<AbastecimentoPage />} /> },
   { path: '/manutencoes', permissao: 'manutencoes.acessar', elemento: <ManutencoesPage /> },
   { path: '/multas', permissao: 'multas.acessar', elemento: <MultasPage /> },
   { path: '/equipe', permissao: 'equipe.acessar', elemento: <EquipePage /> },
@@ -118,11 +143,11 @@ export function AppRoutes() {
       <Route element={<RotaProtegida />}>
         <Route element={<LayoutRoute />}>
           <Route index element={<Navigate to="/inicio" replace />} />
-          <Route path="/inicio" element={<HomePage />} />
+          <Route path="/inicio" element={<TelaPorDispositivo motorista={<MotoristaInicio />} padrao={<HomePage />} />} />
           <Route path="/dashboard" element={<Navigate to="/inicio" replace />} />
           <Route path="/sobre" element={<SobreNosPage />} />
           <Route element={<RotaComPermissao permissao="veiculos.acessar" />}>
-            <Route path="/veiculos" element={<VeiculosPage />} />
+            <Route path="/veiculos" element={<TelaPorDispositivo motorista={<MotoristaVeiculo />} padrao={<VeiculosPage />} />} />
           </Route>
 
           {/* Cada tela exige a permissão do seu perfil (utils/permissoes); o backend também bloqueia com 403 */}
