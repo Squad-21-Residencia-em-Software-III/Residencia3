@@ -239,3 +239,15 @@ export const InfoIcon = ({ size = 16 }: IconProps) => (
     <path d="M8 7v4M8 5h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 );
+
+export const SettingsIcon = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M8 1.8l1 1.6 1.9-.3.7 1.8 1.8.7-.3 1.9 1.6 1-1.6 1 .3 1.9-1.8.7-.7 1.8-1.9-.3-1 1.6-1-1.6-1.9.3-.7-1.8-1.8-.7.3-1.9-1.6-1 1.6-1-.3-1.9 1.8-.7.7-1.8 1.9.3 1-1.6z"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
