@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SetStateAction } from 'react';
 import { recursoAtivo } from '../../config/recursosBackend';
 import { mensagemDeErro } from '../../services/api/http';
 import { veiculosApi } from '../../services/api/veiculosApi';
@@ -44,10 +45,16 @@ export function useViagensMotorista() {
   const [finalizando, setFinalizando] = useState<Viagem | null>(null);
   const [chaveDetalhes, setChaveDetalhes] = useState<string | null>(null);
   const { aviso, avisar, fecharAviso } = useAviso();
+  // Ordem das consultas: com a rede lenta, uma resposta antiga não pode desfazer o que já está na tela
+  const ultimaConsulta = useRef(0);
+  const consultaNaTela = useRef(0);
 
   const recarregar = useCallback(async () => {
+    const consulta = ++ultimaConsulta.current;
     // O km do veículo é só uma referência no formulário: sem ele, a tela continua funcionando
     const [lista, frota] = await Promise.allSettled([viagensApi.listar(), veiculosApi.listar()]);
+    if (consulta < consultaNaTela.current) return;
+    consultaNaTela.current = consulta;
     if (frota.status === 'fulfilled') setVeiculos(frota.value);
     if (lista.status === 'fulfilled') {
       setViagens(lista.value.filter((v) => v.tipo_operacao === operacao));
@@ -68,9 +75,17 @@ export function useViagensMotorista() {
     return () => document.removeEventListener('visibilitychange', aoVoltar);
   }, [recarregar]);
 
+  const aplicarChegada = (alteracao: SetStateAction<Viagem[]>) => {
+    // Consultas já enviadas podem ser anteriores à chegada: são descartadas e refeitas
+    const haviaConsulta = ultimaConsulta.current > consultaNaTela.current;
+    consultaNaTela.current = ++ultimaConsulta.current;
+    setViagens(alteracao);
+    if (haviaConsulta) void recarregar();
+  };
+
   const { chegadasPendentes, registrarChegada } = useRegistrarChegada({
     habilitado: isSvo && podeExecutar,
-    setViagens,
+    setViagens: aplicarChegada,
     exibirFeedback: avisar,
   });
 

@@ -85,6 +85,26 @@ const veiculo = (id: number, dados: Partial<Veiculo> = {}): Veiculo => ({
   ...dados,
 });
 
+/** A próxima consulta de viagens fica sem resposta até o teste liberar. */
+function segurarProximaLista() {
+  let responder: (lista: Viagem[]) => void = () => undefined;
+  let falhar: (erro: Error) => void = () => undefined;
+  api.listar.mockReturnValueOnce(new Promise((resolve, reject) => { responder = resolve; falhar = reject; }));
+  return {
+    responder: (lista: Viagem[]) => act(async () => responder(lista)),
+    falhar: (erro: Error) => act(async () => falhar(erro)),
+  };
+}
+
+const voltarAoAplicativo = () => act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+
+async function iniciarViagem() {
+  await userEvent.click(screen.getByRole('button', { name: 'Iniciar viagem' }));
+  await userEvent.type(screen.getByPlaceholderText('Último km: 45000'), '45010');
+  await userEvent.click(screen.getByRole('button', { name: 'Confirmar Saída' }));
+  await screen.findByText('Viagem iniciada.');
+}
+
 function abrir(rota: string) {
   return render(
     <MemoryRouter initialEntries={[rota]}>
@@ -302,6 +322,75 @@ describe('Início e Viagens', () => {
     act(() => { document.dispatchEvent(new Event('visibilitychange')); });
     expect(await screen.findByText('Destino 1')).toBeInTheDocument();
   });
+
+  it.each(['/inicio', '/viagens'])('%s: resposta antiga da lista não desfaz a saída já registrada', async (rota) => {
+    api.listar.mockResolvedValueOnce([viagem(1)]);
+    abrir(rota);
+    await screen.findByRole('button', { name: 'Iniciar viagem' });
+    const antiga = segurarProximaLista();
+    voltarAoAplicativo();
+
+    api.listar.mockResolvedValue([viagem(1, { status: 'EM_ANDAMENTO', km_inicial: 45010 })]);
+    await iniciarViagem();
+    await antiga.responder([viagem(1)]);
+
+    expect(screen.getByRole('button', { name: 'Finalizar viagem' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Iniciar viagem' })).not.toBeInTheDocument();
+  });
+
+  it('falha antiga da lista não vira erro sobre a lista atual', async () => {
+    api.listar.mockResolvedValueOnce([viagem(1)]);
+    abrir('/inicio');
+    await screen.findByRole('button', { name: 'Iniciar viagem' });
+    const antiga = segurarProximaLista();
+    voltarAoAplicativo();
+
+    api.listar.mockResolvedValue([viagem(1, { status: 'EM_ANDAMENTO', km_inicial: 45010 })]);
+    await iniciarViagem();
+    await antiga.falhar(new ApiError('Sem conexão.', 0));
+
+    expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Finalizar viagem' })).toBeInTheDocument();
+  });
+
+  it('se a consulta depois da saída falhar, a resposta antiga não esconde o erro', async () => {
+    api.listar.mockResolvedValueOnce([viagem(1)]);
+    abrir('/inicio');
+    await screen.findByRole('button', { name: 'Iniciar viagem' });
+    const antiga = segurarProximaLista();
+    voltarAoAplicativo();
+
+    api.listar.mockRejectedValueOnce(new ApiError('Sem conexão.', 0));
+    await iniciarViagem();
+    await antiga.responder([viagem(1)]);
+
+    api.listar.mockResolvedValue([viagem(1, { status: 'EM_ANDAMENTO', km_inicial: 45010 })]);
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByRole('button', { name: 'Finalizar viagem' })).toBeInTheDocument();
+  });
+
+  it('com duas atualizações pendentes, vale a mais nova, em qualquer ordem de resposta', async () => {
+    abrir('/inicio');
+    await screen.findByText('Nenhuma viagem para você agora');
+    const primeira = segurarProximaLista();
+    voltarAoAplicativo();
+    const segunda = segurarProximaLista();
+    voltarAoAplicativo();
+
+    await primeira.responder([viagem(1)]);
+    expect(screen.getByText('Destino 1')).toBeInTheDocument();
+    await segunda.responder([viagem(2)]);
+    expect(screen.getByText('Destino 2')).toBeInTheDocument();
+
+    const terceira = segurarProximaLista();
+    voltarAoAplicativo();
+    const quarta = segurarProximaLista();
+    voltarAoAplicativo();
+    await quarta.responder([viagem(4)]);
+    await terceira.responder([viagem(3)]);
+    expect(screen.getByText('Destino 4')).toBeInTheDocument();
+    expect(screen.queryByText('Destino 3')).not.toBeInTheDocument();
+  });
 });
 
 describe('Coletas SVO', () => {
@@ -324,6 +413,52 @@ describe('Coletas SVO', () => {
     expect(api.registrarChegadaLocalSvo).toHaveBeenCalledExactlyOnceWith(7);
     expect(screen.queryByRole('button', { name: /Cheguei|Registrando/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Finalizar coleta' })).toBeEnabled();
+  });
+
+  it('resposta antiga da lista não desfaz a chegada, e a próxima atualização volta a valer', async () => {
+    const emCurso = coleta(7, { status: 'EM_ANDAMENTO', km_inicial: 10 });
+    api.listar.mockResolvedValueOnce([emCurso]);
+    api.registrarChegadaLocalSvo.mockResolvedValueOnce({ ...emCurso, status: 'NO_LOCAL' });
+    abrir('/inicio');
+    await screen.findByRole('button', { name: 'Cheguei ao local' });
+    const antiga = segurarProximaLista();
+    voltarAoAplicativo();
+    // No lugar da consulta descartada, sai outra
+    const nova = segurarProximaLista();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cheguei ao local' }));
+    await screen.findByText('Chegada ao local registrada.');
+    await antiga.responder([emCurso]);
+    expect(screen.queryByRole('button', { name: 'Cheguei ao local' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Finalizar coleta' })).toBeEnabled();
+
+    await nova.responder([{ ...emCurso, status: 'NO_LOCAL' }, coleta(8)]);
+    expect(screen.getByText('Destino 8')).toBeInTheDocument();
+  });
+
+  it('a chegada de uma coleta não descarta a saída de outra', async () => {
+    const primeira = coleta(7, { status: 'EM_ANDAMENTO', km_inicial: 10 });
+    let confirmarChegada: (v: Viagem) => void = () => undefined;
+    api.registrarChegadaLocalSvo.mockReturnValueOnce(new Promise((resolve) => { confirmarChegada = resolve; }));
+    api.listar.mockResolvedValueOnce([primeira, coleta(8)]);
+    abrir('/viagens');
+    await userEvent.click(await screen.findByRole('button', { name: 'Cheguei ao local' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Próximas (1)' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar coleta' }));
+    await userEvent.type(screen.getByPlaceholderText('Último km: 45000'), '45010');
+    const depoisDaSaida = segurarProximaLista();
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar Saída' }));
+    await waitFor(() => expect(api.listar).toHaveBeenCalledTimes(2));
+
+    const atual = [{ ...primeira, status: 'NO_LOCAL' as const }, coleta(8, { status: 'EM_ANDAMENTO', km_inicial: 45010 })];
+    api.listar.mockResolvedValue(atual);
+    await act(async () => confirmarChegada(atual[0]));
+    await depoisDaSaida.responder([primeira, atual[1]]);
+
+    expect(await screen.findByRole('button', { name: 'Agora (2)' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Cheguei ao local' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Iniciar coleta' })).not.toBeInTheDocument();
   });
 
   it('ordens do mesmo deslocamento: outra em andamento não bloqueia a saída', async () => {
