@@ -1,32 +1,33 @@
 const COLUNAS_OUTBOX_ESPERADAS = {
-  id: { data_type: 'integer', is_nullable: 'NO' },
-  notificacao_id: { data_type: 'integer', is_nullable: 'YES' },
-  usuario_id: { data_type: 'integer', is_nullable: 'NO' },
-  evento_tipo: { data_type: 'character varying', is_nullable: 'NO' },
-  categoria: { data_type: 'character varying', is_nullable: 'NO' },
-  operacao: { data_type: 'character varying', is_nullable: 'NO' },
-  referencia_tipo: { data_type: 'character varying', is_nullable: 'YES' },
-  referencia_id: { data_type: 'integer', is_nullable: 'YES' },
-  ocorrencia_versao: { data_type: 'character varying', is_nullable: 'NO' },
-  chave_idempotencia: { data_type: 'character varying', is_nullable: 'NO' },
-  canal: { data_type: 'character varying', is_nullable: 'NO' },
-  payload_push: { data_type: 'jsonb', is_nullable: 'NO' },
-  status: { data_type: 'character varying', is_nullable: 'NO' },
-  tentativas: { data_type: 'integer', is_nullable: 'NO' },
-  max_tentativas: { data_type: 'integer', is_nullable: 'NO' },
-  proxima_execucao_em: { data_type: 'timestamp with time zone', is_nullable: 'NO' },
-  bloqueado_ate: { data_type: 'timestamp with time zone', is_nullable: 'YES' },
-  ultimo_erro: { data_type: 'character varying', is_nullable: 'YES' },
-  ultimo_status_http: { data_type: 'integer', is_nullable: 'YES' },
-  processado_em: { data_type: 'timestamp with time zone', is_nullable: 'YES' },
-  criado_em: { data_type: 'timestamp with time zone', is_nullable: 'NO' },
-  atualizado_em: { data_type: 'timestamp with time zone', is_nullable: 'NO' },
+  id: { data_type: 'integer', is_nullable: 'NO', max_length: null },
+  notificacao_id: { data_type: 'integer', is_nullable: 'YES', max_length: null },
+  usuario_id: { data_type: 'integer', is_nullable: 'NO', max_length: null },
+  evento_tipo: { data_type: 'character varying', is_nullable: 'NO', max_length: 64 },
+  categoria: { data_type: 'character varying', is_nullable: 'NO', max_length: 60 },
+  operacao: { data_type: 'character varying', is_nullable: 'NO', max_length: 20 },
+  referencia_tipo: { data_type: 'character varying', is_nullable: 'YES', max_length: 40 },
+  referencia_id: { data_type: 'integer', is_nullable: 'YES', max_length: null },
+  ocorrencia_versao: { data_type: 'character varying', is_nullable: 'NO', max_length: 120 },
+  chave_idempotencia: { data_type: 'character varying', is_nullable: 'NO', max_length: 190 },
+  canal: { data_type: 'character varying', is_nullable: 'NO', max_length: 20 },
+  payload_push: { data_type: 'jsonb', is_nullable: 'NO', max_length: null },
+  status: { data_type: 'character varying', is_nullable: 'NO', max_length: 24 },
+  tentativas: { data_type: 'integer', is_nullable: 'NO', max_length: null },
+  max_tentativas: { data_type: 'integer', is_nullable: 'NO', max_length: null },
+  proxima_execucao_em: { data_type: 'timestamp with time zone', is_nullable: 'NO', max_length: null },
+  bloqueado_ate: { data_type: 'timestamp with time zone', is_nullable: 'YES', max_length: null },
+  ultimo_erro: { data_type: 'character varying', is_nullable: 'YES', max_length: 500 },
+  ultimo_status_http: { data_type: 'integer', is_nullable: 'YES', max_length: null },
+  processado_em: { data_type: 'timestamp with time zone', is_nullable: 'YES', max_length: null },
+  criado_em: { data_type: 'timestamp with time zone', is_nullable: 'NO', max_length: null },
+  atualizado_em: { data_type: 'timestamp with time zone', is_nullable: 'NO', max_length: null },
 };
 
 /**
  * Valida se a estrutura da tabela notificacao_outbox da SCRUM-228 no schema alvo
- * corresponde exatamente ao contrato de outbox transacional, deduplicacao por
- * evento/destinatario/ocorrencia, controle de retries e retencao de estados terminais.
+ * corresponde exatamente ao contrato de outbox transacional alinhado a Secao 6.1
+ * do Plano da Fase 2 (ON DELETE CASCADE, operacao 'Administrativo'/'SVO', limites
+ * de tamanho, deduplicacao por evento/destinatario/ocorrencia, retries e retencao).
  *
  * @param {import('knex').Knex} knex
  */
@@ -34,9 +35,9 @@ async function validarCatalogoScrum228(knex) {
   const { rows: schemaRows } = await knex.raw('SELECT current_schema() AS schema_atual');
   const schemaAtual = schemaRows[0]?.schema_atual || 'public';
 
-  // 1. Verifica colunas da tabela notificacao_outbox
+  // 1. Verifica colunas, tipos, nulabilidade e limites de tamanho da tabela notificacao_outbox
   const { rows: colsOutbox } = await knex.raw(
-    `SELECT column_name, data_type, is_nullable
+    `SELECT column_name, data_type, is_nullable, character_maximum_length
      FROM information_schema.columns
      WHERE table_schema = ?
        AND table_name = 'notificacao_outbox'`,
@@ -46,14 +47,26 @@ async function validarCatalogoScrum228(knex) {
   const mapaColunas = new Map(colsOutbox.map((c) => [c.column_name, c]));
   for (const [nomeCol, esperado] of Object.entries(COLUNAS_OUTBOX_ESPERADAS)) {
     const col = mapaColunas.get(nomeCol);
-    if (!col || col.data_type !== esperado.data_type || col.is_nullable !== esperado.is_nullable) {
+    const maxLenAtual =
+      col?.character_maximum_length === undefined ? null : col.character_maximum_length;
+    const maxLenCompativel =
+      esperado.max_length === null ||
+      maxLenAtual === undefined ||
+      Number(maxLenAtual) === esperado.max_length;
+
+    if (
+      !col ||
+      col.data_type !== esperado.data_type ||
+      col.is_nullable !== esperado.is_nullable ||
+      !maxLenCompativel
+    ) {
       throw new Error(
-        `Estrutura incompativel em notificacao_outbox.${nomeCol}: esperado (${esperado.data_type}, nullable=${esperado.is_nullable}), encontrado ${JSON.stringify(col || null)}`
+        `Estrutura incompativel em notificacao_outbox.${nomeCol}: esperado (${esperado.data_type}, len=${esperado.max_length}, nullable=${esperado.is_nullable}), encontrado ${JSON.stringify(col || null)}`
       );
     }
   }
 
-  // 2. Verifica constraints obrigatorias (FK, UNIQUEs e CHECKs)
+  // 2. Verifica constraints obrigatorias (FK com ON DELETE CASCADE, UNIQUEs e CHECKs)
   const { rows: constraintsRows } = await knex.raw(
     `SELECT t.relname AS table_name, c.conname, c.contype, pg_get_constraintdef(c.oid) AS def
      FROM pg_constraint c
@@ -69,15 +82,19 @@ async function validarCatalogoScrum228(knex) {
   );
 
   const constraintsObrigatorias = [
-    ['notificacao_outbox.fk_notificacao_outbox_usuario', 'f', 'ON DELETE RESTRICT'],
-    ['notificacao_outbox.uq_notificacao_outbox_usuario_chave_idempotencia', 'u', 'usuario_id, chave_idempotencia'],
+    ['notificacao_outbox.fk_notificacao_outbox_usuario', 'f', 'ON DELETE CASCADE'],
+    [
+      'notificacao_outbox.uq_notificacao_outbox_usuario_chave_idempotencia',
+      'u',
+      'usuario_id, chave_idempotencia',
+    ],
     [
       'notificacao_outbox.uq_notificacao_outbox_evento_destinatario_ocorrencia',
       'u',
       'evento_tipo, usuario_id, canal, ocorrencia_versao',
     ],
     ['notificacao_outbox.chk_notificacao_outbox_campos_obrigatorios', 'c', 'ocorrencia_versao'],
-    ['notificacao_outbox.chk_notificacao_outbox_operacao', 'c', 'ADMINISTRATIVA'],
+    ['notificacao_outbox.chk_notificacao_outbox_operacao', 'c', 'Administrativo'],
     ['notificacao_outbox.chk_notificacao_outbox_canal', 'c', 'WEB_PUSH'],
     ['notificacao_outbox.chk_notificacao_outbox_status', 'c', 'FALHA_DEFINITIVA'],
     ['notificacao_outbox.chk_notificacao_outbox_tentativas', 'c', 'max_tentativas'],
@@ -154,10 +171,10 @@ exports.up = async (knex) => {
         id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
         notificacao_id INTEGER NULL DEFAULT NULL,
         usuario_id INTEGER NOT NULL,
-        evento_tipo VARCHAR(80) NOT NULL,
+        evento_tipo VARCHAR(64) NOT NULL,
         categoria VARCHAR(60) NOT NULL DEFAULT 'GERAL',
         operacao VARCHAR(20) NOT NULL,
-        referencia_tipo VARCHAR(50) NULL DEFAULT NULL,
+        referencia_tipo VARCHAR(40) NULL DEFAULT NULL,
         referencia_id INTEGER NULL DEFAULT NULL,
         ocorrencia_versao VARCHAR(120) NOT NULL DEFAULT 'v1',
         chave_idempotencia VARCHAR(190) NOT NULL,
@@ -174,7 +191,7 @@ exports.up = async (knex) => {
         criado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         atualizado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_notificacao_outbox_usuario
-          FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE RESTRICT,
+          FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
         CONSTRAINT uq_notificacao_outbox_usuario_chave_idempotencia
           UNIQUE (usuario_id, chave_idempotencia),
         CONSTRAINT uq_notificacao_outbox_evento_destinatario_ocorrencia
@@ -186,9 +203,10 @@ exports.up = async (knex) => {
             AND length(btrim(ocorrencia_versao)) > 0
             AND length(btrim(chave_idempotencia)) > 0
             AND (notificacao_id IS NULL OR notificacao_id > 0)
+            AND (ultimo_erro IS NULL OR (length(btrim(ultimo_erro)) > 0 AND char_length(ultimo_erro) <= 500))
           ),
         CONSTRAINT chk_notificacao_outbox_operacao
-          CHECK (operacao IN ('ADMINISTRATIVA', 'SVO')),
+          CHECK (operacao IN ('Administrativo', 'SVO')),
         CONSTRAINT chk_notificacao_outbox_canal
           CHECK (canal IN ('WEB_PUSH')),
         CONSTRAINT chk_notificacao_outbox_status

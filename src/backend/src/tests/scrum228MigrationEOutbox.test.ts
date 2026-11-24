@@ -20,6 +20,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     tabelasBaseCount?: number;
     tabelaOutboxPreexistente?: boolean;
     tipoPayloadPush?: string;
+    tamanhoEventoTipo?: number;
     omitirConstraint?: string;
     omitirIndice?: string;
     totalOutbox?: number;
@@ -56,36 +57,43 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
       ) {
         return {
           rows: [
-            { column_name: 'id', data_type: 'integer', is_nullable: 'NO' },
-            { column_name: 'notificacao_id', data_type: 'integer', is_nullable: 'YES' },
-            { column_name: 'usuario_id', data_type: 'integer', is_nullable: 'NO' },
-            { column_name: 'evento_tipo', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'categoria', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'operacao', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'referencia_tipo', data_type: 'character varying', is_nullable: 'YES' },
-            { column_name: 'referencia_id', data_type: 'integer', is_nullable: 'YES' },
-            { column_name: 'ocorrencia_versao', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'chave_idempotencia', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'canal', data_type: 'character varying', is_nullable: 'NO' },
+            { column_name: 'id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
+            { column_name: 'notificacao_id', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null },
+            { column_name: 'usuario_id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
+            {
+              column_name: 'evento_tipo',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: opcoes?.tamanhoEventoTipo ?? 64,
+            },
+            { column_name: 'categoria', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 60 },
+            { column_name: 'operacao', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 20 },
+            { column_name: 'referencia_tipo', data_type: 'character varying', is_nullable: 'YES', character_maximum_length: 40 },
+            { column_name: 'referencia_id', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null },
+            { column_name: 'ocorrencia_versao', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 120 },
+            { column_name: 'chave_idempotencia', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 190 },
+            { column_name: 'canal', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 20 },
             {
               column_name: 'payload_push',
               data_type: opcoes?.tipoPayloadPush ?? 'jsonb',
               is_nullable: 'NO',
+              character_maximum_length: null,
             },
-            { column_name: 'status', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'tentativas', data_type: 'integer', is_nullable: 'NO' },
-            { column_name: 'max_tentativas', data_type: 'integer', is_nullable: 'NO' },
+            { column_name: 'status', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 24 },
+            { column_name: 'tentativas', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
+            { column_name: 'max_tentativas', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
             {
               column_name: 'proxima_execucao_em',
               data_type: 'timestamp with time zone',
               is_nullable: 'NO',
+              character_maximum_length: null,
             },
-            { column_name: 'bloqueado_ate', data_type: 'timestamp with time zone', is_nullable: 'YES' },
-            { column_name: 'ultimo_erro', data_type: 'character varying', is_nullable: 'YES' },
-            { column_name: 'ultimo_status_http', data_type: 'integer', is_nullable: 'YES' },
-            { column_name: 'processado_em', data_type: 'timestamp with time zone', is_nullable: 'YES' },
-            { column_name: 'criado_em', data_type: 'timestamp with time zone', is_nullable: 'NO' },
-            { column_name: 'atualizado_em', data_type: 'timestamp with time zone', is_nullable: 'NO' },
+            { column_name: 'bloqueado_ate', data_type: 'timestamp with time zone', is_nullable: 'YES', character_maximum_length: null },
+            { column_name: 'ultimo_erro', data_type: 'character varying', is_nullable: 'YES', character_maximum_length: 500 },
+            { column_name: 'ultimo_status_http', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null },
+            { column_name: 'processado_em', data_type: 'timestamp with time zone', is_nullable: 'YES', character_maximum_length: null },
+            { column_name: 'criado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null },
+            { column_name: 'atualizado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null },
           ],
         };
       }
@@ -96,7 +104,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
             table_name: 'notificacao_outbox',
             conname: 'fk_notificacao_outbox_usuario',
             contype: 'f',
-            def: 'FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE RESTRICT',
+            def: 'FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE',
           },
           {
             table_name: 'notificacao_outbox',
@@ -114,13 +122,13 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
             table_name: 'notificacao_outbox',
             conname: 'chk_notificacao_outbox_campos_obrigatorios',
             contype: 'c',
-            def: 'CHECK (((length(btrim((evento_tipo)::text)) > 0) AND (length(btrim((categoria)::text)) > 0) AND (length(btrim((ocorrencia_versao)::text)) > 0) AND (length(btrim((chave_idempotencia)::text)) > 0) AND (notificacao_id IS NULL OR notificacao_id > 0)))',
+            def: 'CHECK (((length(btrim((evento_tipo)::text)) > 0) AND (length(btrim((categoria)::text)) > 0) AND (length(btrim((ocorrencia_versao)::text)) > 0) AND (length(btrim((chave_idempotencia)::text)) > 0) AND (notificacao_id IS NULL OR notificacao_id > 0) AND (ultimo_erro IS NULL OR ((length(btrim((ultimo_erro)::text)) > 0) AND (char_length((ultimo_erro)::text) <= 500)))))',
           },
           {
             table_name: 'notificacao_outbox',
             conname: 'chk_notificacao_outbox_operacao',
             contype: 'c',
-            def: "CHECK (((operacao)::text = ANY (ARRAY['ADMINISTRATIVA'::text, 'SVO'::text])))",
+            def: "CHECK (((operacao)::text = ANY (ARRAY['Administrativo'::text, 'SVO'::text])))",
           },
           {
             table_name: 'notificacao_outbox',
@@ -226,6 +234,20 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     expect(codigoFonte).not.toMatch(/\bIF\s+NOT\s+EXISTS\b/i);
   });
 
+  it('define contrato alinhado à Seção 6.1 do Plano (ON DELETE CASCADE, evento_tipo VARCHAR(64), operacao Administrativo/SVO)', async () => {
+    const { knexMock, sqlExecutados } = criarKnexScrum228Mock();
+    await migrationScrum228.up(knexMock);
+
+    const ddlCreate = sqlExecutados.find((item) =>
+      item.sql.includes('CREATE TABLE notificacao_outbox')
+    );
+    expect(ddlCreate).toBeDefined();
+    expect(ddlCreate?.sql).toContain('REFERENCES usuarios(id) ON DELETE CASCADE');
+    expect(ddlCreate?.sql).toContain('evento_tipo VARCHAR(64) NOT NULL');
+    expect(ddlCreate?.sql).toContain('referencia_tipo VARCHAR(40) NULL DEFAULT NULL');
+    expect(ddlCreate?.sql).toContain("CHECK (operacao IN ('Administrativo', 'SVO'))");
+  });
+
   it('bloqueia up quando a tabela base usuarios não está presente no schema alvo', async () => {
     const semBase = criarKnexScrum228Mock({ tabelasBaseCount: 0 });
     await expect(migrationScrum228.up(semBase.knexMock)).rejects.toThrow(
@@ -233,11 +255,16 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     );
   });
 
-  it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum228', async () => {
+  it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum228 (tipo, limite, constraint e índice)', async () => {
     const tipoInvalido = criarKnexScrum228Mock({ tipoPayloadPush: 'text' });
     await expect(migrationScrum228.validarCatalogoScrum228(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em notificacao_outbox\.payload_push/
     );
+
+    const tamanhoInvalido = criarKnexScrum228Mock({ tamanhoEventoTipo: 120 });
+    await expect(
+      migrationScrum228.validarCatalogoScrum228(tamanhoInvalido.knexMock)
+    ).rejects.toThrow(/Estrutura incompativel em notificacao_outbox\.evento_tipo/);
 
     const semConstraint = criarKnexScrum228Mock({
       omitirConstraint: 'notificacao_outbox.uq_notificacao_outbox_evento_destinatario_ocorrencia',
