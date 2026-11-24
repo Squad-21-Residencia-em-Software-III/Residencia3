@@ -5,6 +5,9 @@ import { AuthProvider, useAuth } from './AuthContext'
 import { authApi } from '../services/api/authApi'
 import { tokenStorage } from '../services/api/http'
 import { PERFIS } from '../types/usuario'
+import { encerrarPushAoSair, useVinculoPush } from '../hooks/useVinculoPush'
+
+vi.mock('../hooks/useVinculoPush', () => ({ encerrarPushAoSair: vi.fn(), useVinculoPush: vi.fn() }))
 
 vi.mock('../services/api/authApi', () => ({
   authApi: {
@@ -122,6 +125,8 @@ describe('AuthContext: cold start via silent refresh e logout', () => {
     expect(screen.getByText('Deslogado')).toBeInTheDocument()
     expect(tokenStorage.get()).toBeNull()
     expect(authApi.logout).toHaveBeenCalledTimes(1)
+    expect(useVinculoPush).toHaveBeenCalledWith(mockUsuario.id)
+    expect(encerrarPushAoSair).toHaveBeenCalledTimes(1)
     expect(postMessageSpy).toHaveBeenCalledWith({ tipo: 'LOGOUT' })
 
     vi.unstubAllGlobals()

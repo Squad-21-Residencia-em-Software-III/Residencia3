@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { encerrarPushAoSair, useVinculoPush } from '../hooks/useVinculoPush'
 import { authApi } from '../services/api/authApi'
 import { EVENTO_SESSAO_EXPIRADA, tokenStorage } from '../services/api/http'
 import type { Perfil, Usuario } from '../types/usuario'
@@ -54,6 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  useVinculoPush(usuario?.id)
+
   const limparEstadoLocal = useCallback(() => {
     tokenStorage.clear()
     setUsuario(null)
@@ -93,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     limparEstadoLocal()
+    encerrarPushAoSair()
     void authApi.logout().catch(() => {})
     canalRef.current?.postMessage({ tipo: 'LOGOUT' })
   }, [limparEstadoLocal])

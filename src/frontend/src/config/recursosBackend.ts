@@ -41,6 +41,13 @@ export const RECURSOS_BACKEND = {
    * Serviço: `evidenciasOdometroApi`.
    */
   fotosOdometro: import.meta.env.VITE_FOTOS_ODOMETRO_ATIVAS === 'true',
+
+  /**
+   * SCRUM-238: alertas no aparelho (Web Push). Depende do banco (SCRUM-236), do back (SCRUM-237) e
+   * do service worker (SCRUM-239), conforme docs/scrum-238-contrato-push.md. Desligado, as
+   * preferências do aplicativo ficam como antes. Serviço: `notificacoesPushApi`.
+   */
+  webPush: import.meta.env.VITE_WEB_PUSH_ATIVO === 'true',
 };
 
 export type RecursoBackend = keyof typeof RECURSOS_BACKEND;
