@@ -20,6 +20,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
     tabelasBaseCount?: number;
     tabelaNotificacoesPreexistente?: boolean;
     tipoCriadoEm?: string;
+    tamanhoMensagem?: number;
     omitirConstraint?: string;
     omitirIndice?: string;
     totalNotificacoes?: number;
@@ -53,23 +54,83 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
       if (sql.includes('FROM information_schema.columns') && sql.includes("table_name = 'notificacoes'")) {
         return {
           rows: [
-            { column_name: 'id', data_type: 'integer', is_nullable: 'NO' },
-            { column_name: 'usuario_id', data_type: 'integer', is_nullable: 'NO' },
-            { column_name: 'tipo', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'categoria', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'titulo', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'mensagem', data_type: 'text', is_nullable: 'NO' },
-            { column_name: 'severidade', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'operacao', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'referencia_tipo', data_type: 'character varying', is_nullable: 'YES' },
-            { column_name: 'referencia_id', data_type: 'integer', is_nullable: 'YES' },
-            { column_name: 'url_destino', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'chave_idempotencia', data_type: 'character varying', is_nullable: 'NO' },
-            { column_name: 'lida_em', data_type: 'timestamp with time zone', is_nullable: 'YES' },
+            {
+              column_name: 'id',
+              data_type: 'integer',
+              is_nullable: 'NO',
+              character_maximum_length: null,
+            },
+            {
+              column_name: 'usuario_id',
+              data_type: 'integer',
+              is_nullable: 'NO',
+              character_maximum_length: null,
+            },
+            {
+              column_name: 'tipo',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: 64,
+            },
+            {
+              column_name: 'titulo',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: 120,
+            },
+            {
+              column_name: 'mensagem',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: opcoes?.tamanhoMensagem ?? 280,
+            },
+            {
+              column_name: 'severidade',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: 20,
+            },
+            {
+              column_name: 'operacao',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: 20,
+            },
+            {
+              column_name: 'referencia_tipo',
+              data_type: 'character varying',
+              is_nullable: 'YES',
+              character_maximum_length: 40,
+            },
+            {
+              column_name: 'referencia_id',
+              data_type: 'integer',
+              is_nullable: 'YES',
+              character_maximum_length: null,
+            },
+            {
+              column_name: 'url_destino',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: 255,
+            },
+            {
+              column_name: 'chave_idempotencia',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: 190,
+            },
+            {
+              column_name: 'lida_em',
+              data_type: 'timestamp with time zone',
+              is_nullable: 'YES',
+              character_maximum_length: null,
+            },
             {
               column_name: 'criado_em',
               data_type: opcoes?.tipoCriadoEm ?? 'timestamp with time zone',
               is_nullable: 'NO',
+              character_maximum_length: null,
             },
           ],
         };
@@ -81,7 +142,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
             table_name: 'notificacoes',
             conname: 'fk_notificacoes_usuario',
             contype: 'f',
-            def: 'FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE RESTRICT',
+            def: 'FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE',
           },
           {
             table_name: 'notificacoes',
@@ -93,19 +154,19 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
             table_name: 'notificacoes',
             conname: 'chk_notificacoes_campos_obrigatorios',
             contype: 'c',
-            def: 'CHECK (((length(btrim((tipo)::text)) > 0) AND (length(btrim((categoria)::text)) > 0) AND (length(btrim((titulo)::text)) > 0) AND (length(btrim(mensagem)) > 0) AND (length(btrim((chave_idempotencia)::text)) > 0)))',
+            def: 'CHECK (((length(btrim((tipo)::text)) > 0) AND (length(btrim((titulo)::text)) > 0) AND (length(btrim((mensagem)::text)) > 0) AND (char_length((mensagem)::text) <= 280) AND (length(btrim((chave_idempotencia)::text)) > 0)))',
           },
           {
             table_name: 'notificacoes',
             conname: 'chk_notificacoes_severidade',
             contype: 'c',
-            def: "CHECK (((severidade)::text = ANY (ARRAY['INFO'::text, 'SUCESSO'::text, 'ALERTA'::text, 'CRITICA'::text])))",
+            def: "CHECK (((severidade)::text = ANY (ARRAY['info'::text, 'success'::text, 'warning'::text, 'danger'::text])))",
           },
           {
             table_name: 'notificacoes',
             conname: 'chk_notificacoes_operacao',
             contype: 'c',
-            def: "CHECK (((operacao)::text = ANY (ARRAY['ADMINISTRATIVA'::text, 'SVO'::text])))",
+            def: "CHECK (((operacao)::text = ANY (ARRAY['Administrativo'::text, 'SVO'::text])))",
           },
           {
             table_name: 'notificacoes',
@@ -117,7 +178,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
             table_name: 'notificacoes',
             conname: 'chk_notificacoes_url_destino_interna',
             contype: 'c',
-            def: "CHECK (((length(btrim((url_destino)::text)) > 0) AND ((url_destino)::text ~~ '/%'::text) AND ((url_destino)::text !~~ '//%'::text) AND ((url_destino)::text !~* '^[a-z][a-z0-9+.-]*:'::text)))",
+            def: "CHECK (((length(btrim((url_destino)::text)) > 0) AND ((url_destino)::text = btrim((url_destino)::text)) AND ((url_destino)::text ~~ '/%'::text) AND ((url_destino)::text !~~ '//%'::text) AND ((url_destino)::text !~ '[\\\\[:space:][:cntrl:]]'::text) AND ((url_destino)::text !~* '^[a-z][a-z0-9+.-]*:'::text)))",
           },
           {
             table_name: 'notificacoes',
@@ -140,24 +201,29 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
               'CREATE INDEX idx_notificacoes_usuario_cursor ON public.notificacoes USING btree (usuario_id, criado_em DESC, id DESC)',
           },
           {
+            indexname: 'idx_notificacoes_usuario_lida_criado',
+            indexdef:
+              'CREATE INDEX idx_notificacoes_usuario_lida_criado ON public.notificacoes USING btree (usuario_id, lida_em, criado_em DESC, id DESC)',
+          },
+          {
             indexname: 'idx_notificacoes_usuario_nao_lidas',
             indexdef:
               'CREATE INDEX idx_notificacoes_usuario_nao_lidas ON public.notificacoes USING btree (usuario_id, criado_em DESC, id DESC) WHERE (lida_em IS NULL)',
           },
           {
-            indexname: 'idx_notificacoes_usuario_referencia_nao_lidas',
+            indexname: 'idx_notificacoes_usuario_referencia',
             indexdef:
-              'CREATE INDEX idx_notificacoes_usuario_referencia_nao_lidas ON public.notificacoes USING btree (usuario_id, referencia_tipo, referencia_id) WHERE ((lida_em IS NULL) AND (referencia_tipo IS NOT NULL) AND (referencia_id IS NOT NULL))',
+              'CREATE INDEX idx_notificacoes_usuario_referencia ON public.notificacoes USING btree (usuario_id, referencia_tipo, referencia_id)',
           },
           {
             indexname: 'idx_notificacoes_retencao_lidas',
             indexdef:
-              'CREATE INDEX idx_notificacoes_retencao_lidas ON public.notificacoes USING btree (criado_em, lida_em) WHERE (lida_em IS NOT NULL)',
+              'CREATE INDEX idx_notificacoes_retencao_lidas ON public.notificacoes USING btree (lida_em) WHERE (lida_em IS NOT NULL)',
           },
           {
-            indexname: 'idx_notificacoes_retencao_nao_lidas',
+            indexname: 'idx_notificacoes_criado_em',
             indexdef:
-              'CREATE INDEX idx_notificacoes_retencao_nao_lidas ON public.notificacoes USING btree (criado_em) WHERE (lida_em IS NULL)',
+              'CREATE INDEX idx_notificacoes_criado_em ON public.notificacoes USING btree (criado_em)',
           },
         ];
 
@@ -198,6 +264,21 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
     expect(codigoFonte).not.toMatch(/\bIF\s+NOT\s+EXISTS\b/i);
   });
 
+  it('define contrato fiel à Seção 6.1 do Plano (ON DELETE CASCADE, VARCHAR(280) em mensagem, severidade e operação)', async () => {
+    const { knexMock, sqlExecutados } = criarKnexScrum225Mock();
+    await migrationScrum225.up(knexMock);
+
+    const ddlCreate = sqlExecutados.find((item) => item.sql.includes('CREATE TABLE notificacoes'));
+    expect(ddlCreate).toBeDefined();
+    expect(ddlCreate?.sql).toContain('REFERENCES usuarios(id) ON DELETE CASCADE');
+    expect(ddlCreate?.sql).toContain('tipo VARCHAR(64) NOT NULL');
+    expect(ddlCreate?.sql).toContain('titulo VARCHAR(120) NOT NULL');
+    expect(ddlCreate?.sql).toContain('mensagem VARCHAR(280) NOT NULL');
+    expect(ddlCreate?.sql).toContain("CHECK (severidade IN ('info', 'success', 'warning', 'danger'))");
+    expect(ddlCreate?.sql).toContain("CHECK (operacao IN ('Administrativo', 'SVO'))");
+    expect(ddlCreate?.sql).toContain("url_destino !~ '[\\\\[:space:][:cntrl:]]'");
+  });
+
   it('bloqueia up quando a tabela base usuarios não está presente no schema alvo', async () => {
     const semBase = criarKnexScrum225Mock({ tabelasBaseCount: 0 });
     await expect(migrationScrum225.up(semBase.knexMock)).rejects.toThrow(
@@ -205,11 +286,16 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
     );
   });
 
-  it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum225', async () => {
+  it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum225 (tipo, limite de tamanho, constraint e índice)', async () => {
     const tipoInvalido = criarKnexScrum225Mock({ tipoCriadoEm: 'text' });
     await expect(migrationScrum225.validarCatalogoScrum225(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em notificacoes\.criado_em/
     );
+
+    const tamanhoMensagemInvalido = criarKnexScrum225Mock({ tamanhoMensagem: 500 });
+    await expect(
+      migrationScrum225.validarCatalogoScrum225(tamanhoMensagemInvalido.knexMock)
+    ).rejects.toThrow(/Estrutura incompativel em notificacoes\.mensagem/);
 
     const semConstraint = criarKnexScrum225Mock({
       omitirConstraint: 'notificacoes.uq_notificacoes_usuario_chave_idempotencia',
@@ -276,8 +362,9 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
     expect(ddlDown).toBeDefined();
     expect(ddlDown?.sql).not.toContain('IF EXISTS');
     expect(ddlDown?.sql).toContain('DROP INDEX idx_notificacoes_usuario_cursor;');
+    expect(ddlDown?.sql).toContain('DROP INDEX idx_notificacoes_usuario_lida_criado;');
     expect(ddlDown?.sql).toContain('DROP INDEX idx_notificacoes_retencao_lidas;');
-    expect(ddlDown?.sql).toContain('DROP INDEX idx_notificacoes_retencao_nao_lidas;');
+    expect(ddlDown?.sql).toContain('DROP INDEX idx_notificacoes_criado_em;');
   });
 
   it('rejeita role da aplicação que possua DELETE na tabela notificacoes', () => {

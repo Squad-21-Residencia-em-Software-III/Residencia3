@@ -40,8 +40,9 @@ async function criarBaseIsolada(trx, schema) {
     VALUES
       (1, 'Solicitante A', 'solicitante.a@exemplo.invalid', 'hash', 'SOLICITANTE', 'SOLICITANTE'),
       (2, 'Motorista B', 'motorista.b@exemplo.invalid', 'hash', 'MOTORISTA', 'MOTORISTA_FROTA'),
-      (3, 'Integrante SVO C', 'integrante.c@exemplo.invalid', 'hash', 'INTEGRANTE_SVO', 'INTEGRANTE_SVO');
-    SELECT setval(pg_get_serial_sequence('usuarios', 'id'), 3, true);
+      (3, 'Integrante SVO C', 'integrante.c@exemplo.invalid', 'hash', 'INTEGRANTE_SVO', 'INTEGRANTE_SVO'),
+      (4, 'Usuario Temporario Cascade', 'temp.cascade@exemplo.invalid', 'hash', 'SOLICITANTE', 'SOLICITANTE');
+    SELECT setval(pg_get_serial_sequence('usuarios', 'id'), 4, true);
   `);
 }
 
@@ -110,27 +111,30 @@ async function executarValidacaoCompletaScrum225() {
       '1. Bloqueio de ausencia de tabela base e estruturas preexistentes incompativeis no up: OK'
     );
 
-    // 3. Ciclo completo em schema isolado: UP -> FK -> Idempotencia -> Constraints -> Paginacao por cursor com empate -> Retencao 30/90d -> Rollback protegido -> Down limpo -> Re-UP
+    // 3. Validacao completa em schema isolado com suporte a transacoes concorrentes e teste real da role frotas_app
     const schemaCiclo = `val225_ciclo_${Date.now()}`;
-    await db
-      .transaction(async (trx) => {
+    try {
+      await db.transaction(async (trx) => {
         await criarBaseIsolada(trx, schemaCiclo);
         await migrationScrum225.up(trx);
-        relatorio.push(
-          '2. Aplicacao limpa da migration SCRUM-225 (up) e validacao de catalogo: OK'
-        );
+      });
+      relatorio.push(
+        '2. Aplicacao limpa da migration SCRUM-225 (up) e validacao de catalogo (Secao 6.1): OK'
+      );
 
-        // 3.1 Testa FK, idempotencia e constraints de dominio/seguranca
+      // 3.1 Testa FK (ON DELETE CASCADE), limites de campos (mensagem <= 280), severidade, operacao e url_destino
+      await db.transaction(async (trx) => {
+        await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
+
         const tsBase = new Date('2026-11-24T12:00:00.000Z');
         const [notif1] = await trx('notificacoes')
           .insert({
             usuario_id: 1,
             tipo: 'A2_SOLICITACAO_APROVADA',
-            categoria: 'SOLICITACOES',
-            titulo: 'Solicitacao aprovada',
-            mensagem: 'Sua solicitacao #101 foi aprovada pela gestao.',
-            severidade: 'SUCESSO',
-            operacao: 'ADMINISTRATIVA',
+            titulo: 'Solicitacao aprovada (#101)',
+            mensagem: 'Aprovada pela gestao de frota. Em breve um veiculo sera agendado.',
+            severidade: 'success',
+            operacao: 'Administrativo',
             referencia_tipo: 'SOLICITACAO_VIAGEM',
             referencia_id: 101,
             url_destino: '/solicitacoes',
@@ -139,98 +143,128 @@ async function executarValidacaoCompletaScrum225() {
           })
           .returning('*');
 
-        // Mesma chave de evento para OUTRO destinatario (usuario 2) deve ser permitida
+        // Testa ON DELETE CASCADE quando usuario 4 eh removido
         await trx('notificacoes').insert({
-          usuario_id: 2,
-          tipo: 'A5_VIAGEM_AGENDADA',
-          categoria: 'VIAGENS',
-          titulo: 'Viagem agendada',
-          mensagem: 'Voce foi alocado para a viagem #101.',
-          severidade: 'INFO',
-          operacao: 'ADMINISTRATIVA',
-          referencia_tipo: 'VIAGEM_FROTA',
-          referencia_id: 101,
-          url_destino: '/viagens',
-          chave_idempotencia: 'A2:SOLICITACAO_VIAGEM:101:v1',
-          criado_em: tsBase,
+          usuario_id: 4,
+          tipo: 'A1_NOVA_SOLICITACAO',
+          titulo: 'Nova solicitacao administrativa (#102)',
+          mensagem: 'Aguardando analise e aprovacao para o periodo solicitado.',
+          severidade: 'info',
+          operacao: 'Administrativo',
+          url_destino: '/solicitacoes',
+          chave_idempotencia: 'A1:SOLICITACAO_VIAGEM:102:v1',
         });
+        await trx('usuarios').where({ id: 4 }).del();
+        const restouUsuario4 = await trx('notificacoes')
+          .where({ usuario_id: 4 })
+          .count({ total: '*' })
+          .first();
+        if (Number(restouUsuario4?.total || 0) !== 0) {
+          throw new Error(
+            'FK fk_notificacoes_usuario deveria remover notificacoes via ON DELETE CASCADE.'
+          );
+        }
 
-        // Mesma chave para o MESMO destinatario (usuario 1) deve ser bloqueada (23505)
-        const bloqueouDuplicataMesmoUsuario = await esperarErroSql(trx, '23505', () =>
-          trx('notificacoes').insert({
-            usuario_id: 1,
-            tipo: 'A2_SOLICITACAO_APROVADA',
-            categoria: 'SOLICITACOES',
-            titulo: 'Solicitacao aprovada duplicada',
-            mensagem: 'Tentativa duplicada.',
-            severidade: 'SUCESSO',
-            operacao: 'ADMINISTRATIVA',
-            referencia_tipo: 'SOLICITACAO_VIAGEM',
-            referencia_id: 101,
-            url_destino: '/solicitacoes',
-            chave_idempotencia: 'A2:SOLICITACAO_VIAGEM:101:v1',
-            criado_em: tsBase,
-          })
-        );
-
-        // FK usuario inexistente (23503) e ON DELETE RESTRICT em usuario com notificacao (23503)
+        // FK usuario inexistente (23503)
         const bloqueouUsuarioInexistente = await esperarErroSql(trx, '23503', () =>
           trx('notificacoes').insert({
             usuario_id: 9999,
             tipo: 'A1_NOVA_SOLICITACAO',
-            categoria: 'SOLICITACOES',
             titulo: 'Nova solicitacao',
             mensagem: 'Pedido aguardando.',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
+            severidade: 'info',
+            operacao: 'Administrativo',
             url_destino: '/solicitacoes',
             chave_idempotencia: 'A1:9999:v1',
           })
         );
 
-        const bloqueouDeleteUsuarioComNotificacao = await esperarErroSql(trx, '23503', () =>
-          trx('usuarios').where({ id: 1 }).del()
-        );
-
-        // Protecao contra Open Redirect em url_destino (23514)
-        const bloqueouUrlExternaHttp = await esperarErroSql(trx, '23514', () =>
+        // Limite explicito de mensagem (> 280 caracteres -> 22001 string_data_right_truncation)
+        const bloqueouMensagemAcimaDe280 = await esperarErroSql(trx, '22001', () =>
           trx('notificacoes').insert({
             usuario_id: 1,
             tipo: 'A1_NOVA_SOLICITACAO',
-            categoria: 'SOLICITACOES',
-            titulo: 'Teste',
-            mensagem: 'Mensagem',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
-            url_destino: 'https://malicioso.invalid/phishing',
-            chave_idempotencia: 'url-ext-1',
+            titulo: 'Titulo valido',
+            mensagem: 'M'.repeat(281),
+            severidade: 'info',
+            operacao: 'Administrativo',
+            url_destino: '/solicitacoes',
+            chave_idempotencia: 'msg-longa-281',
           })
         );
 
-        const bloqueouUrlProtocolRelative = await esperarErroSql(trx, '23514', () =>
+        // Severidade fora de ('info', 'success', 'warning', 'danger') -> 23514
+        const bloqueouSeveridadeInvalida = await esperarErroSql(trx, '23514', () =>
           trx('notificacoes').insert({
             usuario_id: 1,
             tipo: 'A1_NOVA_SOLICITACAO',
-            categoria: 'SOLICITACOES',
-            titulo: 'Teste',
+            titulo: 'Titulo',
             mensagem: 'Mensagem',
             severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
-            url_destino: '//malicioso.invalid/phishing',
-            chave_idempotencia: 'url-ext-2',
+            operacao: 'Administrativo',
+            url_destino: '/solicitacoes',
+            chave_idempotencia: 'sev-invalida',
           })
         );
+
+        // Operacao fora de ('Administrativo', 'SVO') -> 23514
+        const bloqueouOperacaoInvalida = await esperarErroSql(trx, '23514', () =>
+          trx('notificacoes').insert({
+            usuario_id: 1,
+            tipo: 'A1_NOVA_SOLICITACAO',
+            titulo: 'Titulo',
+            mensagem: 'Mensagem',
+            severidade: 'info',
+            operacao: 'ADMINISTRATIVA',
+            url_destino: '/solicitacoes',
+            chave_idempotencia: 'op-invalida',
+          })
+        );
+
+        // Casos negativos especificos de url_destino (open redirect, barras invertidas, espacos e caracteres de controle)
+        const urlsInvalidas = [
+          'https://malicioso.invalid/phishing',
+          '//malicioso.invalid/phishing',
+          '/\\malicioso.invalid/phishing',
+          '/solicitacoes\\..\\admin',
+          '/solicitacoes\nSet-Cookie: sessao=roubada',
+          '/solicitacoes\r\nLocation: https://evil.invalid',
+          '/solicitacoes\t1',
+          '/solicitacoes com espaco',
+          ' /solicitacoes',
+          'javascript:alert(1)',
+        ];
+
+        for (let idx = 0; idx < urlsInvalidas.length; idx += 1) {
+          const urlInvalida = urlsInvalidas[idx];
+          const bloqueouUrl = await esperarErroSql(trx, '23514', () =>
+            trx('notificacoes').insert({
+              usuario_id: 1,
+              tipo: 'A1_NOVA_SOLICITACAO',
+              titulo: 'Teste URL',
+              mensagem: 'Mensagem',
+              severidade: 'info',
+              operacao: 'Administrativo',
+              url_destino: urlInvalida,
+              chave_idempotencia: `url-inv-${idx}`,
+            })
+          );
+          if (!bloqueouUrl) {
+            throw new Error(
+              `Constraint chk_notificacoes_url_destino_interna deveria bloquear: ${JSON.stringify(urlInvalida)}`
+            );
+          }
+        }
 
         // Coerencia de referencia_tipo / referencia_id e ordem temporal lida_em >= criado_em
         const bloqueouReferenciaIncompleta = await esperarErroSql(trx, '23514', () =>
           trx('notificacoes').insert({
             usuario_id: 1,
             tipo: 'A1_NOVA_SOLICITACAO',
-            categoria: 'SOLICITACOES',
             titulo: 'Teste',
             mensagem: 'Mensagem',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
+            severidade: 'info',
+            operacao: 'Administrativo',
             referencia_tipo: 'SOLICITACAO_VIAGEM',
             referencia_id: null,
             url_destino: '/solicitacoes',
@@ -245,25 +279,138 @@ async function executarValidacaoCompletaScrum225() {
         );
 
         if (
-          !bloqueouDuplicataMesmoUsuario ||
           !bloqueouUsuarioInexistente ||
-          !bloqueouDeleteUsuarioComNotificacao ||
-          !bloqueouUrlExternaHttp ||
-          !bloqueouUrlProtocolRelative ||
+          !bloqueouMensagemAcimaDe280 ||
+          !bloqueouSeveridadeInvalida ||
+          !bloqueouOperacaoInvalida ||
           !bloqueouReferenciaIncompleta ||
           !bloqueouLeituraAnteriorCriacao
         ) {
           throw new Error(
-            'Falha na validacao de FK, idempotencia, open-redirect ou constraints de notificacoes.'
+            'Falha na validacao de FK, limite de 280 chars, severidade, operacao ou constraints de notificacoes.'
           );
         }
 
-        relatorio.push(
-          '3. Integridade de FK, unicidade idempotente por destinatario e bloqueio de open-redirect: OK'
-        );
-
-        // 3.2 Testa paginacao estavel por cursor (criado_em DESC, id DESC) com timestamps empatados
         await trx('notificacoes').del();
+      });
+
+      relatorio.push(
+        '3. FK (ON DELETE CASCADE), limite de 280 chars em mensagem, dominios (severidade/operacao) e bloqueio de barras invertidas/controle em url_destino: OK'
+      );
+
+      // 3.2 Concorrencia real: duas transacoes simultaneas em conexoes independentes tentando inserir a mesma chave para o mesmo destinatario
+      let prontas = 0;
+      let liberarBarreira;
+      const barreira = new Promise((resolve) => {
+        liberarBarreira = resolve;
+      });
+
+      const tentativaConcorrente = async (indice) => {
+        return db.transaction(async (trx) => {
+          await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
+          prontas += 1;
+          if (prontas === 2) {
+            liberarBarreira();
+          } else {
+            await barreira;
+          }
+
+          await trx('notificacoes').insert({
+            usuario_id: 1,
+            tipo: 'S3_COLETA_ALOCADA',
+            titulo: `Coleta SVO designada (#200) [t${indice}]`,
+            mensagem: 'Previsao em 24/11 14:00.',
+            severidade: 'warning',
+            operacao: 'SVO',
+            referencia_tipo: 'ORDEM_SVO',
+            referencia_id: 200,
+            url_destino: '/minhas-coletas?ordem=200',
+            chave_idempotencia: 'S3:ORDEM_SVO:200:v1',
+          });
+          return 'INSERIDA';
+        });
+      };
+
+      const resultadosConcorrentes = await Promise.allSettled([
+        tentativaConcorrente(1),
+        tentativaConcorrente(2),
+      ]);
+
+      const sucessos = resultadosConcorrentes.filter((r) => r.status === 'fulfilled');
+      const falhasUnicidade = resultadosConcorrentes.filter(
+        (r) => r.status === 'rejected' && r.reason && r.reason.code === '23505'
+      );
+      const totalPersistidoConcorrente = await db
+        .withSchema(schemaCiclo)
+        .from('notificacoes')
+        .where({ usuario_id: 1, chave_idempotencia: 'S3:ORDEM_SVO:200:v1' })
+        .count({ total: '*' })
+        .first();
+
+      if (
+        sucessos.length !== 1 ||
+        falhasUnicidade.length !== 1 ||
+        Number(totalPersistidoConcorrente?.total || 0) !== 1
+      ) {
+        throw new Error(
+          `Falha no teste de concorrencia real: sucessos=${sucessos.length}, falhas23505=${falhasUnicidade.length}, persistidos=${totalPersistidoConcorrente?.total}`
+        );
+      }
+
+      // Duas transacoes concorrentes para destinatarios diferentes com a mesma chave + eventos distintos para o mesmo destinatario
+      await Promise.all([
+        db.transaction(async (trx) => {
+          await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
+          await trx('notificacoes').insert({
+            usuario_id: 2,
+            tipo: 'S3_COLETA_ALOCADA',
+            titulo: 'Coleta SVO designada (#200)',
+            mensagem: 'Previsao em 24/11 14:00.',
+            severidade: 'warning',
+            operacao: 'SVO',
+            referencia_tipo: 'ORDEM_SVO',
+            referencia_id: 200,
+            url_destino: '/viagens',
+            chave_idempotencia: 'S3:ORDEM_SVO:200:v1',
+          });
+        }),
+        db.transaction(async (trx) => {
+          await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
+          await trx('notificacoes').insert({
+            usuario_id: 1,
+            tipo: 'S4_COLETA_REPROGRAMADA',
+            titulo: 'Coleta SVO reprogramada (#200)',
+            mensagem: 'Novo horario previsto: 24/11 16:00.',
+            severidade: 'warning',
+            operacao: 'SVO',
+            referencia_tipo: 'ORDEM_SVO',
+            referencia_id: 200,
+            url_destino: '/minhas-coletas?ordem=200',
+            chave_idempotencia: 'S4:ORDEM_SVO:200:v2',
+          });
+        }),
+      ]);
+
+      const totalAposEventosDistintos = await db
+        .withSchema(schemaCiclo)
+        .from('notificacoes')
+        .count({ total: '*' })
+        .first();
+      if (Number(totalAposEventosDistintos?.total || 0) !== 3) {
+        throw new Error(
+          'Eventos legitimos distintos ou destinatarios diferentes foram bloqueados indevidamente.'
+        );
+      }
+
+      relatorio.push(
+        '4. Concorrencia real entre duas transacoes simultaneas (1 persistido + 1 rejeitado 23505) e suporte a destinatarios/eventos distintos: OK'
+      );
+
+      // 3.3 Paginacao estavel por cursor (criado_em DESC, id DESC) e Retencao (30d apos lida_em / 90d apos criado_em)
+      await db.transaction(async (trx) => {
+        await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
+        await trx('notificacoes').del();
+
         const tsEmpate = new Date('2026-11-24T15:00:00.000Z');
         const tsMaisAntigo = new Date('2026-11-24T14:00:00.000Z');
 
@@ -273,11 +420,10 @@ async function executarValidacaoCompletaScrum225() {
             .insert({
               usuario_id: 1,
               tipo: `EVENTO_${i}`,
-              categoria: 'SOLICITACOES',
               titulo: `Notificacao ${i}`,
               mensagem: `Corpo ${i}`,
-              severidade: 'INFO',
-              operacao: 'ADMINISTRATIVA',
+              severidade: 'info',
+              operacao: 'Administrativo',
               referencia_tipo: 'SOLICITACAO_VIAGEM',
               referencia_id: i,
               url_destino: '/solicitacoes',
@@ -288,7 +434,6 @@ async function executarValidacaoCompletaScrum225() {
           inseridas.push(item);
         }
 
-        // Pagina 1 (limit 2)
         const pagina1 = await trx('notificacoes')
           .where({ usuario_id: 1 })
           .orderBy([
@@ -298,7 +443,6 @@ async function executarValidacaoCompletaScrum225() {
           .limit(2);
 
         const cursor1 = pagina1[pagina1.length - 1];
-        // Pagina 2 (limit 2) usando cursor composto (criado_em, id) < (cursor.criado_em, cursor.id)
         const pagina2 = await trx('notificacoes')
           .where({ usuario_id: 1 })
           .andWhereRaw('(criado_em, id) < (?, ?)', [cursor1.criado_em, cursor1.id])
@@ -309,7 +453,6 @@ async function executarValidacaoCompletaScrum225() {
           .limit(2);
 
         const cursor2 = pagina2[pagina2.length - 1];
-        // Pagina 3 (limit 2)
         const pagina3 = await trx('notificacoes')
           .where({ usuario_id: 1 })
           .andWhereRaw('(criado_em, id) < (?, ?)', [cursor2.criado_em, cursor2.id])
@@ -335,10 +478,10 @@ async function executarValidacaoCompletaScrum225() {
         }
 
         relatorio.push(
-          '4. Paginacao estavel por cursor (criado_em DESC, id DESC) com timestamps empatados: OK'
+          '5. Paginacao estavel por cursor (criado_em DESC, id DESC) com timestamps empatados: OK'
         );
 
-        // 3.3 Testa compatibilidade com retencao 30 dias (lidas) e 90 dias (nao lidas) - limiares 29/30/31 e 89/90/91
+        // 3.4 Testa retencao: 30 dias apos lida_em (lidas) e 90 dias apos criado_em (nao lidas), incluindo notificacao antiga lida recentemente
         await trx('notificacoes').del();
         const agoraRef = new Date('2026-11-24T18:00:00.000Z');
         const diasAtras = (d) => new Date(agoraRef.getTime() - d * 24 * 60 * 60 * 1000);
@@ -347,50 +490,58 @@ async function executarValidacaoCompletaScrum225() {
           {
             usuario_id: 1,
             tipo: 'LIDA_29D',
-            categoria: 'GERAL',
-            titulo: 'Lida 29d',
+            titulo: 'Lida ha 29d',
             mensagem: 'Mantem',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
+            severidade: 'info',
+            operacao: 'Administrativo',
             url_destino: '/solicitacoes',
             chave_idempotencia: 'ret-lida-29',
-            criado_em: diasAtras(29),
+            criado_em: diasAtras(40),
             lida_em: diasAtras(29),
           },
           {
             usuario_id: 1,
             tipo: 'LIDA_30D_EXATO',
-            categoria: 'GERAL',
-            titulo: 'Lida 30d',
-            mensagem: 'Mantem no limite exato (> 30d)',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
+            titulo: 'Lida ha 30d exatos',
+            mensagem: 'Mantem no limite exato (> 30d apos lida_em)',
+            severidade: 'info',
+            operacao: 'Administrativo',
             url_destino: '/solicitacoes',
             chave_idempotencia: 'ret-lida-30',
-            criado_em: diasAtras(30),
+            criado_em: diasAtras(45),
             lida_em: diasAtras(30),
           },
           {
             usuario_id: 1,
             tipo: 'LIDA_31D',
-            categoria: 'GERAL',
-            titulo: 'Lida 31d',
-            mensagem: 'Expurga',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
+            titulo: 'Lida ha 31d',
+            mensagem: 'Expurga (> 30d apos lida_em)',
+            severidade: 'info',
+            operacao: 'Administrativo',
             url_destino: '/solicitacoes',
             chave_idempotencia: 'ret-lida-31',
-            criado_em: diasAtras(31),
+            criado_em: diasAtras(50),
             lida_em: diasAtras(31),
           },
           {
             usuario_id: 1,
+            tipo: 'ANTIGA_LIDA_RECENTEMENTE',
+            titulo: 'Criada ha 60d mas lida ha 5d',
+            mensagem: 'Deve ser preservada pois lida_em tem apenas 5 dias',
+            severidade: 'warning',
+            operacao: 'Administrativo',
+            url_destino: '/solicitacoes',
+            chave_idempotencia: 'ret-antiga-lida-recente',
+            criado_em: diasAtras(60),
+            lida_em: diasAtras(5),
+          },
+          {
+            usuario_id: 1,
             tipo: 'NAO_LIDA_89D',
-            categoria: 'GERAL',
             titulo: 'Nao lida 89d',
             mensagem: 'Mantem',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
+            severidade: 'info',
+            operacao: 'Administrativo',
             url_destino: '/solicitacoes',
             chave_idempotencia: 'ret-nlida-89',
             criado_em: diasAtras(89),
@@ -399,11 +550,10 @@ async function executarValidacaoCompletaScrum225() {
           {
             usuario_id: 1,
             tipo: 'NAO_LIDA_90D_EXATO',
-            categoria: 'GERAL',
             titulo: 'Nao lida 90d',
-            mensagem: 'Mantem no limite exato (> 90d)',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
+            mensagem: 'Mantem no limite exato (> 90d apos criado_em)',
+            severidade: 'info',
+            operacao: 'Administrativo',
             url_destino: '/solicitacoes',
             chave_idempotencia: 'ret-nlida-90',
             criado_em: diasAtras(90),
@@ -412,11 +562,10 @@ async function executarValidacaoCompletaScrum225() {
           {
             usuario_id: 1,
             tipo: 'NAO_LIDA_91D',
-            categoria: 'GERAL',
             titulo: 'Nao lida 91d',
-            mensagem: 'Expurga',
-            severidade: 'INFO',
-            operacao: 'ADMINISTRATIVA',
+            mensagem: 'Expurga (> 90d apos criado_em)',
+            severidade: 'info',
+            operacao: 'Administrativo',
             url_destino: '/solicitacoes',
             chave_idempotencia: 'ret-nlida-91',
             criado_em: diasAtras(91),
@@ -427,7 +576,7 @@ async function executarValidacaoCompletaScrum225() {
         const { rows: elegiveisExpurgo } = await trx.raw(
           `SELECT chave_idempotencia
            FROM notificacoes
-           WHERE (lida_em IS NOT NULL AND criado_em < ?::timestamptz - INTERVAL '30 days')
+           WHERE (lida_em IS NOT NULL AND lida_em < ?::timestamptz - INTERVAL '30 days')
               OR (lida_em IS NULL AND criado_em < ?::timestamptz - INTERVAL '90 days')
            ORDER BY chave_idempotencia`,
           [agoraRef.toISOString(), agoraRef.toISOString()]
@@ -436,15 +585,128 @@ async function executarValidacaoCompletaScrum225() {
         const chavesExpurgadas = elegiveisExpurgo.map((r) => r.chave_idempotencia);
         if (JSON.stringify(chavesExpurgadas) !== JSON.stringify(['ret-lida-31', 'ret-nlida-91'])) {
           throw new Error(
-            `Limiares de retencao 30/90 dias incorretos: obtido ${JSON.stringify(chavesExpurgadas)}`
+            `Limiares de retencao (30d apos lida_em / 90d apos criado_em) incorretos: obtido ${JSON.stringify(chavesExpurgadas)}`
           );
         }
 
         relatorio.push(
-          '5. Compatibilidade com retencao 30 dias (lidas) e 90 dias (nao lidas) nos limiares 29/30/31 e 89/90/91: OK'
+          '6. Retencao 30 dias apos lida_em (preservando antiga lida recentemente) e 90 dias apos criado_em (limiares 29/30/31 e 89/90/91): OK'
         );
+      });
 
-        // 3.4 Testa protecao de rollback (down bloqueado com dados) e ciclo down/up limpo
+      // 3.5 Teste real dos privilegios da role da aplicacao dentro do schema isolado (SELECT, INSERT, UPDATE permitidos e DELETE bloqueado)
+      const appUser = process.env.POSTGRES_APP_USER;
+      if (appUser) {
+        const roleApp = await db('pg_roles').where({ rolname: appUser }).first('rolname');
+        if (roleApp) {
+          await db.raw('GRANT USAGE ON SCHEMA ?? TO ??', [schemaCiclo, appUser]);
+          await db.raw('GRANT SELECT ON TABLE ??.usuarios TO ??', [schemaCiclo, appUser]);
+
+          const { rows: privSchemaIsolado } = await db.raw(
+            `SELECT
+               has_table_privilege(?, ? || '.notificacoes', 'SELECT') AS pode_select,
+               has_table_privilege(?, ? || '.notificacoes', 'INSERT') AS pode_insert,
+               has_table_privilege(?, ? || '.notificacoes', 'UPDATE') AS pode_update,
+               has_table_privilege(?, ? || '.notificacoes', 'DELETE') AS pode_delete,
+               has_sequence_privilege(?, ? || '.notificacoes_id_seq', 'USAGE, SELECT') AS pode_seq`,
+            [
+              appUser,
+              schemaCiclo,
+              appUser,
+              schemaCiclo,
+              appUser,
+              schemaCiclo,
+              appUser,
+              schemaCiclo,
+              appUser,
+              schemaCiclo,
+            ]
+          );
+
+          const p = privSchemaIsolado[0];
+          if (
+            !p?.pode_select ||
+            !p?.pode_insert ||
+            !p?.pode_update ||
+            p?.pode_delete ||
+            !p?.pode_seq
+          ) {
+            throw new Error(
+              `Permissoes incorretas para ${appUser} em ${schemaCiclo}.notificacoes: ${JSON.stringify(p)}`
+            );
+          }
+
+          if (process.env.POSTGRES_APP_PASSWORD) {
+            const dbApp = knex(
+              knexConfig.criarConfigKnex({
+                ...process.env,
+                DB_ROLE: 'app',
+              })
+            );
+            try {
+              const [inseridaPelaApp] = await dbApp
+                .withSchema(schemaCiclo)
+                .into('notificacoes')
+                .insert({
+                  usuario_id: 1,
+                  tipo: 'A1_NOVA_SOLICITACAO',
+                  titulo: 'Criada pela role da aplicacao',
+                  mensagem: 'Teste real de INSERT/SELECT/UPDATE/DELETE pela role frotas_app.',
+                  severidade: 'info',
+                  operacao: 'Administrativo',
+                  url_destino: '/solicitacoes',
+                  chave_idempotencia: 'teste-role-app-1',
+                })
+                .returning(['id', 'lida_em']);
+
+              const consultadaPelaApp = await dbApp
+                .withSchema(schemaCiclo)
+                .from('notificacoes')
+                .where({ id: inseridaPelaApp.id })
+                .first('id');
+
+              await dbApp
+                .withSchema(schemaCiclo)
+                .from('notificacoes')
+                .where({ id: inseridaPelaApp.id })
+                .update({ lida_em: dbApp.fn.now() });
+
+              let deleteBloqueado = false;
+              try {
+                await dbApp
+                  .withSchema(schemaCiclo)
+                  .from('notificacoes')
+                  .where({ id: inseridaPelaApp.id })
+                  .del();
+              } catch (erroDelete) {
+                deleteBloqueado = erroDelete && erroDelete.code === '42501';
+              }
+
+              if (!consultadaPelaApp || !deleteBloqueado) {
+                throw new Error(
+                  `Execucao real com a role ${appUser} falhou: SELECT=${Boolean(consultadaPelaApp)}, DELETE_BLOQUEADO_42501=${deleteBloqueado}`
+                );
+              }
+            } finally {
+              await dbApp.destroy();
+            }
+          }
+
+          const estadoRole = await inspecionarEstadoRole(db, appUser);
+          if (estadoRole) {
+            validarEstadoMinimoPrivilegio(estadoRole);
+          }
+
+          relatorio.push(
+            `7. Teste real da role "${appUser}" no schema isolado (SELECT, INSERT e UPDATE autorizados; DELETE bloqueado com 42501): OK`
+          );
+        }
+      }
+
+      // 3.6 Testa protecao de rollback (down bloqueado com dados) e ciclo down/up limpo
+      await db.transaction(async (trx) => {
+        await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
+
         let bloqueouDownComDados = false;
         try {
           await migrationScrum225.down(trx);
@@ -454,7 +716,9 @@ async function executarValidacaoCompletaScrum225() {
           );
         }
         if (!bloqueouDownComDados) {
-          throw new Error('Migration down deveria ter bloqueado rollback com notificacoes existentes.');
+          throw new Error(
+            'Migration down deveria ter bloqueado rollback com notificacoes existentes.'
+          );
         }
 
         await trx('notificacoes').del();
@@ -462,23 +726,11 @@ async function executarValidacaoCompletaScrum225() {
         await migrationScrum225.up(trx);
 
         relatorio.push(
-          '6. Protecao contra rollback destrutivo e ciclo completo down -> up idempotente: OK'
+          '8. Protecao contra rollback destrutivo e ciclo completo down -> up idempotente: OK'
         );
-
-        throw new Error('ROLLBACK_ISOLADO');
-      })
-      .catch((e) => {
-        if (e.message !== 'ROLLBACK_ISOLADO') throw e;
       });
-
-    // 4. Verifica estado da role da aplicacao se configurada no ambiente
-    const appUser = process.env.POSTGRES_APP_USER;
-    if (appUser) {
-      const estadoRole = await inspecionarEstadoRole(db, appUser);
-      if (estadoRole) {
-        validarEstadoMinimoPrivilegio(estadoRole);
-        relatorio.push(`7. Validacao de minimo privilegio da role "${appUser}": OK`);
-      }
+    } finally {
+      await db.raw('DROP SCHEMA ?? CASCADE', [schemaCiclo]);
     }
 
     console.log('=== VALIDACAO MIGRATION SCRUM-225 CONCLUIDA COM SUCESSO ===');
