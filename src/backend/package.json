@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "solicitacoes:expirar": "node dist/scripts/expirarSolicitacoesViagem.js",
     "evidencias:retencao": "node dist/scripts/retencaoEvidencias.js",
+    "notificacoes:retencao": "node dist/scripts/retencaoNotificacoes.js",
     "test": "vitest run src/tests",
     "migrate": "knex migrate:latest",
     "migrate:rollback": "knex migrate:rollback",

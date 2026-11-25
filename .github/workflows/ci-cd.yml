@@ -83,6 +83,7 @@ jobs:
       POSTGRES_PASSWORD: ci-test-only
       POSTGRES_SSL: 'false'
       EXPIRACAO_POSTGRES_TESTS: '1'
+      NOTIFICACOES_POSTGRES_TESTS: '1'
       SCRUM208_POSTGRES_TESTS: '1'
 
     defaults:

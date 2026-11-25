@@ -181,8 +181,21 @@ describe('Provisionamento das roles de cron', () => {
       'GRANT SELECT (evidencia_id), DELETE ON TABLE public.evidencias_odometro_arquivos TO ??',
       [retUser]
     );
+    expect(raw).toHaveBeenCalledWith(
+      'GRANT SELECT (id, lida_em, criado_em), DELETE ON TABLE public.notificacoes TO ??',
+      [retUser]
+    );
     expect(consultarRole.mock.calls).toEqual([[{ rolname: expUser }], [{ rolname: retUser }]]);
     expect(destroy).toHaveBeenCalledOnce();
+  });
+
+  it('não concede nenhum privilégio sobre notificacoes à role de expiração', async () => {
+    const { criarConexao, raw } = simularBanco();
+
+    await provisionarRolesCron({ env: envCron, criarConexao });
+
+    const concessoesNotificacoes = raw.mock.calls.filter(([sql]) => sql.startsWith('GRANT') && sql.includes('public.notificacoes'));
+    expect(concessoesNotificacoes).toEqual([[expect.any(String), [retUser]]]);
   });
 
   it('rejeita o provisionamento se a validação detectar privilégios excessivos', async () => {
