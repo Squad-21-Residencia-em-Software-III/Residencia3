@@ -35,6 +35,13 @@ export const RECURSOS_BACKEND = {
   ordensPendentesSvo: true,
 
   /**
+   * SCRUM-238: alertas no aparelho (Web Push). Depende do banco (SCRUM-236), do back (SCRUM-237) e
+   * do service worker (SCRUM-239), conforme docs/scrum-238-contrato-push.md. Desligado, as
+   * preferências do aplicativo ficam como antes. Serviço: `notificacoesPushApi`.
+   */
+  webPush: import.meta.env.VITE_WEB_PUSH_ATIVO === 'true',
+
+  /**
    * SCRUM-203: fotos do odômetro na saída e na chegada. Depende do back (SCRUM-208/209), do banco
    * (SCRUM-210) e do armazenamento privado (SCRUM-211), conforme docs/scrum-203-contrato-backend.md.
    * Desligado, iniciar e finalizar funcionam como antes, sem foto e sem `evidencia_id`.
