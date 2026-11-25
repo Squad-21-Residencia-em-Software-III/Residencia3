@@ -18,6 +18,7 @@ import { cn } from '../utils/cn';
 import { DrawerTriagemSvo } from './triagemSvo/DrawerTriagemSvo';
 import { formatarDataHora, toneStatusSolicitacao } from './triagemSvo/formatacao';
 import { ModalNovaSolicitacaoSvo } from './triagemSvo/ModalNovaSolicitacaoSvo';
+import { useMarcarReferenciaLida } from '../contexts/NotificacoesContext';
 
 const ITENS_POR_PAGINA = 20;
 
@@ -47,6 +48,7 @@ export default function TriagemSvoPage() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<{ mensagem: string; podeTentarDeNovo: boolean } | null>(null);
   const [selecionada, setSelecionada] = useState<number | null>(null);
+  useMarcarReferenciaLida('SOLICITACAO_SVO', selecionada);
   const [novaAberta, setNovaAberta] = useState(false);
   const [criadaId, setCriadaId] = useState<number | null>(null);
 

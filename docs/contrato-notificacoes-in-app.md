@@ -1,16 +1,18 @@
 # Contrato REST — Central de Notificações In-App
 
-Este documento registra o contrato esperado pelo frontend (`src/frontend/src/services/api/notificacoesApi.ts` e `src/frontend/src/contexts/NotificacoesContext.tsx`) para integração com os endpoints do backend (`SCRUM-226`) e a tabela `notificacoes` (`SCRUM-225`).
+Este documento registra o contrato integrado entre o frontend (`src/frontend/src/services/api/notificacoesApi.ts` e `src/frontend/src/contexts/NotificacoesContext.tsx`) e os endpoints do backend (`SCRUM-226` / PR `#206`) sobre a tabela `notificacoes` (`SCRUM-225`).
 
-## Feature Flag
+## Feature Flags
 
-Enquanto o backend não estiver homologado no ambiente, o frontend mantém a integração desativada por padrão via variável de ambiente:
+O frontend mantém duas flags independentes em `src/frontend/src/config/recursosBackend.ts` e `src/frontend/.env.example`:
 
 ```env
 VITE_NOTIFICACOES_IN_APP_ATIVAS=false
+VITE_WEB_PUSH_ATIVO=false
 ```
 
-Controlada em `src/frontend/src/config/recursosBackend.ts` (`RECURSOS_BACKEND.notificacoesInApp`). Com a flag desligada, nenhuma chamada `/api/notificacoes/*` é disparada.
+- Com `VITE_NOTIFICACOES_IN_APP_ATIVAS=false`, nenhuma chamada `/api/notificacoes/*` é disparada.
+- Com `VITE_WEB_PUSH_ATIVO=false`, a faixa contextual de ativação de Web Push (`SCRUM-238`) não é exibida no sino.
 
 ---
 
@@ -23,9 +25,9 @@ Todos os endpoints exigem autenticação (`Bearer` em memória + cookie HttpOnly
 Lista paginada da mais recente para a mais antiga (`ORDER BY criado_em DESC, id DESC`).
 
 - **Query params:**
-  - `limit` (opcional, padrão `20`, máximo recomendado `50`)
-  - `cursor` (opcional, cursor composto opaco retornado em `proximo_cursor`)
-  - `apenas_nao_lidas` (opcional, `true`)
+  - `limit` (opcional, 1 a 50, padrão `20`)
+  - `cursor` (opcional, cursor composto opaco `data UTC com microssegundos|id` retornado em `proximo_cursor`)
+  - `apenas_nao_lidas` (opcional, `true`/`false`)
 - **Resposta `200 OK`:**
 
 ```json
@@ -38,15 +40,17 @@ Lista paginada da mais recente para a mais antiga (`ORDER BY criado_em DESC, id 
       "mensagem": "Veículo QKN-4A12 alocado para saída às 14:00.",
       "severidade": "info",
       "operacao": "Administrativo",
-      "referencia_tipo": "VIAGEM",
+      "referencia_tipo": "VIAGEM_FROTA",
       "referencia_id": 108,
       "url_destino": "/viagens",
       "lida_em": null,
-      "criado_em": "2026-11-24T17:00:00.000Z"
+      "criado_em": "2026-11-24T17:00:00.000Z",
+      "acesso_revogado": false
     }
   ],
-  "proximo_cursor": "2026-11-24T17:00:00.000Z|42",
-  "nao_lidas": 3
+  "proximo_cursor": "2026-11-24T17:00:00.000000Z|42",
+  "nao_lidas": 3,
+  "versao": "opaque-version-token"
 }
 ```
 
@@ -58,9 +62,12 @@ Endpoint leve utilizado pelo polling econômico do sino (a cada `60s` somente qu
 
 ```json
 {
-  "nao_lidas": 3
+  "nao_lidas": 3,
+  "versao": "opaque-version-token"
 }
 ```
+
+- Quando `versao` muda em relação à última versão recebida e o dropdown do sino está aberto, o frontend recarrega silenciosamente a primeira página sem gerar requisições extras quando fechado.
 
 ### 3. `PATCH /api/notificacoes/:id/lida`
 
@@ -72,32 +79,47 @@ Marca uma notificação específica como lida (idempotente).
 {
   "id": 42,
   "lida_em": "2026-11-24T17:05:12.000Z",
-  "nao_lidas": 2
+  "nao_lidas": 2,
+  "versao": "opaque-version-token"
 }
 ```
 
 ### 4. `PATCH /api/notificacoes/ler-todas`
 
-Marca todas as notificações não lidas do usuário autenticado como lidas.
+Marca como lidas as notificações não lidas do usuário até o `ate_id` informado (maior `id` carregado na lista), evitando marcar avisos novos que chegaram entre a consulta e a ação.
+
+- **Body (opcional):**
+
+```json
+{
+  "ate_id": 42
+}
+```
 
 - **Resposta `200 OK`:**
 
 ```json
 {
   "atualizadas": 2,
-  "nao_lidas": 0
+  "nao_lidas": 0,
+  "versao": "opaque-version-token"
 }
 ```
 
 ### 5. `PATCH /api/notificacoes/referencia/lida`
 
-Marca como lidas todas as notificações vinculadas à mesma entidade de negócio quando o usuário já abriu o registro diretamente.
+Marca como lidas todas as notificações vinculadas à mesma entidade de negócio quando o usuário abre o detalhe do registro diretamente nas telas operacionais.
 
+- **Tipos de referência oficiais (`constants/referenciasNotificacao.ts`):**
+  - `SOLICITACAO_VIAGEM` (Administrativo)
+  - `VIAGEM_FROTA` (Administrativo)
+  - `SOLICITACAO_SVO` (SVO)
+  - `ORDEM_SVO` (SVO)
 - **Body:**
 
 ```json
 {
-  "referencia_tipo": "VIAGEM",
+  "referencia_tipo": "VIAGEM_FROTA",
   "referencia_id": 108
 }
 ```
@@ -107,13 +129,15 @@ Marca como lidas todas as notificações vinculadas à mesma entidade de negóci
 ```json
 {
   "atualizadas": 1,
-  "nao_lidas": 1
+  "nao_lidas": 1,
+  "versao": "opaque-version-token"
 }
 ```
 
 ---
 
-## Regras de Segurança e RBAC no Frontend
+## Regras de Retenção, Segurança e RBAC no Frontend
 
-- `url_destino` deve ser sempre uma rota interna começando com `/` (sem `//`, `\`, espaços ou caracteres de controle), alinhada à constraint da tabela `notificacoes` (`SCRUM-225`).
-- Antes de navegar, `src/frontend/src/utils/destinoNotificacao.ts` valida a rota contra `perfilPode` (`src/frontend/src/utils/permissoes.ts`). Caso a URL seja inválida ou pertença a uma tela sem permissão para o perfil atual (por exemplo, `INTEGRANTE_SVO` recebendo `/viagens`), o frontend redireciona com segurança para a rota padrão do perfil (`/minhas-coletas`, `/solicitacoes`, `/viagens` ou `/inicio`).
+- **Retenção:** notificações lidas ficam disponíveis por **30 dias** e não lidas por **90 dias** (`SCRUM-225`).
+- **`acesso_revogado`:** quando `true`, o item é exibido sem link de navegação, permitindo apenas a marcação como lida.
+- **Validação de rotas:** `src/frontend/src/utils/destinoNotificacao.ts` valida `url_destino` por **match exato** contra as rotas existentes em `src/frontend/src/routes/index.tsx` e contra `perfilPode`, aplicando o fallback seguro do perfil (`/minhas-coletas`, `/solicitacoes`, `/viagens` ou `/inicio`) para qualquer destino inválido, inexistente ou sem permissão.

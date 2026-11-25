@@ -8,6 +8,7 @@ import {
   DEBOUNCE_FOCO_NOTIFICACOES_MS,
   INTERVALO_POLLING_NOTIFICACOES_MS,
   NotificacoesProvider,
+  useMarcarReferenciaLida,
   useNotificacoes,
 } from './NotificacoesContext';
 
@@ -272,5 +273,36 @@ describe('NotificacoesContext', () => {
     expect(result.current.naoLidas).toBe(0);
     expect(result.current.itens).toEqual([]);
     expect(result.current.toastAtivo).toBeNull();
+  });
+
+  it('useMarcarReferenciaLida marca referencia uma unica vez por entidade e funciona fora do provider', async () => {
+    const { rerender } = renderHook(
+      ({ tipo, id }: { tipo: string | null; id: number | null }) =>
+        useMarcarReferenciaLida(tipo, id),
+      {
+        initialProps: { tipo: 'VIAGEM_FROTA', id: 42 },
+        wrapper: wrapper(true),
+      },
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockMarcarReferenciaLida).toHaveBeenCalledTimes(1);
+    expect(mockMarcarReferenciaLida).toHaveBeenCalledWith('VIAGEM_FROTA', 42);
+
+    // Rerender com mesma referência não duplica chamada
+    rerender({ tipo: 'VIAGEM_FROTA', id: 42 });
+    expect(mockMarcarReferenciaLida).toHaveBeenCalledTimes(1);
+
+    // Nova referência dispara nova chamada
+    rerender({ tipo: 'ORDEM_SVO', id: 99 });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockMarcarReferenciaLida).toHaveBeenCalledWith('ORDEM_SVO', 99);
+
+    // Fora do provider não lança erro
+    expect(() => renderHook(() => useMarcarReferenciaLida('SOLICITACAO_VIAGEM', 10))).not.toThrow();
   });
 });

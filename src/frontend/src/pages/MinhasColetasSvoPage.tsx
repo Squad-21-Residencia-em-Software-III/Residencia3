@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, PageHeader } from '../components/ui';
+import { useNotificacoesOpcional } from '../contexts/NotificacoesContext';
 import { mensagemDeErro, request } from '../services/api/http';
 import { toneStatusOrdem } from './triagemSvo/formatacao';
 import { LABELS_STATUS_ORDEM_SVO, type StatusOrdemSvo } from '../types/solicitacaoSvo';
@@ -13,6 +14,10 @@ const data = (valor: string | null) => valor ? new Date(valor).toLocaleString('p
 export default function MinhasColetasSvoPage() {
   const [pagina, setPagina] = useState(1); const [resultado, setResultado] = useState<Resposta | null>(null);
   const [erro, setErro] = useState<string | null>(null); const [carregando, setCarregando] = useState(true);
+  const notifCtx = useNotificacoesOpcional();
+  const marcarReferenciaLida = notifCtx?.marcarReferenciaLida;
+  const notifAtivas = Boolean(notifCtx?.recursoHabilitado && notifCtx?.online);
+  const coletasMarcadasRef = useRef<Set<number>>(new Set());
   useEffect(() => {
     let ativo = true; setCarregando(true); setErro(null);
     request<Resposta>('GET', '/viagens/coletas-svo/minhas', { query: { pagina, limite: 20 } })
@@ -20,6 +25,14 @@ export default function MinhasColetasSvoPage() {
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
   }, [pagina]);
+  useEffect(() => {
+    if (!notifAtivas || !marcarReferenciaLida || !resultado?.dados?.length) return;
+    for (const coleta of resultado.dados) {
+      if (coletasMarcadasRef.current.has(coleta.id)) continue;
+      coletasMarcadasRef.current.add(coleta.id);
+      void marcarReferenciaLida('ORDEM_SVO', coleta.id);
+    }
+  }, [marcarReferenciaLida, notifAtivas, resultado]);
   return <div className="space-y-4"><PageHeader title="Minhas coletas" />
     {erro && <Alert tone="danger">{erro}</Alert>}
     {carregando ? <p>Carregando coletas...</p> : !erro && resultado?.dados.length === 0 ? <p>Nenhuma coleta designada.</p> :

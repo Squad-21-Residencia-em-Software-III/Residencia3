@@ -444,3 +444,34 @@ export function useNotificacoes(): NotificacoesContextValue {
 export function useNotificacoesOpcional(): NotificacoesContextValue | null {
   return useContext(NotificacoesContext);
 }
+
+/**
+ * Marca como lidas as notificações vinculadas à entidade aberta na tela de negócio.
+ * Seguro fora de `<NotificacoesProvider>` e deduplicado para não repetir chamadas desnecessárias.
+ */
+export function useMarcarReferenciaLida(
+  referenciaTipo: string | null | undefined,
+  referenciaId: number | null | undefined,
+) {
+  const ctx = useNotificacoesOpcional();
+  const marcarReferenciaLida = ctx?.marcarReferenciaLida;
+  const recursoHabilitado = ctx?.recursoHabilitado ?? false;
+  const online = ctx?.online ?? false;
+  const ultimaChaveRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      !recursoHabilitado ||
+      !online ||
+      !marcarReferenciaLida ||
+      !referenciaTipo ||
+      referenciaId == null
+    ) {
+      return;
+    }
+    const chave = `${referenciaTipo}:${referenciaId}`;
+    if (ultimaChaveRef.current === chave) return;
+    ultimaChaveRef.current = chave;
+    void marcarReferenciaLida(referenciaTipo, referenciaId);
+  }, [marcarReferenciaLida, online, recursoHabilitado, referenciaId, referenciaTipo]);
+}
