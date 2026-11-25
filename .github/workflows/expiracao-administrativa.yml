@@ -31,6 +31,8 @@ jobs:
       POSTGRES_SSL: 'true'
       POSTGRES_POOL_MIN: '0'
       POSTGRES_POOL_MAX: '1'
+      # Só ligar depois de conceder as permissões à role (docs/scrum-230-avisos-solicitacoes.md)
+      NOTIFICACOES_ATIVAS: ${{ vars.FSPH_EXPIRACAO_AVISOS_ATIVOS }}
     steps:
       - uses: actions/checkout@v7
         with:

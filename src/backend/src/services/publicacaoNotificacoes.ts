@@ -1,4 +1,5 @@
 import type { Knex } from 'knex';
+import { configNotificacoes } from '../config/notificacoes';
 import { acordarFilaPush } from './filaPush';
 
 // Limites das colunas (SCRUM-225) e do texto do push (SCRUM-237)
@@ -52,8 +53,10 @@ function chaveDe({ tipo, referencia, ocorrencia }: EventoNotificacao): string {
  * Cria os avisos In-App e as pendências de push **na transação da operação**: se ela for desfeita, nada
  * fica. Os serviços de domínio escolhem os destinatários; inativos e o autor são descartados aqui.
  * Uma falha aqui desfaz a operação; uma falha de envio do push, não (filaPush).
+ * Com `NOTIFICACOES_ATIVAS` desligada, não faz nada.
  */
 export async function publicarNotificacao(trx: Knex.Transaction, evento: EventoNotificacao): Promise<{ criadas: number }> {
+  if (!configNotificacoes.ativas) return { criadas: 0 };
   if (!trx.isTransaction) throw new Error('publicarNotificacao exige a transação da operação');
   const ocorrencia = evento.ocorrencia.trim();
   if (!ocorrencia || ocorrencia.length > LIMITE_OCORRENCIA) {
