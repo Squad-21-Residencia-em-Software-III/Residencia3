@@ -126,7 +126,7 @@ describe('AuthContext: cold start via silent refresh e logout', () => {
     expect(tokenStorage.get()).toBeNull()
     expect(authApi.logout).toHaveBeenCalledTimes(1)
     expect(useVinculoPush).toHaveBeenCalledWith(mockUsuario.id)
-    expect(encerrarPushAoSair).toHaveBeenCalledTimes(1)
+    expect(encerrarPushAoSair).toHaveBeenCalledExactlyOnceWith('token-ativo')
     expect(postMessageSpy).toHaveBeenCalledWith({ tipo: 'LOGOUT' })
 
     vi.unstubAllGlobals()

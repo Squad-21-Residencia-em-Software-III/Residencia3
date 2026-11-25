@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { recursoAtivo } from '../config/recursosBackend';
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
-import { assinaturaDoAparelho, encerrarAssinaturaDoAparelho } from '../utils/pushNavegador';
+import { comLimite, emSequencia, sinalDaSessao } from '../utils/operacoesPush';
+import { assinaturaDoAparelho, encerrarAssinatura } from '../utils/pushNavegador';
 
 /**
  * Ao entrar, encerra a assinatura deixada por outra conta neste aparelho (ex.: sessão que expirou
@@ -11,24 +12,36 @@ export function useVinculoPush(usuarioId: number | undefined) {
   useEffect(() => {
     if (usuarioId === undefined || !recursoAtivo('webPush')) return;
     let ativo = true;
+    const sinal = sinalDaSessao();
     const conferir = async () => {
+      if (!ativo || sinal.aborted) return;
       const assinatura = await assinaturaDoAparelho();
-      if (!assinatura || !ativo) return;
-      const { ativa } = await notificacoesPushApi.situacao(assinatura.endpoint);
-      if (!ativo || ativa) return;
-      // Só encerra a que foi conferida: o usuário pode ter acabado de ligar os alertas
-      const atual = await assinaturaDoAparelho();
-      if (ativo && atual?.endpoint === assinatura.endpoint) await atual.unsubscribe();
+      if (!assinatura) return;
+      const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+      if (!ativo || sinal.aborted || ativa) return;
+      await encerrarAssinatura(assinatura.endpoint);
     };
-    conferir().catch(() => undefined);
+    // Na fila: no meio de uma ativação, a assinatura ainda não está no servidor e pareceria de outra conta
+    emSequencia(conferir).catch(() => undefined);
     return () => {
       ativo = false;
     };
   }, [usuarioId]);
 }
 
-/** Ao sair da conta, os alertas param neste aparelho; os outros aparelhos continuam. */
-export function encerrarPushAoSair(): void {
+/**
+ * Sair da conta encerra os alertas só neste aparelho. Chamar antes de limpar o token: ele é usado para
+ * cancelar no servidor. Não atrasa nem impede a saída; se falhar, o back descarta no próximo envio (404/410).
+ */
+export function encerrarPushAoSair(token: string | null): void {
   if (!recursoAtivo('webPush')) return;
-  encerrarAssinaturaDoAparelho().catch(() => undefined);
+  emSequencia(async () => {
+    const assinatura = await assinaturaDoAparelho();
+    if (!assinatura) return;
+    const { endpoint } = assinatura;
+    if (token) {
+      comLimite(null, (signal) => notificacoesPushApi.cancelar(endpoint, { token, signal })).catch(() => undefined);
+    }
+    await encerrarAssinatura(endpoint);
+  }).catch(() => undefined);
 }

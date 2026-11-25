@@ -18,18 +18,20 @@ export interface AssinaturaPush {
  * Contrato: docs/scrum-238-contrato-push.md.
  */
 export const notificacoesPushApi = {
-  chavePublica: () => request<{ chave_publica: string }>('GET', '/notificacoes/vapid-public-key'),
+  chavePublica: (signal?: AbortSignal) =>
+    request<{ publicKey: string }>('GET', '/notificacoes/vapid-public-key', { signal }),
 
   /** Idempotente: repetir a mesma assinatura do mesmo usuário não cria outra. */
-  assinar: ({ endpoint, keys }: AssinaturaPush) =>
-    request<void>('POST', '/notificacoes/subscribe', { body: { endpoint, keys } }),
+  assinar: ({ endpoint, keys }: AssinaturaPush, signal?: AbortSignal) =>
+    request<void>('POST', '/notificacoes/subscribe', { body: { endpoint, keys }, signal }),
 
-  cancelar: (endpoint: string) =>
-    request<void>('DELETE', '/notificacoes/unsubscribe', { body: { endpoint } }),
+  /** `token`: da sessão que está acabando, quando o token já foi limpo da memória. */
+  cancelar: (endpoint: string, opcoes: { token?: string; signal?: AbortSignal } = {}) =>
+    request<void>('DELETE', '/notificacoes/unsubscribe', { body: { endpoint }, ...opcoes }),
 
   /** Diz só se a assinatura deste aparelho é do usuário logado. No corpo, para o endereço não ir para a URL. */
-  situacao: (endpoint: string) =>
-    request<{ ativa: boolean }>('POST', '/notificacoes/subscribe/status', { body: { endpoint } }),
+  situacao: (endpoint: string, signal?: AbortSignal) =>
+    request<{ ativa: boolean }>('POST', '/notificacoes/subscribe/status', { body: { endpoint }, signal }),
 
   preferencias: () =>
     request<{ categorias: CategoriaNotificacao[] }>('GET', '/notificacoes/preferencias'),

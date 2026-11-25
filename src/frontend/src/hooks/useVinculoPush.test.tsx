@@ -6,7 +6,7 @@ import { ApiError } from '../services/api/http';
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
 import { encerrarPushAoSair, useVinculoPush } from './useVinculoPush';
 
-vi.mock('../services/api/notificacoesPushApi', () => ({ notificacoesPushApi: { situacao: vi.fn() } }));
+vi.mock('../services/api/notificacoesPushApi', () => ({ notificacoesPushApi: { situacao: vi.fn(), cancelar: vi.fn() } }));
 
 const api = vi.mocked(notificacoesPushApi);
 const recursosOriginais = { ...RECURSOS_BACKEND };
@@ -38,7 +38,7 @@ describe('Assinatura deixada por outra conta', () => {
     api.situacao.mockResolvedValue({ ativa: false });
     renderHook(() => useVinculoPush(2));
     await waitFor(() => expect(unsubscribe).toHaveBeenCalledOnce());
-    expect(api.situacao).toHaveBeenCalledExactlyOnceWith('https://push.exemplo/a');
+    expect(api.situacao).toHaveBeenCalledExactlyOnceWith('https://push.exemplo/a', expect.any(AbortSignal));
   });
 
   it('continua quando é da própria conta', async () => {
@@ -71,7 +71,7 @@ describe('Assinatura deixada por outra conta', () => {
     renderHook(() => useVinculoPush(undefined));
     RECURSOS_BACKEND.webPush = false;
     renderHook(() => useVinculoPush(1));
-    encerrarPushAoSair();
+    encerrarPushAoSair('token-a');
     await Promise.resolve();
     expect(getSubscription).not.toHaveBeenCalled();
   });
@@ -79,12 +79,21 @@ describe('Assinatura deixada por outra conta', () => {
 
 describe('Sair da conta', () => {
   it('encerra os alertas neste aparelho', async () => {
-    encerrarPushAoSair();
+    encerrarPushAoSair('token-a');
     await waitFor(() => expect(unsubscribe).toHaveBeenCalledOnce());
+    expect(api.cancelar).toHaveBeenCalledExactlyOnceWith(
+      'https://push.exemplo/a', { token: 'token-a', signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it('sem token, encerra só no aparelho', async () => {
+    encerrarPushAoSair(null);
+    await waitFor(() => expect(unsubscribe).toHaveBeenCalledOnce());
+    expect(api.cancelar).not.toHaveBeenCalled();
   });
 
   it('não falha sem suporte a push', () => {
     delete (navigator as unknown as Record<string, unknown>).serviceWorker;
-    expect(() => encerrarPushAoSair()).not.toThrow();
+    expect(() => encerrarPushAoSair('token-a')).not.toThrow();
   });
 });

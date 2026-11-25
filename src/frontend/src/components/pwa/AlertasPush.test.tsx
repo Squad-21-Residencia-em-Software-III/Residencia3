@@ -1,10 +1,12 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RECURSOS_BACKEND } from '../../config/recursosBackend';
+import { useVinculoPush } from '../../hooks/useVinculoPush';
 import { ApiError } from '../../services/api/http';
 import { notificacoesPushApi } from '../../services/api/notificacoesPushApi';
+import { invalidarOperacoesPush } from '../../utils/operacoesPush';
 import { ModalPreferenciasPwa } from './ModalPreferenciasPwa';
 
 vi.mock('../../services/api/notificacoesPushApi', () => ({
@@ -94,10 +96,11 @@ const desligar = () => screen.findByRole('button', { name: 'Desligar neste apare
 
 beforeEach(() => {
   vi.clearAllMocks();
+  invalidarOperacoesPush();
   sessao.id = 1;
   RECURSOS_BACKEND.webPush = true;
   prepararNavegador();
-  api.chavePublica.mockResolvedValue({ chave_publica: 'AQID_-8' });
+  api.chavePublica.mockResolvedValue({ publicKey: 'AQID_-8' });
   api.assinar.mockResolvedValue(undefined);
   api.cancelar.mockResolvedValue(undefined);
   api.situacao.mockResolvedValue({ ativa: true });
@@ -146,9 +149,10 @@ describe('Ligar e desligar neste aparelho', () => {
       userVisibleOnly: true,
       applicationServerKey: Uint8Array.from([1, 2, 3, 255, 239]),
     });
-    expect(api.assinar).toHaveBeenCalledExactlyOnceWith({
-      endpoint: 'https://push.exemplo/novo', keys: { p256dh: 'chave-p256dh', auth: 'chave-auth' },
-    });
+    expect(api.assinar).toHaveBeenCalledExactlyOnceWith(
+      { endpoint: 'https://push.exemplo/novo', keys: { p256dh: 'chave-p256dh', auth: 'chave-auth' } },
+      expect.any(AbortSignal),
+    );
     expect(screen.getByText('Ligados')).toBeInTheDocument();
   });
 
@@ -223,7 +227,9 @@ describe('Ligar e desligar neste aparelho', () => {
     abrir();
     await userEvent.click(await desligar());
     expect(await ligar()).toBeInTheDocument();
-    expect(api.cancelar).toHaveBeenCalledExactlyOnceWith('https://push.exemplo/atual');
+    expect(api.cancelar).toHaveBeenCalledExactlyOnceWith(
+      'https://push.exemplo/atual', { signal: expect.any(AbortSignal) },
+    );
     expect(assinatura.unsubscribe).toHaveBeenCalledOnce();
   });
 
@@ -247,7 +253,170 @@ describe('Ligar e desligar neste aparelho', () => {
   });
 });
 
+describe('Navegador que não confirma o encerramento', () => {
+  it('se o servidor também falhar e a assinatura continuar, segue ligado e mostra o erro', async () => {
+    const assinatura = jaAssinado();
+    assinatura.unsubscribe.mockResolvedValue(false);
+    api.cancelar.mockRejectedValueOnce(new ApiError('Servidor indisponível.', 503));
+    abrir();
+    await userEvent.click(await desligar());
+    expect(await screen.findByText('Servidor indisponível.')).toBeInTheDocument();
+    expect(await desligar()).toBeInTheDocument();
+    expect(screen.getByText('Ligados')).toBeInTheDocument();
+  });
+
+  it('se o servidor cancelou, fica desligado', async () => {
+    jaAssinado().unsubscribe.mockResolvedValue(false);
+    abrir();
+    await userEvent.click(await desligar());
+    expect(await ligar()).toBeInTheDocument();
+  });
+
+  it('se a assinatura já não existe mais, fica desligado mesmo sem o servidor', async () => {
+    jaAssinado().unsubscribe.mockImplementation(async () => {
+      navegador.assinatura = null;
+      return false;
+    });
+    api.cancelar.mockRejectedValueOnce(new ApiError('Servidor indisponível.', 503));
+    abrir();
+    await userEvent.click(await desligar());
+    expect(await ligar()).toBeInTheDocument();
+  });
+
+  it('não reaproveita a assinatura de outra conta que não pôde ser encerrada', async () => {
+    jaAssinado().unsubscribe.mockResolvedValue(false);
+    api.situacao.mockResolvedValue({ ativa: false });
+    abrir();
+    await userEvent.click(await ligar());
+    expect(await screen.findByText(/Não foi possível encerrar a assinatura anterior/)).toBeInTheDocument();
+    expect(navegador.assinar).not.toHaveBeenCalled();
+    expect(api.assinar).not.toHaveBeenCalled();
+  });
+});
+
+/** Cada `render` é uma aba: o estado de cada uma é próprio, e o navegador e a trava são os mesmos. */
+describe.each([['com Web Locks', true], ['sem Web Locks (mesma aba)', false]])('Operações ao mesmo tempo, %s', (_, comTrava) => {
+  const travas: string[] = [];
+  beforeEach(() => {
+    travas.length = 0;
+    if (!comTrava) return;
+    let fila: Promise<unknown> = Promise.resolve();
+    definir(navigator, 'locks', {
+      request: (nome: string, acao: () => Promise<unknown>) => {
+        travas.push(nome);
+        const resultado = fila.then(acao);
+        fila = resultado.catch(() => undefined);
+        return resultado;
+      },
+    });
+  });
+  afterEach(() => {
+    // Todas as operações usam a mesma trava, que o navegador compartilha entre as abas
+    expect([...new Set(travas)]).toEqual(comTrava ? ['fsph-push'] : []);
+    delete (navigator as unknown as Record<string, unknown>).locks;
+  });
+
+  const abrirAba = () => {
+    const { baseElement, unmount } = render(tela(), { container: document.body.appendChild(document.createElement('div')) });
+    const janelas = within(baseElement).getAllByRole('dialog', { hidden: true });
+    return { aba: within(janelas[janelas.length - 1]), unmount };
+  };
+
+  it('ligar nas duas cria uma assinatura só', async () => {
+    const { aba: a } = abrirAba();
+    const { aba: b } = abrirAba();
+    const botaoA = await a.findByRole('button', { name: 'Ligar alertas', hidden: true });
+    const botaoB = await b.findByRole('button', { name: 'Ligar alertas', hidden: true });
+    fireEvent.click(botaoA);
+    fireEvent.click(botaoB);
+    expect(await a.findByText('Ligados')).toBeInTheDocument();
+    expect(await b.findByText('Ligados')).toBeInTheDocument();
+    expect(navegador.assinar).toHaveBeenCalledOnce();
+    expect(api.assinar).toHaveBeenCalledOnce();
+    expect(navegador.assinatura?.unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('desligar em uma não remove a assinatura que a outra acabou de criar', async () => {
+    const antiga = jaAssinado();
+    const { aba: a } = abrirAba();
+    const botaoA = await a.findByRole('button', { name: 'Desligar neste aparelho', hidden: true });
+    api.situacao.mockResolvedValueOnce({ ativa: false });
+    const { aba: b } = abrirAba();
+    const botaoB = await b.findByRole('button', { name: 'Ligar alertas', hidden: true });
+
+    let cancelar: () => void = () => undefined;
+    api.cancelar.mockReturnValueOnce(new Promise<void>((resolve) => { cancelar = resolve; }));
+    fireEvent.click(botaoA);
+    await waitFor(() => expect(api.cancelar).toHaveBeenCalledOnce());
+    fireEvent.click(botaoB);
+    await act(async () => undefined);
+    expect(navegador.assinar).not.toHaveBeenCalled();
+
+    await act(async () => cancelar());
+    await waitFor(() => expect(api.assinar).toHaveBeenCalledOnce());
+    expect(await b.findByText('Ligados')).toBeInTheDocument();
+    expect(antiga.unsubscribe).toHaveBeenCalledOnce();
+    expect(navegador.assinatura?.endpoint).toBe('https://push.exemplo/novo');
+    expect(navegador.assinatura?.unsubscribe).not.toHaveBeenCalled();
+    expect(api.cancelar).toHaveBeenCalledExactlyOnceWith('https://push.exemplo/atual', expect.anything());
+  });
+
+  it('a conferência do login não encerra uma ativação pela metade', async () => {
+    let registrada = false;
+    let registrar: () => void = () => undefined;
+    api.assinar.mockReturnValueOnce(new Promise<void>((resolve) => {
+      registrar = () => { registrada = true; resolve(); };
+    }));
+    api.situacao.mockImplementation(async () => ({ ativa: registrada }));
+    const { aba } = abrirAba();
+    fireEvent.click(await aba.findByRole('button', { name: 'Ligar alertas', hidden: true }));
+    await waitFor(() => expect(api.assinar).toHaveBeenCalledOnce());
+
+    renderHook(() => useVinculoPush(1));
+    await act(async () => undefined);
+    expect(api.situacao).not.toHaveBeenCalled();
+    await act(async () => registrar());
+    await waitFor(() => expect(api.situacao).toHaveBeenCalled());
+    expect(navegador.assinatura?.unsubscribe).not.toHaveBeenCalled();
+    expect(await aba.findByText('Ligados')).toBeInTheDocument();
+  });
+
+  it('fechar e reabrir a janela no meio da ativação mostra o resultado final', async () => {
+    let registrar: () => void = () => undefined;
+    api.assinar.mockReturnValueOnce(new Promise<void>((resolve) => { registrar = resolve; }));
+    const { aba, unmount } = abrirAba();
+    fireEvent.click(await aba.findByRole('button', { name: 'Ligar alertas', hidden: true }));
+    await waitFor(() => expect(api.assinar).toHaveBeenCalledOnce());
+    unmount();
+
+    const { aba: reaberta } = abrirAba();
+    expect(await reaberta.findByText('Verificando este aparelho...')).toBeInTheDocument();
+    await act(async () => registrar());
+    expect(await reaberta.findByText('Ligados')).toBeInTheDocument();
+    expect(navegador.assinar).toHaveBeenCalledOnce();
+  });
+});
+
 describe('Estado do aparelho', () => {
+  it('ligou em outra aba: esta acompanha', async () => {
+    const canais: { onmessage?: () => void }[] = [];
+    vi.stubGlobal('BroadcastChannel', class {
+      onmessage?: () => void;
+      constructor() { canais.push(this); }
+      postMessage() { canais.filter((c) => c !== this).forEach((c) => c.onmessage?.()); }
+      close() { canais.splice(canais.indexOf(this), 1); }
+    });
+    render(tela());
+    render(tela());
+    const botoes = await screen.findAllByRole('button', { name: 'Ligar alertas', hidden: true });
+    expect(botoes).toHaveLength(2);
+    navegador.permissao = 'granted';
+    fireEvent(window, new Event('focus'));
+    fireEvent.click(botoes[0]);
+    await waitFor(() => expect(screen.getAllByText('Ligados')).toHaveLength(2));
+    vi.unstubAllGlobals();
+  });
+
   it('permissão concedida sem assinatura: aparece desligado', async () => {
     navegador.permissao = 'granted';
     abrir();
@@ -263,7 +432,7 @@ describe('Estado do aparelho', () => {
     await desligar();
     expect(antiga.unsubscribe).toHaveBeenCalledOnce();
     expect(api.assinar).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ endpoint: 'https://push.exemplo/novo' }),
+      expect.objectContaining({ endpoint: 'https://push.exemplo/novo' }), expect.any(AbortSignal),
     );
   });
 

@@ -42,13 +42,22 @@ export function chaveEmBytes(chave: string): Uint8Array<ArrayBuffer> {
  */
 export async function criarAssinatura(chavePublica: string): Promise<PushSubscription> {
   const { pushManager } = await registroPronto();
-  await (await pushManager.getSubscription())?.unsubscribe();
+  const anterior = await pushManager.getSubscription();
+  if (anterior && !(await encerrarAssinatura(anterior.endpoint))) {
+    throw new Error('Não foi possível encerrar a assinatura anterior deste aparelho. Tente de novo.');
+  }
   return pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveEmBytes(chavePublica) });
 }
 
-/** Encerra a assinatura no navegador. O serviço de push passa a responder 410 e o back a descarta. */
-export async function encerrarAssinaturaDoAparelho(): Promise<void> {
-  await (await assinaturaDoAparelho())?.unsubscribe();
+/**
+ * Encerra no navegador só a assinatura informada: em alguns navegadores, um objeto antigo encerraria a nova.
+ * Responde se ela deixou de valer, porque `unsubscribe()` pode responder `false` sem dar erro.
+ */
+export async function encerrarAssinatura(endpoint: string): Promise<boolean> {
+  const atual = await assinaturaDoAparelho();
+  if (atual?.endpoint !== endpoint) return true;
+  if (await atual.unsubscribe()) return true;
+  return (await assinaturaDoAparelho())?.endpoint !== endpoint;
 }
 
 export function dadosDaAssinatura(assinatura: PushSubscription): AssinaturaPush {

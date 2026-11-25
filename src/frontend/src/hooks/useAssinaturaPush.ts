@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mensagemDeErro } from '../services/api/http';
+import { ApiError, mensagemDeErro, tokenStorage } from '../services/api/http';
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
+import { comLimite, emSequencia, sinalDaSessao } from '../utils/operacoesPush';
 import {
   assinaturaDoAparelho,
   criarAssinatura,
   dadosDaAssinatura,
-  encerrarAssinaturaDoAparelho,
+  encerrarAssinatura,
   suportaPush,
 } from '../utils/pushNavegador';
 import type { EstadoPermissao } from './usePermissoesDispositivo';
+
+const CANAL_PUSH = 'fsph_push';
 
 export type SituacaoPush = 'verificando' | 'indisponivel' | 'bloqueada' | 'inativa' | 'ativa' | 'falha';
 
@@ -20,6 +23,15 @@ interface OpcoesAssinaturaPush {
   solicitarPermissao: () => Promise<EstadoPermissao>;
 }
 
+/** Desfaz a ativação que não terminou. O servidor pode ter registrado mesmo sem a resposta ter chegado. */
+async function desfazerAtivacao(endpoint: string, token: string | null, erro: unknown) {
+  const recusada = erro instanceof ApiError && erro.status >= 400 && erro.status < 500;
+  if (token && !recusada) {
+    comLimite(null, (signal) => notificacoesPushApi.cancelar(endpoint, { token, signal })).catch(() => undefined);
+  }
+  await encerrarAssinatura(endpoint).catch(() => false);
+}
+
 /** Alertas neste aparelho: confere, liga e desliga a assinatura do usuário logado. */
 export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermissao }: OpcoesAssinaturaPush) {
   const [situacao, setSituacao] = useState<SituacaoPush>('verificando');
@@ -29,12 +41,14 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
   const emAndamento = useRef(false);
   const ultimaVerificacao = useRef(0);
   const usuarioAtual = useRef(usuarioId);
+  const canal = useRef<BroadcastChannel | null>(null);
 
   const verificar = useCallback(async () => {
     if (emAndamento.current) return;
     const verificacao = ++ultimaVerificacao.current;
+    const sinal = sinalDaSessao();
     const concluir = (nova: SituacaoPush, mensagem: string | null = null) => {
-      if (verificacao !== ultimaVerificacao.current) return;
+      if (verificacao !== ultimaVerificacao.current || sinal.aborted) return;
       setSituacao(nova);
       setErroConferencia(mensagem);
     };
@@ -43,10 +57,13 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
     if (permissao === 'denied') return concluir('bloqueada');
     if (permissao !== 'granted') return concluir('inativa');
     try {
-      const assinatura = await assinaturaDoAparelho();
-      if (!assinatura) return concluir('inativa');
-      const { ativa } = await notificacoesPushApi.situacao(assinatura.endpoint);
-      concluir(ativa ? 'ativa' : 'inativa');
+      await emSequencia(async () => {
+        if (verificacao !== ultimaVerificacao.current) return;
+        const assinatura = await assinaturaDoAparelho();
+        if (!assinatura) return concluir('inativa');
+        const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+        concluir(ativa ? 'ativa' : 'inativa');
+      });
     } catch (e) {
       concluir('falha', mensagemDeErro(e));
     }
@@ -63,24 +80,47 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
     setSituacao('verificando');
     setErroConferencia(null);
     setErroAcao(null);
+    return () => {
+      ultimaVerificacao.current += 1;
+    };
   }, [usuarioId]);
 
   useEffect(() => {
     if (online) void verificar();
   }, [usuarioId, online, verificar]);
 
-  const executar = async (acao: () => Promise<SituacaoPush>) => {
+  // Ligou ou desligou em outra aba: esta acompanha
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const aberto = new BroadcastChannel(CANAL_PUSH);
+    canal.current = aberto;
+    aberto.onmessage = () => void verificarAtual.current();
+    return () => {
+      canal.current = null;
+      aberto.close();
+    };
+  }, []);
+
+  const executar = async (acao: (conferirSessao: () => void, sinal: AbortSignal) => Promise<SituacaoPush>) => {
     if (emAndamento.current) return;
     const dono = usuarioId;
+    const sinal = sinalDaSessao();
+    const mesmaSessao = () => !sinal.aborted && usuarioAtual.current === dono;
+    const conferirSessao = () => {
+      if (!mesmaSessao()) throw new Error('A sessão mudou durante a operação.');
+    };
     emAndamento.current = true;
     ultimaVerificacao.current += 1;
     setOcupado(true);
     setErroAcao(null);
     try {
-      const nova = await acao();
-      if (usuarioAtual.current === dono) setSituacao(nova);
+      const nova = await acao(conferirSessao, sinal);
+      if (mesmaSessao()) {
+        setSituacao(nova);
+        canal.current?.postMessage('mudou');
+      }
     } catch (e) {
-      if (usuarioAtual.current === dono) setErroAcao(mensagemDeErro(e));
+      if (mesmaSessao()) setErroAcao(mensagemDeErro(e));
     } finally {
       emAndamento.current = false;
       setOcupado(false);
@@ -90,8 +130,8 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
   };
 
   const ligar = () =>
-    executar(async () => {
-      const dono = usuarioId;
+    executar(async (conferirSessao, sinal) => {
+      // Fora da fila: o pedido do navegador pode ficar aberto por muito tempo
       const resposta = await solicitarPermissao();
       if (resposta === 'denied') return 'bloqueada';
       if (resposta === 'unsupported') return 'indisponivel';
@@ -100,36 +140,49 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
         return 'inativa';
       }
 
-      const { chave_publica } = await notificacoesPushApi.chavePublica();
-      const assinatura = await criarAssinatura(chave_publica);
-      try {
-        const dados = dadosDaAssinatura(assinatura);
-        const conferirConta = () => {
-          if (usuarioAtual.current !== dono) throw new Error('A conta mudou durante a ativação.');
-        };
-        conferirConta();
-        await notificacoesPushApi.assinar(dados);
-        conferirConta();
-      } catch (e) {
-        // Sem o registro no servidor, ou com outra conta, o aparelho não pode ficar assinado
-        await assinatura.unsubscribe().catch(() => false);
-        throw e;
-      }
-      return 'ativa';
+      return emSequencia<SituacaoPush>(async () => {
+        conferirSessao();
+        // Outra aba pode ter acabado de ligar: não troca a assinatura que já vale
+        const existente = await assinaturaDoAparelho();
+        if (existente) {
+          const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(existente.endpoint, s));
+          if (ativa) return 'ativa';
+        }
+        const { publicKey } = await comLimite(sinal, (s) => notificacoesPushApi.chavePublica(s));
+        conferirSessao();
+        const assinatura = await criarAssinatura(publicKey);
+        const token = tokenStorage.get();
+        try {
+          const dados = dadosDaAssinatura(assinatura);
+          conferirSessao();
+          await comLimite(sinal, (s) => notificacoesPushApi.assinar(dados, s));
+          conferirSessao();
+        } catch (e) {
+          // Sem o registro no servidor, ou com outra sessão, o aparelho não pode ficar assinado
+          await desfazerAtivacao(assinatura.endpoint, token, e);
+          throw e;
+        }
+        return 'ativa';
+      });
     });
 
   const desligar = () =>
-    executar(async () => {
-      const assinatura = await assinaturaDoAparelho();
-      if (!assinatura) return 'inativa';
-      const [noServidor, noAparelho] = await Promise.allSettled([
-        notificacoesPushApi.cancelar(assinatura.endpoint),
-        encerrarAssinaturaDoAparelho(),
-      ]);
-      // Um dos dois já basta para os alertas pararem de chegar
-      if (noServidor.status === 'rejected' && noAparelho.status === 'rejected') throw noServidor.reason;
-      return 'inativa';
-    });
+    executar((conferirSessao, sinal) =>
+      emSequencia<SituacaoPush>(async () => {
+        conferirSessao();
+        const assinatura = await assinaturaDoAparelho();
+        if (!assinatura) return 'inativa';
+        const { endpoint } = assinatura;
+        const [noServidor, noAparelho] = await Promise.allSettled([
+          comLimite(sinal, (signal) => notificacoesPushApi.cancelar(endpoint, { signal })),
+          encerrarAssinatura(endpoint),
+        ]);
+        // Um dos dois já basta para os alertas pararem de chegar
+        const encerradaNoAparelho = noAparelho.status === 'fulfilled' && noAparelho.value;
+        if (noServidor.status === 'rejected' && !encerradaNoAparelho) throw noServidor.reason;
+        return 'inativa';
+      }),
+    );
 
   return { situacao, ocupado, erro: erroAcao ?? erroConferencia, verificar, ligar, desligar };
 }

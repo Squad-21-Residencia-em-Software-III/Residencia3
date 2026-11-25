@@ -10,7 +10,7 @@ Todas as rotas ficam em `/api/notificacoes`, exigem sessão e usam o usuário **
 
 | Método e rota | Corpo | Resposta esperada |
 |---|---|---|
-| `GET /vapid-public-key` | — | `200 { "chave_publica": "BEl6…" }` (base64url) |
+| `GET /vapid-public-key` | — | `200 { "publicKey": "BEl6…" }` (base64url), como na seção 6.2 do plano |
 | `POST /subscribe` | `{ "endpoint": "https://…", "keys": { "p256dh": "…", "auth": "…" } }` | `201` ou `204` |
 | `POST /subscribe/status` | `{ "endpoint": "https://…" }` | `200 { "ativa": true }` |
 | `DELETE /unsubscribe` | `{ "endpoint": "https://…" }` | `204` |
@@ -46,15 +46,27 @@ Nos erros, o front mostra o `erro` da resposta, no formato que a API já usa.
 | Navegador sem suporte | Explica; as categorias continuam disponíveis |
 | Sem conexão | Bloqueia as mudanças e confere sozinho quando a conexão voltar |
 | `subscribe` falhou | Desfaz a assinatura no navegador e mostra o motivo |
-| Já existe assinatura no navegador ao ligar | Encerra a antiga e cria outra, sem reaproveitar o `endpoint` |
-| Desligar | Chama `unsubscribe` e encerra no navegador; basta um dos dois funcionar |
-| **Sair da conta** | Encerra a assinatura **no navegador**, sem chamar `unsubscribe` |
+| Já existe assinatura no navegador ao ligar | Se já vale para a conta, mantém. Senão, encerra a antiga e cria outra, sem reaproveitar o `endpoint` |
+| Desligar | Chama `unsubscribe` e encerra no navegador; basta um dos dois funcionar. `unsubscribe()` do navegador com resposta `false` só conta se a assinatura não existir mais |
+| **Sair da conta** | Tenta o `unsubscribe` com o token da sessão que está acabando e encerra no navegador. Não espera a resposta para sair |
+| Fechar o aplicativo, bloquear a tela ou deixar em segundo plano | Mantém a assinatura |
 | Sessão expirada | Mantém a assinatura |
+| Entrar de novo na mesma conta | Um toque em **Ligar alertas** religa, sem novo pedido de permissão. As categorias continuam como estavam |
+| Sessão acaba durante a ativação (inclusive por outra aba) | Desfaz no navegador e tenta o `unsubscribe`, mesmo com a tela já fechada |
+| Duas abas ao mesmo tempo | Uma operação por vez no aparelho (Web Locks). Cada uma só encerra o `endpoint` que ela mesma leu |
+| Servidor sem resposta | Desiste em 10 segundos, para não prender as outras abas |
 | Outra conta entra no mesmo aparelho | Consulta `subscribe/status` e, se não for dela, encerra a assinatura no navegador |
 
-Ao sair da conta, ou quando o `unsubscribe` falha, a linha fica no banco até o próximo envio, que responde `404` ou `410`. **O back precisa descartar a assinatura nesses casos** (já previsto na SCRUM-237) e não contar as descartadas no limite de aparelhos.
+Quando o `unsubscribe` falha (ex.: sem conexão ao sair, ou token já vencido), a linha fica no banco até o próximo envio, que responde `404` ou `410`. **O back precisa descartar a assinatura nesses casos** (já previsto na SCRUM-237) e não contar as descartadas no limite de aparelhos.
 
 Entre a sessão expirar e outra pessoa entrar, o aparelho ainda recebe os alertas da conta anterior. Por isso o texto do push não pode ter dado pessoal, como já pede a SCRUM-222.
+
+### Regra de saída (definida pela liderança no PR #200)
+
+Vale para as SCRUM-236, 237, 238 e 239. Do back, o front precisa que:
+
+- o `unsubscribe` enviado no logout seja aceito com o access token ainda válido, mesmo que chegue depois do `POST /auth/logout` (hoje o logout só remove o cookie);
+- o logout **não** apague as preferências de categoria nem as assinaturas de outros aparelhos.
 
 ## Para ligar o interruptor
 
