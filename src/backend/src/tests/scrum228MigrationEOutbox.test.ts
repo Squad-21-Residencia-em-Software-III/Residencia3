@@ -21,6 +21,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     tabelaOutboxPreexistente?: boolean;
     tipoPayloadPush?: string;
     tamanhoEventoTipo?: number;
+    defaultOcorrenciaVersao?: string | null;
     omitirConstraint?: string;
     omitirIndice?: string;
     totalOutbox?: number;
@@ -57,43 +58,52 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
       ) {
         return {
           rows: [
-            { column_name: 'id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
-            { column_name: 'notificacao_id', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null },
-            { column_name: 'usuario_id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
+            { column_name: 'id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null, column_default: null },
+            { column_name: 'notificacao_id', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null, column_default: null },
+            { column_name: 'usuario_id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null, column_default: null },
             {
               column_name: 'evento_tipo',
               data_type: 'character varying',
               is_nullable: 'NO',
               character_maximum_length: opcoes?.tamanhoEventoTipo ?? 64,
+              column_default: null,
             },
-            { column_name: 'categoria', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 60 },
-            { column_name: 'operacao', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 20 },
-            { column_name: 'referencia_tipo', data_type: 'character varying', is_nullable: 'YES', character_maximum_length: 40 },
-            { column_name: 'referencia_id', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null },
-            { column_name: 'ocorrencia_versao', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 120 },
-            { column_name: 'chave_idempotencia', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 190 },
-            { column_name: 'canal', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 20 },
+            { column_name: 'categoria', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 60, column_default: "'GERAL'::character varying" },
+            { column_name: 'operacao', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 20, column_default: null },
+            { column_name: 'referencia_tipo', data_type: 'character varying', is_nullable: 'YES', character_maximum_length: 40, column_default: null },
+            { column_name: 'referencia_id', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null, column_default: null },
+            {
+              column_name: 'ocorrencia_versao',
+              data_type: 'character varying',
+              is_nullable: 'NO',
+              character_maximum_length: 120,
+              column_default: opcoes?.defaultOcorrenciaVersao ?? null,
+            },
+            { column_name: 'chave_idempotencia', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 190, column_default: null },
+            { column_name: 'canal', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 20, column_default: "'WEB_PUSH'::character varying" },
             {
               column_name: 'payload_push',
               data_type: opcoes?.tipoPayloadPush ?? 'jsonb',
               is_nullable: 'NO',
               character_maximum_length: null,
+              column_default: "'{}'::jsonb",
             },
-            { column_name: 'status', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 24 },
-            { column_name: 'tentativas', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
-            { column_name: 'max_tentativas', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
+            { column_name: 'status', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 24, column_default: "'PENDENTE'::character varying" },
+            { column_name: 'tentativas', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null, column_default: '0' },
+            { column_name: 'max_tentativas', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null, column_default: '5' },
             {
               column_name: 'proxima_execucao_em',
               data_type: 'timestamp with time zone',
               is_nullable: 'NO',
               character_maximum_length: null,
+              column_default: 'CURRENT_TIMESTAMP',
             },
-            { column_name: 'bloqueado_ate', data_type: 'timestamp with time zone', is_nullable: 'YES', character_maximum_length: null },
-            { column_name: 'ultimo_erro', data_type: 'character varying', is_nullable: 'YES', character_maximum_length: 500 },
-            { column_name: 'ultimo_status_http', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null },
-            { column_name: 'processado_em', data_type: 'timestamp with time zone', is_nullable: 'YES', character_maximum_length: null },
-            { column_name: 'criado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null },
-            { column_name: 'atualizado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null },
+            { column_name: 'bloqueado_ate', data_type: 'timestamp with time zone', is_nullable: 'YES', character_maximum_length: null, column_default: null },
+            { column_name: 'ultimo_erro', data_type: 'character varying', is_nullable: 'YES', character_maximum_length: 500, column_default: null },
+            { column_name: 'ultimo_status_http', data_type: 'integer', is_nullable: 'YES', character_maximum_length: null, column_default: null },
+            { column_name: 'processado_em', data_type: 'timestamp with time zone', is_nullable: 'YES', character_maximum_length: null, column_default: null },
+            { column_name: 'criado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null, column_default: 'CURRENT_TIMESTAMP' },
+            { column_name: 'atualizado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null, column_default: 'CURRENT_TIMESTAMP' },
           ],
         };
       }
@@ -116,7 +126,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
             table_name: 'notificacao_outbox',
             conname: 'uq_notificacao_outbox_evento_destinatario_ocorrencia',
             contype: 'u',
-            def: 'UNIQUE (evento_tipo, usuario_id, canal, ocorrencia_versao)',
+            def: 'UNIQUE NULLS NOT DISTINCT (evento_tipo, usuario_id, canal, referencia_tipo, referencia_id, ocorrencia_versao)',
           },
           {
             table_name: 'notificacao_outbox',
@@ -234,7 +244,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     expect(codigoFonte).not.toMatch(/\bIF\s+NOT\s+EXISTS\b/i);
   });
 
-  it('define contrato alinhado à Seção 6.1 do Plano (ON DELETE CASCADE, evento_tipo VARCHAR(64), operacao Administrativo/SVO)', async () => {
+  it('define contrato alinhado à Seção 6.1 do Plano (ON DELETE CASCADE, sem default v1 em ocorrencia_versao e unicidade incluindo referencia_tipo/id)', async () => {
     const { knexMock, sqlExecutados } = criarKnexScrum228Mock();
     await migrationScrum228.up(knexMock);
 
@@ -243,9 +253,13 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     );
     expect(ddlCreate).toBeDefined();
     expect(ddlCreate?.sql).toContain('REFERENCES usuarios(id) ON DELETE CASCADE');
+    expect(ddlCreate?.sql).not.toContain('REFERENCES notificacoes(id)');
     expect(ddlCreate?.sql).toContain('evento_tipo VARCHAR(64) NOT NULL');
     expect(ddlCreate?.sql).toContain('referencia_tipo VARCHAR(40) NULL DEFAULT NULL');
+    expect(ddlCreate?.sql).toContain('ocorrencia_versao VARCHAR(120) NOT NULL,');
+    expect(ddlCreate?.sql).not.toContain("DEFAULT 'v1'");
     expect(ddlCreate?.sql).toContain("CHECK (operacao IN ('Administrativo', 'SVO'))");
+    expect(ddlCreate?.sql).toContain('UNIQUE NULLS NOT DISTINCT');
   });
 
   it('bloqueia up quando a tabela base usuarios não está presente no schema alvo', async () => {
@@ -255,7 +269,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     );
   });
 
-  it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum228 (tipo, limite, constraint e índice)', async () => {
+  it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum228 (tipo, limite, default v1 em ocorrencia_versao, constraint e índice)', async () => {
     const tipoInvalido = criarKnexScrum228Mock({ tipoPayloadPush: 'text' });
     await expect(migrationScrum228.validarCatalogoScrum228(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em notificacao_outbox\.payload_push/
@@ -265,6 +279,13 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     await expect(
       migrationScrum228.validarCatalogoScrum228(tamanhoInvalido.knexMock)
     ).rejects.toThrow(/Estrutura incompativel em notificacao_outbox\.evento_tipo/);
+
+    const comDefaultOcorrencia = criarKnexScrum228Mock({
+      defaultOcorrenciaVersao: "'v1'::character varying",
+    });
+    await expect(
+      migrationScrum228.validarCatalogoScrum228(comDefaultOcorrencia.knexMock)
+    ).rejects.toThrow(/nao deve possuir default implicito/);
 
     const semConstraint = criarKnexScrum228Mock({
       omitirConstraint: 'notificacao_outbox.uq_notificacao_outbox_evento_destinatario_ocorrencia',
@@ -350,6 +371,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
       podeAcessarMigrations: false,
       podeDeletarHistoricoSvo: false,
       podeDeletarEvidenciasOdometro: false,
+      podeDeletarNotificacoes: false,
       podeDeletarNotificacaoOutbox: true,
       privilegiosExcessivosTabelas: [] as string[],
     };

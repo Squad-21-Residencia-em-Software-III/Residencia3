@@ -26,8 +26,18 @@ const COLUNAS_OUTBOX_ESPERADAS = {
 /**
  * Valida se a estrutura da tabela notificacao_outbox da SCRUM-228 no schema alvo
  * corresponde exatamente ao contrato de outbox transacional alinhado a Secao 6.1
- * do Plano da Fase 2 (ON DELETE CASCADE, operacao 'Administrativo'/'SVO', limites
- * de tamanho, deduplicacao por evento/destinatario/ocorrencia, retries e retencao).
+ * do Plano da Fase 2 (ON DELETE CASCADE para usuarios, operacao 'Administrativo'/'SVO',
+ * limites de tamanho, deduplicacao por evento/destinatario/referencia/ocorrencia sem
+ * colisao entre viagens ou coletas distintas, retries e retencao de estados terminais).
+ *
+ * Decisao arquitetural sobre notificacao_id (sem FK fisica para notificacoes.id):
+ * A coluna notificacao_id armazena o identificador logico da notificacao In-App criada
+ * na mesma transacao operacional, mas intencionalmente nao declara FOREIGN KEY fisica
+ * para notificacoes(id). Isso permite que as politicas de retencao e expurgo operem
+ * de forma desacoplada: notificacoes In-App lidas sao expurgadas 30 dias apos lida_em
+ * (e nao lidas 90 dias apos criado_em), enquanto registros terminais da outbox seguem
+ * sua propria janela de limpeza baseada em processado_em, evitando bloqueios de FK ou
+ * exclusoes em cascata nao intencionais entre trilhas de entrega e historico In-App.
  *
  * @param {import('knex').Knex} knex
  */
@@ -35,9 +45,9 @@ async function validarCatalogoScrum228(knex) {
   const { rows: schemaRows } = await knex.raw('SELECT current_schema() AS schema_atual');
   const schemaAtual = schemaRows[0]?.schema_atual || 'public';
 
-  // 1. Verifica colunas, tipos, nulabilidade e limites de tamanho da tabela notificacao_outbox
+  // 1. Verifica colunas, tipos, nulabilidade, limites de tamanho e ausencia de default generico em ocorrencia_versao
   const { rows: colsOutbox } = await knex.raw(
-    `SELECT column_name, data_type, is_nullable, character_maximum_length
+    `SELECT column_name, data_type, is_nullable, character_maximum_length, column_default
      FROM information_schema.columns
      WHERE table_schema = ?
        AND table_name = 'notificacao_outbox'`,
@@ -66,7 +76,14 @@ async function validarCatalogoScrum228(knex) {
     }
   }
 
-  // 2. Verifica constraints obrigatorias (FK com ON DELETE CASCADE, UNIQUEs e CHECKs)
+  const colOcorrencia = mapaColunas.get('ocorrencia_versao');
+  if (colOcorrencia?.column_default !== null && colOcorrencia?.column_default !== undefined) {
+    throw new Error(
+      `Estrutura incompativel em notificacao_outbox.ocorrencia_versao: nao deve possuir default implicito (${colOcorrencia.column_default}).`
+    );
+  }
+
+  // 2. Verifica constraints obrigatorias (FK com ON DELETE CASCADE, UNIQUEs incluindo referencia_tipo/id e CHECKs)
   const { rows: constraintsRows } = await knex.raw(
     `SELECT t.relname AS table_name, c.conname, c.contype, pg_get_constraintdef(c.oid) AS def
      FROM pg_constraint c
@@ -91,7 +108,7 @@ async function validarCatalogoScrum228(knex) {
     [
       'notificacao_outbox.uq_notificacao_outbox_evento_destinatario_ocorrencia',
       'u',
-      'evento_tipo, usuario_id, canal, ocorrencia_versao',
+      'evento_tipo, usuario_id, canal, referencia_tipo, referencia_id, ocorrencia_versao',
     ],
     ['notificacao_outbox.chk_notificacao_outbox_campos_obrigatorios', 'c', 'ocorrencia_versao'],
     ['notificacao_outbox.chk_notificacao_outbox_operacao', 'c', 'Administrativo'],
@@ -156,7 +173,10 @@ exports.up = async (knex) => {
     );
   }
 
-  // 2. Cria a tabela notificacao_outbox e seus indices caso ainda nao esteja presente no schema
+  // 2. Cria a tabela notificacao_outbox e seus indices caso ainda nao esteja presente no schema.
+  // Nota sobre notificacao_id: mantido sem FK fisica para notificacoes(id) para desacoplar
+  // o ciclo de retencao da central In-App (30d apos lida_em / 90d apos criado_em) do ciclo
+  // de retencao operacional da outbox (expurgo de estados terminais por processado_em).
   const { rows: tabOutboxRows } = await knex.raw(
     `SELECT 1
      FROM information_schema.tables
@@ -176,7 +196,7 @@ exports.up = async (knex) => {
         operacao VARCHAR(20) NOT NULL,
         referencia_tipo VARCHAR(40) NULL DEFAULT NULL,
         referencia_id INTEGER NULL DEFAULT NULL,
-        ocorrencia_versao VARCHAR(120) NOT NULL DEFAULT 'v1',
+        ocorrencia_versao VARCHAR(120) NOT NULL,
         chave_idempotencia VARCHAR(190) NOT NULL,
         canal VARCHAR(20) NOT NULL DEFAULT 'WEB_PUSH',
         payload_push JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -195,7 +215,14 @@ exports.up = async (knex) => {
         CONSTRAINT uq_notificacao_outbox_usuario_chave_idempotencia
           UNIQUE (usuario_id, chave_idempotencia),
         CONSTRAINT uq_notificacao_outbox_evento_destinatario_ocorrencia
-          UNIQUE (evento_tipo, usuario_id, canal, ocorrencia_versao),
+          UNIQUE NULLS NOT DISTINCT (
+            evento_tipo,
+            usuario_id,
+            canal,
+            referencia_tipo,
+            referencia_id,
+            ocorrencia_versao
+          ),
         CONSTRAINT chk_notificacao_outbox_campos_obrigatorios
           CHECK (
             length(btrim(evento_tipo)) > 0

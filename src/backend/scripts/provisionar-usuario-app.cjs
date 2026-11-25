@@ -68,6 +68,12 @@ function validarEstadoMinimoPrivilegio(estado) {
     );
   }
 
+  if (estado.podeDeletarNotificacoes) {
+    violacoes.push(
+      'role nao pode ter privilegio DELETE sobre a tabela notificacoes (o expurgo deve ser executado exclusivamente pelo job de retencao)'
+    );
+  }
+
   if (estado.podeDeletarNotificacaoOutbox) {
     violacoes.push(
       'role nao pode ter privilegio DELETE sobre a tabela notificacao_outbox (o expurgo de estados terminais deve ocorrer exclusivamente pela rotina de retencao)'
@@ -171,11 +177,28 @@ async function inspecionarEstadoRole(conexao, appUser) {
          ELSE false
        END AS pode_deletar_evidencias_odometro,
        CASE
+         WHEN to_regclass('public.notificacoes') IS NOT NULL THEN
+           has_table_privilege(?, 'public.notificacoes', 'DELETE')
+         ELSE false
+       END AS pode_deletar_notificacoes,
+       CASE
          WHEN to_regclass('public.notificacao_outbox') IS NOT NULL THEN
            has_table_privilege(?, 'public.notificacao_outbox', 'DELETE')
          ELSE false
        END AS pode_deletar_notificacao_outbox`,
-    [appUser, appUser, appUser, appUser, appUser, appUser, appUser, appUser, appUser, appUser]
+    [
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+    ]
   );
 
   const { rows: excessivosRows } = await conexao.raw(
@@ -196,6 +219,7 @@ async function inspecionarEstadoRole(conexao, appUser) {
     podeAcessarMigrations: Boolean(privRows[0]?.pode_acessar_migrations),
     podeDeletarHistoricoSvo: Boolean(privRows[0]?.pode_deletar_historico_svo),
     podeDeletarEvidenciasOdometro: Boolean(privRows[0]?.pode_deletar_evidencias_odometro),
+    podeDeletarNotificacoes: Boolean(privRows[0]?.pode_deletar_notificacoes),
     podeDeletarNotificacaoOutbox: Boolean(privRows[0]?.pode_deletar_notificacao_outbox),
     privilegiosExcessivosTabelas: excessivosRows.map(
       (r) => `${r.table_name}:${r.privilege_type}`
@@ -320,6 +344,9 @@ async function provisionarUsuarioAplicacao() {
           END IF;
           IF to_regclass('public.evidencias_odometro_arquivos') IS NOT NULL THEN
             EXECUTE format('REVOKE UPDATE ON TABLE public.evidencias_odometro_arquivos FROM %I', '${appUser}');
+          END IF;
+          IF to_regclass('public.notificacoes') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.notificacoes FROM %I', '${appUser}');
           END IF;
           IF to_regclass('public.notificacao_outbox') IS NOT NULL THEN
             EXECUTE format('REVOKE DELETE ON TABLE public.notificacao_outbox FROM %I', '${appUser}');

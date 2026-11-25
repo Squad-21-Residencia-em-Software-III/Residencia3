@@ -24,6 +24,7 @@
     "db:validar-scrum183": "node scripts/validar-migration-scrum183.cjs",
     "db:validar-scrum198": "node scripts/validar-migration-scrum198.cjs",
     "db:validar-scrum210": "node scripts/validar-migration-scrum210.cjs",
+    "db:validar-scrum225": "node scripts/validar-migration-scrum225.cjs",
     "db:validar-scrum228": "node scripts/validar-migration-scrum228.cjs"
   },
   "keywords": [],
