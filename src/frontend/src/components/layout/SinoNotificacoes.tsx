@@ -1,20 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import {
-  AlertCircle,
-  BellOff,
-  BellRing,
-  CheckCheck,
-  RefreshCw,
-  Smartphone,
-  WifiOff,
-} from 'lucide-react';
+import { AlertCircle, CheckCheck, RefreshCw, WifiOff } from 'lucide-react';
 import { useInRouterContext, useNavigate } from 'react-router-dom';
+import { recursoAtivo } from '../../config/recursosBackend';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotificacoesOpcional } from '../../contexts/NotificacoesContext';
-import { usePermissoesDispositivo } from '../../hooks/usePermissoesDispositivo';
 import type { NotificacaoInApp } from '../../types/notificacao';
 import { cn } from '../../utils/cn';
 import { resolverDestinoNotificacao } from '../../utils/destinoNotificacao';
+import { FaixaAlertasPushSino } from '../notificacoes/FaixaAlertasPushSino';
 import { ItemNotificacao } from '../notificacoes/ItemNotificacao';
 import { BellIcon } from '../ui';
 
@@ -32,24 +25,13 @@ type SinoNotificacoesProps = {
   notificacoes?: NotificacaoItem[];
   /** Aparência do botão gatilho para cabeçalhos claros (`AppLayout`) ou escuros (`MotoristaLayout`). */
   variante?: 'claro' | 'escuro';
+  /** Permite sobrescrever a flag de Web Push em testes automatizados. */
+  webPushOverride?: boolean;
   className?: string;
 };
 
 export function rotuloBadge(total: number): string {
   return total > 99 ? '99+' : String(total);
-}
-
-function detectarIosForaDoPwa(): boolean {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || '';
-  const ehIos = /iPad|iPhone|iPod/.test(ua);
-  if (!ehIos) return false;
-  const nav = navigator as Navigator & { standalone?: boolean };
-  const standalone =
-    nav.standalone === true ||
-    (typeof window.matchMedia === 'function' &&
-      window.matchMedia('(display-mode: standalone)').matches);
-  return !standalone;
 }
 
 function useNavegacaoSegura() {
@@ -76,10 +58,10 @@ function usePerfilAtual() {
 export function SinoNotificacoes({
   notificacoes,
   variante = 'claro',
+  webPushOverride,
   className,
 }: SinoNotificacoesProps) {
   const [aberto, setAberto] = useState(false);
-  const [faixaPromptDispensada, setFaixaPromptDispensada] = useState(false);
   const [avisoFallback, setAvisoFallback] = useState<string | null>(null);
 
   const raiz = useRef<HTMLDivElement>(null);
@@ -89,15 +71,11 @@ export function SinoNotificacoes({
   const ctx = useNotificacoesOpcional();
   const navigate = useNavegacaoSegura();
   const perfil = usePerfilAtual();
-  const {
-    notificacoes: permissaoNotif,
-    solicitandoNotif,
-    solicitarNotificacoes,
-  } = usePermissoesDispositivo();
 
   const modoEstatico = notificacoes !== undefined;
   const modoIntegrado = !modoEstatico && ctx !== null;
   const recursoHabilitado = modoIntegrado && ctx.recursoHabilitado;
+  const webPushAtivo = webPushOverride ?? recursoAtivo('webPush');
   const online = modoIntegrado ? ctx.online : true;
 
   const naoLidas = modoEstatico
@@ -107,6 +85,14 @@ export function SinoNotificacoes({
       : 0;
 
   const carregarLista = ctx?.carregarLista;
+  const definirCentralAberta = ctx?.definirCentralAberta;
+
+  // Informa ao contexto quando o dropdown está aberto para sincronização pela versão do contador.
+  useEffect(() => {
+    if (!modoIntegrado || !definirCentralAberta) return;
+    definirCentralAberta(aberto);
+    return () => definirCentralAberta(false);
+  }, [aberto, modoIntegrado, definirCentralAberta]);
 
   // Carrega a lista sob demanda ao abrir o dropdown no modo integrado.
   useEffect(() => {
@@ -148,6 +134,10 @@ export function SinoNotificacoes({
       void ctx.marcarLida(item.id);
     }
 
+    if (item.acesso_revogado) {
+      return;
+    }
+
     const { url, usouFallback } = resolverDestinoNotificacao(item.url_destino, perfil);
     if (usouFallback) {
       setAvisoFallback('Você foi redirecionado para a página inicial disponível para o seu perfil.');
@@ -160,11 +150,6 @@ export function SinoNotificacoes({
       navigate(url);
     }
   };
-
-  const ehIosForaDoPwa = recursoHabilitado && detectarIosForaDoPwa();
-  const mostrarFaixaPrompt =
-    recursoHabilitado && !ehIosForaDoPwa && permissaoNotif === 'prompt' && !faixaPromptDispensada;
-  const mostrarFaixaDenied = recursoHabilitado && !ehIosForaDoPwa && permissaoNotif === 'denied';
 
   const itensIntegrados = modoIntegrado ? ctx.itens : [];
   const carregando = modoIntegrado ? ctx.carregando : false;
@@ -265,52 +250,8 @@ export function SinoNotificacoes({
               </div>
             )}
 
-            {/* Faixa iOS fora do PWA */}
-            {ehIosForaDoPwa && (
-              <div className="flex items-start gap-2 border-b border-divider bg-info-bg/60 px-3.5 py-2 text-xs text-info">
-                <Smartphone size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-                <span>
-                  No iPhone/iPad, adicione o app à Tela de Início para receber alertas do
-                  dispositivo.
-                </span>
-              </div>
-            )}
-
-            {/* Faixa permissão prompt (opt-in contextual) */}
-            {mostrarFaixaPrompt && (
-              <div className="flex items-center justify-between gap-2 border-b border-divider bg-primary-soft/80 px-3.5 py-2 text-xs text-text-secondary">
-                <div className="flex items-center gap-2">
-                  <BellRing size={14} className="shrink-0 text-primary" aria-hidden="true" />
-                  <span>Ative alertas no dispositivo para avisos urgentes.</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    disabled={solicitandoNotif}
-                    onClick={() => void solicitarNotificacoes()}
-                    className="cursor-pointer rounded-md bg-primary px-2 py-1 font-display text-[11px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
-                  >
-                    {solicitandoNotif ? 'Ativando...' : 'Ativar'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFaixaPromptDispensada(true)}
-                    aria-label="Dispensar aviso de alertas"
-                    className="cursor-pointer rounded-md px-1.5 py-1 text-[11px] text-text-muted hover:text-text"
-                  >
-                    Agora não
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Faixa permissão negada */}
-            {mostrarFaixaDenied && (
-              <div className="flex items-center gap-2 border-b border-divider bg-neutral-bg px-3.5 py-2 text-xs text-neutral">
-                <BellOff size={14} className="shrink-0" aria-hidden="true" />
-                <span>Alertas do navegador bloqueados. A central In-App continua ativa.</span>
-              </div>
-            )}
+            {/* Faixa contextual de Web Push (SCRUM-238), condicionada à flag `webPush` */}
+            {recursoHabilitado && webPushAtivo && <FaixaAlertasPushSino online={online} />}
 
             {/* Aviso de redirecionamento seguro */}
             {avisoFallback && (
@@ -431,7 +372,7 @@ export function SinoNotificacoes({
                   </div>
                 ) : (
                   <p className="border-t border-divider px-3.5 py-2 text-center text-[11px] text-text-muted">
-                    Fim das notificações dos últimos 30 dias.
+                    Fim das notificações. Lidas ficam disponíveis por 30 dias e não lidas por 90 dias.
                   </p>
                 )}
               </>
