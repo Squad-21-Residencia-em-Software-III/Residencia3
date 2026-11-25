@@ -74,6 +74,12 @@ function validarEstadoMinimoPrivilegio(estado) {
     );
   }
 
+  if (estado.podeDeletarNotificacaoOutbox) {
+    violacoes.push(
+      'role nao pode ter privilegio DELETE sobre a tabela notificacao_outbox (o expurgo de estados terminais deve ocorrer exclusivamente pela rotina de retencao)'
+    );
+  }
+
   if (
     Array.isArray(estado.privilegiosExcessivosTabelas) &&
     estado.privilegiosExcessivosTabelas.length > 0
@@ -174,8 +180,25 @@ async function inspecionarEstadoRole(conexao, appUser) {
          WHEN to_regclass('public.notificacoes') IS NOT NULL THEN
            has_table_privilege(?, 'public.notificacoes', 'DELETE')
          ELSE false
-       END AS pode_deletar_notificacoes`,
-    [appUser, appUser, appUser, appUser, appUser, appUser, appUser, appUser, appUser, appUser]
+       END AS pode_deletar_notificacoes,
+       CASE
+         WHEN to_regclass('public.notificacao_outbox') IS NOT NULL THEN
+           has_table_privilege(?, 'public.notificacao_outbox', 'DELETE')
+         ELSE false
+       END AS pode_deletar_notificacao_outbox`,
+    [
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+      appUser,
+    ]
   );
 
   const { rows: excessivosRows } = await conexao.raw(
@@ -197,6 +220,7 @@ async function inspecionarEstadoRole(conexao, appUser) {
     podeDeletarHistoricoSvo: Boolean(privRows[0]?.pode_deletar_historico_svo),
     podeDeletarEvidenciasOdometro: Boolean(privRows[0]?.pode_deletar_evidencias_odometro),
     podeDeletarNotificacoes: Boolean(privRows[0]?.pode_deletar_notificacoes),
+    podeDeletarNotificacaoOutbox: Boolean(privRows[0]?.pode_deletar_notificacao_outbox),
     privilegiosExcessivosTabelas: excessivosRows.map(
       (r) => `${r.table_name}:${r.privilege_type}`
     ),
@@ -323,6 +347,9 @@ async function provisionarUsuarioAplicacao() {
           END IF;
           IF to_regclass('public.notificacoes') IS NOT NULL THEN
             EXECUTE format('REVOKE DELETE ON TABLE public.notificacoes FROM %I', '${appUser}');
+          END IF;
+          IF to_regclass('public.notificacao_outbox') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.notificacao_outbox FROM %I', '${appUser}');
           END IF;
         END $$;`
       );
