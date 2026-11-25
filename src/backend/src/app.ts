@@ -11,6 +11,7 @@ import { limitarConsultasPesadas, limitarPorTipoDeOperacao } from './middlewares
 import { limitarTempoRequisicao } from './middlewares/limitarTempoRequisicao';
 import { ehEnvioDeFotoOdometro } from './routes/evidenciaOdometroRoutes';
 import { routes } from './routes';
+import { acordarFilaPushDeCarona } from './services/filaPush';
 
 z.config(z.locales.pt());
 
@@ -35,6 +36,10 @@ app.use(express.json({ limit: '100kb' }));
 // Limites por tipo de operação: leitura e escrita por minuto, e consultas pesadas com limite menor
 app.use('/api', limitarPorTipoDeOperacao);
 app.use(['/api/dashboard', '/api/auditorias'], limitarConsultasPesadas);
+app.use('/api', (_req, _res, next) => {
+  acordarFilaPushDeCarona();
+  next();
+});
 app.use('/api', routes);
 
 app.use(rotaNaoEncontrada);
