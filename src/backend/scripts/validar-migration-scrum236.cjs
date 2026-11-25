@@ -46,8 +46,12 @@ async function criarBaseIsolada(trx, schema) {
   `);
 }
 
-const CHAVE_P256DH_VALIDA = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U';
+const CHAVE_P256DH_VALIDA =
+  'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U';
+const CHAVE_P256DH_RENOVADA =
+  'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM';
 const CHAVE_AUTH_VALIDA = 'tBHItJI5svbpez7KI4CCXg';
+const CHAVE_AUTH_RENOVADA = 'vI7_kL9mN2pQ4rS6tU8wXy';
 
 async function executarValidacaoCompletaScrum236() {
   const configMigration = knexConfig.criarConfigKnex({
@@ -125,7 +129,7 @@ async function executarValidacaoCompletaScrum236() {
         '2. Aplicacao limpa da migration SCRUM-236 (up) e validacao de catalogo: OK'
       );
 
-      // 3.1 Testa FKs (ON DELETE CASCADE), validacao de endpoint HTTPS, chaves p256dh/auth e proibicao de transferencia de endpoint entre usuarios
+      // 3.1 Testa FKs (ON DELETE CASCADE), validacao de endpoint HTTPS, chaves Base64/Base64URL p256dh/auth e propriedade imutavel de endpoint
       await db.transaction(async (trx) => {
         await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
 
@@ -141,7 +145,6 @@ async function executarValidacaoCompletaScrum236() {
           usuario_id: 4,
           categoria: 'VIAGENS',
           canal: 'WEB_PUSH',
-          habilitado: true,
         });
 
         await trx('usuarios').where({ id: 4 }).del();
@@ -171,8 +174,8 @@ async function executarValidacaoCompletaScrum236() {
           })
           .returning('*');
 
-        // Endpoint duplicado por outro usuario (INSERT direto -> 23505)
-        const bloqueouEndpointDuplicado = await esperarErroSql(trx, '23505', () =>
+        // Proibicao de cadastrar ou transferir endpoint de outro usuario (BEFORE INSERT detecta propriedade alheia -> 23514)
+        const bloqueouEndpointDeOutroUsuarioInsert = await esperarErroSql(trx, '23514', () =>
           trx('push_subscriptions').insert({
             usuario_id: 2,
             endpoint: 'https://fcm.googleapis.com/fcm/send/sub-usuario-1-dev-1',
@@ -184,6 +187,13 @@ async function executarValidacaoCompletaScrum236() {
         // Proibicao de transferir endpoint existente do usuario 1 para o usuario 2 via UPDATE (trigger -> 23514)
         const bloqueouTransferenciaEndpoint = await esperarErroSql(trx, '23514', () =>
           trx('push_subscriptions').where({ id: sub1.id }).update({ usuario_id: 2 })
+        );
+
+        // Proibicao de alterar o endpoint de uma assinatura existente via UPDATE (trigger -> 23514)
+        const bloqueouMutacaoEndpoint = await esperarErroSql(trx, '23514', () =>
+          trx('push_subscriptions')
+            .where({ id: sub1.id })
+            .update({ endpoint: 'https://fcm.googleapis.com/fcm/send/endpoint-trocado' })
         );
 
         // Proibicao de transferir endpoint via ON CONFLICT (endpoint) DO UPDATE SET usuario_id = 2 (trigger -> 23514)
@@ -220,7 +230,9 @@ async function executarValidacaoCompletaScrum236() {
             })
           );
           if (!bloqueouEp) {
-            throw new Error(`Endpoint invalido deveria ter sido bloqueado: ${JSON.stringify(epInvalido)}`);
+            throw new Error(
+              `Endpoint invalido deveria ter sido bloqueado: ${JSON.stringify(epInvalido)}`
+            );
           }
         }
 
@@ -233,14 +245,35 @@ async function executarValidacaoCompletaScrum236() {
           })
         );
 
+        const bloqueouChaveForaBase64 = await esperarErroSql(trx, '23514', () =>
+          trx('push_subscriptions').insert({
+            usuario_id: 1,
+            endpoint: 'https://fcm.googleapis.com/fcm/send/chave-invalida-base64',
+            p256dh: 'CHAVE_COM_CARACTERES_INVALIDOS_$$$%%%###@@@!!!',
+            auth: CHAVE_AUTH_VALIDA,
+          })
+        );
+
+        const bloqueouChavesIguais = await esperarErroSql(trx, '23514', () =>
+          trx('push_subscriptions').insert({
+            usuario_id: 1,
+            endpoint: 'https://fcm.googleapis.com/fcm/send/chaves-iguais-12345',
+            p256dh: 'MESMA_CHAVE_CRIPTOGRAFICA_REPETIDA_123456',
+            auth: 'MESMA_CHAVE_CRIPTOGRAFICA_REPETIDA_123456',
+          })
+        );
+
         if (
-          !bloqueouEndpointDuplicado ||
+          !bloqueouEndpointDeOutroUsuarioInsert ||
           !bloqueouTransferenciaEndpoint ||
+          !bloqueouMutacaoEndpoint ||
           !bloqueouUpsertTransferencia ||
-          !bloqueouChaveCurta
+          !bloqueouChaveCurta ||
+          !bloqueouChaveForaBase64 ||
+          !bloqueouChavesIguais
         ) {
           throw new Error(
-            'Falha na validacao de unicidade, bloqueio de transferencia de endpoint entre usuarios ou protecao de chaves.'
+            'Falha na validacao de propriedade do endpoint, bloqueio de transferencia ou protecao Base64 de p256dh/auth.'
           );
         }
 
@@ -248,10 +281,10 @@ async function executarValidacaoCompletaScrum236() {
       });
 
       relatorio.push(
-        '3. FKs (ON DELETE CASCADE), endpoint HTTPS unico, protecao p256dh/auth e bloqueio de transferencia de endpoint entre usuarios: OK'
+        '3. FKs (ON DELETE CASCADE), propriedade imutavel do endpoint HTTPS e protecao Base64/Base64URL de p256dh/auth: OK'
       );
 
-      // 3.2 Testa limite configuravel de dispositivos ativos (referencia 5), revogacao e exclusao de inativas da contagem
+      // 3.2 Testa limite configuravel de dispositivos ativos (referencia 5), renovacao idempotente no limite maximo e liberacao de vaga ao revogar
       await db.transaction(async (trx) => {
         await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
 
@@ -269,7 +302,43 @@ async function executarValidacaoCompletaScrum236() {
           idsInseridos.push(sub.id);
         }
 
-        // 6o dispositivo ativo deve ser bloqueado (referencia padrao = 5 -> 23514)
+        // Renovacao idempotente (via INSERT ... ON CONFLICT (endpoint) DO UPDATE) do device-1 quando o usuario JA POSSUI 5 dispositivos ativos
+        await trx.raw(
+          `INSERT INTO push_subscriptions (usuario_id, endpoint, p256dh, auth, user_agent)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (endpoint) DO UPDATE
+             SET p256dh = EXCLUDED.p256dh,
+                 auth = EXCLUDED.auth,
+                 user_agent = EXCLUDED.user_agent,
+                 atualizado_em = CURRENT_TIMESTAMP`,
+          [
+            1,
+            'https://fcm.googleapis.com/fcm/send/u1-device-1',
+            CHAVE_P256DH_RENOVADA,
+            CHAVE_AUTH_RENOVADA,
+            'Device 1 Renovado',
+          ]
+        );
+
+        const subRenovada = await trx('push_subscriptions')
+          .where({ id: idsInseridos[0] })
+          .first('p256dh', 'auth', 'user_agent');
+        const qtdAtivosAposRenovacao = await trx('push_subscriptions')
+          .where({ usuario_id: 1, ativa: true })
+          .count({ total: '*' })
+          .first();
+
+        if (
+          subRenovada?.p256dh !== CHAVE_P256DH_RENOVADA ||
+          subRenovada?.auth !== CHAVE_AUTH_RENOVADA ||
+          Number(qtdAtivosAposRenovacao?.total || 0) !== 5
+        ) {
+          throw new Error(
+            'Renovacao idempotente de endpoint existente no limite maximo de 5 dispositivos falhou ou consumiu nova vaga.'
+          );
+        }
+
+        // 6o dispositivo NOVO ativo deve continuar sendo bloqueado (referencia padrao = 5 -> 23514)
         const bloqueouSextoDispositivo = await esperarErroSql(trx, '23514', () =>
           trx('push_subscriptions').insert({
             usuario_id: 1,
@@ -280,10 +349,10 @@ async function executarValidacaoCompletaScrum236() {
         );
 
         if (!bloqueouSextoDispositivo) {
-          throw new Error('Deveria ter bloqueado o 6o dispositivo ativo (limite padrao 5).');
+          throw new Error('Deveria ter bloqueado o 6o dispositivo ativo inÃƒÂ©dito (limite padrao 5).');
         }
 
-        // Revoga o dispositivo 1 (status = REVOGADA, ativa = false) -> nao conta mais no limite de ativos, mas permanece para expurgo
+        // Revoga o dispositivo 1 (status = REVOGADA, ativa = false) -> nao conta mais no limite de ativos
         await trx('push_subscriptions').where({ id: idsInseridos[0] }).update({
           status: 'REVOGADA',
           ativa: false,
@@ -298,6 +367,22 @@ async function executarValidacaoCompletaScrum236() {
           p256dh: CHAVE_P256DH_VALIDA,
           auth: CHAVE_AUTH_VALIDA,
         });
+
+        // Com 5 ativos novamente, tentar reativar o dispositivo 1 que estava REVOGADO deve ser bloqueado (seria o 6o ativo -> 23514)
+        const bloqueouReativacaoAcimaDoLimite = await esperarErroSql(trx, '23514', () =>
+          trx('push_subscriptions').where({ id: idsInseridos[0] }).update({
+            status: 'ATIVA',
+            ativa: true,
+            revogada_em: null,
+            atualizado_em: trx.fn.now(),
+          })
+        );
+
+        if (!bloqueouReativacaoAcimaDoLimite) {
+          throw new Error(
+            'Reativacao de assinatura revogada deveria ser bloqueada quando o usuario ja possui 5 outros dispositivos ativos.'
+          );
+        }
 
         // Testa limite configuravel na sessao (fsph.push_max_dispositivos_por_usuario = '2') para o usuario 2
         await trx.raw("SET LOCAL fsph.push_max_dispositivos_por_usuario = '2'");
@@ -335,7 +420,7 @@ async function executarValidacaoCompletaScrum236() {
       });
 
       relatorio.push(
-        '4. Limite configuravel de dispositivos ativos (padrao 5 + customizavel via setting) e liberacao de vaga ao revogar/expirar: OK'
+        '4. Limite configuravel (padrao 5), renovacao idempotente de endpoint existente no limite maximo e liberacao de vaga ao revogar: OK'
       );
 
       // 3.3 Concorrencia real: duas transacoes simultaneas disputando a 5a e ultima vaga de dispositivo ativo do mesmo usuario
@@ -407,31 +492,38 @@ async function executarValidacaoCompletaScrum236() {
         '5. Concorrencia real entre duas transacoes simultaneas disputando a 5a vaga de dispositivo ativo (serializacao FOR UPDATE): OK'
       );
 
-      // 3.4 Testa preferencias_notificacao por categoria/canal e elegibilidade de expurgo de assinaturas inativas (404/410/revogadas)
+      // 3.4 Testa preferencias_notificacao com padrao conservador (DEFAULT false) e elegibilidade de expurgo de assinaturas inativas (404/410/revogadas)
       await db.transaction(async (trx) => {
         await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
 
-        await trx('preferencias_notificacao').insert([
-          {
+        // Insere preferencia sem informar habilitado -> deve assumir o padrao conservador (habilitado = false)
+        const [prefDefaultConservador] = await trx('preferencias_notificacao')
+          .insert({
             usuario_id: 1,
             categoria: 'SOLICITACOES',
             canal: 'WEB_PUSH',
-            habilitado: true,
-          },
-          {
-            usuario_id: 1,
-            categoria: 'VIAGENS',
-            canal: 'WEB_PUSH',
-            habilitado: false,
-          },
-        ]);
+          })
+          .returning(['id', 'habilitado']);
+
+        if (prefDefaultConservador?.habilitado !== false) {
+          throw new Error(
+            `Comportamento conservador falhou: preferencias_notificacao.habilitado deveria iniciar como false por padrao, encontrado ${prefDefaultConservador?.habilitado}`
+          );
+        }
+
+        await trx('preferencias_notificacao').insert({
+          usuario_id: 1,
+          categoria: 'VIAGENS',
+          canal: 'WEB_PUSH',
+          habilitado: true,
+        });
 
         const bloqueouPreferenciaDuplicada = await esperarErroSql(trx, '23505', () =>
           trx('preferencias_notificacao').insert({
             usuario_id: 1,
             categoria: 'SOLICITACOES',
             canal: 'WEB_PUSH',
-            habilitado: false,
+            habilitado: true,
           })
         );
 
@@ -503,7 +595,7 @@ async function executarValidacaoCompletaScrum236() {
         }
 
         relatorio.push(
-          '6. Preferencias por categoria/canal (sem bloquear In-App) e marcacao de assinaturas 404/410/revogadas para expurgo: OK'
+          '6. Preferencias por categoria/canal com padrao conservador (DEFAULT false, sem bloquear In-App) e expurgo 404/410: OK'
         );
       });
 
@@ -593,15 +685,18 @@ async function executarValidacaoCompletaScrum236() {
                   usuario_id: 3,
                   categoria: 'SVO',
                   canal: 'WEB_PUSH',
-                  habilitado: true,
                 })
-                .returning('id');
+                .returning(['id', 'habilitado']);
+
+              if (prefApp.habilitado !== false) {
+                throw new Error('Insercao pela role da aplicacao deveria respeitar DEFAULT false.');
+              }
 
               await dbApp
                 .withSchema(schemaCiclo)
                 .from('preferencias_notificacao')
                 .where({ id: prefApp.id })
-                .update({ habilitado: false, atualizado_em: dbApp.fn.now() });
+                .update({ habilitado: true, atualizado_em: dbApp.fn.now() });
 
               let deletePrefBloqueado = false;
               try {

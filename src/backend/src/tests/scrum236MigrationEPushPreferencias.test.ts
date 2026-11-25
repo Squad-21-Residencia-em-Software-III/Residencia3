@@ -14,12 +14,13 @@ const migrationScrum236 = require('../../database/migrations/20261124203000_scru
   validarCatalogoScrum236: (knex: unknown) => Promise<void>;
 };
 
-describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas Push e preferências)', () => {
+describe('Contrato de banco, migration e privilÃƒÂ©gios da SCRUM-236 (assinaturas Push e preferÃƒÂªncias)', () => {
   function criarKnexScrum236Mock(opcoes?: {
     schemaAtual?: string;
     tabelasBaseCount?: number;
     tipoEndpoint?: string;
     tamanhoUserAgent?: number;
+    defaultHabilitado?: string;
     omitirConstraint?: string;
     omitirIndice?: string;
     omitirTrigger?: boolean;
@@ -93,13 +94,19 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
       ) {
         return {
           rows: [
-            { column_name: 'id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
-            { column_name: 'usuario_id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null },
-            { column_name: 'categoria', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 60 },
-            { column_name: 'canal', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 20 },
-            { column_name: 'habilitado', data_type: 'boolean', is_nullable: 'NO', character_maximum_length: null },
-            { column_name: 'criado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null },
-            { column_name: 'atualizado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null },
+            { column_name: 'id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null, column_default: null },
+            { column_name: 'usuario_id', data_type: 'integer', is_nullable: 'NO', character_maximum_length: null, column_default: null },
+            { column_name: 'categoria', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 60, column_default: null },
+            { column_name: 'canal', data_type: 'character varying', is_nullable: 'NO', character_maximum_length: 20, column_default: "'WEB_PUSH'::character varying" },
+            {
+              column_name: 'habilitado',
+              data_type: 'boolean',
+              is_nullable: 'NO',
+              character_maximum_length: null,
+              column_default: opcoes?.defaultHabilitado ?? 'false',
+            },
+            { column_name: 'criado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null, column_default: 'CURRENT_TIMESTAMP' },
+            { column_name: 'atualizado_em', data_type: 'timestamp with time zone', is_nullable: 'NO', character_maximum_length: null, column_default: 'CURRENT_TIMESTAMP' },
           ],
         };
       }
@@ -128,7 +135,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
             table_name: 'push_subscriptions',
             conname: 'chk_push_subscriptions_chaves_protegidas',
             contype: 'c',
-            def: "CHECK (((length(btrim(p256dh)) >= 16) AND (char_length(p256dh) <= 512) AND (p256dh = btrim(p256dh)) AND (p256dh !~ '[[:space:][:cntrl:]]'::text) AND (length(btrim(auth)) >= 8) AND (char_length(auth) <= 256) AND (auth = btrim(auth)) AND (auth !~ '[[:space:][:cntrl:]]'::text)))",
+            def: "CHECK (((length(btrim(p256dh)) >= 16) AND (char_length(p256dh) <= 512) AND (p256dh = btrim(p256dh)) AND (p256dh ~ '^[A-Za-z0-9+/_=-]+$'::text) AND (length(btrim(auth)) >= 8) AND (char_length(auth) <= 256) AND (auth = btrim(auth)) AND (auth ~ '^[A-Za-z0-9+/_=-]+$'::text) AND (p256dh <> auth)))",
           },
           {
             table_name: 'push_subscriptions',
@@ -249,7 +256,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
     return { knexMock, sqlExecutados };
   }
 
-  it('não utiliza IF EXISTS nem IF NOT EXISTS cegos no código-fonte da migration SCRUM-236', () => {
+  it('nÃƒÂ£o utiliza IF EXISTS nem IF NOT EXISTS cegos no cÃƒÂ³digo-fonte da migration SCRUM-236', () => {
     const caminhoMigration = path.resolve(
       __dirname,
       '../../database/migrations/20261124203000_scrum_236_push_subscriptions_e_preferencias.js'
@@ -260,7 +267,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
     expect(codigoFonte).not.toMatch(/\bIF\s+NOT\s+EXISTS\b/i);
   });
 
-  it('define contrato com ON DELETE CASCADE, proibição de transferência de endpoint e limite configurável de dispositivos (referência 5)', async () => {
+  it('define contrato com ON DELETE CASCADE, renovaÃƒÂ§ÃƒÂ£o idempotente no limite de 5 dispositivos, proteÃƒÂ§ÃƒÂ£o Base64 de chaves e padrÃƒÂ£o conservador DEFAULT false', async () => {
     const { knexMock, sqlExecutados } = criarKnexScrum236Mock();
     await migrationScrum236.up(knexMock);
 
@@ -269,23 +276,27 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
     expect(ddlPush?.sql).toContain('REFERENCES usuarios(id) ON DELETE CASCADE');
     expect(ddlPush?.sql).toContain("current_setting('fsph.push_max_dispositivos_por_usuario', true)");
     expect(ddlPush?.sql).toContain('limite_dispositivos integer := 5;');
-    expect(ddlPush?.sql).toContain('Transferencia de endpoint de push_subscriptions entre usuarios distintos nao e permitida.');
+    expect(ddlPush?.sql).toContain('AND endpoint <> NEW.endpoint');
+    expect(ddlPush?.sql).toContain(
+      'Transferencia de endpoint de push_subscriptions entre usuarios distintos nao e permitida.'
+    );
 
     const ddlPref = sqlExecutados.find((item) =>
       item.sql.includes('CREATE TABLE preferencias_notificacao')
     );
     expect(ddlPref).toBeDefined();
     expect(ddlPref?.sql).toContain('REFERENCES usuarios(id) ON DELETE CASCADE');
+    expect(ddlPref?.sql).toContain('habilitado BOOLEAN NOT NULL DEFAULT false');
   });
 
-  it('bloqueia up quando a tabela base usuarios não está presente no schema alvo', async () => {
+  it('bloqueia up quando a tabela base usuarios nÃƒÂ£o estÃƒÂ¡ presente no schema alvo', async () => {
     const semBase = criarKnexScrum236Mock({ tabelasBaseCount: 0 });
     await expect(migrationScrum236.up(semBase.knexMock)).rejects.toThrow(
       /tabela base usuarios ausente no schema alvo/
     );
   });
 
-  it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum236 (tipo, limite, constraint, índice e trigger)', async () => {
+  it('rejeita estruturas preexistentes incompatÃƒÂ­veis em validarCatalogoScrum236 (tipo, limite, default nÃƒÂ£o conservador, constraint, ÃƒÂ­ndice e trigger)', async () => {
     const tipoInvalido = criarKnexScrum236Mock({ tipoEndpoint: 'character varying' });
     await expect(migrationScrum236.validarCatalogoScrum236(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em push_subscriptions\.endpoint/
@@ -295,6 +306,11 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
     await expect(
       migrationScrum236.validarCatalogoScrum236(tamanhoInvalido.knexMock)
     ).rejects.toThrow(/Estrutura incompativel em push_subscriptions\.user_agent/);
+
+    const defaultNaoConservador = criarKnexScrum236Mock({ defaultHabilitado: 'true' });
+    await expect(
+      migrationScrum236.validarCatalogoScrum236(defaultNaoConservador.knexMock)
+    ).rejects.toThrow(/padrao conservador exige column_default=false/);
 
     const semConstraint = criarKnexScrum236Mock({
       omitirConstraint: 'push_subscriptions.uq_push_subscriptions_endpoint',
@@ -318,7 +334,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
     );
   });
 
-  it('interpola o schema atual (current_schema) nos comandos REVOKE e GRANT da role da aplicação', async () => {
+  it('interpola o schema atual (current_schema) nos comandos REVOKE e GRANT da role da aplicaÃƒÂ§ÃƒÂ£o', async () => {
     const appUserAnterior = process.env.POSTGRES_APP_USER;
     process.env.POSTGRES_APP_USER = 'frotas_app';
     try {
@@ -355,7 +371,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
     }
   });
 
-  it('bloqueia rollback (down) quando há registros em push_subscriptions ou preferencias_notificacao', async () => {
+  it('bloqueia rollback (down) quando hÃƒÂ¡ registros em push_subscriptions ou preferencias_notificacao', async () => {
     const comPush = criarKnexScrum236Mock({ totalPush: 1 });
     await expect(migrationScrum236.down(comPush.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem registros em push_subscriptions/
@@ -367,7 +383,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
     );
   });
 
-  it('executa DROP estrito (sem IF EXISTS) no down quando não há dados operacionais', async () => {
+  it('executa DROP estrito (sem IF EXISTS) no down quando nÃƒÂ£o hÃƒÂ¡ dados operacionais', async () => {
     const limpo = criarKnexScrum236Mock({ totalPush: 0, totalPreferencias: 0 });
     await migrationScrum236.down(limpo.knexMock);
 
@@ -383,7 +399,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
     expect(ddlDown?.sql).toContain('DROP FUNCTION validar_regras_push_subscriptions();');
   });
 
-  it('rejeita role da aplicação que possua DELETE na tabela preferencias_notificacao', () => {
+  it('rejeita role da aplicaÃƒÂ§ÃƒÂ£o que possua DELETE na tabela preferencias_notificacao', () => {
     const baseRole = {
       rolname: 'frotas_app',
       rolcanlogin: true,
@@ -399,6 +415,8 @@ describe('Contrato de banco, migration e privilégios da SCRUM-236 (assinaturas 
       podeAcessarMigrations: false,
       podeDeletarHistoricoSvo: false,
       podeDeletarEvidenciasOdometro: false,
+      podeDeletarNotificacoes: false,
+      podeDeletarNotificacaoOutbox: false,
       podeDeletarPreferenciasNotificacao: true,
       privilegiosExcessivosTabelas: [] as string[],
     };

@@ -30,9 +30,10 @@ const COLUNAS_PREFERENCIAS_ESPERADAS = {
 /**
  * Valida se as estruturas de push_subscriptions e preferencias_notificacao da SCRUM-236
  * no schema alvo correspondem exatamente ao contrato aprovado da Fase 2 (Secao 6.1 do Plano
- * e contrato de opt-in/preferencias), incluindo ON DELETE CASCADE, unicidade de endpoint,
- * trigger contra transferencia de endpoint entre usuarios, limite configuravel de dispositivos
- * ativos (referencia 5), suporte a revogacao/expurgo e indices.
+ * e contrato de opt-in/preferencias da SCRUM-237/238), incluindo ON DELETE CASCADE,
+ * unicidade e propriedade imutavel de endpoint por usuario, renovacao idempotente quando
+ * o limite de dispositivos ativos ja foi atingido (referencia 5), protecao Base64/Base64URL
+ * de p256dh/auth, padrao conservador (DEFAULT false) em preferencias_notificacao e indices.
  *
  * @param {import('knex').Knex} knex
  */
@@ -71,9 +72,9 @@ async function validarCatalogoScrum236(knex) {
     }
   }
 
-  // 2. Verifica colunas de preferencias_notificacao
+  // 2. Verifica colunas de preferencias_notificacao e o default conservador (false) em habilitado
   const { rows: colsPref } = await knex.raw(
-    `SELECT column_name, data_type, is_nullable, character_maximum_length
+    `SELECT column_name, data_type, is_nullable, character_maximum_length, column_default
      FROM information_schema.columns
      WHERE table_schema = ?
        AND table_name = 'preferencias_notificacao'`,
@@ -102,6 +103,16 @@ async function validarCatalogoScrum236(knex) {
     }
   }
 
+  const colHabilitado = mapaColsPref.get('habilitado');
+  if (
+    colHabilitado?.column_default !== undefined &&
+    colHabilitado?.column_default !== 'false'
+  ) {
+    throw new Error(
+      `Estrutura incompativel em preferencias_notificacao.habilitado: padrao conservador exige column_default=false, encontrado ${JSON.stringify(colHabilitado?.column_default)}`
+    );
+  }
+
   // 3. Verifica constraints obrigatorias (FKs com ON DELETE CASCADE, UNIQUEs e CHECKs)
   const { rows: constraintsRows } = await knex.raw(
     `SELECT t.relname AS table_name, c.conname, c.contype, pg_get_constraintdef(c.oid) AS def
@@ -121,7 +132,7 @@ async function validarCatalogoScrum236(knex) {
     ['push_subscriptions.fk_push_subscriptions_usuario', 'f', 'ON DELETE CASCADE'],
     ['push_subscriptions.uq_push_subscriptions_endpoint', 'u', 'endpoint'],
     ['push_subscriptions.chk_push_subscriptions_endpoint_https', 'c', 'https://%'],
-    ['push_subscriptions.chk_push_subscriptions_chaves_protegidas', 'c', 'p256dh'],
+    ['push_subscriptions.chk_push_subscriptions_chaves_protegidas', 'c', 'A-Za-z0-9+/_=-'],
     ['push_subscriptions.chk_push_subscriptions_user_agent', 'c', 'user_agent'],
     ['push_subscriptions.chk_push_subscriptions_status_ciclo', 'c', 'REVOGADA'],
     ['push_subscriptions.chk_push_subscriptions_falhas', 'c', 'falhas_consecutivas'],
@@ -168,7 +179,7 @@ async function validarCatalogoScrum236(knex) {
     }
   }
 
-  // 5. Verifica trigger de protecao contra transferencia de endpoint e limite de dispositivos
+  // 5. Verifica trigger de protecao contra transferencia de endpoint e limite de dispositivos com renovacao idempotente
   const { rows: triggerRows } = await knex.raw(
     `SELECT tg.tgname
      FROM pg_trigger tg
@@ -208,7 +219,7 @@ exports.up = async (knex) => {
     );
   }
 
-  // 2. Cria a tabela push_subscriptions, indices e trigger de seguranca/limite de dispositivos
+  // 2. Cria a tabela push_subscriptions, indices e trigger de propriedade/idempotencia/limite de dispositivos
   const { rows: tabPushRows } = await knex.raw(
     `SELECT 1
      FROM information_schema.tables
@@ -253,11 +264,12 @@ exports.up = async (knex) => {
             length(btrim(p256dh)) >= 16
             AND char_length(p256dh) <= 512
             AND p256dh = btrim(p256dh)
-            AND p256dh !~ '[[:space:][:cntrl:]]'
+            AND p256dh ~ '^[A-Za-z0-9+/_=-]+$'
             AND length(btrim(auth)) >= 8
             AND char_length(auth) <= 256
             AND auth = btrim(auth)
-            AND auth !~ '[[:space:][:cntrl:]]'
+            AND auth ~ '^[A-Za-z0-9+/_=-]+$'
+            AND p256dh <> auth
           ),
         CONSTRAINT chk_push_subscriptions_user_agent
           CHECK (
@@ -316,10 +328,31 @@ exports.up = async (knex) => {
         limite_texto text;
         limite_dispositivos integer := 5;
         ativos_atuais integer := 0;
+        dono_existente integer := NULL;
       BEGIN
-        IF TG_OP = 'UPDATE' AND NEW.usuario_id IS DISTINCT FROM OLD.usuario_id THEN
-          RAISE EXCEPTION 'Transferencia de endpoint de push_subscriptions entre usuarios distintos nao e permitida.'
-            USING ERRCODE = '23514';
+        IF TG_OP = 'UPDATE' THEN
+          IF NEW.usuario_id IS DISTINCT FROM OLD.usuario_id THEN
+            RAISE EXCEPTION 'Transferencia de endpoint de push_subscriptions entre usuarios distintos nao e permitida.'
+              USING ERRCODE = '23514';
+          END IF;
+
+          IF NEW.endpoint IS DISTINCT FROM OLD.endpoint THEN
+            RAISE EXCEPTION 'Alteracao de endpoint em assinatura existente nao e permitida; crie uma nova assinatura.'
+              USING ERRCODE = '23514';
+          END IF;
+        END IF;
+
+        IF TG_OP = 'INSERT' THEN
+          SELECT usuario_id
+            INTO dono_existente
+            FROM push_subscriptions
+           WHERE endpoint = NEW.endpoint
+           LIMIT 1;
+
+          IF dono_existente IS NOT NULL AND dono_existente <> NEW.usuario_id THEN
+            RAISE EXCEPTION 'Transferencia de endpoint de push_subscriptions entre usuarios distintos nao e permitida.'
+              USING ERRCODE = '23514';
+          END IF;
         END IF;
 
         IF NEW.ativa = true THEN
@@ -336,11 +369,15 @@ exports.up = async (knex) => {
           -- Serializa verificacao de limite por usuario para evitar corrida entre duas inscricoes simultaneas
           PERFORM 1 FROM usuarios WHERE id = NEW.usuario_id FOR UPDATE;
 
+          -- Desconsidera o proprio endpoint (NEW.endpoint) para que a renovacao idempotente
+          -- de um endpoint ja pertencente ao mesmo usuario (via UPDATE ou INSERT ... ON CONFLICT DO UPDATE)
+          -- nao consuma uma nova vaga nem seja bloqueada quando o usuario ja possui 5 dispositivos ativos.
           SELECT COUNT(*)::int
             INTO ativos_atuais
             FROM push_subscriptions
            WHERE usuario_id = NEW.usuario_id
              AND ativa = true
+             AND endpoint <> NEW.endpoint
              AND (TG_OP = 'INSERT' OR id <> NEW.id);
 
           IF ativos_atuais >= limite_dispositivos THEN
@@ -359,7 +396,7 @@ exports.up = async (knex) => {
     `);
   }
 
-  // 3. Cria a tabela preferencias_notificacao por usuario, categoria e canal
+  // 3. Cria a tabela preferencias_notificacao por usuario, categoria e canal (padrao conservador DEFAULT false para WEB_PUSH)
   const { rows: tabPrefRows } = await knex.raw(
     `SELECT 1
      FROM information_schema.tables
@@ -375,7 +412,7 @@ exports.up = async (knex) => {
         usuario_id INTEGER NOT NULL,
         categoria VARCHAR(60) NOT NULL,
         canal VARCHAR(20) NOT NULL DEFAULT 'WEB_PUSH',
-        habilitado BOOLEAN NOT NULL DEFAULT true,
+        habilitado BOOLEAN NOT NULL DEFAULT false,
         criado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         atualizado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_preferencias_notificacao_usuario
