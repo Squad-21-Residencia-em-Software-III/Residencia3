@@ -27,7 +27,7 @@ const push = (titulo: string, corpo: string, id: number): EventoNotificacao['pus
 const base = (id: number) => ({
   operacao: 'Administrativo' as const,
   urlDestino: '/solicitacoes',
-  referencia: { tipo: REFERENCIAS_NOTIFICACAO.SOLICITACAO, id },
+  referencia: { tipo: REFERENCIAS_NOTIFICACAO.SOLICITACAO_VIAGEM, id },
   // Cada situação acontece uma vez só por pedido; o tipo do evento já distingue
   ocorrencia: '1',
 });

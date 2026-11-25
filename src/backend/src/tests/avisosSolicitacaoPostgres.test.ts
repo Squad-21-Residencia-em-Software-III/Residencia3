@@ -54,10 +54,10 @@ async function aprovadaVencida(solicitante_id: number | null): Promise<number> {
 }
 
 const avisos = (id: number, tipo: string) =>
-  db('notificacoes').where({ referencia_tipo: 'SOLICITACAO', referencia_id: id, tipo }).orderBy('usuario_id');
+  db('notificacoes').where({ referencia_tipo: 'SOLICITACAO_VIAGEM', referencia_id: id, tipo }).orderBy('usuario_id');
 const avisados = async (id: number, tipo: string): Promise<number[]> => (await avisos(id, tipo)).map((a) => a.usuario_id);
 const comPush = (id: number, tipo: string): Promise<number[]> =>
-  db('notificacao_outbox').where({ referencia_tipo: 'SOLICITACAO', referencia_id: id, evento_tipo: tipo }).pluck('usuario_id');
+  db('notificacao_outbox').where({ referencia_tipo: 'SOLICITACAO_VIAGEM', referencia_id: id, evento_tipo: tipo }).pluck('usuario_id');
 const DOS_TIPOS = ['SOLICITACAO_CRIADA', 'SOLICITACAO_APROVADA', 'SOLICITACAO_RECUSADA', 'SOLICITACAO_EXPIRADA'];
 
 describe.skipIf(!habilitado)('Avisos das solicitações em PostgreSQL descartável', () => {
@@ -100,7 +100,7 @@ describe.skipIf(!habilitado)('Avisos das solicitações em PostgreSQL descartáv
       expect(await comPush(id, 'SOLICITACAO_CRIADA')).toEqual([]);
 
       const [aviso] = await avisos(id, 'SOLICITACAO_CRIADA');
-      expect(aviso).toMatchObject({ operacao: 'Administrativo', url_destino: '/solicitacoes', referencia_tipo: 'SOLICITACAO' });
+      expect(aviso).toMatchObject({ operacao: 'Administrativo', url_destino: '/solicitacoes', referencia_tipo: 'SOLICITACAO_VIAGEM' });
       expect(`${aviso.titulo} ${aviso.mensagem}`).not.toMatch(/reservad/i);
     });
 
@@ -175,9 +175,9 @@ describe.skipIf(!habilitado)('Avisos das solicitações em PostgreSQL descartáv
         chamar('patch', administrador, `/${id}/aprovar`),
       ]);
       expect(respostas.filter((r) => r.status === 200)).toHaveLength(1);
-      const total = await db('notificacoes').where({ referencia_tipo: 'SOLICITACAO', referencia_id: id, usuario_id: solicitante.id });
+      const total = await db('notificacoes').where({ referencia_tipo: 'SOLICITACAO_VIAGEM', referencia_id: id, usuario_id: solicitante.id });
       expect(total).toHaveLength(1);
-      expect(await db('notificacao_outbox').where({ referencia_tipo: 'SOLICITACAO', referencia_id: id })).toHaveLength(1);
+      expect(await db('notificacao_outbox').where({ referencia_tipo: 'SOLICITACAO_VIAGEM', referencia_id: id })).toHaveLength(1);
     });
   });
 

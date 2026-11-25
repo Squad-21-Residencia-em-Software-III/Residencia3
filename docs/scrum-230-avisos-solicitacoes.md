@@ -10,7 +10,7 @@ Publicados por `services/avisosSolicitacao.ts` na transação de cada operação
 | A4 `SOLICITACAO_EXPIRADA` | Rotina marca `EXPIRADA` | Autor do pedido | Sim |
 | A4 `SOLICITACAO_EXPIRADA` | Rotina marca `EXPIRADA` | Gestor de Frota | Não |
 
-- **Destino:** `/solicitacoes`. **Referência:** `SOLICITACAO` e o número do pedido. **Categoria:** `SOLICITACOES`.
+- **Destino:** `/solicitacoes`. **Referência:** `SOLICITACAO_VIAGEM` (SCRUM-226) e o número do pedido. **Categoria:** `SOLICITACOES`.
 - **Autor do pedido:** qualquer perfil com a tela de Solicitações (Solicitante, Gestor SVO, Gestor de Frota e Administrador). Quem mudou para um perfil sem a tela, ou foi inativado, não recebe.
 - **Privacidade:** o push tem só textos fixos, sem motivo, nome, local, finalidade ou número. O da recusa não revela a decisão.
 - **Sem repetição:** cada situação avisa uma vez por pedido. Quem é autor e Gestor de Frota recebe um aviso só.

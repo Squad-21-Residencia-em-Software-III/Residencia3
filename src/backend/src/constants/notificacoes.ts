@@ -3,7 +3,7 @@
  * confundido com o outro.
  */
 export const REFERENCIAS_NOTIFICACAO = {
-  SOLICITACAO: 'SOLICITACAO',
+  SOLICITACAO_VIAGEM: 'SOLICITACAO_VIAGEM',
 } as const;
 
 /** Mesmos códigos de `preferencias_notificacao.categoria`. */
