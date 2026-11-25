@@ -15,6 +15,7 @@ interface Designacao {
 }
 
 interface Estado {
+  solicitanteNotificacaoId?: number;
   solicitacao?: object;
   solicitacaoSvo?: object;
   viagem?: object;
@@ -54,6 +55,9 @@ vi.mock('../config/database', () => ({
   db: mockDb,
 }));
 vi.mock('../services/filaSvoService', () => ({ reavaliarFilaSvo: vi.fn() }));
+vi.mock('../services/publicacaoNotificacoes', () => ({
+  publicarNotificacao: vi.fn(async () => ({ criadas: 1 })),
+}));
 // O vínculo das fotos do odômetro tem testes próprios (evidenciaOdometroTransicao.test.ts)
 vi.mock('../services/evidenciaOdometroTransicao', () => ({
   registrarEvidenciaNaTransicao: vi.fn(async () => undefined),
@@ -87,6 +91,7 @@ vi.mock('../models/viagemModel', () => ({
 import { reavaliarFilaSvo } from '../services/filaSvoService';
 import { registrarEvidenciaNaTransicao, concluirOperacao } from '../services/evidenciaOdometroTransicao';
 import { viagemService } from '../services/viagemService';
+import { publicarNotificacao } from '../services/publicacaoNotificacoes';
 import { veiculoModel } from '../models/veiculoModel';
 import { motoristaModel } from '../models/motoristaModel';
 import { auditoriaModel } from '../models/auditoriaModel';
@@ -192,6 +197,24 @@ function responder(
         id: vinculo.id,
       })), chamadas);
 
+    case 'usuarios': {
+      const filtroIds = chamadas.find(
+        ([metodo, argumentos]) =>
+          metodo === 'whereIn' && argumentos[0] === 'id'
+      );
+
+      if (filtroIds) {
+        const ids = filtroIds[1][1] as number[];
+        return [
+          { id: 30, perfil: PERFIS.MOTORISTA_FROTA },
+          { id: 40, perfil: PERFIS.SOLICITANTE },
+          { id: 5, perfil: PERFIS.GESTOR_FROTA },
+        ].filter((usuario) => ids.includes(usuario.id));
+      }
+
+      return [];
+    }
+
     case 'veiculos':
       return estado.veiculo;
 
@@ -228,6 +251,13 @@ function responder(
     }
 
     case 'viagens_frota as vf':
+      if (temChamada(chamadas, 'join', 'motoristas as m')) {
+        return {
+          motoristaUsuarioId: 30,
+          solicitanteUsuarioId: estado.solicitanteNotificacaoId ?? 40,
+          unidadeId: 3,
+        };
+      }
       if (temChamada(chamadas, 'andWhere')) return estado.conflito.veiculo ?? estado.conflito.motorista;
       return temChamada(chamadas, 'where', 'vf.veiculo_id')
         ? estado.conflito.veiculo
@@ -282,6 +312,31 @@ function criarConsulta(tabela: string, chamadas: Chamada[] = []) {
     callback(criarConsulta(tabela, grupo));
     chamadas.push(['andWhere', [grupo]]);
     return consulta;
+  };
+
+  consulta.pluck = async (coluna: string) => {
+    if (tabela !== 'usuarios' || coluna !== 'id') return [];
+
+    const filtros = chamadas
+      .filter(([metodo]) => metodo === 'where')
+      .map(([, argumentos]) => argumentos);
+
+    const filtroPerfil = filtros.some((argumentos) =>
+      (argumentos[0] === 'perfil' &&
+        argumentos[1] === PERFIS.GESTOR_FROTA) ||
+      (typeof argumentos[0] === 'object' &&
+        argumentos[0] !== null &&
+        (argumentos[0] as Record<string, unknown>).perfil === PERFIS.GESTOR_FROTA)
+    );
+
+    const filtroAtivo = filtros.some((argumentos) =>
+      (argumentos[0] === 'ativo' && argumentos[1] === true) ||
+      (typeof argumentos[0] === 'object' &&
+        argumentos[0] !== null &&
+        (argumentos[0] as Record<string, unknown>).ativo === true)
+    );
+
+    return filtroPerfil && filtroAtivo ? [3, 5] : [];
   };
 
   consulta.first = async () =>
@@ -624,6 +679,19 @@ describe('viagemService.criar (administrativa)', () => {
       mockTrx
     );
 
+    expect(publicarNotificacao).toHaveBeenCalledTimes(1);
+    expect(publicarNotificacao).toHaveBeenCalledWith(
+      mockTrx,
+      expect.objectContaining({
+        tipo: 'VIAGEM_AGENDADA',
+        operacao: 'Administrativo',
+        referencia: { tipo: 'VIAGEM_FROTA', id: 99 },
+        autorId: 3,
+        destinatarios: [30],
+        urlDestino: '/viagens',
+        push: expect.objectContaining({ categoria: 'VIAGENS' }),
+      })
+    );
     expect(ref.estado.updates).toContainEqual({
       tabela: 'solicitacoes_viagem',
       valores: { status: 'AGENDADA' },
@@ -1001,6 +1069,56 @@ describe('viagemService.iniciarViagem', () => {
       'EM_VIAGEM',
       mockTrx
     );
+    expect(publicarNotificacao).toHaveBeenCalledTimes(2);
+    expect(publicarNotificacao).toHaveBeenCalledWith(
+      mockTrx,
+      expect.objectContaining({
+        tipo: 'VIAGEM_INICIADA',
+        destinatarios: [5],
+        urlDestino: '/viagens',
+      })
+    );
+    expect(publicarNotificacao).toHaveBeenCalledWith(
+      mockTrx,
+      expect.objectContaining({
+        tipo: 'VIAGEM_INICIADA',
+        destinatarios: [40],
+        urlDestino: '/solicitacoes',
+      })
+    );
+    for (const [, evento] of vi.mocked(publicarNotificacao).mock.calls) {
+      expect(evento.push).toBeUndefined();
+    }
+  });
+
+  it('A8 nao duplica aviso quando solicitante tambem e gestor', async () => {
+    ref.estado.solicitanteNotificacaoId = 5;
+
+    await viagemService.iniciarViagem(
+      'ADMINISTRATIVA',
+      5,
+      1000,
+      gestorFrota
+    );
+
+    const eventos = vi.mocked(publicarNotificacao).mock.calls
+      .map(([, evento]) => evento);
+
+    expect(eventos).toHaveLength(2);
+    expect(eventos[0]).toEqual(expect.objectContaining({
+      tipo: 'VIAGEM_INICIADA',
+      destinatarios: [5],
+      urlDestino: '/viagens',
+    }));
+    expect(eventos[1]).toEqual(expect.objectContaining({
+      tipo: 'VIAGEM_INICIADA',
+      destinatarios: [],
+      urlDestino: '/solicitacoes',
+    }));
+
+    const todasPessoas = eventos.flatMap((evento) => evento.destinatarios);
+    expect(todasPessoas).toEqual([5]);
+    expect(eventos.every((evento) => evento.push === undefined)).toBe(true);
   });
 
   it('deve iniciar ordem SVO em deslocamento', async () => {
@@ -1210,6 +1328,26 @@ describe('viagemService.finalizarViagem', () => {
       'DISPONIVEL',
       mockTrx
     );
+    expect(publicarNotificacao).toHaveBeenCalledTimes(2);
+    expect(publicarNotificacao).toHaveBeenCalledWith(
+      mockTrx,
+      expect.objectContaining({
+        tipo: 'VIAGEM_FINALIZADA',
+        destinatarios: [5],
+        urlDestino: '/viagens',
+      })
+    );
+    expect(publicarNotificacao).toHaveBeenCalledWith(
+      mockTrx,
+      expect.objectContaining({
+        tipo: 'VIAGEM_FINALIZADA',
+        destinatarios: [40],
+        urlDestino: '/solicitacoes',
+      })
+    );
+    for (const [, evento] of vi.mocked(publicarNotificacao).mock.calls) {
+      expect(evento.push).toBeUndefined();
+    }
   });
 
   it('deve manter o veículo reservado se houver outra viagem agendada', async () => {
@@ -1390,6 +1528,57 @@ describe('viagemService.cancelarViagem', () => {
       'DISPONIVEL',
       mockTrx
     );
+    expect(publicarNotificacao).toHaveBeenCalledTimes(2);
+    expect(publicarNotificacao).toHaveBeenCalledWith(
+      mockTrx,
+      expect.objectContaining({
+        tipo: 'VIAGEM_CANCELADA',
+        destinatarios: [30],
+        urlDestino: '/viagens',
+        push: expect.objectContaining({ categoria: 'VIAGENS' }),
+      })
+    );
+    expect(publicarNotificacao).toHaveBeenCalledWith(
+      mockTrx,
+      expect.objectContaining({
+        tipo: 'VIAGEM_CANCELADA',
+        destinatarios: [40],
+        urlDestino: '/solicitacoes',
+      })
+    );
+  });
+
+  it('A7 nao notifica gestor que tambem e solicitante', async () => {
+    ref.estado.solicitanteNotificacaoId = 3;
+    ref.estado.viagem = {
+      id: 5,
+      solicitacao_id: 1,
+      status: 'AGENDADA',
+      veiculo_id: 10,
+      motorista_id: 20,
+    };
+
+    await viagemService.cancelarViagem(
+      'ADMINISTRATIVA', 5, gestorFrota
+    );
+
+    const eventos = vi.mocked(publicarNotificacao).mock.calls
+      .map(([, evento]) => evento);
+
+    expect(eventos).toHaveLength(2);
+    expect(eventos[0]).toEqual(expect.objectContaining({
+      tipo: 'VIAGEM_CANCELADA',
+      destinatarios: [30],
+      urlDestino: '/viagens',
+    }));
+    expect(eventos[1]).toEqual(expect.objectContaining({
+      tipo: 'VIAGEM_CANCELADA',
+      destinatarios: [],
+      urlDestino: '/solicitacoes',
+    }));
+
+    expect(eventos.flatMap((evento) => evento.destinatarios))
+      .toEqual([30]);
   });
 
   it('deve cancelar também a solicitação quando pedido', async () => {
