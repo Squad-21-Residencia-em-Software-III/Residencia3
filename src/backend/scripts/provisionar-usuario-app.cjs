@@ -80,6 +80,12 @@ function validarEstadoMinimoPrivilegio(estado) {
     );
   }
 
+  if (estado.podeDeletarPreferenciasNotificacao) {
+    violacoes.push(
+      'role nao pode ter privilegio DELETE sobre a tabela preferencias_notificacao'
+    );
+  }
+
   if (
     Array.isArray(estado.privilegiosExcessivosTabelas) &&
     estado.privilegiosExcessivosTabelas.length > 0
@@ -185,8 +191,14 @@ async function inspecionarEstadoRole(conexao, appUser) {
          WHEN to_regclass('public.notificacao_outbox') IS NOT NULL THEN
            has_table_privilege(?, 'public.notificacao_outbox', 'DELETE')
          ELSE false
-       END AS pode_deletar_notificacao_outbox`,
+       END AS pode_deletar_notificacao_outbox,
+       CASE
+         WHEN to_regclass('public.preferencias_notificacao') IS NOT NULL THEN
+           has_table_privilege(?, 'public.preferencias_notificacao', 'DELETE')
+         ELSE false
+       END AS pode_deletar_preferencias_notificacao`,
     [
+      appUser,
       appUser,
       appUser,
       appUser,
@@ -221,6 +233,7 @@ async function inspecionarEstadoRole(conexao, appUser) {
     podeDeletarEvidenciasOdometro: Boolean(privRows[0]?.pode_deletar_evidencias_odometro),
     podeDeletarNotificacoes: Boolean(privRows[0]?.pode_deletar_notificacoes),
     podeDeletarNotificacaoOutbox: Boolean(privRows[0]?.pode_deletar_notificacao_outbox),
+    podeDeletarPreferenciasNotificacao: Boolean(privRows[0]?.pode_deletar_preferencias_notificacao),
     privilegiosExcessivosTabelas: excessivosRows.map(
       (r) => `${r.table_name}:${r.privilege_type}`
     ),
@@ -350,6 +363,9 @@ async function provisionarUsuarioAplicacao() {
           END IF;
           IF to_regclass('public.notificacao_outbox') IS NOT NULL THEN
             EXECUTE format('REVOKE DELETE ON TABLE public.notificacao_outbox FROM %I', '${appUser}');
+          END IF;
+          IF to_regclass('public.preferencias_notificacao') IS NOT NULL THEN
+            EXECUTE format('REVOKE DELETE ON TABLE public.preferencias_notificacao FROM %I', '${appUser}');
           END IF;
         END $$;`
       );
