@@ -358,6 +358,8 @@ beforeEach(() => {
   ref.estado = {
     solicitacao: {
       id: 1,
+      solicitante_id: 40,
+      unidade_id: 3,
       status: 'APROVADA',
       destino: 'Itabaiana',
       data_saida_desejada: '2026-11-10T08:00:00',
