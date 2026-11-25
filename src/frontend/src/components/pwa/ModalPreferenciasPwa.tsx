@@ -1,12 +1,14 @@
 import { Bell, Download, MapPin, Share, Smartphone, Wifi, WifiOff } from 'lucide-react';
 import { Badge, Button, Modal } from '../ui';
 import type { BadgeTone } from '../ui';
+import { recursoAtivo } from '../../config/recursosBackend';
 import { useInstallPrompt } from '../../hooks/useInstallPrompt';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import {
   usePermissoesDispositivo,
   type EstadoPermissao,
 } from '../../hooks/usePermissoesDispositivo';
+import { AlertasPush } from './AlertasPush';
 
 type ModalPreferenciasPwaProps = {
   isOpen: boolean;
@@ -38,6 +40,7 @@ export function ModalPreferenciasPwa({ isOpen, onClose, folhaInferior = false }:
     solicitarGeolocalizacao,
   } = usePermissoesDispositivo();
 
+  const webPush = recursoAtivo('webPush');
   const botaoToque = folhaInferior ? 'min-h-11' : undefined;
   const badgeNotif = ROTULO_PERMISSAO[notificacoes];
   const badgeGeo = ROTULO_PERMISSAO[geolocalizacao];
@@ -109,17 +112,29 @@ export function ModalPreferenciasPwa({ isOpen, onClose, folhaInferior = false }:
           )}
         </div>
 
+        {webPush && (
+          <AlertasPush
+            online={online}
+            iosSemInstalar={mostrarGuiaIos}
+            permissao={notificacoes}
+            solicitarPermissao={solicitarNotificacoes}
+            toqueGrande={folhaInferior}
+          />
+        )}
+
         {/* Permissões do Dispositivo (preparação para futuras funcionalidades) */}
         <div className="space-y-3 rounded-lg border border-border p-3.5">
           <div>
             <p className="font-display font-semibold text-text">Permissões do dispositivo</p>
             <p className="mt-0.5 text-xs text-text-muted">
-              Deixe o aparelho preparado para os recursos de alertas e localização em campo.
+              {webPush
+                ? 'Deixe o aparelho preparado para os recursos de localização em campo.'
+                : 'Deixe o aparelho preparado para os recursos de alertas e localização em campo.'}
             </p>
           </div>
 
-          {/* Notificações */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-3">
+          {/* Notificações: com o Web Push ligado, ficam em `AlertasPush` */}
+          {!webPush && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-3">
             <div className="flex items-center gap-2.5">
               <Bell size={16} className="shrink-0 text-text-secondary" aria-hidden="true" />
               <div>
@@ -141,7 +156,7 @@ export function ModalPreferenciasPwa({ isOpen, onClose, folhaInferior = false }:
                 </Button>
               )}
             </div>
-          </div>
+          </div>}
 
           {/* Geolocalização */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-3">
@@ -168,7 +183,7 @@ export function ModalPreferenciasPwa({ isOpen, onClose, folhaInferior = false }:
             </div>
           </div>
 
-          {(notificacoes === 'denied' || geolocalizacao === 'denied') && (
+          {((!webPush && notificacoes === 'denied') || geolocalizacao === 'denied') && (
             <p className="text-xs text-text-muted">
               Permissões bloqueadas podem ser reativadas nas configurações do site no seu navegador.
             </p>

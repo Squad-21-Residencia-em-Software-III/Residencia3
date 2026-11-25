@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { encerrarPushAoSair, useVinculoPush } from '../hooks/useVinculoPush'
 import { authApi } from '../services/api/authApi'
 import { EVENTO_SESSAO_EXPIRADA, tokenStorage } from '../services/api/http'
 import type { Perfil, Usuario } from '../types/usuario'
+import { invalidarOperacoesPush } from '../utils/operacoesPush'
 
 const CANAL_AUTENTICACAO = 'fsph_auth'
 
@@ -54,7 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  useVinculoPush(usuario?.id)
+
   const limparEstadoLocal = useCallback(() => {
+    invalidarOperacoesPush()
     tokenStorage.clear()
     setUsuario(null)
   }, [])
@@ -87,11 +92,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, senha: string) => {
     const resultado = await authApi.login(email, senha)
+    invalidarOperacoesPush()
     tokenStorage.set(resultado.token)
     setUsuario(resultado.usuario)
   }, [])
 
   const logout = useCallback(() => {
+    // Antes de limpar: o cancelamento no servidor usa o token desta sessão
+    encerrarPushAoSair(tokenStorage.get())
     limparEstadoLocal()
     void authApi.logout().catch(() => {})
     canalRef.current?.postMessage({ tipo: 'LOGOUT' })
