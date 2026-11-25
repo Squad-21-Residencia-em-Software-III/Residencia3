@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LISTA_REFERENCIAS_NOTIFICACAO } from '../constants/referenciasNotificacao';
 
 const MAX_INTEGER = 2_147_483_647;
 const CURSOR = /^(20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.\d{6}Z\|([1-9]\d{0,9})$/;
@@ -33,11 +34,9 @@ export const notificacaoParamSchema = z.object({ id: z.coerce.number({ error: 'I
 export const lerTodasSchema = z.object({ ate_id: idSchema.optional() });
 
 export const lerReferenciaSchema = z.object({
-  referencia_tipo: z
-    .string({ error: 'O tipo da referência é obrigatório' })
-    .trim()
-    .min(1, 'O tipo da referência é obrigatório')
-    .max(40, 'O tipo da referência deve ter no máximo 40 caracteres'),
+  referencia_tipo: z.enum(LISTA_REFERENCIAS_NOTIFICACAO, {
+    error: `O tipo da referência deve ser um destes: ${LISTA_REFERENCIAS_NOTIFICACAO.join(', ')}`,
+  }),
   referencia_id: idSchema,
 });
 

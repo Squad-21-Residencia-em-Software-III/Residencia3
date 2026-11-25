@@ -10,6 +10,7 @@ vi.mock('../models/notificacaoModel', () => ({
 
 import { app } from '../app';
 import { LISTA_PERFIS, PERFIS, type Perfil } from '../constants/perfis';
+import { ACESSO_POR_PERFIL } from '../constants/referenciasNotificacao';
 import { notificacaoModel } from '../models/notificacaoModel';
 import { unidadeModel } from '../models/unidadeModel';
 import { authService } from '../services/authService';
@@ -29,7 +30,7 @@ const ROTAS: [Metodo, string, object?][] = [
   ['get', '/contador'],
   ['patch', '/1/lida'],
   ['patch', '/ler-todas'],
-  ['patch', '/referencia/lida', { referencia_tipo: 'VIAGEM', referencia_id: 1 }],
+  ['patch', '/referencia/lida', { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 1 }],
 ];
 
 beforeEach(() => {
@@ -37,7 +38,7 @@ beforeEach(() => {
   entrarComo(PERFIS.SOLICITANTE);
   vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValue(true);
   modelo.listar.mockResolvedValue({ itens: [] });
-  modelo.contarNaoLidas.mockResolvedValue({ total: 3, ultimoId: 42 });
+  modelo.contarNaoLidas.mockResolvedValue({ total: 3, soma: '120' });
   modelo.marcarLida.mockImplementation(async (_escopo, id) => ({ id, lida_em: new Date('2026-11-24T17:05:12Z') }));
   modelo.marcarNaoLidas.mockResolvedValue(2);
 });
@@ -70,7 +71,7 @@ describe('Acesso', () => {
     vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValue(associado);
     for (const [metodo, caminho, corpo] of ROTAS) await chamar(metodo, caminho, corpo);
 
-    const escopo = { usuarioId: 7, operacoes };
+    const escopo = { usuarioId: 7, operacoes, acesso: ACESSO_POR_PERFIL[perfil] };
     for (const funcao of [modelo.listar, modelo.contarNaoLidas, modelo.marcarLida, modelo.marcarNaoLidas]) {
       expect(funcao).toHaveBeenCalled();
       for (const [recebido] of funcao.mock.calls) expect(recebido).toEqual(escopo);
@@ -99,7 +100,7 @@ describe('Acesso', () => {
 describe('GET /notificacoes', () => {
   it('usa 20 por página e responde o contrato do front', async () => {
     const res = await chamar('get', '');
-    expect(res.body).toEqual({ itens: [], proximo_cursor: null, nao_lidas: 3 });
+    expect(res.body).toEqual({ itens: [], proximo_cursor: null, nao_lidas: 3, versao: '3-120' });
     expect(modelo.listar).toHaveBeenCalledWith(expect.anything(), { limite: 20 });
   });
 
@@ -128,10 +129,35 @@ describe('GET /notificacoes', () => {
   });
 });
 
+describe('Acesso ao registro', () => {
+  const aviso = {
+    id: 9, tipo: 'COLETA_DESIGNADA', titulo: 'Coleta nº 55', mensagem: 'Rua Reservada, 10', severidade: 'danger' as const,
+    operacao: 'SVO' as const, referencia_tipo: 'ORDEM_SVO', referencia_id: 55, url_destino: '/minhas-coletas',
+    lida_em: null, criado_em: new Date('2026-11-24T17:00:00Z'),
+  };
+
+  it('com acesso, o aviso vem inteiro', async () => {
+    modelo.listar.mockResolvedValueOnce({ itens: [{ ...aviso, tem_acesso: true }] });
+    const { body } = await chamar('get', '');
+    expect(body.itens).toEqual([{ ...aviso, criado_em: '2026-11-24T17:00:00.000Z', acesso_revogado: false }]);
+  });
+
+  it('sem acesso, só sobra que houve um aviso', async () => {
+    modelo.listar.mockResolvedValueOnce({ itens: [{ ...aviso, tem_acesso: false }] });
+    const res = await chamar('get', '');
+    expect(res.body.itens).toEqual([{
+      id: 9, tipo: 'COLETA_DESIGNADA', titulo: 'Registro indisponível', mensagem: 'Você não tem mais acesso a este registro.',
+      severidade: 'info', operacao: 'SVO', referencia_tipo: null, referencia_id: null, url_destino: '/',
+      lida_em: null, criado_em: '2026-11-24T17:00:00.000Z', acesso_revogado: true,
+    }]);
+    expect(res.text).not.toMatch(/55|Reservada|minhas-coletas/);
+  });
+});
+
 describe('GET /notificacoes/contador', () => {
   it('responde o total e uma versão, sem carregar a lista', async () => {
     const res = await chamar('get', '/contador');
-    expect(res.body).toEqual({ nao_lidas: 3, versao: '42-3' });
+    expect(res.body).toEqual({ nao_lidas: 3, versao: '3-120' });
     expect(modelo.listar).not.toHaveBeenCalled();
   });
 });
@@ -139,7 +165,7 @@ describe('GET /notificacoes/contador', () => {
 describe('PATCH de leitura', () => {
   it('marca uma', async () => {
     const res = await chamar('patch', '/42/lida');
-    expect(res.body).toEqual({ id: 42, lida_em: '2026-11-24T17:05:12.000Z', nao_lidas: 3 });
+    expect(res.body).toEqual({ id: 42, lida_em: '2026-11-24T17:05:12.000Z', nao_lidas: 3, versao: '3-120' });
   });
 
   it('inexistente ou de outra pessoa: 404', async () => {
@@ -155,7 +181,7 @@ describe('PATCH de leitura', () => {
   });
 
   it('marca todas, sem corpo, ou só até a que o usuário viu', async () => {
-    expect((await chamar('patch', '/ler-todas')).body).toEqual({ atualizadas: 2, nao_lidas: 3 });
+    expect((await chamar('patch', '/ler-todas')).body).toEqual({ atualizadas: 2, nao_lidas: 3, versao: '3-120' });
     expect(modelo.marcarNaoLidas).toHaveBeenLastCalledWith(expect.anything(), { ateId: undefined });
     await chamar('patch', '/ler-todas', { ate_id: 42 });
     expect(modelo.marcarNaoLidas).toHaveBeenLastCalledWith(expect.anything(), { ateId: 42 });
@@ -163,16 +189,17 @@ describe('PATCH de leitura', () => {
   });
 
   it('marca as da referência', async () => {
-    const res = await chamar('patch', '/referencia/lida', { referencia_tipo: ' VIAGEM ', referencia_id: 108 });
-    expect(res.body).toEqual({ atualizadas: 2, nao_lidas: 3 });
-    expect(modelo.marcarNaoLidas).toHaveBeenCalledWith(expect.anything(), { referencia: { tipo: 'VIAGEM', id: 108 } });
+    const res = await chamar('patch', '/referencia/lida', { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 108 });
+    expect(res.body).toEqual({ atualizadas: 2, nao_lidas: 3, versao: '3-120' });
+    expect(modelo.marcarNaoLidas).toHaveBeenCalledWith(expect.anything(), { referencia: { tipo: 'VIAGEM_FROTA', id: 108 } });
     expect(modelo.marcarLida).not.toHaveBeenCalled();
   });
 
   it.each([
-    {}, { referencia_tipo: 'VIAGEM' }, { referencia_id: 1 }, { referencia_tipo: ' ', referencia_id: 1 },
-    { referencia_tipo: 'X'.repeat(41), referencia_id: 1 }, { referencia_tipo: 'VIAGEM', referencia_id: '1' },
-    { referencia_tipo: 'VIAGEM', referencia_id: 0 }, { referencia_tipo: 'VIAGEM', referencia_id: 2147483648 },
+    {}, { referencia_tipo: 'VIAGEM_FROTA' }, { referencia_id: 1 }, { referencia_tipo: ' ', referencia_id: 1 },
+    { referencia_tipo: 'VIAGEM', referencia_id: 1 }, { referencia_tipo: 'viagem_frota', referencia_id: 1 },
+    { referencia_tipo: 'VIAGEM_FROTA', referencia_id: '1' }, { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 0 },
+    { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 2147483648 },
   ])('referência inválida %j é recusada', async (corpo) => {
     expect((await chamar('patch', '/referencia/lida', corpo)).status).toBe(400);
     expect(modelo.marcarNaoLidas).not.toHaveBeenCalled();

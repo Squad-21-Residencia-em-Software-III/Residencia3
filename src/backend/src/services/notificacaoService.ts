@@ -1,12 +1,12 @@
 import { PERFIS, type Perfil } from '../constants/perfis';
+import {
+  ACESSO_POR_PERFIL,
+  type OperacaoNotificacao,
+  type ReferenciaNotificacao,
+} from '../constants/referenciasNotificacao';
 import { UNIDADES } from '../constants/unidades';
 import { AppError } from '../errors/AppError';
-import {
-  notificacaoModel,
-  type EscopoNotificacoes,
-  type Notificacao,
-  type OperacaoNotificacao,
-} from '../models/notificacaoModel';
+import { notificacaoModel, type EscopoNotificacoes, type Notificacao } from '../models/notificacaoModel';
 import { unidadeModel } from '../models/unidadeModel';
 import type { Usuario } from '../models/usuarioModel';
 import type { ListarNotificacoes } from '../validators/notificacaoSchemas';
@@ -25,56 +25,87 @@ const OPERACOES_POR_PERFIL: Record<Perfil, OperacaoNotificacao[]> = {
 
 type Autor = Pick<Usuario, 'id' | 'perfil'>;
 
+interface Contador {
+  nao_lidas: number;
+  /** Muda quando chega ou se lê um aviso, mesmo que o total continue igual. */
+  versao: string;
+}
+
+export type ItemNotificacao = Notificacao & { acesso_revogado: boolean };
+
 async function escopoDo({ id, perfil }: Autor): Promise<EscopoNotificacoes> {
   const associado = perfil !== PERFIS.GESTOR_SVO || (await unidadeModel.estaAssociadoPorNome(UNIDADES.SVO, id));
   return {
     usuarioId: id,
     operacoes: OPERACOES_POR_PERFIL[perfil].filter((operacao) => operacao !== 'SVO' || associado),
+    acesso: ACESSO_POR_PERFIL[perfil],
   };
 }
 
-const naoLidasDe = async (escopo: EscopoNotificacoes) => (await notificacaoModel.contarNaoLidas(escopo)).total;
+async function contadorDe(escopo: EscopoNotificacoes): Promise<Contador> {
+  const { total, soma } = await notificacaoModel.contarNaoLidas(escopo);
+  return { nao_lidas: total, versao: `${total}-${soma}` };
+}
+
+/**
+ * Quem perdeu o acesso ao registro sabe que houve um aviso (tipo, data e leitura), mas não o conteúdo. O título
+ * também sai, porque pode citar o registro.
+ */
+function semConteudo(item: Notificacao): ItemNotificacao {
+  return {
+    ...item,
+    titulo: 'Registro indisponível',
+    mensagem: 'Você não tem mais acesso a este registro.',
+    severidade: 'info',
+    referencia_tipo: null,
+    referencia_id: null,
+    url_destino: '/',
+    acesso_revogado: true,
+  };
+}
 
 export const notificacaoService = {
   async listar(
     autor: Autor,
     { limit, cursor, apenas_nao_lidas }: ListarNotificacoes
-  ): Promise<{ itens: Notificacao[]; proximo_cursor: string | null; nao_lidas: number }> {
+  ): Promise<{ itens: ItemNotificacao[]; proximo_cursor: string | null } & Contador> {
     const escopo = await escopoDo(autor);
-    const [{ itens, proximo }, nao_lidas] = await Promise.all([
+    const [{ itens, proximo }, contador] = await Promise.all([
       notificacaoModel.listar(escopo, { limite: limit, cursor, apenasNaoLidas: apenas_nao_lidas }),
-      naoLidasDe(escopo),
+      contadorDe(escopo),
     ]);
-    return { itens, proximo_cursor: proximo ? `${proximo.em}|${proximo.id}` : null, nao_lidas };
+    return {
+      itens: itens.map(({ tem_acesso, ...item }) => (tem_acesso ? { ...item, acesso_revogado: false } : semConteudo(item))),
+      proximo_cursor: proximo ? `${proximo.em}|${proximo.id}` : null,
+      ...contador,
+    };
   },
 
-  /** `versao` muda quando chega ou se lê um aviso, mesmo que o total continue igual. */
-  async contador(autor: Autor): Promise<{ nao_lidas: number; versao: string }> {
-    const { total, ultimoId } = await notificacaoModel.contarNaoLidas(await escopoDo(autor));
-    return { nao_lidas: total, versao: `${ultimoId}-${total}` };
+  async contador(autor: Autor): Promise<Contador> {
+    return contadorDe(await escopoDo(autor));
   },
 
-  async marcarLida(autor: Autor, id: number): Promise<{ id: number; lida_em: Date; nao_lidas: number }> {
+  async marcarLida(autor: Autor, id: number): Promise<{ id: number; lida_em: Date } & Contador> {
     const escopo = await escopoDo(autor);
     const marcada = await notificacaoModel.marcarLida(escopo, id);
     // A mesma resposta para inexistente e de outra pessoa
     if (!marcada) throw new AppError('Notificação não encontrada', 404);
-    return { ...marcada, nao_lidas: await naoLidasDe(escopo) };
+    return { ...marcada, ...(await contadorDe(escopo)) };
   },
 
-  async marcarTodasLidas(autor: Autor, ateId?: number): Promise<{ atualizadas: number; nao_lidas: number }> {
+  async marcarTodasLidas(autor: Autor, ateId?: number): Promise<{ atualizadas: number } & Contador> {
     const escopo = await escopoDo(autor);
     const atualizadas = await notificacaoModel.marcarNaoLidas(escopo, { ateId });
-    return { atualizadas, nao_lidas: await naoLidasDe(escopo) };
+    return { atualizadas, ...(await contadorDe(escopo)) };
   },
 
   async marcarReferenciaLida(
     autor: Autor,
-    tipo: string,
+    tipo: ReferenciaNotificacao,
     id: number
-  ): Promise<{ atualizadas: number; nao_lidas: number }> {
+  ): Promise<{ atualizadas: number } & Contador> {
     const escopo = await escopoDo(autor);
     const atualizadas = await notificacaoModel.marcarNaoLidas(escopo, { referencia: { tipo, id } });
-    return { atualizadas, nao_lidas: await naoLidasDe(escopo) };
+    return { atualizadas, ...(await contadorDe(escopo)) };
   },
 };

@@ -64,37 +64,38 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
   afterAll(() => db.destroy());
 
   it('responde só os campos do contrato, da mais recente para a mais antiga', async () => {
-    const u = await conta('SOLICITANTE');
+    // O Gestor de Frota acessa qualquer viagem
+    const u = await conta('GESTOR_FROTA');
     const antiga = await avisar(u, { criado_em: '2026-01-01T10:00:00Z' });
     const nova = await avisar(u, {
-      criado_em: '2026-01-02T10:00:00Z', severidade: 'warning', referencia_tipo: 'VIAGEM', referencia_id: 108,
+      criado_em: '2026-01-02T10:00:00Z', severidade: 'warning', referencia_tipo: 'VIAGEM_FROTA', referencia_id: 108,
     });
     const { body } = await get(u);
     expect(body).toMatchObject({ proximo_cursor: null, nao_lidas: 2 });
     expect(body.itens.map((i: { id: number }) => i.id)).toEqual([nova, antiga]);
     expect(body.itens[0]).toEqual({
       id: nova, tipo: 'VIAGEM_AGENDADA', titulo: 'Viagem agendada', mensagem: 'Saída às 14:00.', severidade: 'warning',
-      operacao: 'Administrativo', referencia_tipo: 'VIAGEM', referencia_id: 108, url_destino: '/viagens',
-      lida_em: null, criado_em: '2026-01-02T10:00:00.000Z',
+      operacao: 'Administrativo', referencia_tipo: 'VIAGEM_FROTA', referencia_id: 108, url_destino: '/viagens',
+      lida_em: null, criado_em: '2026-01-02T10:00:00.000Z', acesso_revogado: false,
     });
   });
 
   it('ninguém lista, conta nem marca avisos de outra pessoa', async () => {
     const a = await conta('SOLICITANTE');
     const b = await conta('ADMINISTRADOR');
-    const id = await avisar(a, { referencia_tipo: 'VIAGEM', referencia_id: 5 });
+    const id = await avisar(a, { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 5 });
 
-    expect((await get(b)).body).toEqual({ itens: [], proximo_cursor: null, nao_lidas: 0 });
+    expect((await get(b)).body).toEqual({ itens: [], proximo_cursor: null, nao_lidas: 0, versao: '0-0' });
     expect((await patch(b, `/${id}/lida`)).status).toBe(404);
-    expect((await patch(b, '/ler-todas')).body).toEqual({ atualizadas: 0, nao_lidas: 0 });
-    expect((await patch(b, '/referencia/lida', { referencia_tipo: 'VIAGEM', referencia_id: 5 })).body.atualizadas).toBe(0);
+    expect((await patch(b, '/ler-todas')).body).toEqual({ atualizadas: 0, nao_lidas: 0, versao: '0-0' });
+    expect((await patch(b, '/referencia/lida', { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 5 })).body.atualizadas).toBe(0);
     expect(await naoLidas(a)).toBe(1);
     expect((await db('notificacoes').where({ id }).first()).lida_em).toBeNull();
   });
 
   it('a operação que o perfil não alcança some de todas as rotas', async () => {
     const semVinculo = await conta('GESTOR_SVO', false);
-    const svo = await avisar(semVinculo, { operacao: 'SVO', referencia_tipo: 'ORDEM', referencia_id: 1 });
+    const svo = await avisar(semVinculo, { operacao: 'SVO', referencia_tipo: 'ORDEM_SVO', referencia_id: 1 });
     const propria = await avisar(semVinculo);
 
     expect((await get(semVinculo)).body.itens.map((i: { id: number }) => i.id)).toEqual([propria]);
@@ -161,7 +162,7 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
       expect(body).toEqual(primeira);
     }
     expect(primeira.nao_lidas).toBe(0);
-    expect((await patch(u, '/ler-todas')).body).toEqual({ atualizadas: 0, nao_lidas: 0 });
+    expect((await patch(u, '/ler-todas')).body).toEqual({ atualizadas: 0, nao_lidas: 0, versao: '0-0' });
   });
 
   it('marca aviso com data de criação à frente do relógio', async () => {
@@ -173,14 +174,24 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
 
   it('a referência marca só os avisos daquele registro', async () => {
     const u = await conta('SOLICITANTE');
-    await avisar(u, { referencia_tipo: 'VIAGEM', referencia_id: 108 });
-    await avisar(u, { referencia_tipo: 'VIAGEM', referencia_id: 108 });
-    await avisar(u, { referencia_tipo: 'VIAGEM', referencia_id: 109 });
-    await avisar(u, { referencia_tipo: 'SOLICITACAO', referencia_id: 108 });
+    await avisar(u, { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 108 });
+    await avisar(u, { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 108 });
+    await avisar(u, { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 109 });
+    await avisar(u, { referencia_tipo: 'SOLICITACAO_VIAGEM', referencia_id: 108 });
     await avisar(u);
-    const corpo = { referencia_tipo: 'VIAGEM', referencia_id: 108 };
-    expect((await patch(u, '/referencia/lida', corpo)).body).toEqual({ atualizadas: 2, nao_lidas: 3 });
-    expect((await patch(u, '/referencia/lida', corpo)).body).toEqual({ atualizadas: 0, nao_lidas: 3 });
+    const corpo = { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 108 };
+    expect((await patch(u, '/referencia/lida', corpo)).body).toMatchObject({ atualizadas: 2, nao_lidas: 3 });
+    expect((await patch(u, '/referencia/lida', corpo)).body).toMatchObject({ atualizadas: 0, nao_lidas: 3 });
+  });
+
+  it('a referência não marca a outra operação, mesmo com o mesmo id', async () => {
+    const u = await conta('ADMINISTRADOR');
+    const viagem = await avisar(u, { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 77 });
+    const ordem = await avisar(u, { operacao: 'SVO', referencia_tipo: 'ORDEM_SVO', referencia_id: 77 });
+    // Publicado errado, com a operação trocada: também não é atingido
+    const trocado = await avisar(u, { operacao: 'SVO', referencia_tipo: 'VIAGEM_FROTA', referencia_id: 77 });
+    expect((await patch(u, '/referencia/lida', { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 77 })).body.atualizadas).toBe(1);
+    expect(await db('notificacoes').whereIn('id', [viagem, ordem, trocado]).whereNotNull('lida_em').pluck('id')).toEqual([viagem]);
   });
 
   it('com ate_id, o que chegou depois continua não lido', async () => {
@@ -188,7 +199,7 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
     await avisar(u);
     const vista = await avisar(u);
     const nova = await avisar(u);
-    expect((await patch(u, '/ler-todas', { ate_id: vista })).body).toEqual({ atualizadas: 2, nao_lidas: 1 });
+    expect((await patch(u, '/ler-todas', { ate_id: vista })).body).toMatchObject({ atualizadas: 2, nao_lidas: 1 });
     expect((await get(u, '?apenas_nao_lidas=true')).body.itens[0].id).toBe(nova);
   });
 
@@ -206,11 +217,11 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
 
   it('marcações e avisos simultâneos: cada aviso é contado uma vez e nada se perde', async () => {
     const u = await conta('SOLICITANTE');
-    for (let i = 0; i < 40; i += 1) await avisar(u, { referencia_tipo: 'VIAGEM', referencia_id: 1 + (i % 2) });
+    for (let i = 0; i < 40; i += 1) await avisar(u, { referencia_tipo: 'VIAGEM_FROTA', referencia_id: 1 + (i % 2) });
 
     const respostas = await Promise.all([
       ...[1, 2, 3].map(() => patch(u, '/ler-todas')),
-      ...[1, 2, 1, 2].map((id) => patch(u, '/referencia/lida', { referencia_tipo: 'VIAGEM', referencia_id: id })),
+      ...[1, 2, 1, 2].map((id) => patch(u, '/referencia/lida', { referencia_tipo: 'VIAGEM_FROTA', referencia_id: id })),
     ]);
     expect(respostas.map((r) => r.status)).toEqual(respostas.map(() => 200));
     expect(respostas.reduce((soma, r) => soma + r.body.atualizadas, 0)).toBe(40);
@@ -221,7 +232,7 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
     ]);
     const pendentes = await db('notificacoes').where({ usuario_id: u.id }).whereNull('lida_em');
     expect(await naoLidas(u)).toBe(pendentes.length);
-    expect((await patch(u, '/ler-todas')).body).toEqual({ atualizadas: pendentes.length, nao_lidas: 0 });
+    expect((await patch(u, '/ler-todas')).body).toEqual({ atualizadas: pendentes.length, nao_lidas: 0, versao: '0-0' });
     expect(novas).toHaveLength(10);
   });
 
@@ -235,7 +246,7 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
       // Quem espera pelo menor ainda não pode ter travado o maior
       await trx('notificacoes').where({ id: maior }).forUpdate().noWait().first('id');
       await trx.commit();
-      expect((await marcando).body).toEqual({ atualizadas: 2, nao_lidas: 0 });
+      expect((await marcando).body).toMatchObject({ atualizadas: 2, nao_lidas: 0 });
     });
   });
 });
