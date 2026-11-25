@@ -33,6 +33,18 @@ vi.mock('../models/auditoriaModel', () => ({
   auditoriaModel: { registrar: vi.fn() }, MODULOS_AUDITORIA: { SOLICITACOES_SVO: 'SOLICITACOES_SVO' },
 }));
 
+vi.mock('../services/notificacaoSvoService', () => ({
+  notificacaoSvoService: {
+    publicarAlertasRegistroSolicitacao: vi.fn(async () => ({
+      s1PublicadosInApp: 0,
+      s1EnfileiradosOutbox: 0,
+      s2PublicadosInApp: 0,
+      s2EnfileiradosOutbox: 0,
+      s2BloqueadoMotivo: 'FONTE_DOMINIO_SVO_MATERIAL_SENSIVEL_NAO_CONFIRMADA',
+    })),
+  },
+}));
+
 const autor = { id: 4, perfil: PERFIS.GESTOR_SVO };
 const solicitacao = {
   id: 7, registrante_id: 2, dados_solicitante: 'Hospital', local_ocorrencia: 'Aracaju',

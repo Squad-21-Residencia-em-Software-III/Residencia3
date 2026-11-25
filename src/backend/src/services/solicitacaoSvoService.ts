@@ -12,6 +12,7 @@ import {
   type CriarSolicitacaoSvoInput,
   type ListarSolicitacoesSvoInput,
 } from '../validators/solicitacaoSvoSchemas';
+import { notificacaoSvoService } from './notificacaoSvoService';
 import type { ListaPaginada } from './usuarioService';
 
 type Autor = { id: number; perfil: Perfil };
@@ -75,6 +76,8 @@ export const solicitacaoSvoService = {
         },
         trx,
       );
+
+      await notificacaoSvoService.publicarAlertasRegistroSolicitacao(solicitacao, trx);
 
       return solicitacao;
     });
