@@ -2,9 +2,12 @@ import type { AssinaturaPush } from '../services/api/notificacoesPushApi';
 
 const ESPERA_SERVICE_WORKER_MS = 8000;
 
-/** No iPhone/iPad fora do aplicativo instalado, `PushManager` e `Notification` nem existem. */
+/**
+ * Pode ligar os alertas. No iPhone/iPad fora do aplicativo instalado, `PushManager` e `Notification` nem
+ * existem. Sem Web Locks (navegadores antigos), duas abas não teriam proteção uma da outra.
+ */
 export function suportaPush(): boolean {
-  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && 'locks' in navigator;
 }
 
 /** `ready` nunca responde quando não há service worker (ex.: desenvolvimento), por isso o limite. */
@@ -24,7 +27,8 @@ async function registroPronto(): Promise<ServiceWorkerRegistration> {
 }
 
 export async function assinaturaDoAparelho(): Promise<PushSubscription | null> {
-  if (!suportaPush()) return null;
+  // Sem exigir Web Locks: serve também para encerrar o que já exista
+  if (!('serviceWorker' in navigator)) return null;
   const registro = await navigator.serviceWorker.getRegistration();
   return (await registro?.pushManager?.getSubscription()) ?? null;
 }

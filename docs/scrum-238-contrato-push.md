@@ -49,13 +49,15 @@ Nos erros, o front mostra o `erro` da resposta, no formato que a API já usa.
 | Já existe assinatura no navegador ao ligar | Se já vale para a conta, mantém. Senão, encerra a antiga e cria outra, sem reaproveitar o `endpoint` |
 | Desligar | Chama `unsubscribe` e encerra no navegador; basta um dos dois funcionar. `unsubscribe()` do navegador com resposta `false` só conta se a assinatura não existir mais |
 | **Sair da conta** | Tenta o `unsubscribe` com o token da sessão que está acabando e encerra no navegador. Não espera a resposta para sair |
+| Navegador falha ao encerrar na saída | Fica uma marca no aparelho (sem dado da conta). Tenta de novo, mesmo sem login, ao abrir, ao reconectar, ao reaparecer e com espera de 5 s a 5 min. Nada é ligado nem mostrado como ligado antes disso |
 | Fechar o aplicativo, bloquear a tela ou deixar em segundo plano | Mantém a assinatura |
 | Sessão expirada | Mantém a assinatura |
 | Entrar de novo na mesma conta | Um toque em **Ligar alertas** religa, sem novo pedido de permissão. As categorias continuam como estavam |
 | Sessão acaba durante a ativação (inclusive por outra aba) | Desfaz no navegador e tenta o `unsubscribe`, mesmo com a tela já fechada |
 | Duas abas ao mesmo tempo | Uma operação por vez no aparelho (Web Locks). Cada uma só encerra o `endpoint` que ela mesma leu |
+| Navegador sem Web Locks (antigo) | Não oferece ligar, porque duas abas não teriam proteção. A limpeza continua funcionando |
 | Servidor sem resposta | Desiste em 10 segundos, para não prender as outras abas |
-| Outra conta entra no mesmo aparelho | Consulta `subscribe/status` e, se não for dela, encerra a assinatura no navegador |
+| Outra conta entra no mesmo aparelho | Consulta `subscribe/status` e, se não for dela, encerra a assinatura no navegador. Se a consulta ou o encerramento falhar, tenta de novo do mesmo jeito, até resolver |
 
 Quando o `unsubscribe` falha (ex.: sem conexão ao sair, ou token já vencido), a linha fica no banco até o próximo envio, que responde `404` ou `410`. **O back precisa descartar a assinatura nesses casos** (já previsto na SCRUM-237) e não contar as descartadas no limite de aparelhos.
 
@@ -65,7 +67,7 @@ Entre a sessão expirar e outra pessoa entrar, o aparelho ainda recebe os alerta
 
 Vale para as SCRUM-236, 237, 238 e 239. Do back, o front precisa que:
 
-- o `unsubscribe` enviado no logout seja aceito com o access token ainda válido, mesmo que chegue depois do `POST /auth/logout` (hoje o logout só remove o cookie);
+- o `unsubscribe` seja uma rota autenticada comum. O enviado no logout usa o access token da sessão, que hoje continua válido até vencer, porque o logout só remove o cookie. **Nenhuma exceção é pedida:** nada de rota pública, token vencido ou identificação pelo `endpoint`. Se o token já tiver vencido, ou se um dia o logout passar a revogá-lo, a resposta é `401`, o front ignora e a linha é descartada no próximo envio (`404`/`410`);
 - o logout **não** apague as preferências de categoria nem as assinaturas de outros aparelhos.
 
 ## Para ligar o interruptor

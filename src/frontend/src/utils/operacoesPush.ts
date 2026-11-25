@@ -20,8 +20,8 @@ export function invalidarOperacoesPush(): void {
 let filaLocal: Promise<unknown> = Promise.resolve();
 
 /**
- * Uma operação por vez no aparelho: a assinatura do navegador é a mesma em todas as abas. Sem Web Locks,
- * a fila vale só para esta aba.
+ * Uma operação por vez no aparelho: a assinatura do navegador é a mesma em todas as abas. Sem Web Locks, os
+ * alertas não podem ser ligados (`suportaPush`), e a fila desta aba serve só para encerrar.
  */
 export async function emSequencia<T>(acao: () => Promise<T>): Promise<T> {
   if (navigator.locks) return navigator.locks.request(TRAVA, acao);

@@ -6,6 +6,7 @@ import { RECURSOS_BACKEND } from '../../config/recursosBackend';
 import { useVinculoPush } from '../../hooks/useVinculoPush';
 import { ApiError } from '../../services/api/http';
 import { notificacoesPushApi } from '../../services/api/notificacoesPushApi';
+import { marcarEncerramento } from '../../utils/encerramentoPush';
 import { invalidarOperacoesPush } from '../../utils/operacoesPush';
 import { ModalPreferenciasPwa } from './ModalPreferenciasPwa';
 
@@ -57,7 +58,19 @@ function definir(alvo: object, nome: string, valor: unknown) {
   Object.defineProperty(alvo, nome, { configurable: true, value: valor });
 }
 
+const travas: string[] = [];
+
 function prepararNavegador() {
+  travas.length = 0;
+  let fila: Promise<unknown> = Promise.resolve();
+  definir(navigator, 'locks', {
+    request: (nome: string, acao: () => Promise<unknown>) => {
+      travas.push(nome);
+      const resultado = fila.then(acao);
+      fila = resultado.catch(() => undefined);
+      return resultado;
+    },
+  });
   navegador.permissao = 'default';
   navegador.resposta = 'granted';
   navegador.assinatura = null;
@@ -116,7 +129,8 @@ beforeEach(() => {
 afterEach(() => {
   Object.assign(RECURSOS_BACKEND, recursosOriginais);
   semPush();
-  delete (navigator as unknown as Record<string, unknown>).onLine;
+  for (const nome of ['onLine', 'locks']) delete (navigator as unknown as Record<string, unknown>)[nome];
+  localStorage.clear();
 });
 
 describe('Interruptor', () => {
@@ -295,26 +309,9 @@ describe('Navegador que não confirma o encerramento', () => {
 });
 
 /** Cada `render` é uma aba: o estado de cada uma é próprio, e o navegador e a trava são os mesmos. */
-describe.each([['com Web Locks', true], ['sem Web Locks (mesma aba)', false]])('Operações ao mesmo tempo, %s', (_, comTrava) => {
-  const travas: string[] = [];
-  beforeEach(() => {
-    travas.length = 0;
-    if (!comTrava) return;
-    let fila: Promise<unknown> = Promise.resolve();
-    definir(navigator, 'locks', {
-      request: (nome: string, acao: () => Promise<unknown>) => {
-        travas.push(nome);
-        const resultado = fila.then(acao);
-        fila = resultado.catch(() => undefined);
-        return resultado;
-      },
-    });
-  });
-  afterEach(() => {
-    // Todas as operações usam a mesma trava, que o navegador compartilha entre as abas
-    expect([...new Set(travas)]).toEqual(comTrava ? ['fsph-push'] : []);
-    delete (navigator as unknown as Record<string, unknown>).locks;
-  });
+describe('Operações ao mesmo tempo', () => {
+  // Todas usam a mesma trava, que o navegador compartilha entre as abas
+  afterEach(() => expect([...new Set(travas)]).toEqual(['fsph-push']));
 
   const abrirAba = () => {
     const { baseElement, unmount } = render(tela(), { container: document.body.appendChild(document.createElement('div')) });
@@ -394,6 +391,87 @@ describe.each([['com Web Locks', true], ['sem Web Locks (mesma aba)', false]])('
     await act(async () => registrar());
     expect(await reaberta.findByText('Ligados')).toBeInTheDocument();
     expect(navegador.assinar).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Navegador sem Web Locks', () => {
+  beforeEach(() => { delete (navigator as unknown as Record<string, unknown>).locks; });
+
+  it('não oferece ligar e explica', async () => {
+    navegador.permissao = 'granted';
+    abrir();
+    expect(await screen.findByText(/Este navegador não recebe alertas/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ligar alertas' })).not.toBeInTheDocument();
+    expect(await screen.findByLabelText(/Viagens/)).toBeEnabled();
+  });
+
+  it('ainda encerra o que ficou marcado', async () => {
+    const antiga = jaAssinado();
+    marcarEncerramento();
+    renderHook(() => useVinculoPush(1));
+    await waitFor(() => expect(antiga.unsubscribe).toHaveBeenCalledOnce());
+    expect(navegador.assinatura).toBeNull();
+  });
+});
+
+describe('Encerramento que ficou marcado ao sair', () => {
+  it('é cumprido antes de mostrar a situação, mesmo que o servidor ainda diga que vale', async () => {
+    const antiga = jaAssinado();
+    marcarEncerramento();
+    abrir();
+    expect(await ligar()).toBeInTheDocument();
+    expect(antiga.unsubscribe).toHaveBeenCalledOnce();
+    expect(api.situacao).not.toHaveBeenCalled();
+    expect(localStorage).toHaveLength(0);
+  });
+
+  it.each([
+    ['responde false', async () => false],
+    ['dá erro', async () => { throw new Error('texto do navegador'); }],
+  ])('se o navegador %s, avisa e deixa tentar de novo', async (_, falha) => {
+    const antiga = jaAssinado();
+    antiga.unsubscribe.mockImplementationOnce(falha);
+    marcarEncerramento();
+    abrir();
+    expect(await screen.findByText(/Não foi possível encerrar os alertas anteriores/)).toBeInTheDocument();
+    expect(localStorage).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await ligar()).toBeInTheDocument();
+    expect(localStorage).toHaveLength(0);
+  });
+
+  it('não atinge a assinatura ligada depois', async () => {
+    jaAssinado();
+    marcarEncerramento();
+    abrir();
+    await userEvent.click(await ligar());
+    await desligar();
+    renderHook(() => useVinculoPush(1));
+    await act(async () => undefined);
+    expect(navegador.assinatura?.endpoint).toBe('https://push.exemplo/novo');
+    expect(navegador.assinatura?.unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('marcado com a tela aberta, também vem antes de ligar', async () => {
+    navegador.permissao = 'granted';
+    abrir();
+    const botao = await ligar();
+    const deOutraConta = jaAssinado();
+    deOutraConta.unsubscribe.mockResolvedValueOnce(false);
+    marcarEncerramento();
+    await userEvent.click(botao);
+    expect(await screen.findByText(/Não foi possível encerrar os alertas anteriores/)).toBeInTheDocument();
+    expect(api.assinar).not.toHaveBeenCalled();
+  });
+
+  it('funciona com o armazenamento do navegador bloqueado', async () => {
+    const bloqueio = () => { throw new Error('bloqueado'); };
+    const espioes = (['getItem', 'setItem', 'removeItem'] as const).map((m) => vi.spyOn(Storage.prototype, m).mockImplementation(bloqueio));
+    const antiga = jaAssinado();
+    marcarEncerramento();
+    renderHook(() => useVinculoPush(1));
+    await waitFor(() => expect(antiga.unsubscribe).toHaveBeenCalledOnce());
+    espioes.forEach((e) => e.mockRestore());
   });
 });
 

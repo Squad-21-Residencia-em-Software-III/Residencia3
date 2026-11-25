@@ -89,6 +89,15 @@ beforeEach(() => {
     requestPermission: pedirPermissao,
   });
   definir(window, 'PushManager', class {});
+  let fila: Promise<unknown> = Promise.resolve();
+  definir(navigator, 'locks', {
+    request: (_: string, acao: () => Promise<unknown>) => {
+      const resultado = fila.then(acao);
+      fila = resultado.catch(() => undefined);
+      return resultado;
+    },
+  });
+  localStorage.clear();
   definir(navigator, 'serviceWorker', { ready: Promise.resolve(registro), getRegistration: async () => registro });
   vi.stubGlobal('BroadcastChannel', class {
     addEventListener = (_: string, ouvir: typeof receberDeOutraAba) => { receberDeOutraAba = ouvir; };
@@ -110,7 +119,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   Object.assign(RECURSOS_BACKEND, recursosOriginais);
   for (const nome of ['Notification', 'PushManager']) delete (window as unknown as Record<string, unknown>)[nome];
-  delete (navigator as unknown as Record<string, unknown>).serviceWorker;
+  for (const nome of ['serviceWorker', 'locks']) delete (navigator as unknown as Record<string, unknown>)[nome];
+  localStorage.clear();
 });
 
 /** Aparelho já com alertas ligados para a conta 1. */
@@ -238,11 +248,75 @@ describe('Sair da conta', () => {
   });
 });
 
+describe('Navegador que falha ao sair', () => {
+  /** A assinatura resiste até `liberar`. */
+  async function abrirComFalha(falha: () => Promise<boolean>) {
+    let resistir = true;
+    permissao = 'granted';
+    assinatura = novaAssinatura('https://push.exemplo/atual');
+    const encerrar = assinatura.unsubscribe;
+    assinatura.unsubscribe = () => (resistir ? falha() : encerrar());
+    const tela = abrir();
+    await screen.findByRole('button', { name: 'Desligar neste aparelho' });
+    return { tela, liberar: () => { resistir = false; } };
+  }
+  const falhas: [string, () => Promise<boolean>][] = [
+    ['responde false', async () => false],
+    ['dá erro', async () => { throw new Error('falhou'); }],
+  ];
+
+  it.each(falhas)('%s: sai na hora e encerra quando a conexão volta, sem ninguém logado', async (_, falha) => {
+    const { liberar } = await abrirComFalha(falha);
+    await clicar('Sair');
+    expect(screen.getByRole('button', { name: 'Entrar' })).toBeInTheDocument();
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    expect(assinatura).not.toBeNull();
+
+    liberar();
+    act(() => void window.dispatchEvent(new Event('online')));
+    await waitFor(() => expect(assinatura).toBeNull());
+    expect(localStorage).toHaveLength(0);
+  });
+
+  it('fechar o aplicativo não esquece: encerra ao abrir de novo', async () => {
+    const { tela, liberar } = await abrirComFalha(async () => false);
+    await clicar('Sair');
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    tela.unmount();
+    expect(assinatura).not.toBeNull();
+
+    liberar();
+    vi.mocked(authApi.refresh).mockRejectedValueOnce(new Error('sem sessão'));
+    abrir();
+    await waitFor(() => expect(assinatura).toBeNull());
+  });
+
+  it('a próxima conta não herda os alertas, mesmo que o servidor diga que valem', async () => {
+    vi.mocked(authApi.login).mockResolvedValueOnce(sessao(2));
+    const { liberar } = await abrirComFalha(async () => false);
+    await clicar('Sair');
+    liberar();
+    await clicar('Entrar');
+    await screen.findByText('Conta 2');
+    expect(await screen.findByRole('button', { name: 'Ligar alertas' })).toBeInTheDocument();
+    expect(assinatura).toBeNull();
+  });
+
+  it('sem encerrar, o servidor ainda é avisado com o token da sessão', async () => {
+    await abrirComFalha(async () => false);
+    await clicar('Sair');
+    await waitFor(() => expect(api.cancelar).toHaveBeenCalledWith(
+      'https://push.exemplo/atual', expect.objectContaining({ token: 'token-1' }),
+    ));
+  });
+});
+
 describe('Sem sair da conta', () => {
   it('sessão expirada mantém os alertas', async () => {
     await abrirLigado();
     await fimDaSessao['sessão expirada']();
     await screen.findByRole('button', { name: 'Entrar' });
+    expect(localStorage).toHaveLength(0);
     expect(encerrada).not.toHaveBeenCalled();
     expect(api.cancelar).not.toHaveBeenCalled();
   });

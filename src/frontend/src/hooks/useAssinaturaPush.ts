@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, mensagemDeErro, tokenStorage } from '../services/api/http';
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
+import { cumprirEncerramento } from '../utils/encerramentoPush';
 import { comLimite, emSequencia, sinalDaSessao } from '../utils/operacoesPush';
 import {
   assinaturaDoAparelho,
@@ -32,6 +33,13 @@ async function desfazerAtivacao(endpoint: string, token: string | null, erro: un
   await encerrarAssinatura(endpoint).catch(() => false);
 }
 
+/** O que ficou marcado ao sair de uma conta vem antes de conferir ou ligar. */
+async function cumprirEncerramentoAnterior() {
+  if (!(await cumprirEncerramento())) {
+    throw new Error('Não foi possível encerrar os alertas anteriores deste aparelho. Tente de novo.');
+  }
+}
+
 /** Alertas neste aparelho: confere, liga e desliga a assinatura do usuário logado. */
 export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermissao }: OpcoesAssinaturaPush) {
   const [situacao, setSituacao] = useState<SituacaoPush>('verificando');
@@ -59,6 +67,7 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
     try {
       await emSequencia(async () => {
         if (verificacao !== ultimaVerificacao.current) return;
+        await cumprirEncerramentoAnterior();
         const assinatura = await assinaturaDoAparelho();
         if (!assinatura) return concluir('inativa');
         const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
@@ -142,6 +151,7 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
 
       return emSequencia<SituacaoPush>(async () => {
         conferirSessao();
+        await cumprirEncerramentoAnterior();
         // Outra aba pode ter acabado de ligar: não troca a assinatura que já vale
         const existente = await assinaturaDoAparelho();
         if (existente) {
