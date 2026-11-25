@@ -6,23 +6,26 @@ import type { Permissao } from './permissoes';
 const ORIGEM_LOCAL_FICTICIA = 'https://frota.fsph.local';
 
 /**
- * Permissões exigidas por prefixo de rota interna da aplicação.
- * Mantém alinhamento estrito com `src/frontend/src/routes/index.tsx` e `utils/permissoes.ts`.
+ * Permissões exigidas por rota interna exata realmente existente em `src/frontend/src/routes/index.tsx`.
+ * Subpaths inexistentes (ex.: `/viagens/123`) são rejeitados para evitar 404.
  */
-const PERMISSAO_POR_PREFIXO: Array<{ prefixo: string; permissao: Permissao }> = [
-  { prefixo: '/minhas-coletas', permissao: 'coletasProprias.acessar' },
-  { prefixo: '/solicitacoes', permissao: 'solicitacoes.acessar' },
-  { prefixo: '/viagens', permissao: 'viagens.acessar' },
-  { prefixo: '/agenda', permissao: 'agenda.acessar' },
-  { prefixo: '/veiculos', permissao: 'veiculos.acessar' },
-  { prefixo: '/abastecimento', permissao: 'abastecimentos.acessar' },
-  { prefixo: '/manutencoes', permissao: 'manutencoes.acessar' },
-  { prefixo: '/multas', permissao: 'multas.acessar' },
-  { prefixo: '/equipe', permissao: 'equipe.acessar' },
-  { prefixo: '/auditoria', permissao: 'auditoria.acessar' },
-];
+const PERMISSAO_POR_ROTA: Record<string, Permissao> = {
+  '/minhas-coletas': 'coletasProprias.acessar',
+  '/solicitacoes': 'solicitacoes.acessar',
+  '/triagem-svo': 'triagemSvo.acessar',
+  '/viagens': 'viagens.acessar',
+  '/agenda': 'agenda.acessar',
+  '/veiculos': 'veiculos.acessar',
+  '/abastecimento': 'abastecimentos.acessar',
+  '/manutencoes': 'manutencoes.acessar',
+  '/multas': 'multas.acessar',
+  '/equipe': 'equipe.acessar',
+  '/motoristas': 'equipe.acessar',
+  '/usuarios': 'usuarios.gerenciar',
+  '/auditoria': 'auditoria.acessar',
+};
 
-const ROTAS_LIVRES_AUTENTICADO = new Set(['/', '/inicio', '/sobre']);
+const ROTAS_LIVRES_AUTENTICADO = new Set(['/', '/inicio', '/dashboard', '/sobre']);
 
 /**
  * Valida se a URL de destino de uma notificação é uma rota interna segura:
@@ -61,32 +64,25 @@ export function rotaFallbackDoPerfil(perfil: Perfil | null | undefined): string 
   }
 }
 
-/** Verifica se o perfil tem permissão para acessar o `pathname` informado. */
+/**
+ * Verifica se o `pathname` corresponde exatamente a uma rota existente em `routes/index.tsx`
+ * e se o perfil informado tem permissão para acessá-la.
+ */
 export function perfilPodeAcessarRota(perfil: Perfil | null | undefined, pathname: string): boolean {
   const caminhoNormalizado = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
 
   if (perfil === PERFIS.INTEGRANTE_SVO) {
-    return (
-      caminhoNormalizado === '/minhas-coletas' ||
-      caminhoNormalizado.startsWith('/minhas-coletas/') ||
-      caminhoNormalizado === '/sobre'
-    );
+    return caminhoNormalizado === '/minhas-coletas' || caminhoNormalizado === '/sobre';
   }
 
   if (ROTAS_LIVRES_AUTENTICADO.has(caminhoNormalizado)) {
     return true;
   }
 
-  for (const regra of PERMISSAO_POR_PREFIXO) {
-    if (
-      caminhoNormalizado === regra.prefixo ||
-      caminhoNormalizado.startsWith(`${regra.prefixo}/`)
-    ) {
-      return perfilPode(perfil, regra.permissao);
-    }
-  }
+  const permissao = PERMISSAO_POR_ROTA[caminhoNormalizado];
+  if (!permissao) return false;
 
-  return false;
+  return perfilPode(perfil, permissao);
 }
 
 export interface DestinoNotificacaoResolvido {
@@ -95,8 +91,8 @@ export interface DestinoNotificacaoResolvido {
 }
 
 /**
- * Resolve o destino final de uma notificação garantindo segurança de URL interna
- * e aderência ao RBAC do perfil atual (ex.: INTEGRANTE_SVO nunca cai em `/viagens`).
+ * Resolve o destino final de uma notificação garantindo segurança de URL interna,
+ * existência real da rota e aderência ao RBAC do perfil atual.
  */
 export function resolverDestinoNotificacao(
   urlDestino: string | null | undefined,

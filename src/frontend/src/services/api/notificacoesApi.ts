@@ -23,7 +23,7 @@ export const notificacoesApi = {
     });
   },
 
-  /** Endpoint leve para polling econômico do badge de não lidas. */
+  /** Endpoint leve para polling econômico do badge de não lidas e versão de sincronização. */
   contador() {
     return request<RespostaContadorNotificacoes>('GET', '/notificacoes/contador');
   },
@@ -33,9 +33,14 @@ export const notificacoesApi = {
     return request<RespostaMarcarLida>('PATCH', `/notificacoes/${id}/lida`);
   },
 
-  /** Marca todas as notificações não lidas do usuário como lidas. */
-  marcarTodasLidas() {
-    return request<RespostaMarcarLida>('PATCH', '/notificacoes/ler-todas');
+  /**
+   * Marca como lidas as notificações não lidas do usuário até `ateId` (maior id já exibido),
+   * evitando marcar involuntariamente avisos que chegaram após a última consulta.
+   */
+  marcarTodasLidas(ateId?: number) {
+    return request<RespostaMarcarLida>('PATCH', '/notificacoes/ler-todas', {
+      body: ateId != null ? { ate_id: ateId } : undefined,
+    });
   },
 
   /** Marca como lidas todas as notificações ligadas à mesma entidade de negócio. */

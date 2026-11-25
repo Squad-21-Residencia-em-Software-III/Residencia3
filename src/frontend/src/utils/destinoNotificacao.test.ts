@@ -31,9 +31,29 @@ describe('destinoNotificacao', () => {
     });
   });
 
-  describe('RBAC e fallback por perfil', () => {
-    it('mantém INTEGRANTE_SVO restrito a /minhas-coletas e nunca libera /viagens', () => {
+  describe('RBAC, rotas exatas e fallback por perfil', () => {
+    it('rejeita subpaths inexistentes em routes/index.tsx e aplica fallback do perfil', () => {
+      expect(perfilPodeAcessarRota(PERFIS.ADMINISTRADOR, '/viagens/123')).toBe(false);
+      expect(perfilPodeAcessarRota(PERFIS.GESTOR_FROTA, '/solicitacoes/999')).toBe(false);
+      expect(perfilPodeAcessarRota(PERFIS.INTEGRANTE_SVO, '/minhas-coletas/42')).toBe(false);
+
+      expect(resolverDestinoNotificacao('/viagens/123', PERFIS.MOTORISTA_FROTA)).toEqual({
+        url: '/viagens',
+        usouFallback: true,
+      });
+      expect(resolverDestinoNotificacao('/solicitacoes/999', PERFIS.SOLICITANTE)).toEqual({
+        url: '/solicitacoes',
+        usouFallback: true,
+      });
+      expect(resolverDestinoNotificacao('/minhas-coletas/42', PERFIS.INTEGRANTE_SVO)).toEqual({
+        url: '/minhas-coletas',
+        usouFallback: true,
+      });
+    });
+
+    it('mantém INTEGRANTE_SVO restrito a /minhas-coletas e /sobre', () => {
       expect(perfilPodeAcessarRota(PERFIS.INTEGRANTE_SVO, '/minhas-coletas')).toBe(true);
+      expect(perfilPodeAcessarRota(PERFIS.INTEGRANTE_SVO, '/sobre')).toBe(true);
       expect(perfilPodeAcessarRota(PERFIS.INTEGRANTE_SVO, '/viagens')).toBe(false);
       expect(perfilPodeAcessarRota(PERFIS.INTEGRANTE_SVO, '/inicio')).toBe(false);
 
@@ -43,6 +63,33 @@ describe('destinoNotificacao', () => {
       });
       expect(resolverDestinoNotificacao('/minhas-coletas?id=9', PERFIS.INTEGRANTE_SVO)).toEqual({
         url: '/minhas-coletas?id=9',
+        usouFallback: false,
+      });
+    });
+
+    it('aceita rotas de redirecionamento reais respeitando RBAC', () => {
+      expect(resolverDestinoNotificacao('/triagem-svo', PERFIS.GESTOR_SVO)).toEqual({
+        url: '/triagem-svo',
+        usouFallback: false,
+      });
+      expect(resolverDestinoNotificacao('/triagem-svo', PERFIS.GESTOR_FROTA)).toEqual({
+        url: '/inicio',
+        usouFallback: true,
+      });
+      expect(resolverDestinoNotificacao('/dashboard', PERFIS.GESTOR_FROTA)).toEqual({
+        url: '/dashboard',
+        usouFallback: false,
+      });
+      expect(resolverDestinoNotificacao('/motoristas', PERFIS.GESTOR_FROTA)).toEqual({
+        url: '/motoristas',
+        usouFallback: false,
+      });
+      expect(resolverDestinoNotificacao('/usuarios', PERFIS.GESTOR_FROTA)).toEqual({
+        url: '/inicio',
+        usouFallback: true,
+      });
+      expect(resolverDestinoNotificacao('/usuarios', PERFIS.ADMINISTRADOR)).toEqual({
+        url: '/usuarios',
         usouFallback: false,
       });
     });
@@ -59,29 +106,6 @@ describe('destinoNotificacao', () => {
       expect(resolverDestinoNotificacao('/auditoria', PERFIS.SOLICITANTE)).toEqual({
         url: '/solicitacoes',
         usouFallback: true,
-      });
-    });
-
-    it('respeita permissões de motoristas, gestores e administrador', () => {
-      expect(resolverDestinoNotificacao('/viagens', PERFIS.MOTORISTA_FROTA)).toEqual({
-        url: '/viagens',
-        usouFallback: false,
-      });
-      expect(resolverDestinoNotificacao('/auditoria', PERFIS.MOTORISTA_SVO)).toEqual({
-        url: '/viagens',
-        usouFallback: true,
-      });
-      expect(resolverDestinoNotificacao('/solicitacoes?aba=svo', PERFIS.GESTOR_SVO)).toEqual({
-        url: '/solicitacoes?aba=svo',
-        usouFallback: false,
-      });
-      expect(resolverDestinoNotificacao('/auditoria', PERFIS.GESTOR_SVO)).toEqual({
-        url: '/inicio',
-        usouFallback: true,
-      });
-      expect(resolverDestinoNotificacao('/auditoria', PERFIS.ADMINISTRADOR)).toEqual({
-        url: '/auditoria',
-        usouFallback: false,
       });
     });
 

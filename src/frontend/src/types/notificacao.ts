@@ -2,18 +2,19 @@ export type SeveridadeNotificacao = 'info' | 'success' | 'warning' | 'danger';
 
 export type OperacaoNotificacao = 'Administrativo' | 'SVO';
 
+/**
+ * Tipos de referência oficiais da API de notificações (SCRUM-226 / `constants/referenciasNotificacao.ts`).
+ */
 export type ReferenciaTipoNotificacao =
-  | 'SOLICITACAO'
-  | 'VIAGEM'
-  | 'MANUTENCAO'
-  | 'MULTA'
-  | 'VEICULO'
-  | 'SISTEMA'
+  | 'SOLICITACAO_VIAGEM'
+  | 'VIAGEM_FROTA'
+  | 'SOLICITACAO_SVO'
+  | 'ORDEM_SVO'
   | (string & {});
 
 /**
  * Registro de notificação In-App alinhado à tabela `notificacoes` (SCRUM-225)
- * e ao contrato REST esperado da API (SCRUM-226).
+ * e ao contrato REST da API (SCRUM-226).
  */
 export interface NotificacaoInApp {
   id: number;
@@ -24,19 +25,23 @@ export interface NotificacaoInApp {
   operacao: OperacaoNotificacao;
   referencia_tipo: ReferenciaTipoNotificacao | null;
   referencia_id: number | null;
-  url_destino: string;
+  url_destino: string | null;
   lida_em: string | null;
   criado_em: string;
+  /** Quando `true`, o usuário perdeu acesso ao registro e o item deve ser exibido sem link. */
+  acesso_revogado?: boolean;
 }
 
 export interface RespostaListaNotificacoes {
   itens: NotificacaoInApp[];
   proximo_cursor: string | null;
   nao_lidas: number;
+  versao?: string;
 }
 
 export interface RespostaContadorNotificacoes {
   nao_lidas: number;
+  versao?: string;
 }
 
 export interface RespostaMarcarLida {
@@ -44,6 +49,7 @@ export interface RespostaMarcarLida {
   lida_em?: string;
   atualizadas?: number;
   nao_lidas?: number;
+  versao?: string;
 }
 
 /**

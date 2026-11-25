@@ -25,9 +25,10 @@ export interface NotificacoesContextValue {
   online: boolean;
   recursoHabilitado: boolean;
   toastAtivo: PayloadNotificacaoPrimeiroPlano | null;
-  carregarLista: (opcoes?: { forcar?: boolean }) => Promise<void>;
+  carregarLista: (opcoes?: { forcar?: boolean; silencioso?: boolean }) => Promise<void>;
   carregarMais: () => Promise<void>;
   atualizarContador: () => Promise<void>;
+  definirCentralAberta: (aberta: boolean) => void;
   marcarLida: (id: number) => Promise<void>;
   marcarTodasLidas: () => Promise<void>;
   marcarReferenciaLida: (referenciaTipo: string, referenciaId: number) => Promise<void>;
@@ -74,6 +75,8 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
   const carregandoContadorRef = useRef(false);
   const carregandoListaRef = useRef(false);
   const ultimoSyncFocoRef = useRef(0);
+  const versaoRef = useRef<string | null>(null);
+  const centralAbertaRef = useRef(false);
   const idsToastExibidosRef = useRef<Set<string>>(new Set());
 
   // Limpa completamente o estado ao sair da conta ou trocar de usuário.
@@ -92,9 +95,59 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       carregandoContadorRef.current = false;
       carregandoListaRef.current = false;
       ultimoSyncFocoRef.current = 0;
+      versaoRef.current = null;
+      centralAbertaRef.current = false;
       idsToastExibidosRef.current.clear();
     }
   }, [usuario?.id]);
+
+  const definirCentralAberta = useCallback((aberta: boolean) => {
+    centralAbertaRef.current = aberta;
+  }, []);
+
+  const carregarLista = useCallback(
+    async (opcoes?: { forcar?: boolean; silencioso?: boolean }) => {
+      const uid = usuario?.id ?? null;
+      if (!recursoHabilitado || uid === null) {
+        setJaCarregouLista(true);
+        return;
+      }
+      if (!online) return;
+      if (carregandoListaRef.current && !opcoes?.forcar) return;
+
+      carregandoListaRef.current = true;
+      if (!opcoes?.silencioso) {
+        setCarregando(true);
+        setErro(null);
+      }
+      try {
+        const resposta = await notificacoesApi.listar({ limit: LIMITE_PAGINA_NOTIFICACOES });
+        if (usuarioIdRef.current !== uid) return;
+        const lista = Array.isArray(resposta?.itens) ? deduplicarPorId(resposta.itens) : [];
+        setItens(lista);
+        setProximoCursor(resposta?.proximo_cursor ?? null);
+        if (typeof resposta?.nao_lidas === 'number') {
+          setNaoLidas(Math.max(0, resposta.nao_lidas));
+        }
+        if (typeof resposta?.versao === 'string') {
+          versaoRef.current = resposta.versao;
+        }
+        setJaCarregouLista(true);
+        setErro(null);
+      } catch (e) {
+        if (usuarioIdRef.current !== uid) return;
+        if (!opcoes?.silencioso) {
+          setErro(mensagemDeErro(e));
+        }
+      } finally {
+        carregandoListaRef.current = false;
+        if (!opcoes?.silencioso) {
+          setCarregando(false);
+        }
+      }
+    },
+    [online, recursoHabilitado, usuario?.id],
+  );
 
   const atualizarContador = useCallback(async () => {
     const uid = usuario?.id ?? null;
@@ -106,12 +159,20 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       if (usuarioIdRef.current !== uid) return;
       const total = typeof resposta?.nao_lidas === 'number' ? Math.max(0, resposta.nao_lidas) : 0;
       setNaoLidas(total);
+
+      if (typeof resposta?.versao === 'string') {
+        const versaoAnterior = versaoRef.current;
+        versaoRef.current = resposta.versao;
+        if (versaoAnterior !== null && versaoAnterior !== resposta.versao && centralAbertaRef.current) {
+          void carregarLista({ forcar: true, silencioso: true });
+        }
+      }
     } catch {
       // Polling em segundo plano falha silenciosamente sem quebrar a interface.
     } finally {
       carregandoContadorRef.current = false;
     }
-  }, [online, recursoHabilitado, usuario?.id]);
+  }, [carregarLista, online, recursoHabilitado, usuario?.id]);
 
   // Polling econômico (60s) somente autenticado, online e com aba visível + revalidação em foco (debounce 5s).
   useEffect(() => {
@@ -145,40 +206,6 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     };
   }, [atualizarContador, online, recursoHabilitado, usuario]);
 
-  const carregarLista = useCallback(
-    async (opcoes?: { forcar?: boolean }) => {
-      const uid = usuario?.id ?? null;
-      if (!recursoHabilitado || uid === null) {
-        setJaCarregouLista(true);
-        return;
-      }
-      if (!online) return;
-      if (carregandoListaRef.current && !opcoes?.forcar) return;
-
-      carregandoListaRef.current = true;
-      setCarregando(true);
-      setErro(null);
-      try {
-        const resposta = await notificacoesApi.listar({ limit: LIMITE_PAGINA_NOTIFICACOES });
-        if (usuarioIdRef.current !== uid) return;
-        const lista = Array.isArray(resposta?.itens) ? deduplicarPorId(resposta.itens) : [];
-        setItens(lista);
-        setProximoCursor(resposta?.proximo_cursor ?? null);
-        if (typeof resposta?.nao_lidas === 'number') {
-          setNaoLidas(Math.max(0, resposta.nao_lidas));
-        }
-        setJaCarregouLista(true);
-      } catch (e) {
-        if (usuarioIdRef.current !== uid) return;
-        setErro(mensagemDeErro(e));
-      } finally {
-        carregandoListaRef.current = false;
-        setCarregando(false);
-      }
-    },
-    [online, recursoHabilitado, usuario?.id],
-  );
-
   const carregarMais = useCallback(async () => {
     const uid = usuario?.id ?? null;
     if (!recursoHabilitado || uid === null || !online || !proximoCursor || carregandoMais) return;
@@ -196,6 +223,9 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       setProximoCursor(resposta?.proximo_cursor ?? null);
       if (typeof resposta?.nao_lidas === 'number') {
         setNaoLidas(Math.max(0, resposta.nao_lidas));
+      }
+      if (typeof resposta?.versao === 'string') {
+        versaoRef.current = resposta.versao;
       }
     } catch (e) {
       if (usuarioIdRef.current !== uid) return;
@@ -226,6 +256,9 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       try {
         const resposta = await notificacoesApi.marcarLida(id);
         if (usuarioIdRef.current !== uid) return;
+        if (typeof resposta?.versao === 'string') {
+          versaoRef.current = resposta.versao;
+        }
         if (typeof resposta?.nao_lidas === 'number') {
           setNaoLidas(Math.max(0, resposta.nao_lidas));
         }
@@ -235,9 +268,10 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
           anterior.map((item) => (item.id === id ? { ...item, lida_em: null } : item)),
         );
         setNaoLidas((anterior) => anterior + 1);
+        void atualizarContador();
       }
     },
-    [online, recursoHabilitado, usuario?.id],
+    [atualizarContador, online, recursoHabilitado, usuario?.id],
   );
 
   const marcarTodasLidas = useCallback(async () => {
@@ -245,23 +279,56 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     if (!recursoHabilitado || uid === null || !online || naoLidas === 0) return;
 
     const agora = new Date().toISOString();
-    const snapshotItens = itensRef.current;
-    const snapshotNaoLidas = naoLidas;
-
-    setItens((anterior) =>
-      anterior.map((item) => (item.lida_em ? item : { ...item, lida_em: agora })),
+    const listaAtual = itensRef.current;
+    const ateId = listaAtual.reduce<number | undefined>(
+      (maior, item) => (maior === undefined || item.id > maior ? item.id : maior),
+      undefined,
     );
-    setNaoLidas(0);
+
+    const idsMarcadosOtimisticamente = new Set<number>();
+    for (const item of listaAtual) {
+      if (item.lida_em === null && (ateId === undefined || item.id <= ateId)) {
+        idsMarcadosOtimisticamente.add(item.id);
+      }
+    }
+
+    if (idsMarcadosOtimisticamente.size > 0) {
+      setItens((anterior) =>
+        anterior.map((item) =>
+          idsMarcadosOtimisticamente.has(item.id) && item.lida_em === null
+            ? { ...item, lida_em: agora }
+            : item,
+        ),
+      );
+      setNaoLidas((anterior) => Math.max(0, anterior - idsMarcadosOtimisticamente.size));
+    }
 
     try {
-      await notificacoesApi.marcarTodasLidas();
+      const resposta = await notificacoesApi.marcarTodasLidas(ateId);
+      if (usuarioIdRef.current !== uid) return;
+      if (typeof resposta?.versao === 'string') {
+        versaoRef.current = resposta.versao;
+      }
+      if (typeof resposta?.nao_lidas === 'number') {
+        setNaoLidas(Math.max(0, resposta.nao_lidas));
+      } else if (idsMarcadosOtimisticamente.size === 0) {
+        void atualizarContador();
+      }
     } catch (e) {
       if (usuarioIdRef.current !== uid) return;
-      setItens(snapshotItens);
-      setNaoLidas(snapshotNaoLidas);
+      // Rollback cirúrgico: reverte apenas os IDs marcados por esta operação, preservando itens carregados concorrentemente.
+      if (idsMarcadosOtimisticamente.size > 0) {
+        setItens((anterior) =>
+          anterior.map((item) =>
+            idsMarcadosOtimisticamente.has(item.id) ? { ...item, lida_em: null } : item,
+          ),
+        );
+        setNaoLidas((anterior) => anterior + idsMarcadosOtimisticamente.size);
+      }
       setErro(mensagemDeErro(e));
+      void atualizarContador();
     }
-  }, [naoLidas, online, recursoHabilitado, usuario?.id]);
+  }, [atualizarContador, naoLidas, online, recursoHabilitado, usuario?.id]);
 
   const marcarReferenciaLida = useCallback(
     async (referenciaTipo: string, referenciaId: number) => {
@@ -286,6 +353,9 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
             return item;
           }),
         );
+        if (typeof resposta?.versao === 'string') {
+          versaoRef.current = resposta.versao;
+        }
         if (typeof resposta?.nao_lidas === 'number') {
           setNaoLidas(Math.max(0, resposta.nao_lidas));
         } else if (decremento > 0) {
@@ -330,6 +400,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       carregarLista,
       carregarMais,
       atualizarContador,
+      definirCentralAberta,
       marcarLida,
       marcarTodasLidas,
       marcarReferenciaLida,
@@ -350,6 +421,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       carregarLista,
       carregarMais,
       atualizarContador,
+      definirCentralAberta,
       marcarLida,
       marcarTodasLidas,
       marcarReferenciaLida,

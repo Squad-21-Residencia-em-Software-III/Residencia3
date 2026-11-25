@@ -54,7 +54,7 @@ function criarNotificacao(id: number, lida = false): NotificacaoInApp {
     mensagem: 'Veículo alocado para saída.',
     severidade: 'info',
     operacao: 'Administrativo',
-    referencia_tipo: 'VIAGEM',
+    referencia_tipo: 'VIAGEM_FROTA',
     referencia_id: id,
     url_destino: '/viagens',
     lida_em: lida ? '2026-11-24T12:00:00.000Z' : null,
@@ -74,11 +74,11 @@ describe('NotificacoesContext', () => {
     vi.setSystemTime(new Date('2026-11-24T18:00:00.000Z'));
     mockUseAuth.mockReturnValue({ usuario: USUARIO_PADRAO });
     mockUseOnlineStatus.mockReturnValue(true);
-    mockContador.mockResolvedValue({ nao_lidas: 2 });
-    mockListar.mockResolvedValue({ itens: [], proximo_cursor: null, nao_lidas: 0 });
-    mockMarcarLida.mockResolvedValue({ id: 1, nao_lidas: 1 });
-    mockMarcarTodasLidas.mockResolvedValue({ atualizadas: 2, nao_lidas: 0 });
-    mockMarcarReferenciaLida.mockResolvedValue({ atualizadas: 1, nao_lidas: 0 });
+    mockContador.mockResolvedValue({ nao_lidas: 2, versao: 'v1' });
+    mockListar.mockResolvedValue({ itens: [], proximo_cursor: null, nao_lidas: 0, versao: 'v1' });
+    mockMarcarLida.mockResolvedValue({ id: 1, nao_lidas: 1, versao: 'v2' });
+    mockMarcarTodasLidas.mockResolvedValue({ atualizadas: 2, nao_lidas: 0, versao: 'v3' });
+    mockMarcarReferenciaLida.mockResolvedValue({ atualizadas: 1, nao_lidas: 0, versao: 'v4' });
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       value: 'visible',
@@ -111,21 +111,18 @@ describe('NotificacoesContext', () => {
     });
     expect(mockContador).toHaveBeenCalledTimes(1);
 
-    // Aba oculta não dispara polling
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
     await act(async () => {
       vi.advanceTimersByTime(INTERVALO_POLLING_NOTIFICACOES_MS);
     });
     expect(mockContador).toHaveBeenCalledTimes(1);
 
-    // Aba visível volta a fazer polling após 60s
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     await act(async () => {
       vi.advanceTimersByTime(INTERVALO_POLLING_NOTIFICACOES_MS);
     });
     expect(mockContador).toHaveBeenCalledTimes(2);
 
-    // Foco repetido dentro da janela de debounce (5s) chama apenas uma vez
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
       window.dispatchEvent(new Event('focus'));
@@ -141,17 +138,19 @@ describe('NotificacoesContext', () => {
     expect(mockContador).toHaveBeenCalledTimes(4);
   });
 
-  it('pagina com cursor composto sem duplicar itens e atualiza leitura otimista com rollback', async () => {
+  it('envia ate_id em marcarTodasLidas, usa nao_lidas da resposta e faz rollback cirurgico sem apagar itens concorrentes', async () => {
     mockListar
       .mockResolvedValueOnce({
-        itens: [criarNotificacao(1), criarNotificacao(2)],
-        proximo_cursor: 'cursor-2',
+        itens: [criarNotificacao(10), criarNotificacao(8)],
+        proximo_cursor: 'cursor-8',
         nao_lidas: 2,
+        versao: 'v1',
       })
       .mockResolvedValueOnce({
-        itens: [criarNotificacao(2), criarNotificacao(3)],
+        itens: [criarNotificacao(5, true)],
         proximo_cursor: null,
         nao_lidas: 2,
+        versao: 'v1',
       });
 
     const { result } = renderHook(() => useNotificacoes(), { wrapper: wrapper(true) });
@@ -159,29 +158,79 @@ describe('NotificacoesContext', () => {
     await act(async () => {
       await result.current.carregarLista();
     });
-    expect(result.current.itens.map((i) => i.id)).toEqual([1, 2]);
-    expect(result.current.proximoCursor).toBe('cursor-2');
 
+    // Simula falha concorrente em marcarTodasLidas enquanto outra página carrega
+    let rejeitarLerTodas!: (erro: Error) => void;
+    mockMarcarTodasLidas.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejeitarLerTodas = reject;
+        }),
+    );
+
+    let promessaLerTodas!: Promise<void>;
+    act(() => {
+      promessaLerTodas = result.current.marcarTodasLidas();
+    });
+    expect(mockMarcarTodasLidas).toHaveBeenCalledWith(10);
+
+    // Enquanto marcarTodasLidas está em voo, usuário carrega mais itens
     await act(async () => {
       await result.current.carregarMais();
     });
-    expect(result.current.itens.map((i) => i.id)).toEqual([1, 2, 3]);
-    expect(result.current.proximoCursor).toBeNull();
+    expect(result.current.itens.map((i) => i.id)).toEqual([10, 8, 5]);
 
-    // Falha ao marcar lida reverte estado otimista
-    mockMarcarLida.mockRejectedValueOnce(new Error('Falha de rede'));
+    // marcarTodasLidas falha: deve reverter apenas os IDs 10 e 8, mantendo o item 5 carregado concorrentemente
     await act(async () => {
-      await result.current.marcarLida(1);
+      rejeitarLerTodas(new Error('Erro temporário'));
+      await promessaLerTodas;
     });
-    expect(result.current.itens.find((i) => i.id === 1)?.lida_em).toBeNull();
-    expect(result.current.naoLidas).toBe(2);
+    expect(result.current.itens.map((i) => i.id)).toEqual([10, 8, 5]);
+    expect(result.current.itens.find((i) => i.id === 10)?.lida_em).toBeNull();
+    expect(result.current.itens.find((i) => i.id === 8)?.lida_em).toBeNull();
+    expect(result.current.itens.find((i) => i.id === 5)?.lida_em).not.toBeNull();
 
-    // Marcar todas como lidas zera contador
+    // Sucesso com nova notificação chegada durante a requisição (nao_lidas = 1)
+    mockMarcarTodasLidas.mockResolvedValueOnce({ atualizadas: 2, nao_lidas: 1, versao: 'v2' });
     await act(async () => {
       await result.current.marcarTodasLidas();
     });
-    expect(result.current.naoLidas).toBe(0);
-    expect(result.current.itens.every((i) => i.lida_em !== null)).toBe(true);
+    expect(result.current.naoLidas).toBe(1);
+  });
+
+  it('recarrega a primeira pagina silenciosamente quando a versao do contador muda com a central aberta', async () => {
+    mockContador
+      .mockResolvedValueOnce({ nao_lidas: 1, versao: 'v1' })
+      .mockResolvedValueOnce({ nao_lidas: 2, versao: 'v2' })
+      .mockResolvedValueOnce({ nao_lidas: 3, versao: 'v3' });
+    mockListar.mockResolvedValue({
+      itens: [criarNotificacao(1)],
+      proximo_cursor: null,
+      nao_lidas: 1,
+      versao: 'v1',
+    });
+
+    const { result } = renderHook(() => useNotificacoes(), { wrapper: wrapper(true) });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockListar).not.toHaveBeenCalled();
+
+    // Central fechada: mudança de versão NÃO dispara carregarLista
+    await act(async () => {
+      await result.current.atualizarContador();
+    });
+    expect(mockListar).not.toHaveBeenCalled();
+
+    // Central aberta: mudança de versão dispara recarga silenciosa da primeira página
+    act(() => {
+      result.current.definirCentralAberta(true);
+    });
+    await act(async () => {
+      await result.current.atualizarContador();
+    });
+    expect(mockListar).toHaveBeenCalledTimes(1);
   });
 
   it('deduplica toast em primeiro plano por id e limpa todo o estado no logout', async () => {
@@ -209,7 +258,6 @@ describe('NotificacoesContext', () => {
     });
     expect(result.current.toastAtivo).toBeNull();
 
-    // Mesmo ID não reabre toast duplicado
     act(() => {
       result.current.notificarEmPrimeiroPlano({
         id: 99,
@@ -219,7 +267,6 @@ describe('NotificacoesContext', () => {
     });
     expect(result.current.toastAtivo).toBeNull();
 
-    // Logout limpa tudo
     usuarioAtual = null;
     rerender();
     expect(result.current.naoLidas).toBe(0);
