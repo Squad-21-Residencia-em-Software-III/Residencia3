@@ -11,6 +11,12 @@ import {
 import type { TipoOperacao } from '../validators/viagemSchemas';
 import { travarAgendaSvo } from './agendaSvoService';
 import {
+  montarAvisoExcecaoSolicitada,
+  montarAvisoExcecaoDecidida,
+  destinatariosExcecaoOdometro,
+} from './eventosExcecaoOdometro';
+import { publicarNotificacao } from './publicacaoNotificacoes';
+import {
   deslocamentoDaOrdem, deslocamentoEmCursoDoVeiculo, evidenciaDaFase, type FaseOdometro,
 } from './evidenciaOdometroTransicao';
 import { buscarParaAtualizar, garantirAcesso, garantirAcessoAoRegistro, OPERACOES } from './viagemService';
@@ -72,6 +78,18 @@ export const excecaoOdometroService = {
         usuario_id: autor.id, modulo: MODULOS_AUDITORIA.VIAGENS,
         acao: `SOLICITOU_EXCECAO_ODOMETRO tipo=${tipo} id=${id} fase=${fase} excecao=${registro!.id}`,
       }, trx);
+      const destinatarios = await destinatariosExcecaoOdometro(trx, tipo);
+      const aviso = montarAvisoExcecaoSolicitada(registro!.id);
+
+      await publicarNotificacao(trx, {
+        ...aviso,
+        operacao: tipo === 'ADMINISTRATIVA' ? 'Administrativo' : 'SVO',
+        severidade: 'warning',
+        referencia: { tipo: 'EXCECAO_ODOMETRO', id: registro!.id },
+        autorId: autor.id,
+        destinatarios,
+      });
+
       return apresentarExcecao(registro!);
     });
   },
@@ -124,6 +142,17 @@ export const excecaoOdometroService = {
         status: decisao, justificativa, decidida_por: autor.id, decidida_em: trx.fn.now(),
         auditoria_decisao_id: auditoria!.id,
       }).returning('*');
+      const aviso = montarAvisoExcecaoDecidida(registro.id, decisao);
+
+      await publicarNotificacao(trx, {
+        ...aviso,
+        operacao: tipo === 'ADMINISTRATIVA' ? 'Administrativo' : 'SVO',
+        severidade: decisao === 'APROVADA' ? 'success' : 'warning',
+        referencia: { tipo: 'EXCECAO_ODOMETRO', id: registro.id },
+        autorId: autor.id,
+        destinatarios: [registro.solicitada_por],
+      });
+
       return apresentarExcecao(atual!);
     });
   },
