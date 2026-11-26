@@ -84,8 +84,8 @@ describe('ToastNotificacao', () => {
     expect(screen.getByText('Coleta SVO alocada')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Abrir' }));
+    expect(await screen.findByText('Tela Minhas Coletas')).toBeInTheDocument();
     expect(mockMarcarLida).toHaveBeenCalledWith(501);
-    expect(screen.getByText('Tela Minhas Coletas')).toBeInTheDocument();
     expect(screen.queryByTestId('toast-notificacao')).not.toBeInTheDocument();
   });
 
