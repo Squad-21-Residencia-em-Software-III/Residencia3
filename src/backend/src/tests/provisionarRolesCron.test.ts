@@ -200,6 +200,22 @@ describe('Provisionamento das roles de cron', () => {
     expect(concessoesDelete).toEqual([[expect.any(String), [retUser]]]);
   });
 
+  it('dá à role de expiração só leitura e inserção para publicar o A4 (SCRUM-230)', async () => {
+    const { criarConexao, raw } = simularBanco();
+
+    await provisionarRolesCron({ env: envCron, criarConexao });
+
+    const concessoesAvisos = raw.mock.calls.filter(([sql, valores]) =>
+      sql.startsWith('GRANT') && /public\.notificac/.test(sql) && valores?.includes(expUser),
+    );
+    expect(concessoesAvisos.map(([sql]) => sql)).toEqual([
+      expect.stringMatching(/^GRANT SELECT \(id, usuario_id, chave_idempotencia\), INSERT \(.+\) ON TABLE public\.notificacoes TO \?\?$/),
+      expect.stringMatching(/^GRANT INSERT \(.+\) ON TABLE public\.notificacao_outbox TO \?\?$/),
+      'GRANT USAGE ON SEQUENCE public.notificacoes_id_seq, public.notificacao_outbox_id_seq TO ??',
+    ]);
+    for (const [sql] of concessoesAvisos) expect(sql).not.toMatch(/\b(DELETE|UPDATE|TRUNCATE)\b/);
+  });
+
   it('rejeita o provisionamento se a validação detectar privilégios excessivos', async () => {
     const { criarConexao, destroy } = simularBanco({ memberships: [{ role_herdada: 'role_indevida' }] });
 

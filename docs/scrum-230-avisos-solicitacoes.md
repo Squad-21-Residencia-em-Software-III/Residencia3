@@ -12,11 +12,11 @@ Publicados por `services/avisosSolicitacao.ts` na transação de cada operação
 
 - **Destino:** `/solicitacoes`. **Referência:** `SOLICITACAO_VIAGEM` (SCRUM-226) e o número do pedido. **Categoria:** `SOLICITACOES`.
 - **Autor do pedido:** A2 e A3 se limitam a Solicitante e Gestor SVO que fizeram o pedido. A4 preserva o aviso ao autor com acesso à tela. Usuários inativos são excluídos.
-- **Privacidade:** o push tem só textos fixos, sem motivo, nome, local, finalidade ou número. O da recusa não revela a decisão.
+- **Privacidade:** o push tem só textos fixos, sem motivo, nome, local, finalidade ou número. O da recusa não revela a decisão: push neutro **aprovado pela liderança**, com a decisão e o motivo só no sistema, para quem está autenticado e autorizado.
 - **Sem repetição:** cada situação avisa uma vez por pedido. Quem é autor e Gestor de Frota recebe um aviso só.
 - **A4 é real:** a expiração já existe (`docs/expiracao-solicitacoes-administrativas.md`). Só é avisado o que a rotina de fato mudou para `EXPIRADA`.
 
-Os títulos e textos, a categoria e o código dos eventos são **proposta**, a conferir com o plano.
+Os títulos e textos do sistema, a categoria e o código dos eventos são **proposta**, a conferir com o plano.
 
 ## Como ligar
 
@@ -24,7 +24,7 @@ Os títulos e textos, a categoria e o código dos eventos são **proposta**, a c
 
 ### A4: permissões da rotina de expiração
 
-O script de provisionamento concede à role de expiração leitura das colunas necessárias para selecionar autores e gestores, inserção restrita nas tabelas de avisos e uso das sequências respectivas. O job permanece sem DELETE e sem leitura irrestrita. Gabriel deve aplicar o provisionamento após a integração e antes de qualquer autorização para ligar FSPH_EXPIRACAO_AVISOS_ATIVOS.
+O script de provisionamento concede à role de expiração leitura das colunas necessárias para selecionar autores e gestores, inserção restrita nas tabelas de avisos e uso das sequências respectivas. O job permanece sem DELETE e sem leitura irrestrita: o DELETE em `notificacoes` fica só com a role de retenção (SCRUM-242), e a validação de privilégio mínimo do provisionamento recusa o contrário. Gabriel deve aplicar o provisionamento após a integração e antes de qualquer autorização para ligar FSPH_EXPIRACAO_AVISOS_ATIVOS.
 
 A pendência de push criada pela rotina é enviada pela API, na primeira requisição seguinte (SCRUM-229).
 

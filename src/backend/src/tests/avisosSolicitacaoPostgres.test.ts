@@ -111,10 +111,12 @@ describe.skipIf(!habilitado)('Avisos das solicitações em PostgreSQL descartáv
     });
 
     it('pedido recusado pela validação não avisa', async () => {
-      const antes = await db('notificacoes').max('id as id').first();
+      // Só os avisos de solicitação: outras suítes podem publicar no mesmo banco
+      const ultimo = () => db('notificacoes').where({ referencia_tipo: 'SOLICITACAO_VIAGEM' }).max('id as id').first();
+      const antes = await ultimo();
       const res = await chamar('post', solicitante, '', { ...CORPO, unidade_id: 2147483647 });
       expect(res.status).toBe(400);
-      expect(await db('notificacoes').max('id as id').first()).toEqual(antes);
+      expect(await ultimo()).toEqual(antes);
     });
   });
 
