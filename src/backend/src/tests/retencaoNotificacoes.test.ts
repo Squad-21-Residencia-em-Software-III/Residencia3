@@ -462,6 +462,41 @@ describe.skipIf(!habilitado)('Retenção de notificações em PostgreSQL descart
     });
   });
 
+  it('mantém o lote confirmado quando o seguinte falha e retoma de forma idempotente', async () => {
+    // Uma conexão mantém as tabelas temporárias privadas. Cada lote continua com commit próprio.
+    const isolada = knex({ ...db.client.config, pool: { min: 0, max: 1 } });
+    try {
+      await isolada.raw(`CREATE TEMP TABLE notificacoes (
+        id integer PRIMARY KEY, criado_em timestamptz NOT NULL, lida_em timestamptz
+      )`);
+      await isolada.raw(`CREATE TEMP TABLE bloqueio_retencao (
+        notificacao_id integer REFERENCES notificacoes(id) ON DELETE RESTRICT
+      )`);
+      await isolada('notificacoes').insert([
+        { id: 1, criado_em: antes(95) }, { id: 2, criado_em: antes(91) }, { id: 3, criado_em: antes(90) },
+      ]);
+      await isolada('bloqueio_retencao').insert({ notificacao_id: 2 });
+      const executar = () => executarRetencaoNotificacoes(isolada, {
+        aplicar: true, limite: 1, lotes: 3, agora: AGORA,
+      });
+      const ids = () => isolada('notificacoes').orderBy('id').pluck('id');
+
+      const primeira = await executar();
+      expect(primeira.falhou).toBe(true);
+      expect(primeira.lotes.map(({ removidas, falhas }) => [removidas, falhas])).toEqual([[1, 0], [0, 1]]);
+      expect(await ids()).toEqual([2, 3]);
+
+      await isolada('bloqueio_retencao').where({ notificacao_id: 2 }).del();
+      const retomada = await executar();
+      expect(retomada.falhou).toBe(false);
+      expect(retomada.lotes.map(({ removidas }) => removidas)).toEqual([1, 0]);
+      expect(await executar()).toMatchObject({ falhou: false, lotes: [{ removidas: 0, falhas: 0 }] });
+      expect(await ids()).toEqual([3]);
+    } finally {
+      await isolada.destroy();
+    }
+  });
+
   it('falha no banco mantém todos os dados e permite novo rerun com sucesso', async () => {
     await emTransacaoDescartavel(async (trx) => {
       await trx('notificacoes').del();

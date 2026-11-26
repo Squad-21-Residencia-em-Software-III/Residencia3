@@ -47,3 +47,19 @@ Com BroadcastChannel e Web Locks, abas visíveis compartilham o resultado do con
 A regressão de temporizadores, revogação, coordenação, sessão e recuperação está coberta por cenários Vitest em `NotificacoesContext.test.tsx`. Os resultados desses novos cenários precisam ser registrados após execução; os números HTTP históricos abaixo não os substituem e não comprovam comportamento de navegadores reais.
 
 Em PostgreSQL 17 local descartável, `desempenhoNotificacoesPostgres.test.ts` passou os cinco casos. Com 168.936 avisos, 100.062 registros de fila e 188 assinaturas, a simulação com 10 e 50 usuários em duas e três abas teve 360 respostas HTTP 200 em três ciclos por cenário. O maior p95 do contador nos ciclos coordenados foi 19,4 ms. Na rajada de controle, 100 requisições receberam 503. A recuperação após 5 segundos fez uma tentativa por usuário afetado e os 34 receberam HTTP 200. O teste simula a coordenação na carga HTTP. Suspensão real e reconexão em Render/Neon requerem um ambiente isolado autorizado.
+
+
+## Medição complementar de 26/11/2026
+
+Executada sobre `94b63e4` com API Express e PostgreSQL 17 descartável em loopback. Sessões sintéticas e rota de contador real. Em seis ciclos espaçados de 60 s, alternaram-se simulações de uma a três abas, primeiro com contador e depois também com lista da central aberta. As chamadas foram escalonadas por conta e os percentis contam tempo completo de resposta HTTP.
+
+| Contas | Duração | HTTP 200 / total | Requisições por conta | Faixa de p50 por combinação | Maior p95 por combinação |
+| --- | --- | --- | --- | --- | --- |
+| 10 | 302,4 s | 90 / 90 | 9 | 3,2–5,4 ms | 69,1 ms |
+| 50 | 302,4 s | 450 / 450 | 9 | 3,1–4,0 ms | 5,8 ms |
+
+Em uma rodada separada de 300 s, uma conta autenticada abriu três abas reais do Edge headless. Foram observadas sete consultas de contador (cinco HTTP 200, uma 429 e uma 503 injetadas) e três de lista, após abrir a central. Após as duas falhas, outra aba devolveu 200 no mesmo ciclo e os ciclos seguintes voltaram ao espaçamento de cerca de 60–65 s. O Edge headless reportou as três abas como visíveis. As retentativas de uma aba isolada e a pausa por aba oculta continuam cobertas pela suíte `NotificacoesContext.test.tsx`. As medições em navegador na escala de 10/50 contas, com abas realmente ocultas e suspensão do provedor, seguem **Não executado**.
+
+Para reproduzir a série HTTP, obtenha credenciais de contas sintéticas no ambiente descartável, faça um GET do contador por conta a cada minuto durante seis ciclos e defase o início de cada conta. Nos três últimos ciclos, acrescente um GET da lista. Registre latência e status, sem salvar o token no relatório. Compare com o ensaio de rajadas e contagens da suíte existente. Para o teste de abas, abra três páginas no mesmo perfil local e acompanhe as chamadas da central; injete 429/503 somente no navegador de QA.
+
+O contrato estático da Vercel passou em quatro testes de proxy e cabeçalhos. O job In-App foi invocado em modo simulação local, e a suíte PostgreSQL testou falha após um lote já confirmado. Agenda hospedada, entrega HTTPS, suspensão, backup institucional e rollout continuam dependentes de ambiente autorizado. O inventário de assinaturas e outbox está documentado na [SCRUM-242](scrum-242-retencao-notificacoes.md).
