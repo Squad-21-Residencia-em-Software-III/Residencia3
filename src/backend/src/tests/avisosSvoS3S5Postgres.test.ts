@@ -244,15 +244,11 @@ describe.skipIf(!habilitado)('SCRUM-234 · avisos SVO S3, S4 e S5 em PostgreSQL 
       expect(await avisos(EVENTO_SVO_S4, c.ordemId)).toHaveLength(8);
     });
 
-    it('notifica cada retorno legítimo a um horário e veículo anteriores', async () => {
+    it('notifica cada retorno legítimo a um horário anterior sem trocar os recursos', async () => {
       const c = await cenario();
       expect((await alocar(c)).status).toBe(200);
-      const [veiculo] = await db('veiculos').insert({
-        placa: `T${nonce()}`, modelo: 'Reserva SVO', tipo_frota: 'SVO', capacidade_maxima: 4,
-        lotacao_cabine: 4, status: 'DISPONIVEL',
-      }).returning('id');
       const outraAgenda = {
-        veiculo_id: veiculo.id, inicio_previsto: instante(240).toISOString(), fim_previsto: instante(300).toISOString(),
+        inicio_previsto: instante(240).toISOString(), fim_previsto: instante(300).toISOString(),
       };
       for (const dados of [outraAgenda, {}, outraAgenda]) {
         expect((await reprogramar(c, dados)).status).toBe(200);
@@ -278,6 +274,12 @@ describe.skipIf(!habilitado)('SCRUM-234 · avisos SVO S3, S4 e S5 em PostgreSQL 
       const retornos = (await avisos(EVENTO_SVO_S3, c.ordemId)).filter((n) => n.usuario_id === c.condutor.conta.id);
       expect(retornos).toHaveLength(2);
       expect(new Set(retornos.map((n) => n.chave_idempotencia)).size).toBe(2);
+      const historico = await lista(c.condutor.conta);
+      for (const aviso of retornos) {
+        expect(historico.find((item: { id: number }) => item.id === aviso.id)).toMatchObject({
+          titulo: 'Nova coleta SVO atribuída',
+        });
+      }
     });
 
     it('reprogramações concorrentes: uma por vez, sem aviso repetido por pessoa', async () => {
