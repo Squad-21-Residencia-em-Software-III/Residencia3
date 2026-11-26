@@ -2,7 +2,6 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { configNotificacoes } from '../config/notificacoes';
 import { db } from '../config/database';
-import { configNotificacoes } from '../config/notificacoes';
 import { notificacaoOutboxModel } from '../models/notificacaoOutboxModel';
 import { definirEnviadorPush, processarFilaPush, type EnviadorPush } from '../services/filaPush';
 import { publicarNotificacao, type EventoNotificacao } from '../services/publicacaoNotificacoes';
@@ -53,7 +52,6 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
     configNotificacoes.ativas = true;
   });
   beforeEach(async () => {
-    configNotificacoes.ativas = true;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     // Fila limpa: o banco é descartável, e a suíte está sozinha nele
     await db('notificacao_outbox').del();

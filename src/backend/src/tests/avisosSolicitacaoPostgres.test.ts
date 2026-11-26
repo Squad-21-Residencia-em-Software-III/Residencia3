@@ -225,36 +225,34 @@ describe.skipIf(!habilitado)('Avisos das solicitações em PostgreSQL descartáv
       expect((await avisados(id, 'SOLICITACAO_EXPIRADA')).filter((u) => u === solicitante.id)).toHaveLength(1);
     });
 
-    it('as permissões documentadas bastam para a role restrita do cron', async () => {
+    it('executa A4 com a role provisionada e restringe leitura e exclusão', async () => {
       const id = await aprovadaVencida(solicitante.id);
       const role = `cron_avisos_${nonce()}`;
-      await db.raw(`
-        CREATE ROLE ${role} LOGIN PASSWORD 'apenas-teste';
-        GRANT USAGE ON SCHEMA public TO ${role};
-        GRANT SELECT (id, status, data_saida_desejada), UPDATE (status) ON solicitacoes_viagem TO ${role};
-        GRANT SELECT (id, solicitacao_id, status) ON viagens_frota TO ${role};
-        GRANT INSERT (usuario_id, acao, modulo) ON auditorias TO ${role};
-        GRANT USAGE ON SEQUENCE auditorias_id_seq TO ${role};
-        -- docs/scrum-230-avisos-solicitacoes.md
-        GRANT SELECT (solicitante_id) ON solicitacoes_viagem TO ${role};
-        GRANT SELECT (id, perfil, ativo) ON usuarios TO ${role};
-        GRANT SELECT (id, usuario_id, chave_idempotencia),
-          INSERT (usuario_id, tipo, titulo, mensagem, severidade, operacao, referencia_tipo, referencia_id, url_destino, chave_idempotencia)
-          ON notificacoes TO ${role};
-        GRANT INSERT (notificacao_id, usuario_id, evento_tipo, categoria, operacao, referencia_tipo, referencia_id,
-          ocorrencia_versao, chave_idempotencia, payload_push) ON notificacao_outbox TO ${role};
-      `);
+      const { provisionarRolesCron } = require('../../scripts/provisionar-roles-cron.cjs') as {
+        provisionarRolesCron: (opcoes: { env: Record<string, string | undefined> }) => Promise<void>;
+      };
+      const retencao = role + '_ret';
+      await provisionarRolesCron({ env: { ...process.env,
+        FSPH_CRON_EXPIRACAO_USER: role, FSPH_CRON_EXPIRACAO_PASSWORD: 'apenas-teste',
+        FSPH_CRON_RETENCAO_USER: retencao, FSPH_CRON_RETENCAO_PASSWORD: 'apenas-teste',
+      } });
       const restrita = knex({
         client: 'pg', pool: { min: 0, max: 1 },
         connection: { host: process.env.POSTGRES_HOST, port: Number(process.env.POSTGRES_PORT), database: process.env.POSTGRES_DB, user: role, password: 'apenas-teste' },
       });
-      vi.spyOn(db, 'transaction').mockImplementation(((acao: never) => restrita.transaction(acao)) as never);
       try {
+        await expect(restrita('usuarios').select('email')).rejects.toMatchObject({ code: '42501' });
+        await expect(restrita('notificacoes').where({ id: -1 }).del()).rejects.toMatchObject({ code: '42501' });
+        await expect(restrita('notificacao_outbox').where({ id: -1 }).del()).rejects.toMatchObject({ code: '42501' });
+        vi.spyOn(db, 'transaction').mockImplementation(((acao: never) => restrita.transaction(acao)) as never);
         expect(await solicitacaoViagemService.expirarAprovadas()).toBeGreaterThanOrEqual(1);
       } finally {
         vi.restoreAllMocks();
         await restrita.destroy();
-        await db.raw(`DROP OWNED BY ${role}; DROP ROLE ${role};`);
+        for (const nome of [role, retencao]) {
+          await db.raw('DROP OWNED BY ??', [nome]);
+          await db.raw('DROP ROLE ??', [nome]);
+        }
       }
       expect((await db('solicitacoes_viagem').where({ id }).first()).status).toBe('EXPIRADA');
       expect(await comPush(id, 'SOLICITACAO_EXPIRADA')).toEqual([solicitante.id]);

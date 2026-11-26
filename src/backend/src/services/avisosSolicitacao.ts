@@ -14,10 +14,10 @@ const PERFIS_COM_A_TELA: Perfil[] = [PERFIS.ADMINISTRADOR, PERFIS.SOLICITANTE, P
 const comPerfil = (trx: Knex.Transaction, perfis: Perfil[]): Promise<number[]> =>
   trx('usuarios').whereIn('perfil', perfis).pluck('id');
 
-async function autorDoPedido(trx: Knex.Transaction, solicitanteId: number | null): Promise<number[]> {
+async function autorDoPedido(trx: Knex.Transaction, solicitanteId: number | null, perfis: Perfil[]): Promise<number[]> {
   // Pedidos antigos podem não ter solicitante
   if (solicitanteId === null) return [];
-  return trx('usuarios').where({ id: solicitanteId }).whereIn('perfil', PERFIS_COM_A_TELA).pluck('id');
+  return trx('usuarios').where({ id: solicitanteId }).whereIn('perfil', perfis).pluck('id');
 }
 
 const push = (titulo: string, corpo: string, id: number): EventoNotificacao['push'] => ({
@@ -53,7 +53,7 @@ export const avisosSolicitacao = {
     analistaId: number
   ): Promise<void> {
     if (!configNotificacoes.ativas) return;
-    const comum = { ...base(id), autorId: analistaId, destinatarios: await autorDoPedido(trx, solicitante_id) };
+    const comum = { ...base(id), autorId: analistaId, destinatarios: await autorDoPedido(trx, solicitante_id, [PERFIS.SOLICITANTE, PERFIS.GESTOR_SVO]) };
     if (status === 'APROVADA') {
       await publicarNotificacao(trx, {
         ...comum,
@@ -93,7 +93,7 @@ export const avisosSolicitacao = {
       // Primeiro o autor: se também for Gestor de Frota, recebe um aviso só, com push
       await publicarNotificacao(trx, {
         ...comum,
-        destinatarios: await autorDoPedido(trx, solicitante_id),
+        destinatarios: await autorDoPedido(trx, solicitante_id, PERFIS_COM_A_TELA),
         push: push('Solicitação expirada', 'Sua solicitação de viagem expirou sem agendamento.', id),
       });
       await publicarNotificacao(trx, { ...comum, destinatarios: gestores });

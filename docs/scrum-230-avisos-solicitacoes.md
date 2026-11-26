@@ -11,7 +11,7 @@ Publicados por `services/avisosSolicitacao.ts` na transação de cada operação
 | A4 `SOLICITACAO_EXPIRADA` | Rotina marca `EXPIRADA` | Gestor de Frota | Não |
 
 - **Destino:** `/solicitacoes`. **Referência:** `SOLICITACAO_VIAGEM` (SCRUM-226) e o número do pedido. **Categoria:** `SOLICITACOES`.
-- **Autor do pedido:** qualquer perfil com a tela de Solicitações (Solicitante, Gestor SVO, Gestor de Frota e Administrador). Quem mudou para um perfil sem a tela, ou foi inativado, não recebe.
+- **Autor do pedido:** A2 e A3 se limitam a Solicitante e Gestor SVO que fizeram o pedido. A4 preserva o aviso ao autor com acesso à tela. Usuários inativos são excluídos.
 - **Privacidade:** o push tem só textos fixos, sem motivo, nome, local, finalidade ou número. O da recusa não revela a decisão.
 - **Sem repetição:** cada situação avisa uma vez por pedido. Quem é autor e Gestor de Frota recebe um aviso só.
 - **A4 é real:** a expiração já existe (`docs/expiracao-solicitacoes-administrativas.md`). Só é avisado o que a rotina de fato mudou para `EXPIRADA`.
@@ -24,19 +24,7 @@ Os títulos e textos, a categoria e o código dos eventos são **proposta**, a c
 
 ### A4: permissões da rotina de expiração
 
-A rotina usa uma role restrita, sem acesso aos avisos. **Antes** de definir a variável `FSPH_EXPIRACAO_AVISOS_ATIVOS=true` no GitHub, conceder à role (frente de banco):
-
-```sql
-GRANT SELECT (solicitante_id) ON solicitacoes_viagem TO <role>;
-GRANT SELECT (id, perfil, ativo) ON usuarios TO <role>;
-GRANT SELECT (id, usuario_id, chave_idempotencia),
-  INSERT (usuario_id, tipo, titulo, mensagem, severidade, operacao, referencia_tipo, referencia_id, url_destino, chave_idempotencia)
-  ON notificacoes TO <role>;
-GRANT INSERT (notificacao_id, usuario_id, evento_tipo, categoria, operacao, referencia_tipo, referencia_id,
-  ocorrencia_versao, chave_idempotencia, payload_push) ON notificacao_outbox TO <role>;
-```
-
-Sem as permissões e com a variável ligada, a expiração falha e é desfeita. `provisionar-roles-cron.cjs` não foi alterado aqui: ele revoga e concede tudo de novo, então precisa incluir estas linhas. O PR #205 tem um teste que hoje proíbe qualquer acesso da role de expiração a `notificacoes`, e os dois precisam ser alinhados.
+O script de provisionamento concede à role de expiração leitura das colunas necessárias para selecionar autores e gestores, inserção restrita nas tabelas de avisos e uso das sequências respectivas. O job permanece sem DELETE e sem leitura irrestrita. Gabriel deve aplicar o provisionamento após a integração e antes de qualquer autorização para ligar FSPH_EXPIRACAO_AVISOS_ATIVOS.
 
 A pendência de push criada pela rotina é enviada pela API, na primeira requisição seguinte (SCRUM-229).
 
