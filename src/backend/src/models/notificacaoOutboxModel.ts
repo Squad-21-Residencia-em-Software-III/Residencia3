@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { categoriaPermitida } from '../constants/categoriasNotificacao';
 
 export interface PayloadPush {
   notificacao_id: number;
@@ -120,7 +121,10 @@ export const notificacaoOutboxModel = {
     { usuario_id, categoria }: ItemFilaPush,
     conexao: Knex = db
   ): Promise<MotivoIgnorado | AssinaturaAtiva[]> {
-    if (!(await conexao('usuarios').where({ id: usuario_id, ativo: true }).first('id'))) return 'USUARIO_INATIVO';
+    const usuario: { perfil: string } | undefined = await conexao('usuarios').where({ id: usuario_id, ativo: true }).first('perfil');
+    if (!usuario) return 'USUARIO_INATIVO';
+    // Perfil atual (SCRUM-237): quem mudou de perfil deixa de receber as categorias do anterior
+    if (!categoriaPermitida(usuario.perfil, categoria)) return 'CATEGORIA_DESLIGADA';
     // Sem escolha registrada, a categoria fica desligada (padrão da SCRUM-236)
     const ligada = await conexao('preferencias_notificacao')
       .where({ usuario_id, categoria, canal: 'WEB_PUSH', habilitado: true })
