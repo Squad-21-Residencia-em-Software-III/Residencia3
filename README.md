@@ -50,7 +50,7 @@ O **FMS/TMS FSPH** unifica toda a governança da frota administrativa e especial
 
 ---
 
-Consulte o [manual de operação](docs/manual-fluxos-operacionais.md) e o [guia de implantação](docs/guia-de-execucao.md). Para a Fase 2, veja o [manual de notificações e PWA](docs/notificacoes-fase2.md).
+Consulte o [manual de operação](docs/manual-fluxos-operacionais.md) e o [guia de implantação](docs/guia-de-execucao.md). O [guia de notificações e PWA](docs/notificacoes-fase2.md) reúne os 17 eventos da Fase 2, os contratos, a implantação e os resultados de homologação.
 
 ## 🛠️ Stack Tecnológica
 
