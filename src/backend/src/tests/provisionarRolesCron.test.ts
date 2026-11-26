@@ -181,8 +181,39 @@ describe('Provisionamento das roles de cron', () => {
       'GRANT SELECT (evidencia_id), DELETE ON TABLE public.evidencias_odometro_arquivos TO ??',
       [retUser]
     );
+    expect(raw).toHaveBeenCalledWith(
+      'GRANT SELECT (id, lida_em, criado_em), DELETE ON TABLE public.notificacoes TO ??',
+      [retUser]
+    );
     expect(consultarRole.mock.calls).toEqual([[{ rolname: expUser }], [{ rolname: retUser }]]);
     expect(destroy).toHaveBeenCalledOnce();
+  });
+
+  it('reserva o DELETE de notificacoes à role de retenção', async () => {
+    const { criarConexao, raw } = simularBanco();
+
+    await provisionarRolesCron({ env: envCron, criarConexao });
+
+    const concessoesDelete = raw.mock.calls.filter(([sql]) =>
+      sql.startsWith('GRANT') && /\bDELETE\b/.test(sql) && sql.includes('public.notificacoes'),
+    );
+    expect(concessoesDelete).toEqual([[expect.any(String), [retUser]]]);
+  });
+
+  it('dá à role de expiração só leitura e inserção para publicar o A4 (SCRUM-230)', async () => {
+    const { criarConexao, raw } = simularBanco();
+
+    await provisionarRolesCron({ env: envCron, criarConexao });
+
+    const concessoesAvisos = raw.mock.calls.filter(([sql, valores]) =>
+      sql.startsWith('GRANT') && /public\.notificac/.test(sql) && valores?.includes(expUser),
+    );
+    expect(concessoesAvisos.map(([sql]) => sql)).toEqual([
+      expect.stringMatching(/^GRANT SELECT \(id, usuario_id, chave_idempotencia\), INSERT \(.+\) ON TABLE public\.notificacoes TO \?\?$/),
+      expect.stringMatching(/^GRANT INSERT \(.+\) ON TABLE public\.notificacao_outbox TO \?\?$/),
+      'GRANT USAGE ON SEQUENCE public.notificacoes_id_seq, public.notificacao_outbox_id_seq TO ??',
+    ]);
+    for (const [sql] of concessoesAvisos) expect(sql).not.toMatch(/\b(DELETE|UPDATE|TRUNCATE)\b/);
   });
 
   it('rejeita o provisionamento se a validação detectar privilégios excessivos', async () => {

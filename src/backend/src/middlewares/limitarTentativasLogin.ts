@@ -20,6 +20,8 @@ interface OpcoesLimitador {
   // true: só as respostas com erro contam (login e refresh, onde importa a tentativa recusada)
   somenteFalhas?: boolean;
   pular?: (req: Request) => boolean;
+  // Chave própria (ex.: por usuário, depois do autenticar). Sem ela, conta por IP com as validações padrão.
+  chave?: (req: Request) => string;
 }
 
 export function criarLimitador(limiteOuOpcoes: number | OpcoesLimitador, mensagem?: string) {
@@ -38,6 +40,7 @@ export function criarLimitador(limiteOuOpcoes: number | OpcoesLimitador, mensage
     validate: { trustProxy: true, xForwardedForHeader: true },
     message: { erro: config.mensagem },
     ...(config.pular ? { skip: config.pular } : {}),
+    ...(config.chave ? { keyGenerator: config.chave } : {}),
   };
   return rateLimit(opcoes);
 }
