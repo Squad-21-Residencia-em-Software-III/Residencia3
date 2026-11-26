@@ -26,11 +26,12 @@ export interface ResultadoLoteNotificacoes {
 }
 
 // O corte usa horas fixas (e não "days") para não variar com horário de verão do fuso da sessão.
+const SQL_ELEGIVEL = `(lida_em IS NOT NULL AND lida_em < ?::timestamptz - (? * interval '1 hour'))
+     OR (lida_em IS NULL AND criado_em < ?::timestamptz - (? * interval '1 hour'))`;
 const SQL_ALVO = `
   SELECT id, (lida_em IS NOT NULL) AS lida
   FROM notificacoes
-  WHERE (lida_em IS NOT NULL AND lida_em < ?::timestamptz - (? * interval '1 hour'))
-     OR (lida_em IS NULL AND criado_em < ?::timestamptz - (? * interval '1 hour'))
+  WHERE ${SQL_ELEGIVEL}
   ORDER BY criado_em, id
   LIMIT ?
 `;
@@ -81,10 +82,12 @@ export async function processarRetencaoNotificacoes(
     const { rows } = await db.raw(
       `WITH alvo AS (${SQL_ALVO}),
        removidas AS (
-         DELETE FROM notificacoes n USING alvo WHERE n.id = alvo.id RETURNING alvo.lida
+         DELETE FROM notificacoes n
+         WHERE n.id IN (SELECT id FROM alvo) AND (${SQL_ELEGIVEL})
+         RETURNING (n.lida_em IS NOT NULL) AS lida
        )
        SELECT count(*) FILTER (WHERE lida) AS lidas, count(*) FILTER (WHERE NOT lida) AS nao_lidas FROM removidas`,
-      parametros,
+      [...parametros, ...parametros.slice(0, 4)],
     );
     resultado.lidas = Number(rows[0].lidas);
     resultado.naoLidas = Number(rows[0].nao_lidas);

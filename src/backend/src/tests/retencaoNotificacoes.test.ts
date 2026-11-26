@@ -1,4 +1,4 @@
-import type { Knex } from 'knex';
+import knex, { type Knex } from 'knex';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -66,7 +66,8 @@ describe('Retenção de notificações — argumentos e orquestração (sem banc
 
     await processarRetencaoNotificacoes(falso, { aplicar: true, limite: 50, agora: AGORA });
 
-    expect(raw.mock.calls[0][1]).toEqual([AGORA.toISOString(), 720, AGORA.toISOString(), 2160, 50]);
+    expect(raw.mock.calls[0][1]).toEqual([AGORA.toISOString(), 720, AGORA.toISOString(), 2160, 50,
+      AGORA.toISOString(), 720, AGORA.toISOString(), 2160]);
   });
 
   it('em caso de falha não repassa a mensagem do erro e marca a falha', async () => {
@@ -157,7 +158,7 @@ async function emTransacaoDescartavel(corpo: (trx: Knex.Transaction) => Promise<
   if (erro) throw erro;
 }
 
-async function criarUsuario(trx: Knex.Transaction, rotulo: string) {
+async function criarUsuario(trx: Knex, rotulo: string) {
   const [usuario] = await trx('usuarios').insert({
     nome: `Teste ${rotulo}`, email: `${randomBytes(8).toString('hex')}@testes.invalid`,
     senha: 'hash-de-teste', perfil: 'SOLICITANTE', tipo_usuario: 'SOLICITANTE',
@@ -166,7 +167,7 @@ async function criarUsuario(trx: Knex.Transaction, rotulo: string) {
 }
 
 async function criarNotificacao(
-  trx: Knex.Transaction,
+  trx: Knex,
   usuarioId: number,
   { criadoEm, lidaEm = null }: { criadoEm: Date; lidaEm?: Date | null },
 ) {
@@ -189,9 +190,75 @@ describe.skipIf(!habilitado)('Retenção de notificações em PostgreSQL descart
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('A suíte exige PostgreSQL descartável em 127.0.0.1/frotas_teste');
     }
-    ({ db } = await import('../config/database'));
+    ({ db } = await import('../config/database.js'));
   });
   afterAll(async () => { if (db) await db.destroy(); });
+
+  it('revalida a elegibilidade após uma leitura concorrente liberar a linha', async () => {
+    const usuario = await criarUsuario(db, 'concorrencia');
+    const id = await criarNotificacao(db, usuario, { criadoEm: antes(100) });
+    const leitura = await db.transaction();
+    const expurgo = await db.transaction();
+    let resultado: Promise<unknown> | undefined;
+    try {
+      await leitura('notificacoes').where({ id }).update({ lida_em: AGORA });
+      const { rows: [{ pid }] } = await expurgo.raw('SELECT pg_backend_pid() AS pid');
+      resultado = processarRetencaoNotificacoes(expurgo, { aplicar: true, limite: 500, agora: AGORA });
+      await vi.waitFor(async () => {
+        const { rows } = await db.raw('SELECT pg_blocking_pids(?) AS bloqueadores', [pid]);
+        expect(rows[0].bloqueadores.length).toBeGreaterThan(0);
+      });
+      await leitura.commit();
+      await expect(resultado).resolves.toMatchObject({ falhas: 0 });
+      expect(await expurgo('notificacoes').where({ id }).first('lida_em'))
+        .toEqual({ lida_em: AGORA });
+    } finally {
+      if (!leitura.isCompleted()) await leitura.rollback();
+      await resultado;
+      await expurgo.rollback();
+      await db('usuarios').where({ id: usuario }).del();
+    }
+  });
+
+  it('expurga com a role real provisionada e mantém o DELETE vedado à expiração', async () => {
+    const { provisionarRolesCron } = require('../../scripts/provisionar-roles-cron.cjs') as {
+      provisionarRolesCron: (opcoes: { env: Record<string, string | undefined> }) => Promise<void>;
+    };
+    const sufixo = randomBytes(5).toString('hex');
+    const retencao = 'qa_retencao_' + sufixo;
+    const expiracao = 'qa_expiracao_' + sufixo;
+    const senha = 'credencial-exclusiva-do-teste';
+    await provisionarRolesCron({ env: { ...process.env,
+      FSPH_CRON_EXPIRACAO_USER: expiracao, FSPH_CRON_EXPIRACAO_PASSWORD: senha,
+      FSPH_CRON_RETENCAO_USER: retencao, FSPH_CRON_RETENCAO_PASSWORD: senha,
+    } });
+    const restrita = knex({ client: 'pg', connection: {
+      host: '127.0.0.1', port: Number(process.env.POSTGRES_PORT ?? 5432), database: 'frotas_teste',
+      user: retencao, password: senha,
+    } });
+    const usuario = await criarUsuario(db, 'role');
+    try {
+      const alvo = await criarNotificacao(db, usuario, { criadoEm: antes(105) });
+      await restrita.transaction(async (trx) => {
+        const resultado = await processarRetencaoNotificacoes(trx, { aplicar: true, limite: 500, agora: AGORA });
+        expect(resultado.falhas).toBe(0);
+        expect(await trx('notificacoes').where({ id: alvo }).first('id')).toBeUndefined();
+        await trx.rollback();
+      }).catch((erro) => { if (erro) throw erro; });
+      const { rows } = await db.raw(
+        "SELECT has_table_privilege(?, 'notificacoes', 'DELETE') AS pode_excluir",
+        [expiracao],
+      );
+      expect(rows[0].pode_excluir).toBe(false);
+    } finally {
+      await restrita.destroy();
+      await db('usuarios').where({ id: usuario }).del();
+      for (const role of [retencao, expiracao]) {
+        await db.raw('DROP OWNED BY ??', [role]);
+        await db.raw('DROP ROLE ??', [role]);
+      }
+    }
+  });
 
   it('lidas: mantém 29 e 30 dias, remove 31 dias (a contagem parte de lida_em)', async () => {
     await emTransacaoDescartavel(async (trx) => {
