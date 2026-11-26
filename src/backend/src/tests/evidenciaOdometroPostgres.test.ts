@@ -267,6 +267,38 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     }
   );
 
+  it.skipIf(process.env.SCRUM231_POSTGRES_TESTS !== '1')('A5 reverte agendamento e avisos se a publicação falhar', async () => {
+    configNotificacoes.ativas = true;
+    const gestor = await usuario('GESTOR_FROTA');
+    const r = await recursos('FROTA');
+    await db('veiculos').where({ id: r.veiculo.id }).update({ status: 'DISPONIVEL' });
+    await db('motoristas').where({ id: r.motorista.id }).update({ status: 'DISPONIVEL' });
+    const [solicitacao] = await db('solicitacoes_viagem').insert({
+      origem: 'Sede', destino: 'Hospital', finalidade: 'Teste de rollback A5',
+      data_saida_desejada: new Date(), data_chegada_desejada: new Date(Date.now() + 3600_000),
+      status: 'APROVADA',
+    }).returning('id');
+    const publicar = publicacao.publicarNotificacao;
+    const publicacaoComFalha = vi.spyOn(publicacao, 'publicarNotificacao').mockImplementationOnce(async (...args) => {
+      await publicar(...args);
+      throw new AppError('Falha simulada depois da publicação de A5', 500);
+    });
+
+    const resposta = await request(app).post('/api/viagens').set('Authorization', gestor.token).send({
+      tipo_operacao: 'ADMINISTRATIVA', solicitacao_id: solicitacao.id,
+      veiculo_id: r.veiculo.id, motorista_id: r.motorista.id,
+    });
+
+    expect(resposta.status).toBe(500);
+    expect(publicacaoComFalha).toHaveBeenCalledOnce();
+    expect(await db('viagens_frota').where({ solicitacao_id: solicitacao.id })).toHaveLength(0);
+    expect(await db('solicitacoes_viagem').where({ id: solicitacao.id }).first('status')).toEqual({ status: 'APROVADA' });
+    expect(await db('veiculos').where({ id: r.veiculo.id }).first('status')).toEqual({ status: 'DISPONIVEL' });
+    expect(await db('motoristas').where({ id: r.motorista.id }).first('status')).toEqual({ status: 'DISPONIVEL' });
+    expect(await db('notificacoes').where({ usuario_id: r.condutor.id, tipo: 'VIAGEM_AGENDADA' })).toHaveLength(0);
+    expect(await db('notificacao_outbox').where({ usuario_id: r.condutor.id, evento_tipo: 'VIAGEM_AGENDADA' })).toHaveLength(0);
+  });
+
   it('autoriza a dispensa administrativa só para a fase e a viagem designadas, com auditoria', async () => {
     configNotificacoes.ativas = true;
     env.excecoesOdometroAtivas = true;
