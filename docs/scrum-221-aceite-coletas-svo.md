@@ -1,15 +1,15 @@
 # SCRUM-221 · Aceite das notificações SVO
 
-Os PRs [#212](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/212) e [#214](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/214) mantêm as implementações. Em 26/11/2026 foram testados localmente os HEADs `155be17` e `65548af` combinados em `6d0e87e`. A suíte backend teve 1.994 testes aprovados e 48 omitidos por configuração. O transporte Web Push nas suítes automatizadas é simulado.
+Os PRs [#212](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/212) e [#214](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/214) mantêm as implementações. Em 26/11/2026 foram testados os HEADs `2cdb212` e `be1e941` combinados com o aceite SVO em `e5ff85d`, em PostgreSQL 17 local descartável. As três suítes de integração somaram 44 testes aprovados. O caso administrativo exclusivo da SCRUM-231 foi omitido nesta execução. O transporte Web Push nas suítes automatizadas é simulado.
 
 | Evento | O que as suítes das subtarefas exercitam | Pendência de aceite |
 | --- | --- | --- |
-| S3 | Designação individual, exclusão do autor, acesso atual, fila e rollback | Retorno de motorista antes substituído ainda usa identidade derivada do horário e veículo no #214. |
-| S4 | Reprogramação, concorrência, revogação, idempotência e rollback | Retorno a horário anterior e mudança exclusiva de composição para quem permanece precisam da correção do #214. |
-| S5 | Público designado, histórico de cancelamento, concorrência e rollback | Reexecutar após integrar a correção de S3/S4. |
+| S3 | Designação individual, retorno do motorista original, acesso atual, fila e rollback | Histórico e nova atribuição confirmados por HTTP. |
+| S4 | Reprogramação, concorrência, revogação, idempotência e rollback | Retorno ao mesmo horário e mudança exclusiva de composição confirmados por HTTP. |
+| S5 | Público designado, histórico de cancelamento, concorrência e rollback | Casos reexecutados no PostgreSQL após incorporar #214. |
 | S6 | Chegada e concorrência, In-App sem Push | Validar sino e App Badge em navegador após correção do #216. |
 | S7 | Um evento no término físico, com finalizações concorrentes e rollback | Confirmar independência do App Badge na integração PWA. |
-| S8 | Pedido, decisão, recusa com novo pedido legítimo, rollback e revogação antes da entrega | A deduplicação do #212 mudou. Confirmar o caso específico de pedidos concorrentes em ordens do mesmo deslocamento e fase, além de nova revisão de QA. |
+| S8 | Pedido, decisão, recusa com novo pedido legítimo, rollback e revogação antes da entrega | Concorrência e publicação do pedido remanescente após decisão ou encerramento da primeira ordem confirmadas por HTTP. |
 
 ## Cenário transversal
 
