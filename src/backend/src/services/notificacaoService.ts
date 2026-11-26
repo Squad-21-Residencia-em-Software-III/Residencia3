@@ -1,3 +1,4 @@
+import { configNotificacoes } from '../config/notificacoes';
 import type { Knex } from 'knex';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import {
@@ -66,6 +67,18 @@ function semConteudo(item: Notificacao): ItemNotificacao {
 }
 
 export const notificacaoService = {
+  async obterAutorizada(autor: Autor, id: number): Promise<ItemNotificacao> {
+    if (!configNotificacoes.ativas) throw new AppError('Notificação não encontrada', 404);
+    const item = await notificacaoModel.obterAutorizada(await escopoDasNotificacoes(autor), id);
+    if (!item) throw new AppError('Notificação não encontrada', 404);
+    return { ...item, acesso_revogado: false };
+  },
+
+  async badge(autor: Autor, categorias: string[]): Promise<{ elegiveis: number }> {
+    if (!categorias.length) return { elegiveis: 0 };
+    return { elegiveis: await notificacaoModel.contarElegiveisParaBadge(await escopoDasNotificacoes(autor), categorias) };
+  },
+
   async listar(
     autor: Autor,
     { limit, cursor, apenas_nao_lidas }: ListarNotificacoes

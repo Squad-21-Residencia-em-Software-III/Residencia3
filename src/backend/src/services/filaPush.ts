@@ -24,7 +24,7 @@ const INTERVALO_CARONA_MS = 60_000;
  * rede rejeita. `sinal` é cancelado quando o tempo acaba.
  */
 export type EnviadorPush = (
-  assinatura: Pick<AssinaturaAtiva, 'endpoint' | 'p256dh' | 'auth'>,
+  assinatura: AssinaturaAtiva,
   payload: PayloadPush,
   sinal: AbortSignal
 ) => Promise<{ status: number; retryAfterSegundos?: number }>;
@@ -51,9 +51,8 @@ async function enviar(enviador: EnviadorPush, assinatura: AssinaturaAtiva, paylo
       controle.abort();
     }, LIMITE_ENVIO_MS);
   });
-  const { endpoint, p256dh, auth } = assinatura;
   try {
-    const resposta = await Promise.race([enviador({ endpoint, p256dh, auth }, payload, controle.signal), prazo]);
+    const resposta = await Promise.race([enviador(assinatura, payload, controle.signal), prazo]);
     if (resposta === 'TIMEOUT') return { assinatura, tipo: 'temporaria', erro: 'TIMEOUT', statusHttp: null, retryAfterSegundos: 0 };
     const { status, retryAfterSegundos = 0 } = resposta;
     const tipo = status >= 200 && status < 300 ? 'sucesso'

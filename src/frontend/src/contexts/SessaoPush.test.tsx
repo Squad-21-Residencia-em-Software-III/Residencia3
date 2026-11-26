@@ -9,6 +9,7 @@ import { ApiError, EVENTO_SESSAO_EXPIRADA, tokenStorage } from '../services/api/
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
 import { PERFIS } from '../types/usuario';
 import { AuthProvider, useAuth } from './AuthContext';
+import { instalarArmazenamentoPushTeste, criarTravasPushTeste, VINCULO_TESTE } from '../sw/fixturesPush';
 
 vi.mock('../services/api/authApi', () => ({ authApi: { login: vi.fn(), refresh: vi.fn(), logout: vi.fn() } }));
 vi.mock('../services/api/notificacoesPushApi', () => ({
@@ -89,14 +90,8 @@ beforeEach(() => {
     requestPermission: pedirPermissao,
   });
   definir(window, 'PushManager', class {});
-  let fila: Promise<unknown> = Promise.resolve();
-  definir(navigator, 'locks', {
-    request: (_: string, acao: () => Promise<unknown>) => {
-      const resultado = fila.then(acao);
-      fila = resultado.catch(() => undefined);
-      return resultado;
-    },
-  });
+  instalarArmazenamentoPushTeste();
+  definir(navigator, 'locks', criarTravasPushTeste());
   localStorage.clear();
   definir(navigator, 'serviceWorker', { ready: Promise.resolve(registro), getRegistration: async () => registro });
   vi.stubGlobal('BroadcastChannel', class {
@@ -111,7 +106,7 @@ beforeEach(() => {
   api.chavePublica.mockResolvedValue({ publicKey: 'AQID' });
   api.assinar.mockResolvedValue(undefined);
   api.cancelar.mockResolvedValue(undefined);
-  api.situacao.mockResolvedValue({ ativa: true });
+  api.situacao.mockResolvedValue({ ativa: true, vinculo: VINCULO_TESTE });
   api.preferencias.mockResolvedValue({ categorias: [{ codigo: 'VIAGENS', titulo: 'Viagens', push: true }] });
 });
 

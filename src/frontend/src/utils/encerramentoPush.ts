@@ -1,3 +1,4 @@
+import { confirmarEncerramento, lerEstadoPush } from '../sw/estadoPush';
 import { assinaturaDoAparelho, encerrarAssinatura } from './pushNavegador';
 
 const CHAVE = 'fsph.push.encerrar';
@@ -40,9 +41,10 @@ function desmarcar(): void {
  * fila (`emSequencia`), antes de qualquer ativação: assim nunca atinge uma assinatura nova.
  */
 export async function cumprirEncerramento(): Promise<boolean> {
-  if (!marcado()) return true;
+  if (!marcado() && !(await lerEstadoPush())?.encerramento) return true;
   const assinatura = await assinaturaDoAparelho();
   if (assinatura && !(await encerrarAssinatura(assinatura.endpoint).catch(() => false))) return false;
+  if (!(await confirmarEncerramento())) return false;
   desmarcar();
   return true;
 }
