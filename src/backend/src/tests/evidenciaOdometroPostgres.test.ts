@@ -379,6 +379,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect((await decidir(segundo.id, 'APROVADA', administrador.token)).status).toBe(200);
     expect(await db('excecoes_odometro').where({ id: primeiro.id }).first()).toMatchObject({ status: 'RECUSADA' });
     expect(await db('notificacao_outbox').where({ operacao: 'SVO' })
+      .whereIn('referencia_id', [a.id, b.id])
       .whereIn('evento_tipo', ['EXCECAO_ODOMETRO_SOLICITADA', 'EXCECAO_ODOMETRO_DECIDIDA'])).toHaveLength(0);
 
     const saida = { tipo_operacao: 'SVO', km_inicial: 1000 };
