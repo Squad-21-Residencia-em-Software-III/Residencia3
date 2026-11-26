@@ -139,3 +139,13 @@ Marca como lidas todas as notificações vinculadas à mesma entidade de negóci
 - **Retenção:** notificações lidas ficam disponíveis por **30 dias** e não lidas por **90 dias** (`SCRUM-225`).
 - **`acesso_revogado`:** quando `true`, o item é exibido sem link de navegação, permitindo apenas a marcação como lida.
 - **Validação de rotas:** `src/frontend/src/utils/destinoNotificacao.ts` valida `url_destino` por **match exato** contra as rotas existentes em `src/frontend/src/routes/index.tsx` e contra `perfilPode`, aplicando o fallback seguro do perfil (`/minhas-coletas`, `/solicitacoes`, `/viagens` ou `/inicio`) para qualquer destino inválido, inexistente ou sem permissão.
+
+---
+
+## Service Worker (`injectManifest`), Push e App Badging (`SCRUM-239`)
+
+- **Estratégia:** `vite-plugin-pwa` configurado com `strategies: 'injectManifest'`, `src/frontend/src/sw.ts` e `registerType: 'prompt'` (só ativa `skipWaiting()` ao receber `{ type: 'SKIP_WAITING' }`, evitando *reload-loop*).
+- **Cache seguro:** mantém precache do App Shell (`self.__WB_MANIFEST`), `cleanupOutdatedCaches()`, `NavigationRoute` excluindo `/^\/api\//`, `/api/*` como `NetworkOnly` (zero cache autenticado) e Google Fonts `CacheFirst`.
+- **Evento `push` (payload `SCRUM-237`):** lê `{ notificacao_id, titulo, corpo, url, tag }`. Com aba focada fora de `/login`, envia `postMessage({ tipo: 'PUSH_EM_PRIMEIRO_PLANO', payload })` para exibir o Toast sem duplicar alerta do SO; em segundo plano/fechado, chama `showNotification` com `icon` `192x192`, `badge` `72x72` (`/assets/pwa-badge-72x72.png`) e `tag`.
+- **Evento `notificationclick`:** fecha a notificação, sanitiza `url` interna (mesma origem) e prioriza focar aba existente enviando `postMessage({ tipo: 'NAVEGAR_NOTIFICACAO', url, notificacao_id })` para o `BridgeNotificacoesSw` validar RBAC via `resolverDestinoNotificacao`; sem aba aberta, usa `clients.openWindow(url)`.
+- **App Badging (opcional):** `src/frontend/src/utils/appBadging.ts` sincroniza `navigator.setAppBadge(naoLidas)` quando suportado e chama `navigator.clearAppBadge()` ao zerar não lidas, no logout ou troca de sessão.
