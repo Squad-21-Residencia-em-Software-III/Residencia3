@@ -57,6 +57,17 @@ export function usePermissoesDispositivo() {
     };
   }, []);
 
+  // A permissão pode mudar fora do sistema, nas configurações do navegador ou do aparelho
+  useEffect(() => {
+    const reler = () => setNotificacoes(lerEstadoNotificacoes());
+    document.addEventListener('visibilitychange', reler);
+    window.addEventListener('focus', reler);
+    return () => {
+      document.removeEventListener('visibilitychange', reler);
+      window.removeEventListener('focus', reler);
+    };
+  }, []);
+
   const solicitarNotificacoes = useCallback(async (): Promise<EstadoPermissao> => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       setNotificacoes('unsupported');

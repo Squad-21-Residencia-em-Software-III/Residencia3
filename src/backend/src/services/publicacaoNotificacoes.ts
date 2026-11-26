@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { configNotificacoes } from '../config/notificacoes';
+import { OPERACAO_DA_REFERENCIA, type OperacaoNotificacao, type ReferenciaNotificacao } from '../constants/referenciasNotificacao';
 import { acordarFilaPush } from './filaPush';
 
 // Limites das colunas (SCRUM-225) e do texto do push (SCRUM-237)
@@ -13,16 +14,15 @@ const LIMITE_OCORRENCIA = 60;
 export interface EventoNotificacao {
   /** Ex.: `VIAGEM_AGENDADA`. */
   tipo: string;
-  operacao: 'Administrativo' | 'SVO';
+  operacao: OperacaoNotificacao;
   severidade?: 'info' | 'success' | 'warning' | 'danger';
   titulo: string;
   mensagem: string;
   /** Rota interna, ex.: `/viagens`. */
   urlDestino: string;
-  referencia?: { tipo: string; id: number };
+  referencia?: { tipo: ReferenciaNotificacao; id: number };
   /**
-   * Distingue ocorrências legítimas do mesmo evento no mesmo registro (ex.: o novo horário, num
-   * reagendamento). Repetir a mesma ocorrência não avisa de novo.
+   * Identifica uma transição persistida. Repetir a mesma ocorrência não avisa de novo.
    */
   ocorrencia: string;
   /** Quem fez a ação nunca é avisado dela. `null`: rotina do sistema. */
@@ -57,6 +57,9 @@ function chaveDe({ tipo, referencia, ocorrencia }: EventoNotificacao): string {
  */
 export async function publicarNotificacao(trx: Knex.Transaction, evento: EventoNotificacao): Promise<{ criadas: number }> {
   if (!configNotificacoes.ativas) return { criadas: 0 };
+  if (evento.referencia && OPERACAO_DA_REFERENCIA[evento.referencia.tipo] !== evento.operacao) {
+    throw new Error('Referência incompatível com a operação da notificação');
+  }
   if (!trx.isTransaction) throw new Error('publicarNotificacao exige a transação da operação');
   const ocorrencia = evento.ocorrencia.trim();
   if (!ocorrencia || ocorrencia.length > LIMITE_OCORRENCIA) {

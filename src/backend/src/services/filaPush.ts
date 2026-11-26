@@ -76,12 +76,13 @@ function esperaDaTentativa(tentativa: number, retryAfterSegundos: number): numbe
 
 async function entregar(enviador: EnviadorPush, item: ItemFilaPush): Promise<Conclusao> {
   const destino = await notificacaoOutboxModel.destino(item);
-  const { entregues: anteriores = [], ...payload } = item.payload_push;
+  const { entregues: anteriores = [], definitivas: falharam = [], expiradas: invalidas = [], ...payload } = item.payload_push;
   if (typeof destino === 'string') {
-    return anteriores.length > 0 ? { status: 'ENVIADO' } : { status: 'IGNORADO', erro: destino };
+    return anteriores.length > 0 ? { status: 'ENVIADO', parcial: true } : { status: 'IGNORADO', erro: destino };
   }
 
-  const pendentes = destino.filter(({ id }) => !anteriores.includes(id));
+  const concluidas = new Set([...anteriores, ...falharam, ...invalidas]);
+  const pendentes = destino.filter(({ id }) => !concluidas.has(id));
   const resultados = await Promise.all(pendentes.map((assinatura) => enviar(enviador, assinatura, payload)));
   for (const { assinatura, tipo, statusHttp } of resultados) {
     const registro = tipo === 'sucesso' || tipo === 'expirada' ? tipo : 'falha';
@@ -91,25 +92,31 @@ async function entregar(enviador: EnviadorPush, item: ItemFilaPush): Promise<Con
   }
 
   const entregues = [...anteriores, ...resultados.filter((r) => r.tipo === 'sucesso').map((r) => r.assinatura.id)];
+  const definitivas = [...falharam, ...resultados.filter((r) => r.tipo === 'definitiva').map((r) => r.assinatura.id)];
+  const expiradas = [...invalidas, ...resultados.filter((r) => r.tipo === 'expirada').map((r) => r.assinatura.id)];
   const temporarias = resultados.filter((r) => r.tipo === 'temporaria');
   const [temporaria] = temporarias;
   if (temporaria && item.tentativas < item.max_tentativas) {
     const retryAfter = Math.max(...temporarias.map((r) => r.retryAfterSegundos));
     return {
-      status: 'PENDENTE', entregues, erro: temporaria.erro, statusHttp: temporaria.statusHttp,
+      status: 'PENDENTE', entregues, definitivas, expiradas, erro: temporaria.erro, statusHttp: temporaria.statusHttp,
       esperaSegundos: esperaDaTentativa(item.tentativas, retryAfter),
     };
   }
-  if (entregues.length > 0) return { status: 'ENVIADO' };
+  if (entregues.length > 0) {
+    return { status: 'ENVIADO', parcial: definitivas.length + expiradas.length + temporarias.length > 0,
+      entregues, definitivas: [...definitivas, ...temporarias.map((r) => r.assinatura.id)], expiradas };
+  }
   const falha = temporaria ?? resultados.find((r) => r.tipo === 'definitiva');
   return falha
     ? { status: 'FALHA_DEFINITIVA', erro: falha.erro, statusHttp: falha.statusHttp }
+    : definitivas.length > 0 ? { status: 'FALHA_DEFINITIVA', erro: 'APARELHOS_REJEITADOS', statusHttp: null }
     : { status: 'IGNORADO', erro: 'SEM_ASSINATURA' };
 }
 
 /** Uma passada pela fila. Pode rodar em mais de um processo ao mesmo tempo. */
 export async function processarFilaPush(enviador: EnviadorPush): Promise<void> {
-  const total = { vencidos: await notificacaoOutboxModel.encerrarVencidos(HORAS_VALIDADE), enviados: 0, adiados: 0, ignorados: 0, falhas: 0 };
+  const total = { vencidos: await notificacaoOutboxModel.encerrarVencidos(HORAS_VALIDADE), enviados: 0, parciais: 0, adiados: 0, ignorados: 0, falhas: 0 };
   for (let processados = 0; processados < ITENS_POR_EXECUCAO; processados += ITENS_POR_VEZ) {
     const itens = await notificacaoOutboxModel.reservar(ITENS_POR_VEZ, SEGUNDOS_RESERVA, HORAS_VALIDADE);
     if (itens.length === 0) break;
@@ -117,7 +124,7 @@ export async function processarFilaPush(enviador: EnviadorPush): Promise<void> {
       try {
         const conclusao = await entregar(enviador, item);
         if (!(await notificacaoOutboxModel.concluir(item, conclusao))) return;
-        if (conclusao.status === 'ENVIADO') total.enviados += 1;
+        if (conclusao.status === 'ENVIADO') total[conclusao.parcial ? 'parciais' : 'enviados'] += 1;
         else if (conclusao.status === 'PENDENTE') total.adiados += 1;
         else if (conclusao.status === 'IGNORADO') total.ignorados += 1;
         else total.falhas += 1;

@@ -51,7 +51,7 @@ describe('Resultado do envio', () => {
     expect(enviador.mock.calls.map(([a, p]) => [a.endpoint, p])).toEqual([
       ['https://push.exemplo/1', payload], ['https://push.exemplo/2', payload],
     ]);
-    expect(conclusao()).toEqual({ status: 'ENVIADO' });
+    expect(conclusao()).toMatchObject({ status: 'ENVIADO' });
     expect(modelo.registrarEnvio).toHaveBeenCalledWith(aparelho(2), 'sucesso', 201);
   });
 
@@ -126,17 +126,17 @@ describe('Novas tentativas', () => {
   it('só repete nos aparelhos que faltam', async () => {
     fila(item());
     aparelhos(1, 2, 3);
-    responder(201, 503, 410);
+    responder(201, 429, 400);
     await processarFilaPush(enviador);
-    expect(conclusao()).toMatchObject({ status: 'PENDENTE', entregues: [1] });
+    expect(conclusao()).toMatchObject({ status: 'PENDENTE', entregues: [1], definitivas: [3] });
 
     enviador.mockClear();
     modelo.concluir.mockClear();
-    fila(item({ tentativas: 2, payload_push: { ...payload, entregues: [1] } }));
-    aparelhos(1, 2);
+    fila(item({ tentativas: 2, payload_push: { ...payload, entregues: [1], definitivas: [3] } }));
+    aparelhos(1, 2, 3);
     await processarFilaPush(enviador);
     expect(enviador.mock.calls.map(([a, p]) => [a.endpoint, p])).toEqual([['https://push.exemplo/2', payload]]);
-    expect(conclusao()).toEqual({ status: 'ENVIADO' });
+    expect(conclusao()).toMatchObject({ status: 'ENVIADO' });
   });
 
   it('entregue em um aparelho e esgotado em outro conta como enviado', async () => {
@@ -144,14 +144,14 @@ describe('Novas tentativas', () => {
     aparelhos(1, 2);
     responder(201, 503);
     await processarFilaPush(enviador);
-    expect(conclusao()).toEqual({ status: 'ENVIADO' });
+    expect(conclusao()).toMatchObject({ status: 'ENVIADO' });
   });
 
   it('já entregue em um aparelho, desligar a categoria depois não vira "ignorado"', async () => {
     fila(item({ payload_push: { ...payload, entregues: [1] } }));
     modelo.destino.mockResolvedValueOnce('CATEGORIA_DESLIGADA');
     await processarFilaPush(enviador);
-    expect(conclusao()).toEqual({ status: 'ENVIADO' });
+    expect(conclusao()).toMatchObject({ status: 'ENVIADO' });
     expect(enviador).not.toHaveBeenCalled();
   });
 });
@@ -169,7 +169,7 @@ describe('Isolamento', () => {
     fila(item());
     modelo.registrarEnvio.mockRejectedValueOnce(new Error('limite de dispositivos'));
     await processarFilaPush(enviador);
-    expect(conclusao()).toEqual({ status: 'ENVIADO' });
+    expect(conclusao()).toMatchObject({ status: 'ENVIADO' });
   });
 
   it('um item com erro não impede os outros nem os próximos lotes', async () => {
