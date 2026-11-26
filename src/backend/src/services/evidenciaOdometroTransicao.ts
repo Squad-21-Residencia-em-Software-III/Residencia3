@@ -262,7 +262,17 @@ export async function registrarEvidenciaNaTransicao(trx: Knex.Transaction, t: Tr
  * Chamado em finalizar depois de gravar a viagem como concluída: inicia o prazo de guarda de
  * 12 meses a partir da conclusão real. No SVO, o deslocamento só termina com a última ordem.
  */
-export async function concluirOperacao(trx: Knex.Transaction, t: Transicao): Promise<void> {
+export type ConclusaoOperacao =
+  | { deslocamentoId: number; ordens: number[] }
+  | { deslocamentoId: null; ordens: [number] }
+  | null;
+
+/**
+ * Também responde o que a finalização encerrou (avisos S7, SCRUM-235): o deslocamento físico e as ordens dele
+ * quando esta é a última; a própria ordem, se ela não tem deslocamento (anterior às fotos); `null` se o
+ * deslocamento continua (ainda há ordem em curso) ou na viagem administrativa.
+ */
+export async function concluirOperacao(trx: Knex.Transaction, t: Transicao): Promise<ConclusaoOperacao> {
   const iniciarRetencao = (consulta: Knex.QueryBuilder) =>
     consulta
       .where({ status: 'ATIVA' })
@@ -274,17 +284,18 @@ export async function concluirOperacao(trx: Knex.Transaction, t: Transicao): Pro
 
   if (t.tipo === 'ADMINISTRATIVA') {
     await iniciarRetencao(trx('evidencias_odometro').where({ tipo_operacao: 'ADMINISTRATIVA', viagem_frota_id: t.viagemId }));
-    return;
+    return null;
   }
 
   const deslocamento = await deslocamentoDaOrdem(trx, t.viagemId, true);
-  if (!deslocamento || deslocamento.status !== 'EM_CURSO') return;
+  if (!deslocamento) return { deslocamentoId: null, ordens: [t.viagemId] };
+  if (deslocamento.status !== 'EM_CURSO') return null;
   const pendentes = await trx('deslocamentos_svo_ordens as dor')
     .join('ordens_svo as o', 'o.id', 'dor.ordem_svo_id')
     .where('dor.deslocamento_svo_id', deslocamento.id)
     .whereIn('o.status', ['EM_DESLOCAMENTO', 'NO_LOCAL'])
     .first('o.id');
-  if (pendentes) return;
+  if (pendentes) return null;
 
   await trx('deslocamentos_svo')
     .where({ id: deslocamento.id })
@@ -295,4 +306,7 @@ export async function concluirOperacao(trx: Knex.Transaction, t: Transicao): Pro
       data_hora_conclusao: trx.fn.now(),
     });
   await iniciarRetencao(trx('evidencias_odometro').where({ tipo_operacao: 'SVO', deslocamento_svo_id: deslocamento.id }));
+  const ordens: number[] = await trx('deslocamentos_svo_ordens')
+    .where({ deslocamento_svo_id: deslocamento.id }).orderBy('ordem_svo_id').pluck('ordem_svo_id');
+  return { deslocamentoId: deslocamento.id, ordens };
 }
