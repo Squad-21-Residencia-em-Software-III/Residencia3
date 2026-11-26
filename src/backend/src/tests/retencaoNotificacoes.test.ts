@@ -1,6 +1,7 @@
 import knex, { type Knex } from 'knex';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { inventariarRetencaoPush, lerPrazosSimulados } from '../services/inventarioRetencaoPush';
 import {
   executarRetencaoNotificacoes,
   lerArgumentosRetencaoNotificacoes,
@@ -21,6 +22,21 @@ function dbFalso(linhas: Array<{ lidas: string; nao_lidas: string }>) {
   for (const linha of linhas) raw.mockResolvedValueOnce({ rows: [linha] });
   return { raw, db: { raw } as unknown as Knex };
 }
+
+describe('Inventário de retenção Push', () => {
+  it('só aceita prazos e rejeita argumentos de aplicação ou duplicados', () => {
+    expect(lerPrazosSimulados(['--outbox=180', '--assinaturas=90'])).toEqual({ assinaturas: 90, outbox: 180 });
+    expect(() => lerPrazosSimulados(['--aplicar'])).toThrow();
+    expect(() => lerPrazosSimulados(['--outbox=180', '--outbox=90'])).toThrow();
+  });
+
+  it('rejeita prazo ausente ou fora do intervalo numérico antes de acessar o banco', async () => {
+    const { db: falso, raw } = dbFalso([]);
+    await expect(inventariarRetencaoPush(falso, lerPrazosSimulados(['--outbox=180']))).rejects.toThrow();
+    await expect(inventariarRetencaoPush(falso, { assinaturas: Number.POSITIVE_INFINITY, outbox: 180 })).rejects.toThrow();
+    expect(raw).not.toHaveBeenCalled();
+  });
+});
 
 describe('Retenção de notificações — argumentos e orquestração (sem banco)', () => {
   it('usa padrões seguros: simulação, lote de 100 e 1 lote', () => {
@@ -193,6 +209,73 @@ describe.skipIf(!habilitado)('Retenção de notificações em PostgreSQL descart
     ({ db } = await import('../config/database.js'));
   });
   afterAll(async () => { if (db) await db.destroy(); });
+
+  it('simula o corte estrito com role somente leitura e preserva todos os registros Push', async () => {
+    await emTransacaoDescartavel(async (trx) => {
+      const antesDaCarga = await inventariarRetencaoPush(trx, { assinaturas: 90, outbox: 180 }, AGORA);
+      const usuario = await criarUsuario(trx, 'inventario-push');
+      const criadoEm = antes(365);
+      for (const [status, atualizadoEm] of [
+        ['ATIVA', antes(100)], ['INVALIDA', antes(90, 1)], ['INVALIDA', antes(90)],
+        ['REVOGADA', antes(90, 1)], ['EXPIRADA', antes(89)],
+      ] as const) {
+        await trx('push_subscriptions').insert({
+          usuario_id: usuario, endpoint: `https://push.testes.invalid/${randomBytes(8).toString('hex')}`,
+          p256dh: 'chave-publica-teste', auth: 'chave-auth-teste',
+          status, ativa: status === 'ATIVA', criado_em: criadoEm, atualizado_em: atualizadoEm,
+          ultimo_erro_em: status === 'INVALIDA' ? atualizadoEm : null,
+          revogada_em: status === 'REVOGADA' ? atualizadoEm : null,
+          expirada_em: status === 'EXPIRADA' ? atualizadoEm : null,
+        });
+      }
+      for (const [status, processadoEm] of [
+        ['PENDENTE', null], ['PROCESSANDO', null], ['ENVIADO', antes(180)],
+        ['FALHA_DEFINITIVA', antes(180, 1)], ['IGNORADO', antes(181)],
+      ] as const) {
+        const chave = randomBytes(8).toString('hex');
+        await trx('notificacao_outbox').insert({
+          usuario_id: usuario, evento_tipo: 'TESTE_RETENCAO', operacao: 'Administrativo',
+          chave_idempotencia: chave, ocorrencia_versao: chave, status,
+          criado_em: criadoEm, processado_em: processadoEm,
+        });
+      }
+
+      const role = 'qa_inventario_' + randomBytes(5).toString('hex');
+      await trx.raw('CREATE ROLE ?? NOLOGIN', [role]);
+      await trx.raw('GRANT USAGE ON SCHEMA public TO ??', [role]);
+      await trx.raw('GRANT SELECT (status, ativa, atualizado_em) ON push_subscriptions TO ??', [role]);
+      await trx.raw('GRANT SELECT (status, processado_em) ON notificacao_outbox TO ??', [role]);
+      await trx.raw('SET LOCAL ROLE ??', [role]);
+      const ler = () => inventariarRetencaoPush(trx, { assinaturas: 90, outbox: 180 }, AGORA);
+      const depoisDaCarga = await ler();
+      expect(await ler()).toEqual(depoisDaCarga);
+      const { rows: [permissoes] } = await trx.raw(`
+        SELECT has_column_privilege('push_subscriptions', 'endpoint', 'SELECT') AS endpoint,
+          has_column_privilege('notificacao_outbox', 'payload_push', 'SELECT') AS payload,
+          has_table_privilege('push_subscriptions', 'DELETE') AS excluir_assinatura,
+          has_table_privilege('notificacao_outbox', 'DELETE') AS excluir_outbox
+      `);
+      expect(permissoes).toEqual({ endpoint: false, payload: false, excluir_assinatura: false, excluir_outbox: false });
+      await trx.raw('RESET ROLE');
+
+      const delta = (origem: string, status: string) => {
+        const antes = antesDaCarga.contagens.find((linha) => linha.origem === origem && linha.status === status);
+        const depois = depoisDaCarga.contagens.find((linha) => linha.origem === origem && linha.status === status)!;
+        return [depois.total - (antes?.total ?? 0), depois.anterioresAoCorte - (antes?.anterioresAoCorte ?? 0)];
+      };
+      expect(delta('assinaturas', 'ATIVA')).toEqual([1, 0]);
+      expect(delta('assinaturas', 'INVALIDA')).toEqual([2, 1]);
+      expect(delta('assinaturas', 'REVOGADA')).toEqual([1, 1]);
+      expect(delta('assinaturas', 'EXPIRADA')).toEqual([1, 0]);
+      expect(delta('outbox', 'PENDENTE')).toEqual([1, 0]);
+      expect(delta('outbox', 'PROCESSANDO')).toEqual([1, 0]);
+      expect(delta('outbox', 'ENVIADO')).toEqual([1, 0]);
+      expect(delta('outbox', 'FALHA_DEFINITIVA')).toEqual([1, 1]);
+      expect(delta('outbox', 'IGNORADO')).toEqual([1, 1]);
+      expect(await trx('push_subscriptions').where({ usuario_id: usuario })).toHaveLength(5);
+      expect(await trx('notificacao_outbox').where({ usuario_id: usuario })).toHaveLength(5);
+    });
+  });
 
   it('revalida a elegibilidade após uma leitura concorrente liberar a linha', async () => {
     const usuario = await criarUsuario(db, 'concorrencia');

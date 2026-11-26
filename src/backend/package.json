@@ -11,6 +11,7 @@
     "solicitacoes:expirar": "node dist/scripts/expirarSolicitacoesViagem.js",
     "evidencias:retencao": "node dist/scripts/retencaoEvidencias.js",
     "notificacoes:retencao": "node dist/scripts/retencaoNotificacoes.js",
+    "notificacoes:inventario-push": "node dist/scripts/inventarioRetencaoPush.js",
     "test": "vitest run src/tests",
     "migrate": "knex migrate:latest",
     "migrate:rollback": "knex migrate:rollback",
