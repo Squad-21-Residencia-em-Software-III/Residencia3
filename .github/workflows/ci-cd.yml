@@ -85,6 +85,7 @@ jobs:
       SCRUM226_POSTGRES_TESTS: '1'
       EXPIRACAO_POSTGRES_TESTS: '1'
       SCRUM208_POSTGRES_TESTS: '1'
+      SCRUM229_POSTGRES_TESTS: '1'
 
     defaults:
       run:
