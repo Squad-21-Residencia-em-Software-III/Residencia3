@@ -23,7 +23,7 @@ import { veiculosApi } from '../services/api/veiculosApi';
 import { abastecimentosApi } from '../services/api/abastecimentosApi';
 import { multasApi } from '../services/api/multasApi';
 import { recursoAtivo } from '../config/recursosBackend';
-import { useAbaOperacao } from '../utils/abaOperacao';
+import { useAbaOperacao, useFiltrosPorOperacao } from '../utils/abaOperacao';
 import { ModalVeiculo } from './veiculos/ModalVeiculo';
 import { DrawerDetalhesVeiculo } from './veiculos/DrawerDetalhesVeiculo';
 import { ModalAbastecimento } from './abastecimento/ModalAbastecimento';
@@ -52,24 +52,33 @@ const TEXTOS_FROTA: Record<TipoFrota, { titulo: string; capacidade: string }> = 
   SVO: { titulo: 'Frota SVO', capacidade: 'Corpos (máx. 4)' },
 };
 
+const FILTROS_INICIAIS = { status: 'TODOS', busca: '', abertos: false };
+
+interface PainelVeiculosProps {
+  frota: TipoFrota;
+  filtros: typeof FILTROS_INICIAIS;
+  atualizarFiltros: (parcial: Partial<typeof FILTROS_INICIAIS>) => void;
+}
+
 /** Veículos com a alternância Administrativo/SVO (SCRUM-173); a frota do perfil vem primeiro. */
 function GestaoDeVeiculos() {
   const { abasDeVeiculos } = usePermissao();
   const abas = abasDeVeiculos();
   const { ativa, mudar } = useAbaOperacao(abas);
+  const { filtros, atualizarFiltros } = useFiltrosPorOperacao(ativa, FILTROS_INICIAIS);
   if (!ativa) return null;
 
   return (
     <div className="grid gap-6">
       <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
       <div key={ativa} className="animate-tab-fade">
-        <PainelVeiculos frota={ativa} />
+        <PainelVeiculos frota={ativa} filtros={filtros} atualizarFiltros={atualizarFiltros} />
       </div>
     </div>
   );
 }
 
-function PainelVeiculos({ frota }: { frota: TipoFrota }) {
+function PainelVeiculos({ frota, filtros, atualizarFiltros }: PainelVeiculosProps) {
   const { podeNaFrota, podeVerDetalhesDaFrota } = usePermissao();
   const textos = TEXTOS_FROTA[frota];
   // Cada gestor só cadastra e edita veículos da própria frota (o Administrador, nas duas)
@@ -83,9 +92,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
-  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
-  const [busca, setBusca] = useState('');
-  const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
+  const { status: filtroStatus, busca, abertos: filtrosAbertosMobile } = filtros;
   const [modalAberto, setModalAberto] = useState(false);
   const [veiculoEditando, setVeiculoEditando] = useState<Veiculo | null>(null);
   const [veiculoDetalhes, setVeiculoDetalhes] = useState<Veiculo | null>(null);
@@ -214,7 +221,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
           value={totais.total}
           tone="neutral"
           isActive={filtroStatus === 'TODOS'}
-          onClick={() => setFiltroStatus('TODOS')}
+          onClick={() => atualizarFiltros({ status: 'TODOS' })}
           className="px-5 py-4"
         />
 
@@ -223,7 +230,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
           value={totais.disponiveis}
           tone="success"
           isActive={filtroStatus === 'DISPONIVEL'}
-          onClick={() => setFiltroStatus(filtroStatus === 'DISPONIVEL' ? 'TODOS' : 'DISPONIVEL')}
+          onClick={() => atualizarFiltros({ status: filtroStatus === 'DISPONIVEL' ? 'TODOS' : 'DISPONIVEL' })}
           className="px-5 py-4"
         />
 
@@ -232,7 +239,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
           value={totais.reservados}
           tone="warning"
           isActive={filtroStatus === 'RESERVADO'}
-          onClick={() => setFiltroStatus(filtroStatus === 'RESERVADO' ? 'TODOS' : 'RESERVADO')}
+          onClick={() => atualizarFiltros({ status: filtroStatus === 'RESERVADO' ? 'TODOS' : 'RESERVADO' })}
           className="px-5 py-4"
         />
 
@@ -241,7 +248,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
           value={totais.emUso}
           tone="primary"
           isActive={filtroStatus === 'EM_USO'}
-          onClick={() => setFiltroStatus(filtroStatus === 'EM_USO' ? 'TODOS' : 'EM_USO')}
+          onClick={() => atualizarFiltros({ status: filtroStatus === 'EM_USO' ? 'TODOS' : 'EM_USO' })}
           className="px-5 py-4"
         />
 
@@ -250,7 +257,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
           value={totais.manutencao}
           tone="danger"
           isActive={filtroStatus === 'MANUTENCAO'}
-          onClick={() => setFiltroStatus(filtroStatus === 'MANUTENCAO' ? 'TODOS' : 'MANUTENCAO')}
+          onClick={() => atualizarFiltros({ status: filtroStatus === 'MANUTENCAO' ? 'TODOS' : 'MANUTENCAO' })}
           className="col-span-2 px-5 py-4 lg:col-span-1"
         />
       </div>
@@ -262,7 +269,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
           subtitle={`${veiculosFiltrados.length} de ${veiculos.length} veículos listados`}
           newLabel={podeCadastrar ? 'Novo Veículo' : undefined}
           onNew={podeCadastrar ? () => setModalAberto(true) : undefined}
-          onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+          onFilter={() => atualizarFiltros({ abertos: !filtrosAbertosMobile })}
           isFilterActive={
             filtroStatus !== 'TODOS' ||
             Boolean(busca) ||
@@ -275,14 +282,14 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
           {/* Busca textual na esquerda */}
           <SearchInput
             value={busca}
-            onChange={setBusca}
+            onChange={(busca) => atualizarFiltros({ busca })}
             placeholder="Buscar por placa, modelo ou marca..."
           />
 
           <FilterSelect
             aria-label="Filtrar por status do veículo"
             value={filtroStatus}
-            onChange={(val) => setFiltroStatus(val)}
+            onChange={(status) => atualizarFiltros({ status })}
             options={[
               { value: 'TODOS', label: 'Todos os status' },
               { value: 'DISPONIVEL', label: 'Disponível' },
@@ -296,10 +303,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setBusca('');
-                setFiltroStatus('TODOS');
-              }}
+              onClick={() => atualizarFiltros({ ...FILTROS_INICIAIS, abertos: filtrosAbertosMobile })}
             >
               Limpar
             </Button>
@@ -338,7 +342,7 @@ function PainelVeiculos({ frota }: { frota: TipoFrota }) {
                         <button
                           type="button"
                           onClick={() => {
-                            setFiltroStatus('TODOS');
+                            atualizarFiltros({ status: 'TODOS' });
                           }}
                           className="mt-2 cursor-pointer border-none bg-transparent text-xs font-semibold text-primary underline hover:text-primary-hover"
                         >

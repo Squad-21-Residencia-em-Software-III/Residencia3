@@ -119,6 +119,40 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
     expect(within(drawer).queryByRole('button', { name: /Iniciar viagem|Finalizar viagem|Cancelar viagem/ })).not.toBeInTheDocument();
   });
 
+  it('restaura a busca e o status da própria operação ao voltar à aba', async () => {
+    const user = userEvent.setup();
+    const busca = () => screen.getByPlaceholderText('Buscar por trajeto, condutor ou placa...');
+    const status = () => screen.getByLabelText('Filtrar por status');
+    abrir();
+    await screen.findByText('Hospital de Lagarto');
+    await user.type(busca(), 'Lagarto');
+    await user.selectOptions(status(), 'AGENDADA');
+
+    await user.click(screen.getByRole('tab', { name: 'SVO' }));
+    expect(busca()).toHaveValue('');
+    expect(status()).toHaveValue('TODOS');
+    await user.type(busca(), 'Flores');
+    await user.selectOptions(status(), 'NO_LOCAL');
+
+    await user.click(screen.getByRole('tab', { name: 'Administrativo' }));
+    expect(busca()).toHaveValue('Lagarto');
+    expect(status()).toHaveValue('AGENDADA');
+    await user.click(screen.getByRole('tab', { name: 'SVO' }));
+    expect(busca()).toHaveValue('Flores');
+    expect(status()).toHaveValue('NO_LOCAL');
+  });
+  it('busca o destino de coletas ainda sem motorista e sem veículo', async () => {
+    const dto = {
+      ...viagem(8, 'SVO', 'Rua dos Ipês'), status: 'AGUARDANDO_ALOCACAO',
+      motorista_id: null, motorista_nome: null, veiculo_id: null, veiculo_placa: null,
+    };
+    api.listar.mockResolvedValue([dto as unknown as Viagem]);
+    abrir('/viagens?aba=svo');
+    await screen.findByText('Rua dos Ipês');
+    await userEvent.type(screen.getByPlaceholderText('Buscar por trajeto, condutor ou placa...'), 'Ipês');
+    expect(screen.getByText('Rua dos Ipês')).toBeInTheDocument();
+  });
+
   it('Administrador alterna entre as abas sem misturar registros de mesmo id', async () => {
     abrir();
 

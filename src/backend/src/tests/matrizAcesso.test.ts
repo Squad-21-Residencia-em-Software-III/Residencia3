@@ -45,9 +45,9 @@ import { AppError } from '../errors/AppError';
 import { app } from '../app';
 import { authService } from '../services/authService';
 
-const { ADMINISTRADOR: A, SOLICITANTE: S, GESTOR_FROTA: GF, GESTOR_SVO: GS, MOTORISTA_FROTA: MF, MOTORISTA_SVO: MS } =
+const { ADMINISTRADOR: A, SOLICITANTE: S, GESTOR_FROTA: GF, GESTOR_SVO: GS, MOTORISTA_FROTA: MF, MOTORISTA_SVO: MS, INTEGRANTE_SVO: IS } =
   PERFIS;
-const TODOS: Perfil[] = [A, S, GF, GS, MF, MS];
+const TODOS: Perfil[] = [A, S, GF, GS, MF, MS, IS];
 
 type Metodo = 'get' | 'post' | 'put' | 'patch' | 'delete';
 // [método, rota, perfis permitidos, exige associação à unidade SVO para o Gestor SVO]
@@ -93,6 +93,13 @@ const MATRIZ: Regra[] = [
   ['put', '/api/multas/1', [A, GF]],
   ['delete', '/api/multas/1', [A, GF]],
 
+  ['get', '/api/viagens/coletas-svo/minhas', [IS]],
+  ['get', '/api/viagens/minhas', [GS]],
+  ['get', '/api/viagens/ordens-svo/pendentes', [A, GS], true],
+  ['get', '/api/viagens/ordens-svo/1/designacoes', [A, GS], true],
+  ['post', '/api/viagens/ordens-svo/1/reprogramar', [A, GS], true],
+  ['patch', '/api/viagens/ordens-svo/1/chegar-local', [MS]],
+  ['patch', '/api/viagens/administrativas/1/reprogramar', [A, GF]],
   ['get', '/api/viagens', [A, GF, GS, MF, MS], true],
   ['post', '/api/viagens', [A, GF, GS], true],
   ['patch', '/api/viagens/1/iniciar', [A, GF, GS, MF, MS], true],
@@ -102,7 +109,7 @@ const MATRIZ: Regra[] = [
   ['get', '/api/motoristas/me', TODOS],
   ['get', '/api/motoristas', [A, GF, GS], true],
 
-  ['get', '/api/unidades', TODOS],
+  ['get', '/api/unidades', [A, S, GF, GS, MF, MS]],
   ['get', '/api/unidades/gestores', [A]],
   ['post', '/api/unidades/1/gestores', [A]],
   ['delete', '/api/unidades/1/gestores/2', [A]],
