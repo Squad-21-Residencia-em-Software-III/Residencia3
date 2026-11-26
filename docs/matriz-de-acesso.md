@@ -50,6 +50,7 @@ A matriz é verificada rota a rota por `src/backend/src/tests/matrizAcesso.test.
 | `GET /motoristas` | ✅ | ❌ | ✅ | 🔗² | ❌ | ❌ |
 | `GET /unidades` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `/notificacoes`: `GET vapid-public-key`, `POST subscribe`, `POST subscribe/status`, `DELETE unsubscribe`, `GET preferencias`, `PATCH preferencias/:codigo` (SCRUM-237) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `GET /notificacoes/metricas`: totais da fila e dos aparelhos, sem dado pessoal (SCRUM-241) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `/unidades/gestores` (consulta e associação) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `GET /dashboard` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `/solicitacoes-svo` (todas) | ✅ | ❌ | ❌ | 🔗² | ❌ | ❌ |

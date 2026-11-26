@@ -20,8 +20,15 @@ async function iniciar() {
   }
 
   // Liga a fila de push (SCRUM-229) e retoma o que ficou pendente. Sem VAPID, os avisos ficam só no sistema
+  // A etapa da liberação fica no log de cada partida (docs/scrum-241-implantacao-push.md), sem valores de configuração
+  const pushLigado = Boolean(env.webPush && configNotificacoes.ativas);
   if (env.webPush && configNotificacoes.ativas) definirEnviadorPush(criarEnviadorWebPush(env.webPush));
-  else console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'PUSH_DESLIGADO' }));
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level: 'INFO',
+    evento: pushLigado ? 'PUSH_LIGADO' : 'PUSH_DESLIGADO',
+    notificacoes_ativas: configNotificacoes.ativas,
+  }));
 
   const servidor = app.listen(env.port, () => {
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'SERVIDOR_INICIADO', port: env.port }));

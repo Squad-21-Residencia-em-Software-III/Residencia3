@@ -38,6 +38,7 @@ vi.mock('../services/usuarioService', () => ({ usuarioService: stubDeService() }
 vi.mock('../services/veiculoService', () => ({ veiculoService: stubDeService() }));
 vi.mock('../services/viagemService', () => ({ viagemService: stubDeService() }));
 vi.mock('../services/pushService', () => ({ pushService: stubDeService() }));
+vi.mock('../services/metricasNotificacoes', () => ({ metricasNotificacoes: stubDeService() }));
 
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
@@ -122,6 +123,7 @@ const MATRIZ: Regra[] = [
   ['delete', '/api/notificacoes/unsubscribe', TODOS],
   ['get', '/api/notificacoes/preferencias', TODOS],
   ['patch', '/api/notificacoes/preferencias/VIAGENS', TODOS],
+  ['get', '/api/notificacoes/metricas', [A]],
   ['get', '/api/notificacoes', TODOS],
   ['get', '/api/notificacoes/contador', TODOS],
   ['patch', '/api/notificacoes/1/lida', TODOS],
