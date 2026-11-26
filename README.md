@@ -50,7 +50,7 @@ O **FMS/TMS FSPH** unifica toda a governança da frota administrativa e especial
 
 ---
 
-Consulte o [manual de operação](docs/manual-fluxos-operacionais.md) e o [guia de implantação](docs/guia-de-execucao.md).
+Consulte o [manual de operação](docs/manual-fluxos-operacionais.md) e o [guia de implantação](docs/guia-de-execucao.md). Para a Fase 2, veja o [manual de notificações e PWA](docs/notificacoes-fase2.md).
 
 ## 🛠️ Stack Tecnológica
 
@@ -172,7 +172,7 @@ O seed inicial carrega usuários de demonstração com diferentes níveis de per
 
 ## 🗺️ Roadmap de Evolução Técnica
 
-O planejamento detalhado das próximas entregas encontra-se documentado na **Seção 18 do [`docs/frontend.md`](file:///c:/Users/xoney/Documents/GitHub/Residencia3/docs/frontend.md#L738)**:
+Consulte o [Roadmap Estratégico](docs/frontend.md#20-roadmap-estratégico-e-próximos-passos-priorizado) para o planejamento das próximas entregas.
 
 1. **Conexão dos Módulos Restantes à API REST**:
    - Conexão do Dashboard Executivo (`GET /api/dashboard`);
