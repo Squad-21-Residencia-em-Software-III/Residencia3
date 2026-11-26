@@ -1,8 +1,11 @@
 import type { Knex } from 'knex';
 import { configNotificacoes } from '../config/notificacoes';
 import { PERFIS } from '../constants/perfis';
+import { ORDENS_SVO_EM_CURSO } from '../constants/statusOrdemSvo';
 import { UNIDADES } from '../constants/unidades';
+import type { ExcecaoOdometroRow } from '../models/excecaoOdometroModel';
 import type { SolicitacaoSvo } from '../models/solicitacaoSvoModel';
+import { deslocamentoDaOrdem, evidenciaDaFase } from './evidenciaOdometroTransicao';
 import { limitar, publicarNotificacao } from './publicacaoNotificacoes';
 
 export const URL_DESTINO_TRIAGEM_SVO = '/solicitacoes?aba=svo';
@@ -297,6 +300,44 @@ export const notificacaoSvoService = {
         tag: `svo-excecao-${excecao.id}`,
       },
     });
+  },
+
+  /** Chamado sob a trava da agenda, após inserir, decidir ou encerrar um pedido. */
+  async avisarProximoPedidoDoDeslocamento(
+    ordemId: number,
+    fase: FaseOdometro,
+    trx: Knex.Transaction,
+  ): Promise<boolean> {
+    // A ordem só é vinculada ao deslocamento no início, quando seu pedido de saída encerra.
+    if (!configNotificacoes.ativas || fase !== 'CHEGADA') return false;
+    const deslocamento = await deslocamentoDaOrdem(trx, ordemId);
+    if (deslocamento?.status !== 'EM_CURSO') return false;
+    const ordem = await trx('ordens_svo').where({ id: ordemId }).first('veiculo_id', 'motorista_id');
+    if (ordem?.veiculo_id !== deslocamento.veiculo_id || ordem.motorista_id !== deslocamento.motorista_id) return false;
+    if (await evidenciaDaFase(trx, 'SVO', deslocamento.id, fase)) return true;
+
+    const proximo = await trx<ExcecaoOdometroRow>('excecoes_odometro as e')
+      .join('deslocamentos_svo_ordens as dor', 'dor.ordem_svo_id', 'e.ordem_svo_id')
+      .join('ordens_svo as o', 'o.id', 'e.ordem_svo_id')
+      .join('motoristas as m', 'm.id', 'o.motorista_id')
+      .join('usuarios as u', function () {
+        this.on('u.id', '=', 'm.usuario_id').andOn('u.id', '=', 'e.solicitada_por');
+      })
+      .where({
+        'dor.deslocamento_svo_id': deslocamento.id,
+        'e.tipo_operacao': 'SVO', 'e.fase': fase, 'e.status': 'PENDENTE',
+        'e.motorista_id': deslocamento.motorista_id, 'o.motorista_id': deslocamento.motorista_id,
+        'e.veiculo_id': deslocamento.veiculo_id, 'o.veiculo_id': deslocamento.veiculo_id,
+        'u.ativo': true, 'u.perfil': PERFIS.MOTORISTA_SVO,
+      })
+      .whereNull('e.encerrada_em')
+      .whereIn('o.status', [...ORDENS_SVO_EM_CURSO])
+      .orderBy('e.id')
+      .first('e.id', 'e.fase', 'e.motivo', 'e.ordem_svo_id', 'e.solicitada_por');
+    if (proximo?.ordem_svo_id != null) {
+      await this.publicarExcecaoSolicitada(proximo, proximo.ordem_svo_id, proximo.solicitada_por, trx);
+    }
+    return true;
   },
 
   /**

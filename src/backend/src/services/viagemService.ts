@@ -668,6 +668,7 @@ export const viagemService = {
         await reavaliarFilaSvo(trx, autor.id);
         // S7 (SCRUM-235): uma vez por deslocamento físico, quando a última ordem termina. Sem push
         if (conclusao) await notificacaoSvoService.publicarConclusaoColeta(conclusao, viagemId, autor.id, trx);
+        else await notificacaoSvoService.avisarProximoPedidoDoDeslocamento(viagemId, 'CHEGADA', trx);
       }
 
       await registrarAuditoria(trx, autor.id,
