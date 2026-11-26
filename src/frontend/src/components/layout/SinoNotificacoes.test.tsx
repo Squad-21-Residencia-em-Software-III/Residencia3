@@ -277,6 +277,50 @@ describe('SinoNotificacoes', () => {
     expect(screen.getByText('Lista de Viagens')).toBeInTheDocument();
   });
 
+  it('mantém o contador e habilita a leitura em lote só quando há avisos não lidos exibidos', async () => {
+    const user = userEvent.setup();
+    mockContador.mockResolvedValue({ nao_lidas: 2, versao: 'v1' });
+    mockListar
+      .mockResolvedValueOnce({
+        itens: [criarInApp(12, { lida_em: '2026-11-26T12:00:00.000Z' })],
+        proximo_cursor: 'cursor-1',
+        nao_lidas: 2,
+        versao: 'v1',
+      })
+      .mockResolvedValueOnce({
+        itens: [criarInApp(11)],
+        proximo_cursor: 'cursor-2',
+        nao_lidas: 2,
+        versao: 'v1',
+      });
+    mockMarcarTodasLidas.mockResolvedValue({ atualizadas: 1, nao_lidas: 1, versao: 'v2' });
+
+    render(
+      <MemoryRouter>
+        <NotificacoesProvider ativoOverride>
+          <SinoNotificacoes />
+        </NotificacoesProvider>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: /notificações/i }));
+    expect(await screen.findByText('Viagem #12 confirmada')).toBeInTheDocument();
+    expect(screen.getByTestId('badge-notificacoes')).toHaveTextContent('2');
+    const marcarExibidos = screen.getByRole('button', { name: 'Marcar avisos exibidos como lidos' });
+    expect(marcarExibidos).toBeDisabled();
+    await user.click(marcarExibidos);
+    expect(mockMarcarTodasLidas).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Carregar mais' }));
+    expect(await screen.findByText('Viagem #11 confirmada')).toBeInTheDocument();
+    expect(marcarExibidos).toBeEnabled();
+    await user.click(marcarExibidos);
+
+    expect(mockMarcarTodasLidas).toHaveBeenCalledExactlyOnceWith([11]);
+    await waitFor(() => expect(screen.getByTestId('badge-notificacoes')).toHaveTextContent('1'));
+    expect(marcarExibidos).toBeDisabled();
+  });
+
   it('exibe erro com botão "Tentar novamente" e modo offline', async () => {
     const user = userEvent.setup();
     mockListar.mockRejectedValueOnce(new Error('Falha no servidor'));

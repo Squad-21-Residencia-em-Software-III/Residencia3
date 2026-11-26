@@ -40,7 +40,7 @@ Aviso sem referência é livre para o destinatário. Tipo não cadastrado em `co
 
 ## Para o front (SCRUM-227)
 
-1. **Marcar todas:** enviar os `ids` dos avisos não lidos carregados, em lotes de até 1.000. Usar o `nao_lidas` da última resposta, pois outros avisos podem continuar não lidos.
+1. **Marcar avisos exibidos como lidos:** enviar os `ids` exatos dos avisos não lidos exibidos, em lotes de até 1.000. Usar o `nao_lidas` da última resposta, pois a conta pode ter avisos não lidos fora da lista carregada. Desabilitar a ação quando a lista exibida só contiver avisos lidos ou estiver vazia.
 2. **Sincronizar:** revalidar a lista aberta periodicamente e ao retomar o uso. A `versao` do contador acompanha as leituras e novas notificações. Revogações de acesso podem ocorrer sem alterar essa versão.
 3. **`acesso_revogado`:** mostrar sem link.
 4. **Tipos de referência:** usar os nomes acima no prefixo do identificador.
