@@ -35,13 +35,7 @@ vi.mock('../models/auditoriaModel', () => ({
 
 vi.mock('../services/notificacaoSvoService', () => ({
   notificacaoSvoService: {
-    publicarAlertasRegistroSolicitacao: vi.fn(async () => ({
-      s1PublicadosInApp: 0,
-      s1EnfileiradosOutbox: 0,
-      s2PublicadosInApp: 0,
-      s2EnfileiradosOutbox: 0,
-      s2BloqueadoMotivo: 'FONTE_DOMINIO_SVO_MATERIAL_SENSIVEL_NAO_CONFIRMADA',
-    })),
+    publicarAlertasRegistroSolicitacao: vi.fn(async () => undefined),
   },
 }));
 

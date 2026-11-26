@@ -53,7 +53,7 @@ jobs:
           node ../../scripts/audit-ci.cjs
 
       - name: Executar testes automatizados
-        run: npm test
+        run: npm test -- --no-file-parallelism
 
       - name: Compilar frontend
         run: npm run build
@@ -84,6 +84,7 @@ jobs:
       POSTGRES_SSL: 'false'
       EXPIRACAO_POSTGRES_TESTS: '1'
       SCRUM208_POSTGRES_TESTS: '1'
+      SCRUM233_POSTGRES_TESTS: '1'
 
     defaults:
       run:
@@ -115,7 +116,7 @@ jobs:
         run: npm run build
 
       - name: Executar testes automatizados
-        run: npm test
+        run: npm test -- --no-file-parallelism
         env:
           JWT_SECRET: ci-test-only-secret-not-for-production
 

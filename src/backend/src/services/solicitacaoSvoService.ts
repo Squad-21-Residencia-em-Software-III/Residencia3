@@ -77,7 +77,7 @@ export const solicitacaoSvoService = {
         trx,
       );
 
-      await notificacaoSvoService.publicarAlertasRegistroSolicitacao(solicitacao, trx);
+      await notificacaoSvoService.publicarAlertasRegistroSolicitacao(solicitacao, registranteId, trx);
 
       return solicitacao;
     });
