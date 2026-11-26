@@ -1,6 +1,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PERFIS } from '../constants/perfis';
+import { configNotificacoes } from '../config/notificacoes';
 import type { ReservaSvo } from '../services/agendaSvoService';
 
 type Chamada = [metodo: string, argumentos: unknown[]];
@@ -408,6 +409,7 @@ const motoristaSvo = {
 };
 
 beforeEach(() => {
+  configNotificacoes.ativas = true;
   vi.clearAllMocks();
 
   ref.estado = {
@@ -715,6 +717,13 @@ describe('viagemService.criar (administrativa)', () => {
       'EM_VIAGEM',
       mockTrx
     );
+  });
+
+  it('agenda com a flag desligada sem consultar os destinatários', async () => {
+    configNotificacoes.ativas = false;
+    await viagemService.criar(dados, gestorFrota);
+    expect(mockTrx).not.toHaveBeenCalledWith('usuarios');
+    expect(publicarNotificacao).not.toHaveBeenCalled();
   });
 });
 

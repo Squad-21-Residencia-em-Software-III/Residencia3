@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { configNotificacoes } from '../config/notificacoes';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { ORDENS_SVO_EM_CURSO, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 import { AppError } from '../errors/AppError';
@@ -528,7 +529,7 @@ export const viagemService = {
         `${dados.tipo_operacao === 'SVO' ? 'ALOCOU_ORDEM_SVO' : 'CRIOU_VIAGEM'} tipo=${dados.tipo_operacao} id=${id} veiculo=${dados.veiculo_id} motorista=${dados.motorista_id}`
       );
 
-      if (dados.tipo_operacao === 'ADMINISTRATIVA') {
+      if (dados.tipo_operacao === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
         const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, id);
         const aviso = montarAvisoViagemAgendada(id);
         await publicarNotificacao(
@@ -613,7 +614,7 @@ export const viagemService = {
       await registrarAuditoria(trx, autor.id,
         `INICIOU_VIAGEM tipo=${tipo} id=${viagemId} km_inicial=${kmInicial}${evidenciaSaida ? ` evidencia=${evidenciaSaida}` : ''}`);
 
-      if (tipo === 'ADMINISTRATIVA') {
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
         const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
         const avisos = montarAvisosAndamentoViagem(viagemId, 'INICIADA');
 
@@ -690,7 +691,7 @@ export const viagemService = {
       await registrarAuditoria(trx, autor.id,
         `FINALIZOU_VIAGEM tipo=${tipo} id=${viagemId} km_final=${kmFinal}${evidenciaChegada ? ` evidencia=${evidenciaChegada}` : ''}`);
 
-      if (tipo === 'ADMINISTRATIVA') {
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
         const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
         const avisos = montarAvisosAndamentoViagem(viagemId, 'FINALIZADA');
 
@@ -757,7 +758,7 @@ export const viagemService = {
         `CANCELOU_VIAGEM tipo=${tipo} id=${viagemId}${cancelarSolicitacao ? ' solicitacao_cancelada' : ''}`
       );
 
-      if (tipo === 'ADMINISTRATIVA') {
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
         const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
         const avisos = montarAvisosViagemCancelada(viagemId);
 
