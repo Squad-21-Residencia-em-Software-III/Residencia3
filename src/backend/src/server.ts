@@ -14,6 +14,10 @@ async function iniciar() {
     const existentes = await Promise.all(tabelas.map((tabela) => db.schema.hasTable(tabela)));
     if (existentes.some((existe) => !existe)) throw new Error('Schema do odômetro incompleto');
   }
+  if (configNotificacoes.ativas) {
+    const existentes = await Promise.all(['notificacoes', 'notificacao_outbox'].map((tabela) => db.schema.hasTable(tabela)));
+    if (existentes.some((existe) => !existe)) throw new Error('Schema das notificações incompleto');
+  }
 
   // Liga a fila de push (SCRUM-229) e retoma o que ficou pendente. Sem VAPID, os avisos ficam só no sistema
   if (env.webPush && configNotificacoes.ativas) definirEnviadorPush(criarEnviadorWebPush(env.webPush));
@@ -26,7 +30,7 @@ async function iniciar() {
 }
 
 void iniciar().catch(async () => {
-  console.error('Não foi possível iniciar a API. Confira conexão e migrations do odômetro.');
+  console.error('Não foi possível iniciar a API. Confira conexão e migrations do odômetro e das notificações.');
   process.exitCode = 1;
   await db.destroy();
 });
