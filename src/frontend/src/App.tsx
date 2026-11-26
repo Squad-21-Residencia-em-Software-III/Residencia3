@@ -10,8 +10,8 @@ import { AppRoutes } from './routes'
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <BrowserRouter>
+    <BrowserRouter>
+      <ErrorBoundary>
         <AuthProvider>
           <NotificacoesProvider>
             <BannerOffline />
@@ -21,7 +21,7 @@ export default function App() {
             <PromptAtualizacaoPwa />
           </NotificacoesProvider>
         </AuthProvider>
-      </BrowserRouter>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </BrowserRouter>
   )
 }

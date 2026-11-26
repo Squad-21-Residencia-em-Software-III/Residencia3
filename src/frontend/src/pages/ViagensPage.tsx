@@ -419,8 +419,8 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
         const termo = busca.trim().toLowerCase();
         const matchOrigem = (v.origem ?? '').toLowerCase().includes(termo);
         const matchDestino = (v.destino ?? '').toLowerCase().includes(termo);
-        const matchMotorista = v.motorista_nome.toLowerCase().includes(termo);
-        const matchPlaca = v.veiculo_placa.toLowerCase().includes(termo);
+        const matchMotorista = (v.motorista_nome ?? '').toLowerCase().includes(termo);
+        const matchPlaca = (v.veiculo_placa ?? '').toLowerCase().includes(termo);
         const matchSolicitante = (v.solicitante_nome ?? '').toLowerCase().includes(termo);
         if (!matchOrigem && !matchDestino && !matchMotorista && !matchPlaca && !matchSolicitante) {
           return false;
