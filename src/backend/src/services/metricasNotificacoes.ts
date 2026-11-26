@@ -7,8 +7,22 @@ import { configNotificacoes } from '../config/notificacoes';
 // usuário, endpoint, chave, texto de aviso ou registro de origem.
 
 const JANELA_HORAS = 24;
-// `ultimo_erro` da fila guarda códigos fixos (filaPush). Qualquer outro valor vira OUTRO, para nunca expor texto livre
-const CODIGO = /^[A-Z][A-Z0-9_]{0,39}$/;
+// A janela usa now(), fixo na consulta: com clock_timestamp(), que muda a cada linha, os índices de data não servem
+// e as tabelas seriam lidas inteiras (medido em docs/scrum-241-implantacao-push.md)
+// Códigos que a fila grava em `ultimo_erro` (filaPush e notificacaoOutboxModel). Só estes e HTTP_<status> passam;
+// qualquer outro valor vira OUTRO, mesmo com cara de código, para nunca expor texto livre
+const MOTIVOS_CONHECIDOS = new Set([
+  // Ignorados
+  'PRAZO_ENCERRADO', 'USUARIO_INATIVO', 'CATEGORIA_DESLIGADA', 'SEM_ASSINATURA', 'ACESSO_REVOGADO',
+  // Falhas
+  'APARELHOS_REJEITADOS', 'PROCESSO_INTERROMPIDO', 'TIMEOUT', 'REDE',
+]);
+const HTTP = /^HTTP_[1-5]\d{2}$/;
+
+export function motivoPublico(ultimoErro: string | null): string {
+  if (ultimoErro !== null && (MOTIVOS_CONHECIDOS.has(ultimoErro) || HTTP.test(ultimoErro))) return ultimoErro;
+  return 'OUTRO';
+}
 
 export interface MetricasNotificacoes {
   gerado_em: string;
@@ -40,7 +54,7 @@ async function fila(conexao: Knex) {
   const { rows: encerrados } = await conexao.raw<{ rows: { status: string; ultimo_erro: string | null; total: string }[] }>(
     `SELECT status, ultimo_erro, count(*) AS total FROM notificacao_outbox
       WHERE status IN ('ENVIADO', 'IGNORADO', 'FALHA_DEFINITIVA')
-        AND processado_em >= clock_timestamp() - ? * interval '1 hour'
+        AND processado_em >= now() - ? * interval '1 hour'
       GROUP BY status, ultimo_erro`,
     [JANELA_HORAS]
   );
@@ -56,7 +70,7 @@ async function fila(conexao: Knex) {
     }
     if (status === 'IGNORADO') resumo.ignorados += quantidade;
     else resumo.falhas += quantidade;
-    const motivo = ultimo_erro && CODIGO.test(ultimo_erro) ? ultimo_erro : 'OUTRO';
+    const motivo = motivoPublico(ultimo_erro);
     motivos[motivo] = (motivos[motivo] ?? 0) + quantidade;
   }
 
@@ -74,7 +88,7 @@ async function aparelhos(conexao: Knex) {
   const { rows: [linha] } = await conexao.raw<{ rows: Record<string, unknown>[] }>(
     `SELECT count(*) FILTER (WHERE ativa) AS ativos,
             count(DISTINCT usuario_id) FILTER (WHERE ativa) AS usuarios,
-            count(*) FILTER (WHERE expirada_em >= clock_timestamp() - ? * interval '1 hour') AS expirados
+            count(*) FILTER (WHERE expirada_em >= now() - ? * interval '1 hour') AS expirados
        FROM push_subscriptions`,
     [JANELA_HORAS]
   );
@@ -83,7 +97,7 @@ async function aparelhos(conexao: Knex) {
 
 async function avisos(conexao: Knex) {
   const { rows: [linha] } = await conexao.raw<{ rows: Record<string, unknown>[] }>(
-    `SELECT count(*) AS criados FROM notificacoes WHERE criado_em >= clock_timestamp() - ? * interval '1 hour'`,
+    `SELECT count(*) AS criados FROM notificacoes WHERE criado_em >= now() - ? * interval '1 hour'`,
     [JANELA_HORAS]
   );
   return { criados_na_janela: numero(linha?.criados) };

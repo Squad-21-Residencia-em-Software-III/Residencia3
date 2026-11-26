@@ -68,7 +68,7 @@ describe.skipIf(!habilitado)('Métricas dos avisos (SCRUM-241) em PostgreSQL des
     const antes = (await consultar(admin)).body;
 
     await db.transaction(async (trx) => {
-      for (let i = 0; i < 6; i += 1) {
+      for (let i = 0; i < 8; i += 1) {
         await publicarNotificacao(trx, {
           tipo: 'SOLICITACAO_APROVADA', operacao: 'Administrativo', titulo: 'Solicitação aprovada',
           mensagem: 'Motivo sigiloso do pedido.', urlDestino: '/solicitacoes',
@@ -79,7 +79,7 @@ describe.skipIf(!habilitado)('Métricas dos avisos (SCRUM-241) em PostgreSQL des
       }
     });
     const ids: number[] = await db('notificacao_outbox').where({ usuario_id: usuario.id }).orderBy('id').pluck('id');
-    expect(ids).toHaveLength(6);
+    expect(ids).toHaveLength(8);
     const agora = db.raw('clock_timestamp()');
     const encerrar = (id: number, status: string, ultimo_erro: string | null) =>
       db('notificacao_outbox').where({ id }).update({ status, ultimo_erro, processado_em: agora });
@@ -88,6 +88,9 @@ describe.skipIf(!habilitado)('Métricas dos avisos (SCRUM-241) em PostgreSQL des
     await encerrar(ids[2], 'IGNORADO', 'CATEGORIA_DESLIGADA');
     // Texto livre nunca sai na métrica, mesmo que alguém grave um
     await encerrar(ids[3], 'FALHA_DEFINITIVA', `Falhou para ${usuario.email}`);
+    // Com cara de código, mas fora da lista: também vira OUTRO
+    await encerrar(ids[6], 'FALHA_DEFINITIVA', 'CODIGO_INVENTADO');
+    await encerrar(ids[7], 'FALHA_DEFINITIVA', 'HTTP_503');
     await db('notificacao_outbox').where({ id: ids[4] }).update({ criado_em: db.raw(`clock_timestamp() - interval '2 hours'`) });
     // Fora da janela de 24 h
     await db('notificacao_outbox').where({ id: ids[5] }).update({
@@ -110,18 +113,18 @@ describe.skipIf(!habilitado)('Métricas dos avisos (SCRUM-241) em PostgreSQL des
     expect(depois.fila).toMatchObject({
       pendentes: 1,
       processando: 0,
-      encerrados: { enviados: 1, parciais: 1, ignorados: 1, falhas: 1 },
-      motivos: { CATEGORIA_DESLIGADA: 1, OUTRO: 1 },
+      encerrados: { enviados: 1, parciais: 1, ignorados: 1, falhas: 3 },
+      motivos: { CATEGORIA_DESLIGADA: 1, HTTP_503: 1, OUTRO: 2 },
     });
     expect(depois.fila.pendente_mais_antigo_segundos).toBeGreaterThanOrEqual(2 * 3600);
     expect(depois.fila.pendente_mais_antigo_segundos).toBeLessThan(2 * 3600 + 300);
     expect(depois.aparelhos.ativos - antes.aparelhos.ativos).toBe(3);
     expect(depois.aparelhos.usuarios - antes.aparelhos.usuarios).toBe(2);
     expect(depois.aparelhos.expirados_na_janela - antes.aparelhos.expirados_na_janela).toBe(1);
-    expect(depois.avisos.criados_na_janela - antes.avisos.criados_na_janela).toBe(6);
+    expect(depois.avisos.criados_na_janela - antes.avisos.criados_na_janela).toBe(8);
 
     const texto = JSON.stringify(depois);
-    for (const sigilo of [usuario.email, 'Motivo sigiloso', 'fcm.googleapis.com', ...ativos.map((a) => a.endpoint)]) {
+    for (const sigilo of [usuario.email, 'Motivo sigiloso', 'CODIGO_INVENTADO', 'fcm.googleapis.com', ...ativos.map((a) => a.endpoint)]) {
       expect(texto).not.toContain(sigilo);
     }
     expect(texto).not.toMatch(new RegExp(`"(usuario_id|endpoint|p256dh|auth|titulo|mensagem)"`));

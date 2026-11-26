@@ -9,7 +9,7 @@ Referências: [SCRUM-229](scrum-229-publicacao-e-fila.md) (fila), [SCRUM-237](sc
 | Onde | Variável | Efeito | Desfazer |
 |---|---|---|---|
 | Render | `NOTIFICACOES_ATIVAS` | `true`: as operações publicam avisos. A API só sobe com as tabelas das SCRUM-225 e 228 | `false`: nada é publicado. Os avisos já criados continuam no banco |
-| Render | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | As três juntas, com `NOTIFICACOES_ATIVAS=true`, ligam o envio. Só uma ou duas: a API não sobe | Apagar as três: rotas de assinatura respondem `503`, a fila não envia, a central continua |
+| Render | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | As três juntas, com `NOTIFICACOES_ATIVAS=true`, ligam o envio. Só uma ou duas: a API não sobe | Apagar as três: rotas de assinatura respondem `503`, a fila não envia, a central continua. **Guardar o par antes** (veja abaixo) |
 | Vercel | `VITE_NOTIFICACOES_IN_APP_ATIVAS` | `true`: sino, central e contador | `false` e novo deploy |
 | Vercel | `VITE_WEB_PUSH_ATIVO` | `true`: oferece ligar os alertas nas preferências | `false` e novo deploy. Os aparelhos já assinados param de receber se o Render também desligar |
 | GitHub (variável) | `FSPH_EXPIRACAO_AVISOS_ATIVOS` | `true`: a rotina de expiração publica o A4 | `false` |
@@ -19,6 +19,7 @@ Referências: [SCRUM-229](scrum-229-publicacao-e-fila.md) (fila), [SCRUM-237](sc
 - As variáveis `VITE_*` entram no build: mudar na Vercel só vale depois de **um novo deploy**.
 - A chave privada VAPID fica **só no Render**. Nunca numa variável `VITE_*`, no repositório, num print ou num log. O front recebe a pública por `GET /api/notificacoes/vapid-public-key`.
 - **Não trocar o par VAPID** depois de liberado: todas as assinaturas deixam de valer, e cada pessoa precisa ligar os alertas de novo.
+- **Desligar por um tempo não é trocar:** antes de apagar as chaves no Render, confirmar que o par original (pública e privada) está guardado no cofre da equipe. Para religar, usar **o mesmo par**: as assinaturas continuam valendo, e ninguém precisa ligar os alertas de novo. Um par novo só em caso de vazamento da chave privada.
 
 ## Etapas
 
@@ -50,7 +51,7 @@ Depende da SCRUM-239 publicada (service worker com `push` e `notificationclick`)
 5. Primeiro só com a equipe: ligar os alertas em Android/Chrome, desktop e iOS (PWA instalado). Seguir o roteiro da SCRUM-238.
 6. Conferir nas métricas: `aparelhos.ativos` sobe, e `fila.encerrados.enviados` cresce sem `falhas`.
 
-**Desfazer:** `VITE_WEB_PUSH_ATIVO=false` para de oferecer. Apagar as três chaves VAPID para de enviar. Nos dois casos, os avisos continuam na central.
+**Desfazer:** `VITE_WEB_PUSH_ATIVO=false` para de oferecer. Apagar as três chaves VAPID para de enviar, depois de conferir que o par original está guardado. Para religar, voltar **o mesmo par**. Nos dois casos, os avisos continuam na central.
 
 ### 3. Rotinas
 
@@ -66,20 +67,73 @@ O Render gratuito suspende a API depois de alguns minutos sem acesso, e a primei
 - **A4 (rotina do GitHub Actions):** a rotina grava direto no banco, sem a API. Por isso o workflow chama `GET /api/status` quando expirou algum pedido e os avisos estão ligados. Se a chamada falhar, a expiração não é desfeita, e o alerta sai na próxima vez que alguém usar o sistema.
 - **Validade:** um alerta pendente há mais de 24 h é encerrado como `PRAZO_ENCERRADO` (`IGNORADO`). O aviso continua na central.
 
-## Custo
+## Custo e desempenho (NF-25 e NF-26)
 
-Os serviços de push (Google, Mozilla, Microsoft e Apple) não cobram. O custo é o tráfego da Vercel, as horas do Render e o processamento do Neon.
+Os serviços de push (Google, Mozilla, Microsoft e Apple) não cobram. O custo é o tráfego da Vercel, as horas do Render e o processamento do Neon. Abaixo, **estimativa** é conta feita a partir do código; **medição** é o que foi rodado de fato, num banco local descartável.
 
-- **Sino:** consulta o contador a cada 60 s, **só com a aba visível e online**. Abas em segundo plano não consultam. Em foco, revalida com espera de 5 s.
-- **Estimativa do pior caso**, com todos de tela aberta 8 h por dia em 22 dias:
+### Quantas consultas o sino faz (estimativa, pelo código do front)
 
-| Pessoas | Por minuto | Por mês |
-|---|---|---|
-| 10 | até 10 | até ~106 mil |
-| 50 | até 50 | até ~528 mil |
+| Situação | Consultas |
+|---|---|
+| Aba visível, central fechada | 1 contador por minuto |
+| Aba visível, central aberta | 1 lista (20 avisos e o contador) por minuto, no lugar do contador |
+| Abrir a central | 1 lista |
+| Voltar o foco à aba ou à janela | 1 contador, no máximo a cada 5 s por aba |
+| Aba em segundo plano ou sem rede | Nenhuma |
 
-- Cada consulta passa pelo proxy da Vercel e mantém o Render e o Neon acordados no horário de uso. Antes de abrir para 50 pessoas, comparar com o uso mostrado nos painéis da Vercel, do Render e do Neon, porque as cotas gratuitas mudam.
+- **Várias abas:** no mesmo navegador, só a aba da frente fica visível e consulta. Duas janelas lado a lado consultam as duas. Alternar entre janelas soma uma consulta por troca.
+- **Pior caso** (todos com a tela aberta 8 h por dia em 22 dias, sem contar as trocas de foco):
+
+| Pessoas | Janelas visíveis por pessoa | Por minuto | Por mês |
+|---|---|---|---|
+| 10 | 1 | até 10 | até ~106 mil |
+| 50 | 1 | até 50 | até ~528 mil |
+| 50 | 2 | até 100 | até ~1,06 milhão |
+
+- Cada consulta passa pelo proxy da Vercel e mantém o Render e o Neon acordados no horário de uso. Antes de abrir para todos, comparar com o uso nos painéis da Vercel, do Render e do Neon, porque as cotas gratuitas mudam.
 - **Para reduzir:** a chave do front vale para todos (o build é um só), então não dá para liberar a central só para um grupo. As opções são adiar a etapa 1 ou aumentar `INTERVALO_POLLING_NOTIFICACOES_MS` no front, com novo deploy.
+
+### Medição com histórico acumulado
+
+`src/backend/src/tests/desempenhoNotificacoesPostgres.test.ts`, fora do CI porque gera ~270 mil linhas. Para repetir, num banco novo depois de `npm run migrate`:
+
+```bash
+SCRUM241_DESEMPENHO=1 SCRUM241_RELATORIO=relatorio.json npx vitest run src/tests/desempenhoNotificacoesPostgres.test.ts
+```
+
+- **Massa:** 50 pessoas, 167 mil avisos espalhados por 90 dias (uma pessoa com 20 mil; 3 em 4 lidos), 100 mil itens na fila e 150 aparelhos. Tabelas analisadas (`ANALYZE`) antes de medir.
+- **O que mede:** as requisições reais da API (sessão, escopo e consulta), o `EXPLAIN ANALYZE` das consultas que a API fez, e rajadas e vazão contra a API rodando nesta máquina.
+- **Resultado, em 2 rodadas:**
+
+| Consulta | Índice usado | Tempo no banco |
+|---|---|---|
+| Contador (pessoa com 20 mil avisos) | `idx_notificacoes_usuario_nao_lidas` | 3 a 6 ms |
+| Central, primeira página | `idx_notificacoes_usuario_cursor` | 0,1 a 2,7 ms, mais o contador |
+| Central, página antiga | `idx_notificacoes_usuario_cursor` | 0,2 ms, mais o contador |
+| Métricas: fila aberta | `idx_notificacao_outbox_fila_pendente` | 0,1 a 1 ms |
+| Métricas: encerrados em 24 h | `idx_notificacao_outbox_retencao_terminal` | 1,6 a 1,7 ms |
+| Métricas: avisos em 24 h | `idx_notificacoes_criado_em` | 6,4 a 6,5 ms |
+
+| Rota, pela API | p50 | p95 |
+|---|---|---|
+| Contador, pessoa típica (200 chamadas) | 3,5 ms | 5,6 ms |
+| Contador, pessoa com 20 mil avisos (200) | 5,5 ms | 8,4 ms |
+| Central, pessoa com 20 mil avisos (100) | 6 ms | 10,5 ms |
+| Métricas (30) | 4,5 a 6,1 ms | 18,7 ms |
+
+- **Vazão do contador:** ~650 por segundo com 5 clientes e ~740 com 20. A demanda estimada é de 0,17 por segundo (10 pessoas) a 2,5 por segundo (50 pessoas com 3 janelas).
+- **Corrigido por causa da medição:** a janela de 24 h das métricas usava `clock_timestamp()`, que muda a cada linha e impede o índice. As duas consultas liam as tabelas inteiras (40 a 50 ms cada; p95 da rota de 158 ms). Com `now()`, usam os índices acima. O teste falha se alguma consulta voltar a ler `notificacoes` ou `notificacao_outbox` inteira.
+
+### Limites que aparecem com mais gente
+
+- **Rajada (medição):** a API atende até `MAX_REQUISICOES_SIMULTANEAS` (padrão 50) requisições ao mesmo tempo. Com 100 consultas no mesmo instante, 50 foram atendidas e 50 receberam `503`; com 150, 100 receberam `503`. No uso normal as consultas se espalham pelo minuto. O sino ignora a falha e tenta de novo no próximo ciclo. Pode acontecer quando muita gente volta ao sistema ao mesmo tempo, como quando o Render acorda. Se `503` aparecer com frequência no log, avaliar subir o limite, considerando a memória do plano gratuito.
+- **Limite por IP (estimativa):** a leitura é limitada a `RATE_LIMIT_LEITURA_POR_MIN` (padrão 300) por IP de origem. Se a rede da FSPH sair para a internet por um único IP, todas as pessoas dividem esse limite: 50 pessoas com 2 janelas já somam 100 consultas por minuto só do sino, além da navegação. Antes da etapa 1, confirmar com a TI como é a saída. Se for um IP só, ajustar `RATE_LIMIT_LEITURA_POR_MIN` no Render.
+
+### O que a medição não cobre
+
+- A rede até o Render e o Neon, a partida a frio do Render e o processador do plano gratuito, mais lento que o desta máquina. Os tempos reais serão maiores; a proporção entre consultas e a escolha dos índices se mantêm.
+- As tabelas de origem (solicitações, viagens, ordens) estavam vazias. A conferência de acesso da central roda só para os 20 avisos da página.
+- Nada foi executado no Neon real.
 
 ## Acompanhamento
 
@@ -137,7 +191,9 @@ Linhas JSON com códigos fixos, sem dado pessoal:
 
 ## Testes
 
-- `metricasNotificacoesPostgres.test.ts`: totais da fila, dos aparelhos e dos avisos pela rota real, janela de 24 h, motivo com texto livre virando `OUTRO`, nenhum dado pessoal na resposta, `no-store` e acesso só do Administrador. Roda no CI com `SCRUM241_POSTGRES_TESTS=1`.
+- `metricasNotificacoesPostgres.test.ts`: totais da fila, dos aparelhos e dos avisos pela rota real, janela de 24 h, motivo fora da lista virando `OUTRO` (texto livre e código inventado), nenhum dado pessoal na resposta, `no-store` e acesso só do Administrador. Roda no CI com `SCRUM241_POSTGRES_TESTS=1`.
+- `metricasNotificacoes.test.ts`: a lista de motivos aceitos e os valores que viram `OUTRO`.
+- `desempenhoNotificacoesPostgres.test.ts`: a medição acima, fora do CI.
 - `matrizAcesso.test.ts`: a rota para todos os perfis.
 - `vercel.test.ts` (front): cabeçalhos do service worker e do manifesto, proxy com segredo e ordem das rotas.
-- Workflow da expiração: a leitura do total foi conferida com a saída do script (com expiradas, sem expiradas e sem a linha). O despertar só roda com `FSPH_EXPIRACAO_AVISOS_ATIVOS=true` e `FSPH_API_URL` definida.
+- Workflow da expiração: o passo roda com `pipefail`, então uma falha do script derruba o passo mesmo com o `tee`. Conferido executando o bloco do workflow com um `npm` simulado: falha da expiração (antes passava como sucesso), falha depois de imprimir o total, 2 expiradas, nenhuma e segredo ausente. Só o despertar da API é tolerado se falhar, e ele só roda com `FSPH_EXPIRACAO_AVISOS_ATIVOS=true` e `FSPH_API_URL` definida.

@@ -51,8 +51,11 @@ jobs:
           POSTGRES_DB: ${{ secrets.FSPH_CRON_PG_DATABASE }}
           POSTGRES_APP_USER: ${{ secrets.FSPH_CRON_PG_USER }}
           POSTGRES_APP_PASSWORD: ${{ secrets.FSPH_CRON_PG_PASSWORD }}
+        # Sem pipefail, o tee esconderia uma falha da expiração (o bash padrão do Actions só usa -e)
+        shell: bash
         run: |
-          if [[ -z "$POSTGRES_HOST" || -z "$POSTGRES_DB" || -z "$POSTGRES_APP_USER" || -z "$POSTGRES_APP_PASSWORD" ]]; then
+          set -euo pipefail
+          if [[ -z "${POSTGRES_HOST:-}" || -z "${POSTGRES_DB:-}" || -z "${POSTGRES_APP_USER:-}" || -z "${POSTGRES_APP_PASSWORD:-}" ]]; then
             echo "::error::Configure os segredos de conexão no ambiente protegido deste workflow."
             exit 1
           fi
