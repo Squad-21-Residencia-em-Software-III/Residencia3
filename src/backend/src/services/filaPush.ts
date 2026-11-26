@@ -78,7 +78,9 @@ async function entregar(enviador: EnviadorPush, item: ItemFilaPush): Promise<Con
   const destino = await notificacaoOutboxModel.destino(item);
   const { entregues: anteriores = [], definitivas: falharam = [], expiradas: invalidas = [], ...payload } = item.payload_push;
   if (typeof destino === 'string') {
-    return anteriores.length > 0 ? { status: 'ENVIADO', parcial: true } : { status: 'IGNORADO', erro: destino };
+    if (anteriores.length > 0) return { status: 'ENVIADO', parcial: true };
+    if (falharam.length > 0) return { status: 'FALHA_DEFINITIVA', erro: 'APARELHOS_REJEITADOS', statusHttp: null };
+    return { status: 'IGNORADO', erro: destino };
   }
 
   const concluidas = new Set([...anteriores, ...falharam, ...invalidas]);

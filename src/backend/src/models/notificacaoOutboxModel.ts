@@ -51,14 +51,17 @@ export type Conclusao =
 const TABELA = 'notificacao_outbox';
 // Nunca antes da criação (chk_notificacao_outbox_processamento_coerente)
 const AGORA = 'GREATEST(clock_timestamp(), criado_em)';
+const JA_ENTREGUE = `jsonb_path_exists(payload_push, '$.entregues[0]')`;
 
 export const notificacaoOutboxModel = {
   /** Encerra o que ficou velho (ex.: servidor parado) e o que caiu na última tentativa. */
   async encerrarVencidos(horasValidade: number, conexao: Knex = db): Promise<number> {
     const { rowCount } = await conexao.raw(
       `UPDATE ${TABELA} SET
-         status = CASE WHEN tentativas >= max_tentativas THEN 'FALHA_DEFINITIVA' ELSE 'IGNORADO' END,
-         ultimo_erro = CASE WHEN tentativas >= max_tentativas THEN 'PROCESSO_INTERROMPIDO' ELSE 'PRAZO_ENCERRADO' END,
+         status = CASE WHEN ${JA_ENTREGUE} THEN 'ENVIADO'
+           WHEN tentativas >= max_tentativas THEN 'FALHA_DEFINITIVA' ELSE 'IGNORADO' END,
+         ultimo_erro = CASE WHEN ${JA_ENTREGUE} THEN 'ENTREGA_PARCIAL'
+           WHEN tentativas >= max_tentativas THEN 'PROCESSO_INTERROMPIDO' ELSE 'PRAZO_ENCERRADO' END,
          bloqueado_ate = NULL, processado_em = ${AGORA}, atualizado_em = ${AGORA}
        WHERE id IN (
          SELECT id FROM ${TABELA}
