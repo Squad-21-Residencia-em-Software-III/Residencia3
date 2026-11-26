@@ -30,8 +30,11 @@ export const listarNotificacoesSchema = z.object({
 
 export const notificacaoParamSchema = z.object({ id: z.coerce.number({ error: 'ID inválido' }).pipe(idSchema) });
 
-/** `ate_id`: o aviso mais novo que o usuário viu. Os que chegaram depois continuam não lidos. */
-export const lerTodasSchema = z.object({ ate_id: idSchema.optional() });
+/** IDs exatos da lista apresentada. Um ID menor pode ser confirmado no banco mais tarde. */
+export const lerTodasSchema = z.object({
+  ids: z.array(idSchema).min(1).max(1_000).optional(),
+  ate_id: z.never({ error: 'Use ids para marcar os avisos apresentados' }).optional(),
+});
 
 export const lerReferenciaSchema = z.object({
   referencia_tipo: z.enum(LISTA_REFERENCIAS_NOTIFICACAO, {

@@ -30,8 +30,8 @@ async function conta(perfil: string, associado = true): Promise<Conta> {
   return { id: u.id, token: `Bearer ${token}` };
 }
 
-async function avisar(usuario: Conta, dados: Record<string, unknown> = {}): Promise<number> {
-  const [linha] = await db('notificacoes').insert({
+async function avisar(usuario: Conta, dados: Record<string, unknown> = {}, conexao = db): Promise<number> {
+  const [linha] = await conexao('notificacoes').insert({
     usuario_id: usuario.id, tipo: 'VIAGEM_AGENDADA', titulo: 'Viagem agendada', mensagem: 'Saída às 14:00.',
     operacao: 'Administrativo', url_destino: '/viagens', chave_idempotencia: nonce(), ...dados,
   }).returning('id');
@@ -194,13 +194,28 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
     expect(await db('notificacoes').whereIn('id', [viagem, ordem, trocado]).whereNotNull('lida_em').pluck('id')).toEqual([viagem]);
   });
 
-  it('com ate_id, o que chegou depois continua não lido', async () => {
+  it('marca somente os avisos vistos quando transações confirmam IDs fora de ordem', async () => {
     const u = await conta('SOLICITANTE');
-    await avisar(u);
-    const vista = await avisar(u);
-    const nova = await avisar(u);
-    expect((await patch(u, '/ler-todas', { ate_id: vista })).body).toMatchObject({ atualizadas: 2, nao_lidas: 1 });
-    expect((await get(u, '?apenas_nao_lidas=true')).body.itens[0].id).toBe(nova);
+    const outraConta = await conta('SOLICITANTE');
+    const alheia = await avisar(outraConta);
+    const antiga = await avisar(u);
+    const atrasada = await db.transaction();
+    let menor: number;
+    let ids: number[];
+    try {
+      menor = await avisar(u, {}, atrasada);
+      const maior = await db.transaction((adiantada) => avisar(u, {}, adiantada));
+      expect(menor).toBeLessThan(maior);
+      ids = (await get(u)).body.itens.map((item: { id: number }) => item.id);
+      expect(ids).toEqual([maior, antiga]);
+      await atrasada.commit();
+    } finally {
+      if (!atrasada.isCompleted()) await atrasada.rollback();
+    }
+    expect((await patch(u, '/ler-todas', { ids: [...ids, alheia] })).body)
+      .toMatchObject({ atualizadas: 2, nao_lidas: 1 });
+    expect((await get(u, '?apenas_nao_lidas=true')).body.itens.map((item: { id: number }) => item.id)).toEqual([menor]);
+    expect(await naoLidas(outraConta)).toBe(1);
   });
 
   it('a versão muda quando um aviso é lido e outro chega, mesmo com o total igual', async () => {

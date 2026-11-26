@@ -180,12 +180,13 @@ describe('PATCH de leitura', () => {
     expect(modelo.marcarLida).not.toHaveBeenCalled();
   });
 
-  it('marca todas, sem corpo, ou só até a que o usuário viu', async () => {
+  it('marca todas explicitamente ou só os IDs apresentados', async () => {
     expect((await chamar('patch', '/ler-todas')).body).toEqual({ atualizadas: 2, nao_lidas: 3, versao: '3-120' });
-    expect(modelo.marcarNaoLidas).toHaveBeenLastCalledWith(expect.anything(), { ateId: undefined });
-    await chamar('patch', '/ler-todas', { ate_id: 42 });
-    expect(modelo.marcarNaoLidas).toHaveBeenLastCalledWith(expect.anything(), { ateId: 42 });
-    expect((await chamar('patch', '/ler-todas', { ate_id: 'x' })).status).toBe(400);
+    expect(modelo.marcarNaoLidas).toHaveBeenLastCalledWith(expect.anything(), { ids: undefined });
+    await chamar('patch', '/ler-todas', { ids: [4, 42] });
+    expect(modelo.marcarNaoLidas).toHaveBeenLastCalledWith(expect.anything(), { ids: [4, 42] });
+    expect((await chamar('patch', '/ler-todas', { ate_id: 42 })).status).toBe(400);
+    expect((await chamar('patch', '/ler-todas', { ids: [] })).status).toBe(400);
   });
 
   it('marca as da referência', async () => {

@@ -1,3 +1,4 @@
+import type { Knex } from 'knex';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import {
   ACESSO_POR_PERFIL,
@@ -33,8 +34,8 @@ interface Contador {
 
 export type ItemNotificacao = Notificacao & { acesso_revogado: boolean };
 
-async function escopoDo({ id, perfil }: Autor): Promise<EscopoNotificacoes> {
-  const associado = perfil !== PERFIS.GESTOR_SVO || (await unidadeModel.estaAssociadoPorNome(UNIDADES.SVO, id));
+export async function escopoDasNotificacoes({ id, perfil }: Autor, conexao?: Knex): Promise<EscopoNotificacoes> {
+  const associado = perfil !== PERFIS.GESTOR_SVO || (await unidadeModel.estaAssociadoPorNome(UNIDADES.SVO, id, conexao));
   return {
     usuarioId: id,
     operacoes: OPERACOES_POR_PERFIL[perfil].filter((operacao) => operacao !== 'SVO' || associado),
@@ -69,7 +70,7 @@ export const notificacaoService = {
     autor: Autor,
     { limit, cursor, apenas_nao_lidas }: ListarNotificacoes
   ): Promise<{ itens: ItemNotificacao[]; proximo_cursor: string | null } & Contador> {
-    const escopo = await escopoDo(autor);
+    const escopo = await escopoDasNotificacoes(autor);
     const [{ itens, proximo }, contador] = await Promise.all([
       notificacaoModel.listar(escopo, { limite: limit, cursor, apenasNaoLidas: apenas_nao_lidas }),
       contadorDe(escopo),
@@ -82,20 +83,20 @@ export const notificacaoService = {
   },
 
   async contador(autor: Autor): Promise<Contador> {
-    return contadorDe(await escopoDo(autor));
+    return contadorDe(await escopoDasNotificacoes(autor));
   },
 
   async marcarLida(autor: Autor, id: number): Promise<{ id: number; lida_em: Date } & Contador> {
-    const escopo = await escopoDo(autor);
+    const escopo = await escopoDasNotificacoes(autor);
     const marcada = await notificacaoModel.marcarLida(escopo, id);
     // A mesma resposta para inexistente e de outra pessoa
     if (!marcada) throw new AppError('Notificação não encontrada', 404);
     return { ...marcada, ...(await contadorDe(escopo)) };
   },
 
-  async marcarTodasLidas(autor: Autor, ateId?: number): Promise<{ atualizadas: number } & Contador> {
-    const escopo = await escopoDo(autor);
-    const atualizadas = await notificacaoModel.marcarNaoLidas(escopo, { ateId });
+  async marcarTodasLidas(autor: Autor, ids?: number[]): Promise<{ atualizadas: number } & Contador> {
+    const escopo = await escopoDasNotificacoes(autor);
+    const atualizadas = await notificacaoModel.marcarNaoLidas(escopo, { ids });
     return { atualizadas, ...(await contadorDe(escopo)) };
   },
 
@@ -104,7 +105,7 @@ export const notificacaoService = {
     tipo: ReferenciaNotificacao,
     id: number
   ): Promise<{ atualizadas: number } & Contador> {
-    const escopo = await escopoDo(autor);
+    const escopo = await escopoDasNotificacoes(autor);
     const atualizadas = await notificacaoModel.marcarNaoLidas(escopo, { referencia: { tipo, id } });
     return { atualizadas, ...(await contadorDe(escopo)) };
   },

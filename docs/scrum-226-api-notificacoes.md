@@ -7,7 +7,7 @@ Rotas em `/api/notificacoes`, sobre a tabela `notificacoes` (SCRUM-225). Seguem 
 | `GET /` | `limit` (1 a 50, padrão 20), `cursor`, `apenas_nao_lidas` (`true`/`false`) | `{ itens, proximo_cursor, nao_lidas, versao }` |
 | `GET /contador` | — | `{ nao_lidas, versao }` |
 | `PATCH /:id/lida` | — | `{ id, lida_em, nao_lidas, versao }` |
-| `PATCH /ler-todas` | `ate_id` (opcional) | `{ atualizadas, nao_lidas, versao }` |
+| `PATCH /ler-todas` | `ids` (opcional, até 1.000 por chamada) | `{ atualizadas, nao_lidas, versao }` |
 | `PATCH /referencia/lida` | `referencia_tipo`, `referencia_id` | `{ atualizadas, nao_lidas, versao }` |
 
 Os nomes `nao_lidas` e `proximo_cursor` correspondem a `unreadCount` e `nextCursor` da tarefa, no padrão de nomes da API.
@@ -22,7 +22,7 @@ Os nomes `nao_lidas` e `proximo_cursor` correspondem a `unreadCount` e `nextCurs
 - **Leitura:** repetir é seguro e mantém a data da primeira leitura. Aviso inexistente ou de outra pessoa responde `404`, sem diferença entre os dois.
 - **`nao_lidas`:** sempre contado no banco depois da alteração, por isso não fica negativo e inclui o que chegou no meio.
 - **`versao`:** texto opaco, em toda resposta com contador. Muda quando chega ou se lê um aviso, mesmo com o total igual.
-- **`ate_id`:** id mais novo que o usuário viu. Sem ele, `ler-todas` marca também os avisos que chegaram depois da última consulta da tela.
+- **`ids`:** delimita os avisos apresentados. A API restringe a alteração aos avisos do usuário e da operação autorizada. Uma chamada sem `ids` solicita expressamente a leitura de todas as notificações já visíveis ao banco na operação.
 - **Cache:** as respostas levam `Cache-Control: no-store`.
 
 ## Referências
@@ -40,12 +40,12 @@ Aviso sem referência é livre para o destinatário. Tipo não cadastrado em `co
 
 ## Para o front (SCRUM-227)
 
-1. **Marcar todas:** enviar `ate_id` com o maior id carregado na lista e usar o `nao_lidas` da resposta, em vez de assumir zero.
-2. **Sincronizar:** guardar a última `versao` recebida em qualquer resposta. Se o `GET /contador` trouxer outra e a lista estiver aberta, recarregar a primeira página. A própria ação não causa recarga, porque a resposta dela já traz a versão nova.
+1. **Marcar todas:** enviar os `ids` dos avisos não lidos carregados, em lotes de até 1.000. Usar o `nao_lidas` da última resposta, pois outros avisos podem continuar não lidos.
+2. **Sincronizar:** revalidar a lista aberta periodicamente e ao retomar o uso. A `versao` do contador acompanha as leituras e novas notificações. Revogações de acesso podem ocorrer sem alterar essa versão.
 3. **`acesso_revogado`:** mostrar sem link.
 4. **Tipos de referência:** usar os nomes acima no prefixo do identificador.
 
-Limite conhecido: o id é reservado quando a operação começa. Um aviso de uma operação que ainda não terminou pode ter id menor que o `ate_id` e ser marcado ao aparecer. A janela é o tempo de uma transação.
+O filtro `ate_id` foi substituído porque a ordem de reserva de IDs pode divergir da ordem de confirmação de transações. Ele responde `400` para evitar que clientes antigos façam uma marcação sem limite por engano.
 
 ## Testes
 

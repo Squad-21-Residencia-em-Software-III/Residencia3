@@ -25,8 +25,8 @@ export const notificacaoController = {
   },
 
   async marcarTodasLidas(req: Request, res: Response): Promise<void> {
-    const { ate_id } = lerTodasSchema.parse(req.body ?? {});
-    res.json(await notificacaoService.marcarTodasLidas(usuarioAutenticado(req), ate_id));
+    const { ids } = lerTodasSchema.parse(req.body ?? {});
+    res.json(await notificacaoService.marcarTodasLidas(usuarioAutenticado(req), ids));
   },
 
   async marcarReferenciaLida(req: Request, res: Response): Promise<void> {

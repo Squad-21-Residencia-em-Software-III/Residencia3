@@ -36,7 +36,7 @@ export interface CursorNotificacao {
 }
 
 export interface FiltroNaoLidas {
-  ateId?: number;
+  ids?: number[];
   referencia?: { tipo: ReferenciaNotificacao; id: number };
 }
 
@@ -83,6 +83,11 @@ function temAcessoSql({ acesso }: EscopoNotificacoes): string {
 }
 
 export const notificacaoModel = {
+  async podeEntregar(escopo: EscopoNotificacoes, id: number, conexao: Knex = db): Promise<boolean> {
+    const aviso = await doEscopo(escopo, conexao).where({ id }).whereRaw(temAcessoSql(escopo)).first('id');
+    return Boolean(aviso);
+  },
+
   async listar(
     escopo: EscopoNotificacoes,
     { limite, cursor, apenasNaoLidas }: { limite: number; cursor?: CursorNotificacao; apenasNaoLidas?: boolean },
@@ -129,7 +134,7 @@ export const notificacaoModel = {
 
   async marcarNaoLidas(escopo: EscopoNotificacoes, filtro: FiltroNaoLidas = {}, conexao: Knex = db): Promise<number> {
     const alvos = doEscopo(escopo, conexao).select('id').whereNull('lida_em');
-    if (filtro.ateId !== undefined) alvos.where('id', '<=', filtro.ateId);
+    if (filtro.ids !== undefined) alvos.whereIn('id', filtro.ids);
     if (filtro.referencia) {
       const { tipo, id } = filtro.referencia;
       alvos.where({ referencia_tipo: tipo, referencia_id: id, operacao: OPERACAO_DA_REFERENCIA[tipo] });
