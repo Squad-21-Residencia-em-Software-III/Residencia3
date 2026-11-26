@@ -9,6 +9,7 @@ import { notificacoesPushApi } from '../../services/api/notificacoesPushApi';
 import { marcarEncerramento } from '../../utils/encerramentoPush';
 import { invalidarOperacoesPush } from '../../utils/operacoesPush';
 import { ModalPreferenciasPwa } from './ModalPreferenciasPwa';
+import { instalarArmazenamentoPushTeste, criarTravasPushTeste, VINCULO_TESTE } from '../../sw/fixturesPush';
 
 vi.mock('../../services/api/notificacoesPushApi', () => ({
   notificacoesPushApi: {
@@ -62,15 +63,8 @@ const travas: string[] = [];
 
 function prepararNavegador() {
   travas.length = 0;
-  let fila: Promise<unknown> = Promise.resolve();
-  definir(navigator, 'locks', {
-    request: (nome: string, acao: () => Promise<unknown>) => {
-      travas.push(nome);
-      const resultado = fila.then(acao);
-      fila = resultado.catch(() => undefined);
-      return resultado;
-    },
-  });
+  instalarArmazenamentoPushTeste();
+  definir(navigator, 'locks', criarTravasPushTeste((nome) => travas.push(nome)));
   navegador.permissao = 'default';
   navegador.resposta = 'granted';
   navegador.assinatura = null;
@@ -116,7 +110,7 @@ beforeEach(() => {
   api.chavePublica.mockResolvedValue({ publicKey: 'AQID_-8' });
   api.assinar.mockResolvedValue(undefined);
   api.cancelar.mockResolvedValue(undefined);
-  api.situacao.mockResolvedValue({ ativa: true });
+  api.situacao.mockResolvedValue({ ativa: true, vinculo: VINCULO_TESTE });
   api.preferencias.mockResolvedValue({
     categorias: [
       { codigo: 'VIAGENS', titulo: 'Viagens', descricao: 'Agendamento e mudanças.', push: true },
@@ -127,6 +121,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   Object.assign(RECURSOS_BACKEND, recursosOriginais);
   semPush();
   for (const nome of ['onLine', 'locks']) delete (navigator as unknown as Record<string, unknown>)[nome];
@@ -311,7 +306,10 @@ describe('Navegador que não confirma o encerramento', () => {
 /** Cada `render` é uma aba: o estado de cada uma é próprio, e o navegador e a trava são os mesmos. */
 describe('Operações ao mesmo tempo', () => {
   // Todas usam a mesma trava, que o navegador compartilha entre as abas
-  afterEach(() => expect([...new Set(travas)]).toEqual(['fsph-push']));
+  afterEach(() => {
+    expect(travas).toContain('fsph-push');
+    expect([...new Set(travas)].every((nome) => ['fsph-push', 'fsph-apresentacao-push', 'fsph-push-barreira-v1'].includes(nome))).toBe(true);
+  });
 
   const abrirAba = () => {
     const { baseElement, unmount } = render(tela(), { container: document.body.appendChild(document.createElement('div')) });
@@ -364,7 +362,7 @@ describe('Operações ao mesmo tempo', () => {
     api.assinar.mockReturnValueOnce(new Promise<void>((resolve) => {
       registrar = () => { registrada = true; resolve(); };
     }));
-    api.situacao.mockImplementation(async () => ({ ativa: registrada }));
+    api.situacao.mockImplementation(async () => ({ ativa: registrada, ...(registrada ? { vinculo: VINCULO_TESTE } : {}) }));
     const { aba } = abrirAba();
     fireEvent.click(await aba.findByRole('button', { name: 'Ligar alertas', hidden: true }));
     await waitFor(() => expect(api.assinar).toHaveBeenCalledOnce());
@@ -504,7 +502,10 @@ describe('Estado do aparelho', () => {
 
   it('assinatura de outra conta: aparece desligado e, ao ligar, cria uma nova', async () => {
     const antiga = jaAssinado();
-    api.situacao.mockResolvedValue({ ativa: false });
+    api.situacao.mockImplementation(async (endpoint) => ({
+      ativa: endpoint === 'https://push.exemplo/novo' && api.assinar.mock.calls.length > 0,
+      ...(endpoint === 'https://push.exemplo/novo' && api.assinar.mock.calls.length > 0 ? { vinculo: VINCULO_TESTE } : {}),
+    }));
     abrir();
     await userEvent.click(await ligar());
     await desligar();

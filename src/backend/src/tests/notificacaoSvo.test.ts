@@ -5,6 +5,7 @@ import { db } from '../config/database';
 import { processarFilaPush, type EnviadorPush } from '../services/filaPush';
 import { EVENTO_SVO_S1, CATEGORIA_NOTIFICACAO_SVO, notificacaoSvoService } from '../services/notificacaoSvoService';
 import { solicitacaoSvoService } from '../services/solicitacaoSvoService';
+import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 const habilitado = process.env.SCRUM233_POSTGRES_TESTS === '1';
 const dados = { dados_solicitante: 'Nome reservado', local_ocorrencia: 'Endereço reservado', material_sensivel: true };
@@ -21,6 +22,8 @@ async function conta(perfil: string, { associado = false, ativo = true } = {}) {
 }
 
 describe.skipIf(!habilitado)('SCRUM-233 com fila e PostgreSQL descartável', () => {
+  // Processa a fila de push compartilhada: uma suíte de fila por vez no banco
+  usarBancoComExclusividade();
   beforeAll(() => {
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('Banco de teste não autorizado');

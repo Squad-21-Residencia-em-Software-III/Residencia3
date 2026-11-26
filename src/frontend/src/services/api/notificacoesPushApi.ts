@@ -29,9 +29,9 @@ export const notificacoesPushApi = {
   cancelar: (endpoint: string, opcoes: { token?: string; signal?: AbortSignal } = {}) =>
     request<void>('DELETE', '/notificacoes/unsubscribe', { body: { endpoint }, ...opcoes }),
 
-  /** Diz só se a assinatura deste aparelho é do usuário logado. No corpo, para o endereço não ir para a URL. */
+  /** Informa a assinatura ativa da sessão e seu vínculo opaco. O endereço vai no corpo da requisição. */
   situacao: (endpoint: string, signal?: AbortSignal) =>
-    request<{ ativa: boolean }>('POST', '/notificacoes/subscribe/status', { body: { endpoint }, signal }),
+    request<{ ativa: boolean; vinculo?: string }>('POST', '/notificacoes/subscribe/status', { body: { endpoint }, signal }),
 
   preferencias: () =>
     request<{ categorias: CategoriaNotificacao[] }>('GET', '/notificacoes/preferencias'),
