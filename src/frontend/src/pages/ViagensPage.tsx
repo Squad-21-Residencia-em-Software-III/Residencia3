@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { CalendarClock, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
+import { CalendarClock, CameraOff, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -602,11 +602,17 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         <TableToolbar
           title={textos.titulo}
           subtitle={`${filtradas.length} de ${viagens.length} ${textos.registro}`}
+          wrapActions
           actions={!somenteProprias ? (
             <>
               {podeDecidirExcecoes && (
-                <Button type="button" variant="outline" onClick={() => setFilaExcecoesAberta(true)}>
-                  Pedidos sem foto
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilaExcecoesAberta(true)}
+                >
+                  <CameraOff size={13} aria-hidden="true" /> Pedidos sem foto
                 </Button>
               )}
               <BotaoExportarRelatorio tipo="viagens" />
