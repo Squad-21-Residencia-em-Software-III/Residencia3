@@ -17,6 +17,7 @@ import { excecaoOdometroService } from '../services/excecaoOdometroService';
 import * as publicacao from '../services/publicacaoNotificacoes';
 import { processarRetencaoEvidencias } from '../services/retencaoEvidencias';
 import { AppError } from '../errors/AppError';
+import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 // Fluxo completo das fotos do odômetro (SCRUM-208/209) contra as tabelas da SCRUM-210.
 // Só executa num banco descartável explicitamente identificado (ver docs/evidencias-odometro.md).
@@ -91,6 +92,8 @@ const transicao = (token: string, acao: 'iniciar' | 'finalizar', id: number, cor
   request(app).patch(`/api/viagens/${id}/${acao}`).set('Authorization', token).send(corpo);
 
 describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autenticado', () => {
+  // Publica avisos na fila de push compartilhada (A9/A10, S8): uma suíte de fila por vez no banco
+  usarBancoComExclusividade();
   beforeAll(async () => {
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('Banco de teste não autorizado');
@@ -290,8 +293,13 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(segundo.id).not.toBe(primeiro.id);
     expect((await decidir(segundo.id, 'APROVADA', administrador.token)).status).toBe(200);
     expect(await db('excecoes_odometro').where({ id: primeiro.id }).first()).toMatchObject({ status: 'RECUSADA' });
-    expect(await db('notificacao_outbox').where({ operacao: 'SVO' })
-      .whereIn('evento_tipo', ['EXCECAO_ODOMETRO_SOLICITADA', 'EXCECAO_ODOMETRO_DECIDIDA'])).toHaveLength(0);
+    // S8 (SCRUM-235): pedidos e decisões SVO avisam o gestor SVO e o motorista; nunca o gestor da frota
+    const avisosSvo = await db('notificacao_outbox').where({ operacao: 'SVO', referencia_tipo: 'ORDEM_SVO', referencia_id: a.id })
+      .whereIn('evento_tipo', ['EXCECAO_ODOMETRO_SOLICITADA', 'EXCECAO_ODOMETRO_DECIDIDA']);
+    expect(avisosSvo.filter((item) => item.evento_tipo === 'EXCECAO_ODOMETRO_SOLICITADA' && item.usuario_id === gestor.id)).toHaveLength(2);
+    expect(avisosSvo.filter((item) => item.evento_tipo === 'EXCECAO_ODOMETRO_DECIDIDA').map((item) => item.usuario_id))
+      .toEqual([r.condutor.id, r.condutor.id]);
+    expect(avisosSvo.map((item) => item.usuario_id)).not.toContain(gestorFrota.id);
 
     const saida = { tipo_operacao: 'SVO', km_inicial: 1000 };
     expect((await transicao(r.condutor.token, 'iniciar', b.id, saida)).body.codigo).toBe('EVIDENCIA_OBRIGATORIA');
