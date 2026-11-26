@@ -3,7 +3,7 @@ import { configNotificacoes } from '../config/notificacoes';
 import { PERFIS } from '../constants/perfis';
 import { UNIDADES } from '../constants/unidades';
 import type { SolicitacaoSvo } from '../models/solicitacaoSvoModel';
-import { publicarNotificacao } from './publicacaoNotificacoes';
+import { limitar, publicarNotificacao } from './publicacaoNotificacoes';
 
 export const URL_DESTINO_TRIAGEM_SVO = '/solicitacoes?aba=svo';
 export const CATEGORIA_NOTIFICACAO_SVO = 'SVO';
@@ -134,10 +134,10 @@ export const notificacaoSvoService = {
 
   /**
    * S8 (pedido): o motorista SVO pediu autorização sem foto. Avisa os gestores SVO associados, com push.
-   * Motivo, local e dados da solicitação ficam fora do aviso: o gestor vê o pedido na tela, com acesso conferido.
+   * O motivo resumido aparece apenas no aviso da central, sujeito ao acesso atual à ordem.
    */
   async publicarExcecaoSolicitada(
-    excecao: { id: number; fase: FaseOdometro },
+    excecao: { id: number; fase: FaseOdometro; motivo: string },
     ordemId: number,
     autorId: number,
     trx: Knex.Transaction,
@@ -148,7 +148,7 @@ export const notificacaoSvoService = {
       operacao: 'SVO',
       severidade: 'warning',
       titulo: 'Pedido de autorização sem foto',
-      mensagem: `A ordem SVO #${ordemId} pede autorização sem foto na ${NOME_FASE[excecao.fase]} (pedido nº ${excecao.id}).`,
+      mensagem: `A ordem SVO #${ordemId} pede autorização sem foto na ${NOME_FASE[excecao.fase]} (pedido nº ${excecao.id}). Motivo: ${limitar(excecao.motivo, 160)}`,
       urlDestino: URL_DESTINO_OPERACAO_SVO,
       referencia: { tipo: 'ORDEM_SVO', id: ordemId },
       ocorrencia: `${excecao.fase}:${excecao.id}:solicitada`,
@@ -165,11 +165,12 @@ export const notificacaoSvoService = {
 
   /**
    * S8 (decisão): avisa o motorista SVO que fez o pedido, se ele continua ativo e no perfil. A justificativa
-   * fica fora do aviso (pode citar a ocorrência): o motorista a consulta na tela do pedido.
+   * resumida aparece apenas no aviso da central, sujeito ao acesso atual à ordem.
    */
   async publicarExcecaoDecidida(
     excecao: { id: number; fase: FaseOdometro; solicitada_por: number },
     decisao: 'APROVADA' | 'RECUSADA',
+    justificativa: string,
     ordemId: number,
     autorId: number,
     trx: Knex.Transaction,
@@ -184,7 +185,7 @@ export const notificacaoSvoService = {
       operacao: 'SVO',
       severidade: aprovada ? 'success' : 'warning',
       titulo: aprovada ? 'Autorização sem foto aprovada' : 'Autorização sem foto recusada',
-      mensagem: `Seu pedido nº ${excecao.id} para a ${NOME_FASE[excecao.fase]} da ordem SVO #${ordemId} foi ${aprovada ? 'aprovado' : 'recusado'}.`,
+      mensagem: `Seu pedido nº ${excecao.id} para a ${NOME_FASE[excecao.fase]} da ordem SVO #${ordemId} foi ${aprovada ? 'aprovado' : 'recusado'}. Justificativa: ${limitar(justificativa, 160)}`,
       urlDestino: URL_DESTINO_MOTORISTA_SVO,
       referencia: { tipo: 'ORDEM_SVO', id: ordemId },
       ocorrencia: `${excecao.fase}:${excecao.id}:${decisao.toLowerCase()}`,

@@ -42,6 +42,7 @@ import {
 import { useAbaOperacao } from '../utils/abaOperacao';
 import { cn } from '../utils/cn';
 import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
+import { useMarcarReferenciaLida } from '../contexts/NotificacoesContext';
 import { ModalFinalizarViagem } from './viagens/ModalFinalizarViagem';
 import { ModalAgendarColetaSvo } from './viagens/ModalAgendarColetaSvo';
 import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
@@ -214,6 +215,10 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   }, [location.state, podeAgendar]);
   const [chaveDetalhes, setChaveDetalhes] = useState<string | null>(null);
   const viagemDetalhes = viagens.find((v) => chaveViagem(v) === chaveDetalhes) ?? null;
+  useMarcarReferenciaLida(
+    viagemDetalhes ? (viagemDetalhes.tipo_operacao === 'SVO' ? 'ORDEM_SVO' : 'VIAGEM_FROTA') : null,
+    viagemDetalhes?.id,
+  );
   const [viagemIniciar, setViagemIniciar] = useState<Viagem | null>(null);
   const [viagemFinalizar, setViagemFinalizar] = useState<Viagem | null>(null);
   const [viagemFotos, setViagemFotos] = useState<Viagem | null>(null);

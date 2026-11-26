@@ -10,6 +10,7 @@ import { db } from '../config/database';
 import { env } from '../config/env';
 import { solicitacaoViagemModel } from '../models/solicitacaoViagemModel';
 import { solicitacaoViagemService } from '../services/solicitacaoViagemService';
+import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 const habilitado = process.env.EXPIRACAO_POSTGRES_TESTS === '1';
 const campos = { origem: 'Sede', destino: 'Hospital', finalidade: 'Teste de expiração' };
@@ -37,6 +38,7 @@ async function gestor() {
 }
 
 describe.skipIf(!habilitado)('Expiração administrativa em PostgreSQL descartável', () => {
+  usarBancoComExclusividade();
   beforeAll(() => {
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('A suíte exige PostgreSQL descartável em 127.0.0.1/frotas_teste');

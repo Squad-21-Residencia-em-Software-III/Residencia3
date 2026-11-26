@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // SCRUM-235: formato dos avisos S6, S7 e S8 sem banco. O fluxo real (transições, fila, acesso) está em
 // avisosSvoS6S8Postgres.test.ts.
 vi.mock('../config/notificacoes', () => ({ configNotificacoes: { ativas: true } }));
-vi.mock('../services/publicacaoNotificacoes', () => ({ publicarNotificacao: vi.fn(async () => ({ criadas: 1 })) }));
+vi.mock('../services/publicacaoNotificacoes', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../services/publicacaoNotificacoes')>(),
+  publicarNotificacao: vi.fn(async () => ({ criadas: 1 })),
+}));
 
 import { configNotificacoes } from '../config/notificacoes';
 import { notificacaoSvoService } from '../services/notificacaoSvoService';
@@ -57,18 +60,18 @@ describe('S6 e S7: só na central', () => {
 });
 
 describe('S8: push com texto fixo', () => {
-  it('pedido com push SVO e sem o motivo', async () => {
-    await notificacaoSvoService.publicarExcecaoSolicitada({ id: 3, fase: 'CHEGADA' }, 41, 9, trxFalsa());
+  it('pedido com motivo resumido apenas na central', async () => {
+    await notificacaoSvoService.publicarExcecaoSolicitada({ id: 3, fase: 'CHEGADA', motivo: 'Sem bateria' }, 41, 9, trxFalsa());
     expect(publicado()).toMatchObject({
       tipo: 'EXCECAO_ODOMETRO_SOLICITADA', ocorrencia: 'CHEGADA:3:solicitada', severidade: 'warning',
       push: { categoria: 'SVO', titulo: 'Pedido sem foto', corpo: 'Um pedido de autorização aguarda análise.', tag: 'svo-excecao-3' },
     });
-    expect(publicado().mensagem).toContain('chegada');
+    expect(publicado().mensagem).toContain('Motivo: Sem bateria');
   });
 
   it.each([['APROVADA', 'aprovado', 'success'], ['RECUSADA', 'recusado', 'warning']] as const)(
     'decisão %s vai só ao motorista que pediu', async (decisao, texto, severidade) => {
-      await notificacaoSvoService.publicarExcecaoDecidida({ id: 3, fase: 'SAIDA', solicitada_por: 9 }, decisao, 41, 2, trxFalsa());
+      await notificacaoSvoService.publicarExcecaoDecidida({ id: 3, fase: 'SAIDA', solicitada_por: 9 }, decisao, 'Solicitacao conferida', 41, 2, trxFalsa());
       expect(publicado()).toMatchObject({
         tipo: 'EXCECAO_ODOMETRO_DECIDIDA', destinatarios: [9], autorId: 2, severidade,
         ocorrencia: `SAIDA:3:${decisao.toLowerCase()}`, push: { categoria: 'SVO', corpo: `Seu pedido foi ${texto}.` },
@@ -78,7 +81,7 @@ describe('S8: push com texto fixo', () => {
 
   it('motorista inativo ou fora do perfil: decisão sem aviso', async () => {
     await notificacaoSvoService.publicarExcecaoDecidida(
-      { id: 3, fase: 'SAIDA', solicitada_por: 9 }, 'APROVADA', 41, 2, trxFalsa({ motoristaAtivo: false })
+      { id: 3, fase: 'SAIDA', solicitada_por: 9 }, 'APROVADA', 'Conferida', 41, 2, trxFalsa({ motoristaAtivo: false })
     );
     expect(publicarNotificacao).not.toHaveBeenCalled();
   });
@@ -89,7 +92,7 @@ it('com NOTIFICACOES_ATIVAS desligado, nada é publicado', async () => {
   const trx = trxFalsa();
   await notificacaoSvoService.publicarChegadaLocal(1, 2, trx);
   await notificacaoSvoService.publicarConclusaoColeta({ deslocamentoId: 1, ordens: [1] }, 1, 2, trx);
-  await notificacaoSvoService.publicarExcecaoSolicitada({ id: 1, fase: 'SAIDA' }, 1, 2, trx);
-  await notificacaoSvoService.publicarExcecaoDecidida({ id: 1, fase: 'SAIDA', solicitada_por: 3 }, 'APROVADA', 1, 2, trx);
+  await notificacaoSvoService.publicarExcecaoSolicitada({ id: 1, fase: 'SAIDA', motivo: 'Sem bateria' }, 1, 2, trx);
+  await notificacaoSvoService.publicarExcecaoDecidida({ id: 1, fase: 'SAIDA', solicitada_por: 3 }, 'APROVADA', 'Conferida', 1, 2, trx);
   expect(publicarNotificacao).not.toHaveBeenCalled();
 });

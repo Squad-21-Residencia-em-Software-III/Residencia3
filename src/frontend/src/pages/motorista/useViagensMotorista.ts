@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SetStateAction } from 'react';
 import { recursoAtivo } from '../../config/recursosBackend';
+import { useMarcarReferenciaLida } from '../../contexts/NotificacoesContext';
 import { mensagemDeErro } from '../../services/api/http';
 import { veiculosApi } from '../../services/api/veiculosApi';
 import { viagensApi } from '../../services/api/viagensApi';
@@ -112,6 +113,12 @@ export function useViagensMotorista() {
     avisar(isSvo ? 'Coleta finalizada.' : 'Viagem finalizada.');
   };
 
+  const detalhes = viagens.find((v) => chaveViagem(v) === chaveDetalhes) ?? null;
+  useMarcarReferenciaLida(
+    detalhes ? (detalhes.tipo_operacao === 'SVO' ? 'ORDEM_SVO' : 'VIAGEM_FROTA') : null,
+    detalhes?.id,
+  );
+
   return {
     isSvo,
     coletasDesabilitadas: isSvo && !agendaSvoAtiva,
@@ -133,7 +140,7 @@ export function useViagensMotorista() {
     setFinalizando,
     salvarFim,
     kmDoVeiculo: (id: number) => veiculos.find((v) => v.id === id)?.km_atual,
-    detalhes: viagens.find((v) => chaveViagem(v) === chaveDetalhes) ?? null,
+    detalhes,
     abrirDetalhes: (v: Viagem) => setChaveDetalhes(chaveViagem(v)),
     fecharDetalhes: () => setChaveDetalhes(null),
   };

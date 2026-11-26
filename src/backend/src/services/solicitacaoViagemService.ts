@@ -12,6 +12,7 @@ import {
   type SolicitacaoViagemDoSolicitante,
 } from '../models/solicitacaoViagemModel';
 import { unidadeModel } from '../models/unidadeModel';
+import { avisosSolicitacao } from './avisosSolicitacao';
 import type { Usuario } from '../models/usuarioModel';
 import type {
   CriarSolicitacaoViagemInput,
@@ -75,6 +76,7 @@ export const solicitacaoViagemService = {
             modulo: MODULOS_AUDITORIA.SOLICITACOES_VIAGEM,
           }, trx);
         }
+        await avisosSolicitacao.expiradas(trx, expiradas.map(({ id }) => id));
         return expiradas.length;
       });
       total += processadas;
@@ -164,6 +166,7 @@ export const solicitacaoViagemService = {
         trx
       );
 
+      await avisosSolicitacao.criada(trx, solicitacao);
       return solicitacao;
     });
   },
@@ -260,6 +263,7 @@ async function analisar(
       trx
     );
 
+    await avisosSolicitacao.decidida(trx, atualizada, autorId);
     return atualizada;
   });
 }

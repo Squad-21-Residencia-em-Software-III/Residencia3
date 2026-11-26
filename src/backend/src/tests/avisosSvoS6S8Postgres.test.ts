@@ -207,6 +207,18 @@ describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL 
       expect(await db('notificacao_outbox').where({ evento_tipo: EVENTO_SVO_S7 }).whereIn('referencia_id', [a, b])).toHaveLength(0);
     });
 
+    it('finalizações concorrentes produzem um S7 por destinatário', async () => {
+      const r = await veiculoComMotorista();
+      const [a, b] = [await ordem(r, gestor.id), await ordem(r, gestor.id)];
+      for (const id of [a, b]) expect((await iniciar(r.condutor, id)).status).toBe(200);
+      const resultados = await Promise.all([a, b].map((id) => finalizar(r.condutor, id)));
+      expect(resultados.map((r) => r.status)).toEqual([200, 200]);
+      expect(await db('notificacoes').where({ tipo: EVENTO_SVO_S7, usuario_id: gestor.id })
+        .whereIn('referencia_id', [a, b])).toHaveLength(1);
+      expect(await db('notificacao_outbox').where({ evento_tipo: EVENTO_SVO_S7 })
+        .whereIn('referencia_id', [a, b])).toHaveLength(0);
+    });
+
     it('ordem única: um aviso; finalização recusada não avisa', async () => {
       const r = await veiculoComMotorista();
       const id = await ordem(r, gestor.id);
@@ -250,7 +262,8 @@ describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL 
 
       const [aviso] = (await avisos(EVENTO_SVO_S8_PEDIDO, id)).filter((n) => n.usuario_id === gestor.id);
       expect(aviso).toMatchObject({ severidade: 'warning', url_destino: '/viagens?aba=svo' });
-      semDadoSensivel(`${aviso.titulo} ${aviso.mensagem}`);
+      const lista = await request(app).get('/api/notificacoes').set('Authorization', gestor.token);
+      expect(lista.body.itens.find((n: { id: number }) => n.id === aviso.id)?.mensagem).toContain(LOCAL_SENSIVEL);
       const [item] = await filaDe(EVENTO_SVO_S8_PEDIDO, id).where({ usuario_id: gestor.id });
       expect(item).toMatchObject({ categoria: 'SVO', status: 'PENDENTE' });
       expect(item.payload_push).toEqual({
@@ -268,13 +281,13 @@ describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL 
       expect(await destinatarios(EVENTO_SVO_S8_DECISAO, id)).toEqual([r.condutor.id]);
       const [aviso] = await avisos(EVENTO_SVO_S8_DECISAO, id);
       expect(aviso).toMatchObject({ titulo: 'Autorização sem foto recusada', severidade: 'warning', url_destino: '/viagens' });
-      semDadoSensivel(aviso.mensagem);
+      expect(aviso.mensagem).toContain(SOLICITANTE_SENSIVEL);
 
       // Badge: o contador do motorista conta o aviso, e a lista dele o mostra inteiro (é o condutor)
       const contador = await request(app).get('/api/notificacoes/contador').set('Authorization', r.condutor.token);
       expect(contador.body.nao_lidas).toBeGreaterThanOrEqual(1);
       const lista = await request(app).get('/api/notificacoes').set('Authorization', r.condutor.token);
-      expect(lista.body.itens.find((n: { id: number }) => n.id === aviso.id)).toMatchObject({ titulo: 'Autorização sem foto recusada' });
+      expect(lista.body.itens.find((n: { id: number }) => n.id === aviso.id)).toMatchObject({ titulo: 'Autorização sem foto recusada', mensagem: expect.stringContaining(SOLICITANTE_SENSIVEL) });
 
       // Push: com assinatura e categoria SVO ligada, a fila entrega texto fixo
       await db('push_subscriptions').insert({
@@ -299,6 +312,65 @@ describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL 
       const decisoes = await avisos(EVENTO_SVO_S8_DECISAO, id);
       expect(decisoes.map((n) => n.titulo).sort()).toEqual(['Autorização sem foto aprovada', 'Autorização sem foto recusada']);
       expect(decisoes.map((n) => n.usuario_id)).not.toContain(admin.id);
+    });
+
+    it('consolida os avisos concorrentes de chegada sem compartilhar as autorizações', async () => {
+      const r = await veiculoComMotorista();
+      const [a, b] = [await ordem(r, gestor.id), await ordem(r, gestor.id)];
+      const saida = await pedirSemFoto(r.condutor, a);
+      expect(saida.status).toBe(201);
+      expect(await filaDe(EVENTO_SVO_S8_PEDIDO, a).where({
+        usuario_id: gestor.id, ocorrencia_versao: `SAIDA:${saida.body.id}:solicitada`,
+      })).toHaveLength(1);
+      for (const id of [a, b]) expect((await iniciar(r.condutor, id)).status).toBe(200);
+
+      const pedidos = await Promise.all([a, b].map((id) => pedirSemFoto(r.condutor, id, 'CHEGADA')));
+      expect(pedidos.map((p) => p.status)).toEqual([201, 201]);
+      expect(pedidos[0].body.id).not.toBe(pedidos[1].body.id);
+      const fila = () => db('notificacao_outbox').where({
+        evento_tipo: EVENTO_SVO_S8_PEDIDO, usuario_id: gestor.id,
+      }).whereIn('referencia_id', [a, b]).whereLike('ocorrencia_versao', 'CHEGADA:%');
+      expect(await fila()).toHaveLength(1);
+      for (const pedido of pedidos) expect((await decidir(gestor, pedido.body.id, 'RECUSADA')).status).toBe(200);
+      expect((await pedirSemFoto(r.condutor, b, 'CHEGADA')).status).toBe(201);
+      expect(await fila()).toHaveLength(2);
+    });
+
+    it('reverte a decisão e sua auditoria quando a publicação falha', async () => {
+      const r = await veiculoComMotorista();
+      const id = await ordem(r, gestor.id);
+      const pedido = await pedirSemFoto(r.condutor, id);
+      vi.spyOn(publicacao, 'publicarNotificacao').mockRejectedValueOnce(new Error('falha simulada'));
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      expect((await decidir(gestor, pedido.body.id, 'RECUSADA')).status).toBe(500);
+      expect(await db('excecoes_odometro').where({ id: pedido.body.id }).first()).toMatchObject({
+        status: 'PENDENTE', auditoria_decisao_id: null,
+      });
+      expect(await avisos(EVENTO_SVO_S8_DECISAO, id)).toHaveLength(0);
+    });
+
+    it('revoga o conteúdo e a entrega ao gestor que perdeu acesso após o enfileiramento', async () => {
+      const gestorRevogado = await conta('GESTOR_SVO');
+      const r = await veiculoComMotorista();
+      const id = await ordem(r, gestor.id);
+      await db('push_subscriptions').insert({
+        usuario_id: gestorRevogado.id, endpoint: `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
+        p256dh: randomUUID(), auth: nonce() + nonce(),
+      });
+      await db('preferencias_notificacao').insert({ usuario_id: gestorRevogado.id, categoria: 'SVO', habilitado: true });
+      expect((await pedirSemFoto(r.condutor, id)).status).toBe(201);
+      const [aviso] = (await avisos(EVENTO_SVO_S8_PEDIDO, id)).filter((n) => n.usuario_id === gestorRevogado.id);
+      await db('gestores_unidades').where({ usuario_id: gestorRevogado.id }).delete();
+
+      const lista = await request(app).get('/api/notificacoes').set('Authorization', gestorRevogado.token);
+      const item = lista.body.itens.find((n: { id: number }) => n.id === aviso.id);
+      expect(lista.status).toBe(200);
+      expect(item).toBeUndefined();
+      const enviador = vi.fn<EnviadorPush>().mockResolvedValue({ status: 201 });
+      await processarFilaPush(enviador);
+      expect(enviador.mock.calls.some(([, payload]) => payload.notificacao_id === aviso.id)).toBe(false);
+      expect(await filaDe(EVENTO_SVO_S8_PEDIDO, id).where({ usuario_id: gestorRevogado.id }).first())
+        .toMatchObject({ status: 'IGNORADO' });
     });
 
     it('decisão repetida (409) não avisa de novo', async () => {
@@ -340,6 +412,7 @@ describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL 
       const item = lista.body.itens.find((n: { id: number }) => n.id === aviso.id);
       expect(item).toMatchObject({ acesso_revogado: true });
       expect(item.titulo).not.toBe(aviso.titulo);
+      semDadoSensivel(item.mensagem);
     });
 
     it('com NOTIFICACOES_ATIVAS desligado, pedido e decisão funcionam e nada é publicado', async () => {

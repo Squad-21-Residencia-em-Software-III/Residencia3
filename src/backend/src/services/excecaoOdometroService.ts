@@ -72,6 +72,27 @@ export const excecaoOdometroService = {
         return apresentarExcecao(existente);
       }
 
+      // O lock da agenda SVO serializa pedidos e decisões das ordens irmãs.
+      // A autorização segue vinculada à sua ordem, mesmo quando o aviso é compartilhado.
+      const deslocamento = tipo === 'SVO' && configNotificacoes.ativas
+        ? await deslocamentoDaOrdem(trx, id)
+        : undefined;
+      const pedidoDoDeslocamento = deslocamento?.status === 'EM_CURSO' &&
+        deslocamento.motorista_id === viagem.motorista_id && deslocamento.veiculo_id === viagem.veiculo_id
+        ? await trx('excecoes_odometro as e')
+          .join('deslocamentos_svo_ordens as dor', 'dor.ordem_svo_id', 'e.ordem_svo_id')
+          .join('ordens_svo as o', 'o.id', 'e.ordem_svo_id')
+          .where({
+            'dor.deslocamento_svo_id': deslocamento.id,
+            'e.tipo_operacao': 'SVO', 'e.fase': fase, 'e.status': 'PENDENTE',
+            'e.solicitada_por': autor.id,
+            'e.motorista_id': viagem.motorista_id, 'o.motorista_id': viagem.motorista_id,
+            'e.veiculo_id': viagem.veiculo_id, 'o.veiculo_id': viagem.veiculo_id,
+          })
+          .whereNull('e.encerrada_em')
+          .first('e.id')
+        : undefined;
+
       const [registro] = await trx<ExcecaoOdometroRow>('excecoes_odometro').insert({
         ...chaveExcecao(tipo, id), fase, motivo, solicitada_por: autor.id,
         motorista_id: viagem.motorista_id, veiculo_id: viagem.veiculo_id,
@@ -91,7 +112,9 @@ export const excecaoOdometroService = {
         });
       }
       // S8 (SCRUM-235): pedido do motorista SVO aos gestores SVO da unidade, com push
-      if (tipo === 'SVO') await notificacaoSvoService.publicarExcecaoSolicitada(registro!, id, autor.id, trx);
+      if (tipo === 'SVO' && !pedidoDoDeslocamento) {
+        await notificacaoSvoService.publicarExcecaoSolicitada(registro!, id, autor.id, trx);
+      }
 
       return apresentarExcecao(registro!);
     });
@@ -157,7 +180,7 @@ export const excecaoOdometroService = {
         });
       }
       // S8 (SCRUM-235): decisão ao motorista SVO que pediu, com push
-      if (tipo === 'SVO') await notificacaoSvoService.publicarExcecaoDecidida(registro, decisao, viagemId, autor.id, trx);
+      if (tipo === 'SVO') await notificacaoSvoService.publicarExcecaoDecidida(registro, decisao, justificativa, viagemId, autor.id, trx);
 
       return apresentarExcecao(atual!);
     });

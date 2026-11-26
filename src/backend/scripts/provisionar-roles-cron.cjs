@@ -103,6 +103,20 @@ async function provisionarRolesCron({ env = process.env, criarConexao = knex } =
       ]);
       await trx.raw('GRANT USAGE ON SEQUENCE public.auditorias_id_seq TO ??', [expUser]);
 
+      // A4: colunas consultadas e gravadas pela publicação transacional.
+      await trx.raw('GRANT SELECT (solicitante_id) ON TABLE public.solicitacoes_viagem TO ??', [expUser]);
+      await trx.raw('GRANT SELECT (id, perfil, ativo) ON TABLE public.usuarios TO ??', [expUser]);
+      await trx.raw(
+        'GRANT SELECT (id, usuario_id, chave_idempotencia), ' +
+        'INSERT (usuario_id, tipo, titulo, mensagem, severidade, operacao, referencia_tipo, referencia_id, url_destino, chave_idempotencia) ' +
+        'ON TABLE public.notificacoes TO ??', [expUser]
+      );
+      await trx.raw(
+        'GRANT INSERT (notificacao_id, usuario_id, evento_tipo, categoria, operacao, referencia_tipo, referencia_id, ' +
+        'ocorrencia_versao, chave_idempotencia, payload_push) ON TABLE public.notificacao_outbox TO ??', [expUser]
+      );
+      await trx.raw('GRANT USAGE ON SEQUENCE public.notificacoes_id_seq, public.notificacao_outbox_id_seq TO ??', [expUser]);
+
       // 2. Role de retencao das fotos do odometro (fsph-retencao-neon)
       await aplicarAtributosRole(trx, retUser, retPassword, retExiste, ehSuper);
       await trx.raw('REVOKE ALL ON SCHEMA public FROM ??', [retUser]);
@@ -131,10 +145,16 @@ async function provisionarRolesCron({ env = process.env, criarConexao = knex } =
         [retUser]
       );
       await trx.raw('GRANT SELECT (id, status) ON TABLE public.ordens_svo TO ??', [retUser]);
+      // Expurgo de notificacoes (SCRUM-242): le so as colunas de data e remove linhas elegiveis.
+      await trx.raw(
+        'GRANT SELECT (id, lida_em, criado_em), DELETE ON TABLE public.notificacoes TO ??',
+        [retUser]
+      );
 
       for (const r of nomesCron) {
         const estado = await inspecionarEstadoRole(trx, r);
-        validarEstadoMinimoPrivilegio(estado);
+        // Apenas a role de retencao pode deletar notificacoes; a de expiracao continua proibida.
+        validarEstadoMinimoPrivilegio(estado, { permitirDeletarNotificacoes: r === retUser });
       }
     });
 

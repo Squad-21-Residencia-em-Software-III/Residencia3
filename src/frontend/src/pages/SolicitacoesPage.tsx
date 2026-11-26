@@ -30,6 +30,7 @@ import { LABELS_STATUS_SOLICITACAO } from '../types/solicitacao';
 import { usePermissao } from '../utils/permissoes';
 import { ModalAnaliseSolicitacao } from './solicitacoes/ModalAnaliseSolicitacao';
 import { ModalNovaSolicitacao } from './solicitacoes/ModalNovaSolicitacao';
+import { useMarcarReferenciaLida } from '../contexts/NotificacoesContext';
 import TriagemSvoPage from './TriagemSvoPage';
 import { useAbaOperacao } from '../utils/abaOperacao';
 import type { TipoFrota } from '../types/veiculo';
@@ -118,6 +119,7 @@ function SolicitacoesAdministrativas() {
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
   const [solicitacaoEmAnalise, setSolicitacaoEmAnalise] = useState<SolicitacaoViagem | null>(null);
+  useMarcarReferenciaLida('SOLICITACAO_VIAGEM', solicitacaoEmAnalise?.id);
 
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
