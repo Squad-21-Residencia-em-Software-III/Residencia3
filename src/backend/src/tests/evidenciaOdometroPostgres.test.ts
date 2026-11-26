@@ -228,6 +228,28 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     const decisoes = await Promise.all([decidir(gestor.token), decidir(gestor.token)]);
     expect(decisoes.map((r) => r.status).sort()).toEqual([200, 409]);
 
+    const filaDaViagem = await db('notificacao_outbox').where(referencia).select(
+      'usuario_id', 'evento_tipo', 'operacao', 'payload_push'
+    );
+    const filaGestor = filaDaViagem.filter((item) => item.usuario_id === gestor.id);
+    const filaMotorista = filaDaViagem.filter((item) => item.usuario_id === condutor.id);
+    expect(filaGestor).toEqual([expect.objectContaining({
+      evento_tipo: 'EXCECAO_ODOMETRO_SOLICITADA', operacao: 'Administrativo',
+    })]);
+    expect(filaMotorista).toEqual([expect.objectContaining({
+      evento_tipo: 'EXCECAO_ODOMETRO_DECIDIDA', operacao: 'Administrativo',
+    })]);
+    expect(filaDaViagem.some((item) => item.usuario_id === gestorSvo.id)).toBe(false);
+    expect(JSON.stringify(filaDaViagem.map((item) => item.payload_push)))
+      .not.toMatch(/câmera ficou indisponível|Impossibilidade verificada/i);
+
+    const centralGestor = await request(app).get('/api/notificacoes').set('Authorization', gestor.token);
+    expect(centralGestor.status).toBe(200);
+    expect(centralGestor.body.itens).toEqual(expect.arrayContaining([expect.objectContaining({
+      tipo: 'EXCECAO_ODOMETRO_SOLICITADA', referencia_id: viagem.id, url_destino: '/viagens',
+      operacao: 'Administrativo', acesso_revogado: false,
+    })]));
+
     const avisoMotorista = await db('notificacoes').where({ ...referencia, usuario_id: condutor.id }).first();
     expect(avisoMotorista.mensagem).toContain('Impossibilidade verificada em contato');
     const push = await db('notificacao_outbox').where({ notificacao_id: avisoMotorista.id }).first();
