@@ -19,7 +19,7 @@ export const CATALOGO_CATEGORIAS_PUSH: readonly CategoriaPush[] = [
     codigo: 'SOLICITACOES',
     titulo: 'Solicitações',
     descricao: 'Nova solicitação, aprovação, recusa e expiração.',
-    perfis: [SOLICITANTE, GESTOR_FROTA, ADMINISTRADOR],
+    perfis: [SOLICITANTE, GESTOR_FROTA, ADMINISTRADOR, GESTOR_SVO],
   },
   {
     codigo: 'VIAGENS',
@@ -31,13 +31,13 @@ export const CATALOGO_CATEGORIAS_PUSH: readonly CategoriaPush[] = [
     codigo: 'ODOMETRO',
     titulo: 'Odômetro',
     descricao: 'Pendências e exceções no registro do odômetro.',
-    perfis: [GESTOR_FROTA, MOTORISTA_FROTA],
+    perfis: [GESTOR_FROTA, MOTORISTA_FROTA, ADMINISTRADOR],
   },
   {
     codigo: 'SVO',
     titulo: 'SVO',
     descricao: 'Ordens, designações e atrasos do SVO.',
-    perfis: [GESTOR_SVO, MOTORISTA_SVO, INTEGRANTE_SVO],
+    perfis: [GESTOR_SVO, MOTORISTA_SVO, INTEGRANTE_SVO, ADMINISTRADOR],
   },
 ];
 

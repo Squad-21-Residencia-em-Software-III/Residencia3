@@ -236,10 +236,10 @@ describe('Preferências por categoria', () => {
   });
 
   it.each([
-    [PERFIS.ADMINISTRADOR, ['SOLICITACOES']],
+    [PERFIS.ADMINISTRADOR, ['SOLICITACOES', 'ODOMETRO', 'SVO']],
     [PERFIS.SOLICITANTE, ['SOLICITACOES', 'VIAGENS']],
     [PERFIS.GESTOR_FROTA, ['SOLICITACOES', 'VIAGENS', 'ODOMETRO']],
-    [PERFIS.GESTOR_SVO, ['SVO']],
+    [PERFIS.GESTOR_SVO, ['SOLICITACOES', 'SVO']],
     [PERFIS.MOTORISTA_SVO, ['SVO']],
     [PERFIS.INTEGRANTE_SVO, ['SVO']],
   ])('%s vê %j', async (perfil, codigos) => {

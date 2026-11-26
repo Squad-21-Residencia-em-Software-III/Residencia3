@@ -41,10 +41,10 @@ O usuário é sempre o da sessão. Nenhuma rota aceita id de usuário, e um camp
 
 | Código | Perfis |
 |---|---|
-| `SOLICITACOES` | Solicitante, Gestor de Frota, Administrador |
+| `SOLICITACOES` | Solicitante, Gestor de Frota, Administrador, Gestor SVO |
 | `VIAGENS` | Solicitante, Gestor de Frota, Motorista da frota |
-| `ODOMETRO` | Gestor de Frota, Motorista da frota |
-| `SVO` | Gestor SVO, Motorista SVO, Integrante SVO |
+| `ODOMETRO` | Gestor de Frota, Motorista da frota, Administrador |
+| `SVO` | Gestor SVO, Motorista SVO, Integrante SVO, Administrador |
 
 - Sem escolha registrada, a categoria fica **desligada** (padrão da SCRUM-236).
 - O perfil é conferido na escolha e **de novo na hora do envio** (`notificacaoOutboxModel.destino`). Quem muda de perfil deixa de receber as categorias do perfil anterior.
@@ -103,3 +103,5 @@ O usuário é sempre o da sessão. Nenhuma rota aceita id de usuário, e um camp
 1. Gerar o par VAPID e definir `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT` **só no ambiente do backend**.
 2. SCRUM-239 publicada (service worker com `push` e `notificationclick`, lendo `titulo`, `corpo`, `url` e `tag`).
 3. Gerar o front com `VITE_WEB_PUSH_ATIVO=true` e seguir o roteiro de testes em aparelhos da SCRUM-238.
+
+O catálogo inclui `SOLICITACOES` para autores Gestor SVO (A2–A4), `ODOMETRO` para administradores (A9), e `SVO` para administradores (S1). A fila exige a categoria permitida e o acesso atual ao registro. A publicação e a partida da fila dependem de `NOTIFICACOES_ATIVAS`.

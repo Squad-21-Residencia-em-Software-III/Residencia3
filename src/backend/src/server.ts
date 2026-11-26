@@ -1,5 +1,6 @@
 import { db } from './config/database';
 import { env } from './config/env';
+import { configNotificacoes } from './config/notificacoes';
 import { app } from './app';
 import { configurarServidor } from './config/servidor';
 import { criarEnviadorWebPush } from './services/enviadorWebPush';
@@ -15,7 +16,7 @@ async function iniciar() {
   }
 
   // Liga a fila de push (SCRUM-229) e retoma o que ficou pendente. Sem VAPID, os avisos ficam só no sistema
-  if (env.webPush) definirEnviadorPush(criarEnviadorWebPush(env.webPush));
+  if (env.webPush && configNotificacoes.ativas) definirEnviadorPush(criarEnviadorWebPush(env.webPush));
   else console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'PUSH_DESLIGADO' }));
 
   const servidor = app.listen(env.port, () => {

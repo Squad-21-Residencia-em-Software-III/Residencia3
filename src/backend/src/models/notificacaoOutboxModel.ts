@@ -1,6 +1,8 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { categoriaPermitida } from '../constants/categoriasNotificacao';
+import { notificacaoModel } from './notificacaoModel';
+import { escopoDasNotificacoes } from '../services/notificacaoService';
 
 export interface PayloadPush {
   notificacao_id: number;
@@ -14,8 +16,7 @@ export interface ItemFilaPush {
   id: number;
   usuario_id: number;
   categoria: string;
-  /** `entregues`: aparelhos que já receberam, para uma nova tentativa não repetir o alerta neles. */
-  payload_push: PayloadPush & { entregues?: number[] };
+  payload_push: PayloadPush & ProgressoEntrega;
   /** Já conta a tentativa atual. Também identifica quem reservou o item (ver `concluir`). */
   tentativas: number;
   max_tentativas: number;
@@ -29,7 +30,13 @@ export interface AssinaturaAtiva {
 }
 
 export type MotivoIgnorado =
-  | 'PRAZO_ENCERRADO' | 'USUARIO_INATIVO' | 'CATEGORIA_DESLIGADA' | 'SEM_ASSINATURA';
+  | 'PRAZO_ENCERRADO' | 'USUARIO_INATIVO' | 'CATEGORIA_DESLIGADA' | 'SEM_ASSINATURA' | 'ACESSO_REVOGADO';
+
+interface ProgressoEntrega {
+  entregues?: number[];
+  definitivas?: number[];
+  expiradas?: number[];
+}
 
 export interface FalhaEnvio {
   erro: string;
@@ -37,10 +44,10 @@ export interface FalhaEnvio {
 }
 
 export type Conclusao =
-  | { status: 'ENVIADO' }
+  | ({ status: 'ENVIADO'; parcial?: boolean } & ProgressoEntrega)
   | { status: 'IGNORADO'; erro: MotivoIgnorado }
   | ({ status: 'FALHA_DEFINITIVA' } & FalhaEnvio)
-  | ({ status: 'PENDENTE'; esperaSegundos: number; entregues: number[] } & FalhaEnvio);
+  | ({ status: 'PENDENTE'; esperaSegundos: number } & FalhaEnvio & ProgressoEntrega);
 
 const TABELA = 'notificacao_outbox';
 // Nunca antes da criação (chk_notificacao_outbox_processamento_coerente)
@@ -87,18 +94,19 @@ export const notificacaoOutboxModel = {
 
   /** Sem efeito se a reserva venceu e outro processo assumiu o item. */
   async concluir({ id, tentativas }: ItemFilaPush, c: Conclusao, conexao: Knex = db): Promise<boolean> {
+    const progresso = 'entregues' in c ? { entregues: c.entregues, definitivas: c.definitivas, expiradas: c.expiradas } : undefined;
     const alteradas = await conexao(TABELA)
       .where({ id, tentativas, status: 'PROCESSANDO' })
       .update({
         status: c.status,
         bloqueado_ate: null,
         atualizado_em: conexao.raw(AGORA),
-        ultimo_erro: c.status === 'ENVIADO' ? null : c.erro,
+        ultimo_erro: c.status === 'ENVIADO' ? (c.parcial ? 'ENTREGA_PARCIAL' : null) : c.erro,
+        ...(progresso ? { payload_push: conexao.raw('payload_push || ?::jsonb', [JSON.stringify(progresso)]) } : {}),
         ...('statusHttp' in c ? { ultimo_status_http: c.statusHttp } : {}),
         ...(c.status === 'PENDENTE'
           ? {
               proxima_execucao_em: conexao.raw("clock_timestamp() + ? * interval '1 second'", [c.esperaSegundos]),
-              payload_push: conexao.raw('payload_push || ?::jsonb', [JSON.stringify({ entregues: c.entregues })]),
             }
           : { processado_em: conexao.raw(AGORA) }),
       });
@@ -118,12 +126,14 @@ export const notificacaoOutboxModel = {
 
   /** Conferido na hora do envio: o usuário pode ter mudado a escolha depois de o aviso ser criado. */
   async destino(
-    { usuario_id, categoria }: ItemFilaPush,
+    { usuario_id, categoria, payload_push }: ItemFilaPush,
     conexao: Knex = db
   ): Promise<MotivoIgnorado | AssinaturaAtiva[]> {
-    const usuario: { perfil: string } | undefined = await conexao('usuarios').where({ id: usuario_id, ativo: true }).first('perfil');
+    const usuario = await conexao('usuarios').where({ id: usuario_id, ativo: true }).first('id', 'perfil');
     if (!usuario) return 'USUARIO_INATIVO';
-    // Perfil atual (SCRUM-237): quem mudou de perfil deixa de receber as categorias do anterior
+    const escopo = await escopoDasNotificacoes(usuario, conexao);
+    if (!(await notificacaoModel.podeEntregar(escopo, payload_push.notificacao_id, conexao))) return 'ACESSO_REVOGADO';
+    // A categoria e a autorização por registro usam o perfil atual.
     if (!categoriaPermitida(usuario.perfil, categoria)) return 'CATEGORIA_DESLIGADA';
     // Sem escolha registrada, a categoria fica desligada (padrão da SCRUM-236)
     const ligada = await conexao('preferencias_notificacao')

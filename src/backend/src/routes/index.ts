@@ -20,6 +20,7 @@ import { relatorioRoutes } from './relatorioRoutes';
 import { diagnosticoRoutes } from './diagnosticoRoutes';
 import { evidenciaOdometroRoutes } from './evidenciaOdometroRoutes';
 import { notificacaoPushRoutes } from './notificacaoPushRoutes';
+import { notificacaoRoutes } from './notificacaoRoutes';
 import { logFalha } from '../middlewares/logRequisicao';
 
 export const routes = Router();
@@ -53,3 +54,4 @@ routes.use('/relatorios', relatorioRoutes);
 routes.use('/diagnostico', diagnosticoRoutes);
 routes.use('/evidencias-odometro', evidenciaOdometroRoutes);
 routes.use('/notificacoes', notificacaoPushRoutes);
+routes.use('/notificacoes', notificacaoRoutes);

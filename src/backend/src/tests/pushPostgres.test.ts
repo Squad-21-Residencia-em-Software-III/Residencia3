@@ -4,6 +4,7 @@ import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateVAPIDKeys } from 'web-push';
 import { app } from '../app';
+import { configNotificacoes } from '../config/notificacoes';
 import { db } from '../config/database';
 import { env, HOSTS_PUSH_PADRAO } from '../config/env';
 import { tipoUsuarioDoPerfil, type Perfil } from '../constants/perfis';
@@ -53,7 +54,7 @@ const filaDe = (usuario_id: number) => db('notificacao_outbox').where({ usuario_
 
 const evento = (destinatarios: number[], dados: Partial<EventoNotificacao> = {}): EventoNotificacao => ({
   tipo: 'VIAGEM_AGENDADA', operacao: 'Administrativo', titulo: 'Viagem agendada', mensagem: 'Saída às 14:00.',
-  urlDestino: '/viagens', referencia: { tipo: 'VIAGEM', id: 900 }, ocorrencia: nonce(), autorId: null, destinatarios,
+  urlDestino: '/viagens', ocorrencia: nonce(), autorId: null, destinatarios,
   push: { categoria: 'VIAGENS', titulo: 'Viagem agendada', corpo: 'Você tem uma viagem.', tag: 'viagem-900' },
   ...dados,
 });
@@ -78,12 +79,14 @@ describe.skipIf(!habilitado)('Alertas no aparelho (SCRUM-237) em PostgreSQL desc
     }
   });
   beforeEach(async () => {
+    configNotificacoes.ativas = true;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     (env as { webPush: unknown }).webPush = { ...vapid, subject: 'mailto:frota@fsph.invalid', hostsPermitidos: HOSTS_PUSH_PADRAO };
     // A suíte está sozinha no banco (usarBancoComExclusividade): fila limpa a cada caso
     await db('notificacao_outbox').del();
   });
   afterEach(() => {
+    configNotificacoes.ativas = false;
     definirEnviadorPush(null);
     (env as { webPush: unknown }).webPush = null;
     vi.restoreAllMocks();
