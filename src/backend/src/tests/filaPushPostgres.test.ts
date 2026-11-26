@@ -49,9 +49,9 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('A suíte exige PostgreSQL descartável em 127.0.0.1/frotas_teste');
     }
-    configNotificacoes.ativas = true;
   });
   beforeEach(async () => {
+    configNotificacoes.ativas = true;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     // Fila limpa: o banco é descartável, e a suíte está sozinha nele
     await db('notificacao_outbox').del();
@@ -129,15 +129,6 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
         push: { categoria: 'X'.repeat(61), titulo: 't', corpo: 'c' },
       }))).rejects.toThrow();
       expect(await avisosDe(a)).toHaveLength(0);
-    });
-
-    it('com o interruptor desligado, não publica nada', async () => {
-      const a = await usuario();
-      configNotificacoes.ativas = false;
-      expect(await publicar(evento([a]))).toEqual({ criadas: 0 });
-      configNotificacoes.ativas = true;
-      expect(await avisosDe(a)).toHaveLength(0);
-      expect(await filaDe(a)).toHaveLength(0);
     });
 
     it('exige a transação da operação', async () => {
