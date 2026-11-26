@@ -401,6 +401,19 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
       expect(await umItem(a)).toMatchObject({ status: 'IGNORADO', ultimo_erro: 'ACESSO_REVOGADO' });
     });
 
+    it('preserva a entrega parcial quando o prazo do retry vence', async () => {
+      const a = await usuario();
+      const [, temporaria] = await ligarPush(a, 2);
+      await publicar(evento([a]));
+      enviador.mockImplementation(async ({ endpoint }) => ({ status: endpoint === temporaria ? 429 : 201 }));
+      await processarFilaPush(enviador);
+      await db('notificacao_outbox').where({ usuario_id: a })
+        .update({ criado_em: db.raw("clock_timestamp() - interval '25 hours'") });
+      await processarFilaPush(enviador);
+      expect(await umItem(a)).toMatchObject({ status: 'ENVIADO', ultimo_erro: 'ENTREGA_PARCIAL' });
+      expect(enviador).toHaveBeenCalledTimes(2);
+    });
+
     it('não envia a assinatura encerrada', async () => {
       const a = await usuario();
       const [encerrada, viva] = await ligarPush(a, 2);
