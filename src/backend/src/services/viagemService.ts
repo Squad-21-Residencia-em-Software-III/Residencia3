@@ -13,6 +13,7 @@ import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
 import { garantirPerfilOperacional } from './autorizacaoOperacionalSvo';
 import { concluirOperacao, registrarEvidenciaNaTransicao } from './evidenciaOdometroTransicao';
 import { reavaliarFilaSvo } from './filaSvoService';
+import { notificacaoSvoService } from './notificacaoSvoService';
 import { atualizarDesignacoesSvo } from './designacoesSvoService';
 import {
   periodoDaSolicitacao,
@@ -428,6 +429,8 @@ export const viagemService = {
         autor.id,
         `CHEGOU_LOCAL_SVO id=${ordemId}`
       );
+      // S6 (SCRUM-235): só na central, sem push
+      await notificacaoSvoService.publicarChegadaLocal(ordemId, autor.id, trx);
 
       return detalhar(trx, 'SVO', ordemId);
     });
@@ -636,7 +639,7 @@ export const viagemService = {
           [operacao.colunaChegada]: new Date(),
         });
       // Prazo de guarda das fotos (12 meses) conta da conclusão real
-      await concluirOperacao(trx, transicao);
+      const conclusao = await concluirOperacao(trx, transicao);
 
       // Atualiza km do veiculo sem reduzir o valor já registrado
       await trx('veiculos')
@@ -650,6 +653,9 @@ export const viagemService = {
         await trx('alertas_atraso_svo').where({ ordem_em_atraso_id: viagemId })
           .whereNull('resolvido_em').update({ resolvido_em: trx.fn.now() });
         await reavaliarFilaSvo(trx, autor.id);
+        // S7 (SCRUM-235): uma vez por deslocamento físico, quando a última ordem termina. Sem push
+        if (conclusao) await notificacaoSvoService.publicarConclusaoColeta(conclusao, viagemId, autor.id, trx);
+        else await notificacaoSvoService.avisarProximoPedidoDoDeslocamento(viagemId, 'CHEGADA', trx);
       }
 
       await registrarAuditoria(trx, autor.id,
