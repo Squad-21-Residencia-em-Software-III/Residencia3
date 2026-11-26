@@ -18,10 +18,12 @@ Publicados por `services/notificacaoSvoService.ts` **na transação da transiç�
   - Várias ordens no mesmo veículo não geram um aviso cada. O aviso sai quando o deslocamento é concluído (`concluirOperacao`) e cita as ordens dele: até 10, depois "e mais N".
   - A ocorrência é `deslocamento:<id>`, e a referência é a ordem que encerrou o deslocamento.
   - Uma ordem antiga, sem deslocamento (anterior às fotos), gera o próprio aviso, com a ocorrência `ordem:<id>`.
-- **S8, uma por pedido e por decisão:**
+- **S8, uma solicitação por ocorrência operacional e uma decisão por pedido:**
   - A ocorrência é `<fase>:<id do pedido>:<solicitada|aprovada|recusada>`.
   - O reenvio com o pedido aberto devolve o mesmo pedido e não avisa de novo. Uma decisão repetida responde 409.
-  - Um novo pedido depois de uma recusa é uma nova ocorrência real e avisa de novo.
+  - Enquanto há pedido pendente da mesma fase, no mesmo deslocamento e com o mesmo motorista e veículo, apenas o primeiro gera aviso. A chave e a referência do aviso são as do primeiro pedido.
+  - Cada ordem mantém seu próprio pedido, decisão e autorização. Ordens sem deslocamento seguem independentes. Uma nova solicitação depois de encerrados os pedidos pendentes pode gerar outro aviso.
+- **Contadores:** S6 e S7 incrementam o contador do sino da central. Eles nunca geram Push nem provocam atualizações independentes do App Badge.
 - **Sempre:** o autor da ação nunca é avisado, e inativos e repetidos são descartados (`publicarNotificacao`).
 
 ## Acesso (IDOR) e unidade
@@ -38,7 +40,7 @@ Publicados por `services/notificacaoSvoService.ts` **na transação da transiç�
 ## LGPD
 
 - **Push:** só texto fixo, a categoria `SVO` e a tag `svo-excecao-<id>`. Pedido: "Um pedido de autorização aguarda análise." Decisão: "Seu pedido foi aprovado." ou "Seu pedido foi recusado."
-- **Central:** cita só o número da ordem e do pedido e a fase. Local da ocorrência, dados do solicitante, motivo e justificativa ficam fora dos avisos, inclusive na central. Quem tem acesso os consulta na tela do pedido.
+- **Central:** cita o número da ordem, o pedido e a fase, com até 160 caracteres do motivo ou da justificativa. A central remove esse conteúdo se o acesso à referência for revogado.
 
 ## Testes
 
@@ -48,7 +50,7 @@ Publicados por `services/notificacaoSvoService.ts` **na transação da transiç�
   - um S7 por deslocamento com duas ordens;
   - quem recebe e quem não recebe (autor, sem unidade, inativo, Gestor de Frota);
   - reenvios (chegada repetida, pedido aberto, decisão repetida);
-  - rollback quando a publicação falha (chegada, finalização com o deslocamento, pedido);
+  - rollback quando a publicação falha (chegada, finalização com o deslocamento, pedido e decisão);
   - finalização recusada sem aviso;
   - entrega do push e contador do S8;
   - IDOR: outro motorista não lê nem marca, e o motorista realocado perde o conteúdo;

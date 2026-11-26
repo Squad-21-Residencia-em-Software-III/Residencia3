@@ -450,10 +450,16 @@ export const viagemService = {
       await sincronizarStatus(trx, anterior.veiculo_id, anterior.motorista_id);
       await sincronizarStatus(trx, dados.veiculo_id, dados.motorista_id);
       await reavaliarFilaSvo(trx, autor.id);
-      // S3 a quem entrou e S4 a quem continua (SCRUM-234), individualmente
-      await notificacaoSvoService.publicarDesignacoes(equipeAntes, await notificacaoSvoService.equipeParaAvisos(trx, id), autor.id, trx);
-      await registrarAuditoria(trx, autor.id,
-        `REPROGRAMOU_SVO id=${id} inicio=${dados.inicio_previsto} fim=${dados.fim_previsto} veiculo=${dados.veiculo_id} motorista=${dados.motorista_id} equipe=${dados.equipe_id ?? 'nenhuma'}`);
+      const acao = `REPROGRAMOU_SVO id=${id} inicio=${dados.inicio_previsto} fim=${dados.fim_previsto} veiculo=${dados.veiculo_id} motorista=${dados.motorista_id} equipe=${dados.equipe_id ?? 'nenhuma'}`;
+      const equipeDepois = await notificacaoSvoService.equipeParaAvisos(trx, id);
+      if (equipeAntes && equipeDepois) {
+        const auditoriaId = await auditoriaModel.registrarComId({
+          usuario_id: autor.id, modulo: MODULOS_AUDITORIA.VIAGENS, acao,
+        }, trx);
+        await notificacaoSvoService.publicarDesignacoes(equipeAntes, equipeDepois, autor.id, trx, auditoriaId);
+      } else {
+        await registrarAuditoria(trx, autor.id, acao);
+      }
       return detalhar(trx, 'SVO', id);
     });
   },

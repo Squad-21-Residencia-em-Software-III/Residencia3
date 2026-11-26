@@ -5,7 +5,7 @@ Publicados por `services/notificacaoSvoService.ts` **na transação da operaçã
 | Aviso | Quando | Quem recebe |
 |---|---|---|
 | **S3** `SVO_ORDEM_ATRIBUIDA` | Alocação (`POST /viagens`), e na reprogramação para quem entrou | Quem entrou |
-| **S4** `SVO_ORDEM_REAGENDADA` | Reprogramação (`POST /viagens/ordens-svo/:id/reprogramar`) que muda horário ou veículo | Quem continua designado |
+| **S4** `SVO_ORDEM_REAGENDADA` | Reprogramação (`POST /viagens/ordens-svo/:id/reprogramar`) que muda horário, veículo ou composição | Quem continua designado |
 | **S5** `SVO_ORDEM_CANCELADA` | Cancelamento da ordem alocada (`PATCH /viagens/:id/cancelar`) | Quem estava designado no momento |
 
 **Destinatários, sempre individuais:** o motorista da ordem (perfil Motorista SVO) e cada integrante com designação não revogada em `ordens_svo_integrantes`. **Nunca a equipe inteira:** um integrante da equipe que não foi designado não recebe. O autor (gestor) nunca é avisado.
@@ -16,8 +16,8 @@ Publicados por `services/notificacaoSvoService.ts` **na transação da operaçã
 
 - **Quem entra recebe S3:**
   - O motorista novo.
-  - O integrante com designação nova. Uma nova linha da mesma pessoa, por exemplo após uma troca de equipe, também conta como nova atribuição.
-- **Quem continua recebe S4,** só se o horário previsto ou o veículo mudaram. Trocar apenas integrantes não é reagendamento para quem fica.
+  - O integrante que passa a fazer parte da coleta.
+- **Quem continua recebe S4** se o horário previsto, o veículo, o motorista, a equipe ou a lista de integrantes mudou.
 - **Quem sai não recebe aviso.** A designação é revogada e, pela regra da central (SCRUM-226), os avisos anteriores dessa pessoa ficam sem conteúdo (`acesso_revogado`). O mesmo vale para o motorista substituído.
 
 ## Duplicidade e concorrência
@@ -25,11 +25,11 @@ Publicados por `services/notificacaoSvoService.ts` **na transação da operaçã
 | Aviso | Ocorrência |
 |---|---|
 | S3 (integrante) | `designacao:<id da designação>` |
-| S3 (motorista) | `motorista:<versão da agenda>` |
-| S4 | `<início>-<fim>-v<veículo>`, a versão da agenda |
+| S3 (motorista) | `motorista:alocacao` ou `motorista:auditoria:<id>` |
+| S4 | `auditoria:<id>` da transição persistida na mesma transação |
 | S5 | `cancelamento` |
 
-- Repetir a mesma reprogramação não avisa de novo. Um novo horário avisa.
+- Uma repetição sem mudança efetiva não gera aviso. O retorno a um horário, veículo ou motorista anterior é uma nova transição com seu próprio ID de auditoria.
 - Alocação, reprogramação e cancelamento continuam sob o lock da agenda SVO (SCRUM-166) e são serializados.
 - Em dois cancelamentos simultâneos, um vence e o outro responde 400. Cada pessoa recebe um aviso só.
 
@@ -47,7 +47,7 @@ Revogar a designação, ou trocar o motorista, tira o conteúdo dos avisos já r
 
 - **Push:** só texto fixo.
   - Atribuição: "Confira a coleta e o horário previsto."
-  - Reagendamento: "O horário ou o veículo da coleta mudou."
+  - Reagendamento: "Confira as alterações na coleta."
   - Cancelamento: "Uma coleta designada a você foi cancelada."
 - **Central:** o número da ordem e o horário previsto (America/Maceio). O local da ocorrência e os dados do solicitante nunca entram.
 

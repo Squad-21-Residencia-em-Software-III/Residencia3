@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { env, HOSTS_PUSH_PADRAO } from '../config/env';
 import { usuarioAutenticado } from '../middlewares/autenticar';
+import { metricasNotificacoes } from '../services/metricasNotificacoes';
 import { pushService } from '../services/pushService';
 import {
   codigoCategoriaSchema,
@@ -32,6 +33,10 @@ export const pushController = {
     const { endpoint } = endpointPushSchema.parse(req.body ?? {});
     await pushService.cancelar(usuarioAutenticado(req), endpoint);
     res.status(204).end();
+  },
+
+  async metricas(_req: Request, res: Response) {
+    res.json(await metricasNotificacoes.obter());
   },
 
   async preferencias(req: Request, res: Response) {

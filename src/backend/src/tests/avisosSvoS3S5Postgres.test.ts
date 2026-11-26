@@ -233,12 +233,33 @@ describe.skipIf(!habilitado)('SCRUM-234 · avisos SVO S3, S4 e S5 em PostgreSQL 
       await reprogramar(c, novoHorario);
       expect((await reprogramar(c, novoHorario)).status).toBe(200);
       expect(await avisos(EVENTO_SVO_S4, c.ordemId)).toHaveLength(3);
-      // Só trocar integrante, sem mudar horário nem veículo, não é reagendamento para quem continua
+      // Trocar apenas a composição avisa quem permaneceu.
       const [a, , novo] = c.integrantes;
-      await reprogramar(c, { ...novoHorario, integrantes_ids: [a!.id, novo!.id] });
-      expect(await avisos(EVENTO_SVO_S4, c.ordemId)).toHaveLength(3);
+      const novaComposicao = { ...novoHorario, integrantes_ids: [a!.id, novo!.id] };
+      expect((await reprogramar(c, novaComposicao)).status).toBe(200);
+      expect(await avisos(EVENTO_SVO_S4, c.ordemId)).toHaveLength(5);
+      expect((await reprogramar(c, { ...novaComposicao, integrantes_ids: [novo!.id, a!.id] })).status).toBe(200);
+      expect(await avisos(EVENTO_SVO_S4, c.ordemId)).toHaveLength(5);
       await reprogramar(c, { inicio_previsto: instante(360).toISOString(), fim_previsto: instante(420).toISOString(), integrantes_ids: [a!.id, novo!.id] });
-      expect(await avisos(EVENTO_SVO_S4, c.ordemId)).toHaveLength(6);
+      expect(await avisos(EVENTO_SVO_S4, c.ordemId)).toHaveLength(8);
+    });
+
+    it('notifica cada retorno legítimo a um horário e veículo anteriores', async () => {
+      const c = await cenario();
+      expect((await alocar(c)).status).toBe(200);
+      const [veiculo] = await db('veiculos').insert({
+        placa: `T${nonce()}`, modelo: 'Reserva SVO', tipo_frota: 'SVO', capacidade_maxima: 4,
+        lotacao_cabine: 4, status: 'DISPONIVEL',
+      }).returning('id');
+      const outraAgenda = {
+        veiculo_id: veiculo.id, inicio_previsto: instante(240).toISOString(), fim_previsto: instante(300).toISOString(),
+      };
+      for (const dados of [outraAgenda, {}, outraAgenda]) {
+        expect((await reprogramar(c, dados)).status).toBe(200);
+      }
+      const s4 = (await avisos(EVENTO_SVO_S4, c.ordemId)).filter((n) => n.usuario_id === c.condutor.conta.id);
+      expect(s4).toHaveLength(3);
+      expect(new Set(s4.map((n) => n.chave_idempotencia)).size).toBe(3);
     });
 
     it('troca de motorista: o novo recebe S3; o antigo não recebe e perde o conteúdo', async () => {
@@ -253,6 +274,10 @@ describe.skipIf(!habilitado)('SCRUM-234 · avisos SVO S3, S4 e S5 em PostgreSQL 
       const doNovo = await lista(substituto.conta);
       expect(doNovo[0]).toMatchObject({ titulo: 'Nova coleta SVO atribuída' });
       expect(doNovo[0]!.acesso_revogado).toBeFalsy();
+      expect((await reprogramar(c, { motorista_id: c.condutor.id })).status).toBe(200);
+      const retornos = (await avisos(EVENTO_SVO_S3, c.ordemId)).filter((n) => n.usuario_id === c.condutor.conta.id);
+      expect(retornos).toHaveLength(2);
+      expect(new Set(retornos.map((n) => n.chave_idempotencia)).size).toBe(2);
     });
 
     it('reprogramações concorrentes: uma por vez, sem aviso repetido por pessoa', async () => {

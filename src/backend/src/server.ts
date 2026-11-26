@@ -14,10 +14,21 @@ async function iniciar() {
     const existentes = await Promise.all(tabelas.map((tabela) => db.schema.hasTable(tabela)));
     if (existentes.some((existe) => !existe)) throw new Error('Schema do odômetro incompleto');
   }
+  if (configNotificacoes.ativas) {
+    const existentes = await Promise.all(['notificacoes', 'notificacao_outbox'].map((tabela) => db.schema.hasTable(tabela)));
+    if (existentes.some((existe) => !existe)) throw new Error('Schema das notificações incompleto');
+  }
 
   // Liga a fila de push (SCRUM-229) e retoma o que ficou pendente. Sem VAPID, os avisos ficam só no sistema
+  // A etapa da liberação fica no log de cada partida (docs/scrum-241-implantacao-push.md), sem valores de configuração
+  const pushLigado = Boolean(env.webPush && configNotificacoes.ativas);
   if (env.webPush && configNotificacoes.ativas) definirEnviadorPush(criarEnviadorWebPush(env.webPush));
-  else console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'PUSH_DESLIGADO' }));
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level: 'INFO',
+    evento: pushLigado ? 'PUSH_LIGADO' : 'PUSH_DESLIGADO',
+    notificacoes_ativas: configNotificacoes.ativas,
+  }));
 
   const servidor = app.listen(env.port, () => {
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'SERVIDOR_INICIADO', port: env.port }));
@@ -26,7 +37,7 @@ async function iniciar() {
 }
 
 void iniciar().catch(async () => {
-  console.error('Não foi possível iniciar a API. Confira conexão e migrations do odômetro.');
+  console.error('Não foi possível iniciar a API. Confira conexão e migrations do odômetro e das notificações.');
   process.exitCode = 1;
   await db.destroy();
 });

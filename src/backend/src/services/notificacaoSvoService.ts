@@ -3,7 +3,7 @@ import { configNotificacoes } from '../config/notificacoes';
 import { PERFIS } from '../constants/perfis';
 import { UNIDADES } from '../constants/unidades';
 import type { SolicitacaoSvo } from '../models/solicitacaoSvoModel';
-import { publicarNotificacao } from './publicacaoNotificacoes';
+import { limitar, publicarNotificacao } from './publicacaoNotificacoes';
 
 export const URL_DESTINO_TRIAGEM_SVO = '/solicitacoes?aba=svo';
 export const CATEGORIA_NOTIFICACAO_SVO = 'SVO';
@@ -64,6 +64,8 @@ function listaDeOrdens(ids: number[]): string {
 export interface EquipeDaOrdem {
   ordemId: number;
   motoristaUsuarioId: number | null;
+  motoristaId: number | null;
+  equipeId: number | null;
   /** usuario_id → id da designação (ordens_svo_integrantes) */
   integrantes: Map<number, number>;
   inicio: Date | null;
@@ -75,9 +77,6 @@ const FORMATO_HORARIO = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Maceio', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
 });
 const horario = (data: Date | null) => (data ? FORMATO_HORARIO.format(data) : null);
-const segundos = (data: Date | null) => (data ? Math.floor(data.getTime() / 1000) : 0);
-// Muda quando a agenda muda: reagendar de novo para o mesmo horário e veículo não avisa outra vez
-const versaoDaAgenda = (e: EquipeDaOrdem) => `${segundos(e.inicio)}-${segundos(e.fim)}-v${e.veiculoId ?? 0}`;
 
 export async function equipeDaOrdem(trx: Knex.Transaction, ordemId: number): Promise<EquipeDaOrdem> {
   const ordem = await trx('ordens_svo as o')
@@ -86,7 +85,7 @@ export async function equipeDaOrdem(trx: Knex.Transaction, ordemId: number): Pro
       this.on('u.id', '=', 'm.usuario_id').andOnVal('u.perfil', '=', PERFIS.MOTORISTA_SVO);
     })
     .where('o.id', ordemId)
-    .first('o.inicio_previsto', 'o.fim_previsto', 'o.veiculo_id', 'u.id as motorista_usuario_id');
+    .first('o.inicio_previsto', 'o.fim_previsto', 'o.veiculo_id', 'o.motorista_id', 'o.equipe_id', 'u.id as motorista_usuario_id');
   const designacoes: { id: number; usuario_id: number }[] = await trx('ordens_svo_integrantes as d')
     .join('usuarios as u', 'u.id', 'd.usuario_id')
     .where({ 'd.ordem_id': ordemId, 'u.perfil': PERFIS.INTEGRANTE_SVO })
@@ -97,6 +96,8 @@ export async function equipeDaOrdem(trx: Knex.Transaction, ordemId: number): Pro
   return {
     ordemId,
     motoristaUsuarioId: ordem?.motorista_usuario_id ?? null,
+    motoristaId: ordem?.motorista_id ?? null,
+    equipeId: ordem?.equipe_id ?? null,
     integrantes: new Map(designacoes.map((d) => [d.usuario_id, d.id])),
     inicio: data(ordem?.inicio_previsto),
     fim: data(ordem?.fim_previsto),
@@ -144,7 +145,7 @@ export const notificacaoSvoService = {
    * S3 (atribuição) e S4 (reagendamento), na transação da alocação ou da reprogramação. `antes` é a equipe
    * antes da reprogramação (`null` na alocação):
    * - quem entrou (motorista novo, integrante com designação nova) recebe S3;
-   * - quem continua recebe S4, se o horário ou o veículo mudaram;
+   * - quem continua recebe S4 quando mudam horário, veículo ou composição;
    * - quem saiu não recebe nada e perde o acesso ao conteúdo dos avisos anteriores (designação revogada).
    */
   async publicarDesignacoes(
@@ -152,8 +153,11 @@ export const notificacaoSvoService = {
     depois: EquipeDaOrdem | null,
     autorId: number,
     trx: Knex.Transaction,
+    auditoriaId?: number,
   ): Promise<void> {
     if (!configNotificacoes.ativas || !depois) return;
+    if (antes && !auditoriaId) throw new Error('A reprogramação exige uma identidade persistida');
+    const ocorrencia = auditoriaId === undefined ? 'alocacao' : `auditoria:${auditoriaId}`;
     const { ordemId } = depois;
     const quando = horario(depois.inicio);
     const tag = `ordem-svo-${ordemId}`;
@@ -170,25 +174,30 @@ export const notificacaoSvoService = {
         tipo: EVENTO_SVO_S4, operacao: 'SVO', severidade: 'warning',
         titulo: 'Coleta SVO reagendada',
         mensagem: `A ordem SVO #${ordemId} foi reagendada${quando ? ` para ${quando}` : ''}.`,
-        urlDestino, referencia: { tipo: 'ORDEM_SVO', id: ordemId }, ocorrencia: versaoDaAgenda(depois), autorId, destinatarios,
-        push: { categoria: CATEGORIA_NOTIFICACAO_SVO, titulo: 'Coleta reagendada', corpo: 'O horário ou o veículo da coleta mudou.', tag },
+        urlDestino, referencia: { tipo: 'ORDEM_SVO', id: ordemId }, ocorrencia, autorId, destinatarios,
+        push: { categoria: CATEGORIA_NOTIFICACAO_SVO, titulo: 'Coleta reagendada', corpo: 'Confira as alterações na coleta.', tag },
       });
 
     const motorista = depois.motoristaUsuarioId;
-    const agendaMudou = antes !== null && versaoDaAgenda(antes) !== versaoDaAgenda(depois);
+    const coletaMudou = antes !== null && (
+      antes.inicio?.getTime() !== depois.inicio?.getTime() || antes.fim?.getTime() !== depois.fim?.getTime() ||
+      antes.veiculoId !== depois.veiculoId || antes.motoristaId !== depois.motoristaId ||
+      antes.equipeId !== depois.equipeId || antes.integrantes.size !== depois.integrantes.size ||
+      [...depois.integrantes.keys()].some((id) => !antes.integrantes.has(id))
+    );
     if (motorista !== null) {
-      if (antes?.motoristaUsuarioId !== motorista) {
-        await atribuir(URL_DESTINO_MOTORISTA_SVO, `motorista:${versaoDaAgenda(depois)}`, motorista);
-      } else if (agendaMudou) {
+      if (antes?.motoristaUsuarioId !== motorista || antes.motoristaId !== depois.motoristaId) {
+        await atribuir(URL_DESTINO_MOTORISTA_SVO, `motorista:${ocorrencia}`, motorista);
+      } else if (coletaMudou) {
         await reagendar(URL_DESTINO_MOTORISTA_SVO, [motorista]);
       }
     }
     const continuam: number[] = [];
     for (const [usuarioId, designacaoId] of depois.integrantes) {
-      if (antes?.integrantes.get(usuarioId) === designacaoId) continuam.push(usuarioId);
+      if (antes?.integrantes.has(usuarioId)) continuam.push(usuarioId);
       else await atribuir(URL_DESTINO_INTEGRANTE_SVO, `designacao:${designacaoId}`, usuarioId);
     }
-    if (agendaMudou && continuam.length) await reagendar(URL_DESTINO_INTEGRANTE_SVO, continuam);
+    if (coletaMudou && continuam.length) await reagendar(URL_DESTINO_INTEGRANTE_SVO, continuam);
   },
 
   /**
@@ -261,10 +270,10 @@ export const notificacaoSvoService = {
 
   /**
    * S8 (pedido): o motorista SVO pediu autorização sem foto. Avisa os gestores SVO associados, com push.
-   * Motivo, local e dados da solicitação ficam fora do aviso: o gestor vê o pedido na tela, com acesso conferido.
+   * O motivo resumido aparece apenas no aviso da central, sujeito ao acesso atual à ordem.
    */
   async publicarExcecaoSolicitada(
-    excecao: { id: number; fase: FaseOdometro },
+    excecao: { id: number; fase: FaseOdometro; motivo: string },
     ordemId: number,
     autorId: number,
     trx: Knex.Transaction,
@@ -275,7 +284,7 @@ export const notificacaoSvoService = {
       operacao: 'SVO',
       severidade: 'warning',
       titulo: 'Pedido de autorização sem foto',
-      mensagem: `A ordem SVO #${ordemId} pede autorização sem foto na ${NOME_FASE[excecao.fase]} (pedido nº ${excecao.id}).`,
+      mensagem: `A ordem SVO #${ordemId} pede autorização sem foto na ${NOME_FASE[excecao.fase]} (pedido nº ${excecao.id}). Motivo: ${limitar(excecao.motivo, 160)}`,
       urlDestino: URL_DESTINO_OPERACAO_SVO,
       referencia: { tipo: 'ORDEM_SVO', id: ordemId },
       ocorrencia: `${excecao.fase}:${excecao.id}:solicitada`,
@@ -292,11 +301,12 @@ export const notificacaoSvoService = {
 
   /**
    * S8 (decisão): avisa o motorista SVO que fez o pedido, se ele continua ativo e no perfil. A justificativa
-   * fica fora do aviso (pode citar a ocorrência): o motorista a consulta na tela do pedido.
+   * resumida aparece apenas no aviso da central, sujeito ao acesso atual à ordem.
    */
   async publicarExcecaoDecidida(
     excecao: { id: number; fase: FaseOdometro; solicitada_por: number },
     decisao: 'APROVADA' | 'RECUSADA',
+    justificativa: string,
     ordemId: number,
     autorId: number,
     trx: Knex.Transaction,
@@ -311,7 +321,7 @@ export const notificacaoSvoService = {
       operacao: 'SVO',
       severidade: aprovada ? 'success' : 'warning',
       titulo: aprovada ? 'Autorização sem foto aprovada' : 'Autorização sem foto recusada',
-      mensagem: `Seu pedido nº ${excecao.id} para a ${NOME_FASE[excecao.fase]} da ordem SVO #${ordemId} foi ${aprovada ? 'aprovado' : 'recusado'}.`,
+      mensagem: `Seu pedido nº ${excecao.id} para a ${NOME_FASE[excecao.fase]} da ordem SVO #${ordemId} foi ${aprovada ? 'aprovado' : 'recusado'}. Justificativa: ${limitar(justificativa, 160)}`,
       urlDestino: URL_DESTINO_MOTORISTA_SVO,
       referencia: { tipo: 'ORDEM_SVO', id: ordemId },
       ocorrencia: `${excecao.fase}:${excecao.id}:${decisao.toLowerCase()}`,
