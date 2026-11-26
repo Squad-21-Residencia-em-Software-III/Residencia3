@@ -30,6 +30,7 @@ vi.mock('../services/documentoService', () => ({ documentoService: stubDeService
 vi.mock('../services/manutencaoService', () => ({ manutencaoService: stubDeService() }));
 vi.mock('../services/motoristaService', () => ({ motoristaService: stubDeService() }));
 vi.mock('../services/multaService', () => ({ multaService: stubDeService() }));
+vi.mock('../services/notificacaoService', () => ({ notificacaoService: stubDeService() }));
 vi.mock('../services/solicitacaoSvoService', () => ({ solicitacaoSvoService: stubDeService() }));
 vi.mock('../services/solicitacaoViagemService', () => ({ solicitacaoViagemService: stubDeService() }));
 vi.mock('../services/unidadeService', () => ({ unidadeService: stubDeService() }));
@@ -112,6 +113,12 @@ const MATRIZ: Regra[] = [
   ['patch', '/api/solicitacoes-svo/1/confirmar', [A, GS], true],
 
   ['get', '/api/auditorias', [A]],
+
+  ['get', '/api/notificacoes', TODOS],
+  ['get', '/api/notificacoes/contador', TODOS],
+  ['patch', '/api/notificacoes/1/lida', TODOS],
+  ['patch', '/api/notificacoes/ler-todas', TODOS],
+  ['patch', '/api/notificacoes/referencia/lida', TODOS],
 ];
 
 const chamar = (metodo: Metodo, rota: string, token?: string) => {
