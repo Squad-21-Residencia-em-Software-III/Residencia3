@@ -19,3 +19,16 @@ O gestor abre **Viagens**, escolhe a operação e seleciona **Pedidos sem foto**
 Em **Solicitações → SVO**, registre a chamada interna, abra a triagem e confirme ou recuse com justificativa. A confirmação encaminha a ordem a **Viagens → SVO**. Quando a agenda temporal estiver habilitada, selecione a ordem pendente, o período previsto, o veículo, o motorista e, se necessário, a equipe com seus integrantes. Analise o aviso de intervalo reduzido e confirme somente se o encaixe for viável. O sistema revalida a disponibilidade. Reprograme antes da saída se os recursos precisarem mudar.
 
 O motorista registra a saída, usa **Cheguei ao local** e finaliza após a coleta. Enquanto estiver **No local**, os recursos continuam ocupados. Um integrante acompanha apenas as coletas em que está designado.
+
+### Roteiro de demonstração e homologação
+
+| Etapa | Ação e resultado esperado |
+| --- | --- |
+| 1. Administrativo | Entre com Solicitante e crie um pedido com o horário desejado. Entre com Gestor de Frota para aprovar um pedido e recusar outro com justificativa. O solicitante acompanha os próprios registros. |
+| 2. Agendamento e A6 | Agende com veículo e motorista disponíveis. Antes da saída, reprogramar A6 muda o início e fim previstos e preserva solicitação e recursos. Use o Administrador ou o Gestor de Frota associado à unidade da solicitação. Abra o detalhe para conferir datas solicitadas, planejadas e, depois da execução, reais. [Contrato A6](scrum-231-reprogramacao.md) |
+| 3. Triagem e agenda SVO | Registre um chamado interno, confirme duas vezes e confira que existe uma ordem. Ao alocar, compare a capacidade de corpos e a lotação da cabine, que inclui o motorista. Use designação nominal para os integrantes; a equipe, quando pertinente, apoia a organização. Um intervalo de 0 a menos de 20 minutos exige confirmação adicional. Sobreposição de reservas continua bloqueada. [Agenda SVO](bl28-alocacao-veiculo-svo.md) |
+| 4. Ocupação e cancelamento | Acompanhe o deslocamento, o estado **No local** e a liberação após a conclusão real. Confirme que os integrantes veem a própria designação ou histórico autorizado. Exercite cancelamento e reprogramação antes da saída e confira estado, aviso e histórico. [Contrato operacional](scrum-166-contrato-backend.md) |
+| 5. Odômetro | Registre quilometragem e foto de saída e chegada quando exigidas. No ensaio físico, valide câmera, galeria, prévia, troca, remoção e rede instável. Em uma segunda viagem, simule indisponibilidade e confira justificativa e auditoria na dispensa por gestor da operação. A retenção dos arquivos conta 12 meses da conclusão efetiva e preserva os metadados e a auditoria aplicáveis. [Evidências e acesso](evidencias-odometro.md) |
+| 6. Notificações | Abra a central, leia um aviso e confira o destino autorizado. Exercite os sete perfis, preferências, Push permitido e negado e sessão encerrada em dispositivo com suporte. Para o rollout, avance de In-App a Push e só depois às rotinas, com evidência de backup e restauração. [Guia da Fase 2](notificacoes-fase2.md) · [Backup e recuperação](politica-backup-e-recuperacao-db.md) |
+
+Use dados sintéticos e registre perfil, ambiente, SHA, pré-condição, resultado observado e evidência para cada etapa. Leve itens físicos, de acessibilidade e de ambiente publicado à [matriz de homologação](scrum-243-homologacao-fase2.md).
