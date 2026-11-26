@@ -39,9 +39,9 @@ describe.skipIf(!habilitado)('SCRUM-233 com fila e PostgreSQL descartável', () 
     const pedido = await solicitacaoSvoService.registrar(dados, autor);
     await db.transaction((trx) => notificacaoSvoService.publicarAlertasRegistroSolicitacao(pedido, autor, trx));
     const filtro = { operacao: 'SVO', referencia_tipo: 'SOLICITACAO_SVO', referencia_id: pedido.id };
-    const avisos = await db('notificacoes').where(filtro);
+    const avisos = await db('notificacoes').where({ ...filtro, tipo: EVENTO_SVO_S1 });
     expect(avisos.map((aviso) => aviso.usuario_id)).toEqual(expect.arrayContaining([gestor, admin]));
-    expect(avisos.every((aviso) => aviso.tipo === EVENTO_SVO_S1)).toBe(true);
+    expect(await db('notificacoes').where({ ...filtro, tipo: 'SVO_PRIORIDADE_MATERIAL_SENSIVEL' })).toHaveLength(0);
     expect(avisos.some((aviso) => [autor, semVinculo, inativo].includes(aviso.usuario_id))).toBe(false);
     const endpoint = 'https://push.exemplo/' + randomUUID();
     await db('push_subscriptions').insert({ usuario_id: gestor, endpoint, p256dh: randomUUID(), auth: randomUUID() });
@@ -57,15 +57,15 @@ describe.skipIf(!habilitado)('SCRUM-233 com fila e PostgreSQL descartável', () 
       corpo: 'Há uma solicitação aguardando análise.', url: '/solicitacoes?aba=svo',
       tag: 'svo-solicitacao-' + pedido.id,
     });
-    expect(await db('notificacao_outbox').where({ ...filtro, usuario_id: gestor })).toHaveLength(1);
-    expect(await db('notificacao_outbox').where({ ...filtro, usuario_id: admin }).first())
+    expect(await db('notificacao_outbox').where({ ...filtro, evento_tipo: EVENTO_SVO_S1, usuario_id: gestor })).toHaveLength(1);
+    expect(await db('notificacao_outbox').where({ ...filtro, evento_tipo: EVENTO_SVO_S1, usuario_id: admin }).first())
       .toMatchObject({ status: 'IGNORADO', ultimo_erro: 'CATEGORIA_DESLIGADA' });
   });
 
   it('mantém solicitações com a flag desligada e desfaz a criação se a publicação falhar', async () => {
     const autor = await conta('GESTOR_SVO', { associado: true });
     const pedido = await solicitacaoSvoService.registrar(dados, autor);
-    expect(await db('notificacoes').where({ operacao: 'SVO', referencia_id: pedido.id })).toHaveLength(0);
+    expect(await db('notificacoes').where({ tipo: EVENTO_SVO_S1, operacao: 'SVO', referencia_tipo: 'SOLICITACAO_SVO', referencia_id: pedido.id })).toHaveLength(0);
 
     configNotificacoes.ativas = true;
     const publicador = notificacaoSvoService.publicarAlertasRegistroSolicitacao;

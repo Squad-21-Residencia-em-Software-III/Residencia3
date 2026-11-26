@@ -6,7 +6,7 @@ import type { SolicitacaoSvo } from '../models/solicitacaoSvoModel';
 import { publicarNotificacao } from './publicacaoNotificacoes';
 
 export const URL_DESTINO_TRIAGEM_SVO = '/solicitacoes?aba=svo';
-export const CATEGORIA_NOTIFICACAO_SVO = 'SVO_TRIAGEM';
+export const CATEGORIA_NOTIFICACAO_SVO = 'SVO';
 export const EVENTO_SVO_S1 = 'SVO_SOLICITACAO_CRIADA';
 
 async function listarAudienciaSvoAtiva(trx: Knex.Transaction): Promise<number[]> {
