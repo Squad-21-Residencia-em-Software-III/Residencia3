@@ -341,4 +341,20 @@ describe('NotificacoesContext', () => {
     // Fora do provider não lança erro
     expect(() => renderHook(() => useMarcarReferenciaLida('SOLICITACAO_VIAGEM', 10))).not.toThrow();
   });
+
+  it('tenta de novo após falha e volta a marcar ao reabrir a mesma referência', async () => {
+    mockMarcarReferenciaLida.mockRejectedValueOnce(new Error('conexão interrompida'));
+    const { rerender } = renderHook(({ id }: { id: number | null }) => useMarcarReferenciaLida('ORDEM_SVO', id), {
+      initialProps: { id: 42 as number | null }, wrapper: wrapper(true),
+    });
+
+    await act(async () => { await Promise.resolve(); });
+    expect(mockMarcarReferenciaLida).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(mockMarcarReferenciaLida).toHaveBeenCalledTimes(2);
+    rerender({ id: null });
+    rerender({ id: 42 });
+    await act(async () => { await Promise.resolve(); });
+    expect(mockMarcarReferenciaLida).toHaveBeenCalledTimes(3);
+  });
 });

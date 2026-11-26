@@ -420,15 +420,26 @@ export function useMarcarReferenciaLida(
     if (!recursoHabilitado || !online || !marcarRef.current || !referenciaTipo || referenciaId == null) return;
     let ativo = true;
     let emAndamento = false;
+    let novaLeituraPendente = false;
     let tentativas = 0;
     let timer: number | undefined;
     const tentar = () => {
-      if (!ativo || emAndamento) return;
+      if (!ativo) return;
+      if (emAndamento) {
+        novaLeituraPendente = true;
+        return;
+      }
       window.clearTimeout(timer);
       emAndamento = true;
       void marcarRef.current?.(referenciaTipo, referenciaId).then((leu) => {
         emAndamento = false;
-        if (!ativo || leu || tentativas >= 2) return;
+        if (!ativo) return;
+        if (novaLeituraPendente) {
+          novaLeituraPendente = false;
+          tentar();
+          return;
+        }
+        if (leu || tentativas >= 2) return;
         tentativas += 1;
         timer = window.setTimeout(tentar, 5_000 * tentativas);
       });
