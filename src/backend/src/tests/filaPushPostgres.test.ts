@@ -53,7 +53,7 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
   beforeEach(async () => {
     configNotificacoes.ativas = true;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    // Fila limpa: o banco é descartável e as suítes não publicam em paralelo
+    // Fila limpa: o banco é descartável, e a suíte está sozinha nele
     await db('notificacao_outbox').del();
   });
   afterEach(() => { configNotificacoes.ativas = false; definirEnviadorPush(null); });

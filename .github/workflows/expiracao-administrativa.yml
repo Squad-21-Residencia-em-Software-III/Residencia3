@@ -31,6 +31,8 @@ jobs:
       POSTGRES_SSL: 'true'
       POSTGRES_POOL_MIN: '0'
       POSTGRES_POOL_MAX: '1'
+      # Só ligar depois de conceder as permissões à role (docs/scrum-230-avisos-solicitacoes.md)
+      NOTIFICACOES_ATIVAS: ${{ vars.FSPH_EXPIRACAO_AVISOS_ATIVOS }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,14 +45,34 @@ jobs:
       - name: Preparar comando
         run: npm ci && npm run build
       - name: Expirar solicitações vencidas
+        id: expirar
         env:
           POSTGRES_HOST: ${{ secrets.FSPH_CRON_PG_HOST }}
           POSTGRES_DB: ${{ secrets.FSPH_CRON_PG_DATABASE }}
           POSTGRES_APP_USER: ${{ secrets.FSPH_CRON_PG_USER }}
           POSTGRES_APP_PASSWORD: ${{ secrets.FSPH_CRON_PG_PASSWORD }}
+        # Sem pipefail, o tee esconderia uma falha da expiração (o bash padrão do Actions só usa -e)
+        shell: bash
         run: |
-          if [[ -z "$POSTGRES_HOST" || -z "$POSTGRES_DB" || -z "$POSTGRES_APP_USER" || -z "$POSTGRES_APP_PASSWORD" ]]; then
+          set -euo pipefail
+          if [[ -z "${POSTGRES_HOST:-}" || -z "${POSTGRES_DB:-}" || -z "${POSTGRES_APP_USER:-}" || -z "${POSTGRES_APP_PASSWORD:-}" ]]; then
             echo "::error::Configure os segredos de conexão no ambiente protegido deste workflow."
             exit 1
           fi
-          npm run solicitacoes:expirar
+          npm run --silent solicitacoes:expirar | tee saida-expiracao.log
+          # Quantas a rotina expirou: decide se vale acordar a API para enviar os alertas do A4
+          expiradas=$(node -e "let n=0;for(const l of require('fs').readFileSync(0,'utf8').split('\n')){try{const j=JSON.parse(l);if(j.evento==='expiracao_solicitacoes_viagem')n=Number(j.expiradas)||0}catch{}}console.log(n)" < saida-expiracao.log)
+          echo "expiradas=${expiradas:-0}" >> "$GITHUB_OUTPUT"
+      # Render gratuito: a API dorme sem acesso, e a fila só envia com ela acordada. Os alertas do A4 vencem
+      # em 24 h (docs/scrum-241-implantacao-push.md). Só com avisos ligados e algo expirado; falhar aqui não
+      # desfaz a expiração.
+      - name: Acordar a API para enviar os alertas da expiração
+        if: >-
+          vars.FSPH_EXPIRACAO_AVISOS_ATIVOS == 'true' &&
+          vars.FSPH_API_URL != '' &&
+          steps.expirar.outputs.expiradas != '0'
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          API_URL: ${{ vars.FSPH_API_URL }}
+        run: curl --fail --silent --show-error --retry 3 --retry-delay 20 --retry-all-errors --max-time 60 --output /dev/null "${API_URL%/}/api/status"
