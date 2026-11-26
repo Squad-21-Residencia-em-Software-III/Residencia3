@@ -53,7 +53,7 @@ jobs:
           node ../../scripts/audit-ci.cjs
 
       - name: Executar testes automatizados
-        run: npm test -- --no-file-parallelism
+        run: npm test
 
       - name: Compilar frontend
         run: npm run build
@@ -82,9 +82,11 @@ jobs:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ci-test-only
       POSTGRES_SSL: 'false'
+      SCRUM226_POSTGRES_TESTS: '1'
       EXPIRACAO_POSTGRES_TESTS: '1'
       SCRUM208_POSTGRES_TESTS: '1'
       SCRUM233_POSTGRES_TESTS: '1'
+      SCRUM229_POSTGRES_TESTS: '1'
 
     defaults:
       run:
