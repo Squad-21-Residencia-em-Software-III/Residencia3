@@ -4,6 +4,9 @@ import { recursoAtivo } from '../config/recursosBackend';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { mensagemDeErro } from '../services/api/http';
 import { notificacoesApi } from '../services/api/notificacoesApi';
+import { TIPO_MSG_PUSH_FOREGROUND, lerReferenciaPush } from '../sw/logicaPushSw';
+import { lerEstadoPush, atualizarBadgeDoVinculo } from '../sw/estadoPush';
+import { sinalDaSessao, comLimite } from '../utils/operacoesPush';
 import type {
   NotificacaoInApp,
   PayloadNotificacaoPrimeiroPlano,
@@ -120,6 +123,22 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     centralAbertaRef.current = aberta;
   }, []);
 
+  const sincronizarBadge = useCallback(async () => {
+    if (!recursoHabilitado || !recursoAtivo('webPush') || !online || sessao.id === null) return;
+    const sinal = sinalDaSessao();
+    const leitura = revisaoLeitura.current;
+    const valido = () => !sinal.aborted && sessaoRef.current === sessao && leitura === revisaoLeitura.current;
+    const estado = await lerEstadoPush();
+    if (!estado?.vinculo || estado.encerramento || !valido()) return;
+    try {
+      const iniciadoEm = Date.now();
+      const { elegiveis } = await comLimite(sinal, notificacoesApi.badge);
+      await atualizarBadgeDoVinculo(estado, elegiveis, valido, iniciadoEm);
+    } catch {
+      // O sino continua usando seu próprio contador e o badge será revalidado na próxima sincronização.
+    }
+  }, [online, recursoHabilitado, sessao]);
+
   const carregarListaInterna = useCallback(async (opcoes?: { forcar?: boolean; silencioso?: boolean }) => {
     if (sessaoRef.current !== sessao) return;
     if (!recursoHabilitado || sessao.id === null) {
@@ -154,6 +173,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       }
       setJaCarregouLista(true);
       setErro(null);
+      void sincronizarBadge();
       return true;
     } catch (e) {
       if (valida()) {
@@ -167,7 +187,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       }
     }
     return undefined;
-  }, [online, recursoHabilitado, sessao]);
+  }, [online, recursoHabilitado, sessao, sincronizarBadge]);
 
   const carregarLista = useCallback(async (opcoes?: { forcar?: boolean; silencioso?: boolean }) => {
     await carregarListaInterna(opcoes);
@@ -186,13 +206,14 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       const resposta = await notificacoesApi.contador();
       if (sessaoRef.current === sessao && revisaoLeitura.current === leitura) {
         setNaoLidas(Math.max(0, resposta?.nao_lidas ?? 0));
+        void sincronizarBadge();
       }
     } catch {
       // A sincronização de fundo não interrompe a navegação.
     } finally {
       if (sessaoRef.current === sessao) carregandoContadorRef.current = false;
     }
-  }, [carregarLista, online, recursoHabilitado, sessao]);
+  }, [carregarLista, online, recursoHabilitado, sessao, sincronizarBadge]);
 
   // Polling econômico (60s) somente autenticado, online e com aba visível + revalidação em foco (debounce 5s).
   useEffect(() => {
@@ -280,6 +301,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
           const total = resposta?.nao_lidas ?? 0;
           aplicar(total, iniciadoEm);
           canal?.postMessage({ total, em: iniciadoEm });
+          void sincronizarBadge();
         } catch {
           if (!ativo) return;
           falhas += 1;
@@ -333,7 +355,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       window.removeEventListener('focus', revalidarComDebounce);
       document.removeEventListener('visibilitychange', revalidarComDebounce);
     };
-  }, [carregarListaInterna, online, recursoHabilitado, sessao]);
+  }, [carregarListaInterna, online, recursoHabilitado, sessao, sincronizarBadge]);
 
   const carregarMais = useCallback(async () => {
     if (!recursoHabilitado || sessao.id === null || !online || !proximoCursor ||
@@ -349,6 +371,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       if (!valida()) return;
       if (revisaoLeitura.current === leitura && operacoesPendentes.current === 0) {
         setNaoLidas(Math.max(0, resposta?.nao_lidas ?? 0));
+        void sincronizarBadge();
       }
       setItens((anterior) => deduplicarPorId([...anterior, ...(resposta?.itens ?? [])]));
       setProximoCursor(resposta?.proximo_cursor ?? null);
@@ -360,7 +383,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
         setCarregandoMais(false);
       }
     }
-  }, [online, proximoCursor, recursoHabilitado, sessao]);
+  }, [online, proximoCursor, recursoHabilitado, sessao, sincronizarBadge]);
 
   const executarLeitura = useCallback(async (
     ids: number[],
@@ -387,6 +410,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
           setNaoLidas(Math.max(0, resposta.nao_lidas));
         }
       });
+      void sincronizarBadge();
       return sessaoRef.current === sessao;
     } catch (e) {
       if (sessaoRef.current === sessao) {
@@ -408,7 +432,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
         }
       }
     }
-  }, [atualizarContador, online, recursoHabilitado, sessao]);
+  }, [atualizarContador, online, recursoHabilitado, sessao, sincronizarBadge]);
 
   const marcarLida = useCallback(async (id: number) => {
     await executarLeitura([id], async (confirmar) => confirmar([id], await notificacoesApi.marcarLida(id)), true);
@@ -460,6 +484,52 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     });
     return { itens: lista, naoLidas: Math.max(0, naoLidas - novasLeituras) };
   }, [itens, leiturasPendentes, naoLidas]);
+
+  useEffect(() => {
+    if (!recursoHabilitado || !recursoAtivo('webPush') || !online || sessao.id === null) return;
+    const sw = navigator.serviceWorker;
+    if (!sw) return;
+    const sinal = sinalDaSessao();
+    const emConsulta = new Set<number>();
+    let ativo = true;
+    const valido = () => ativo && !sinal.aborted && sessaoRef.current === sessao;
+
+    const aoReceberMensagem = async (evento: MessageEvent<unknown>) => {
+      if (!sw.controller || evento.source !== sw.controller || !evento.data ||
+          typeof evento.data !== 'object' || !('tipo' in evento.data) ||
+          evento.data.tipo !== TIPO_MSG_PUSH_FOREGROUND) return;
+      const referencia = lerReferenciaPush(evento.data);
+      if (!referencia || emConsulta.has(referencia.notificacao_id)) return;
+      const confirmar = (aceito: boolean) => evento.ports[0]?.postMessage(aceito);
+
+      const id = referencia.notificacao_id;
+      emConsulta.add(id);
+      try {
+        const estado = await lerEstadoPush();
+        if (!valido() || estado?.vinculo !== referencia.vinculo || estado.encerramento) return;
+        if (idsToastExibidosRef.current.has(String(id))) {
+          confirmar(true);
+          return;
+        }
+        const item = await comLimite(sinal, (signal) => notificacoesApi.obter(id, signal));
+        const atual = await lerEstadoPush();
+        if (valido() && atual?.geracao === estado.geracao && atual.vinculo === referencia.vinculo && item.id === id) {
+          if (!item.acesso_revogado && item.lida_em === null) notificarEmPrimeiroPlano(item);
+          confirmar(true);
+        }
+      } catch {
+        // A central continua disponível e o Toast exige confirmação da API.
+      } finally {
+        emConsulta.delete(id);
+      }
+    };
+
+    sw.addEventListener('message', aoReceberMensagem);
+    return () => {
+      ativo = false;
+      sw.removeEventListener('message', aoReceberMensagem);
+    };
+  }, [notificarEmPrimeiroPlano, online, recursoHabilitado, sessao]);
 
   const valor = useMemo<NotificacoesContextValue>(
     () => ({

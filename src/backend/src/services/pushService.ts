@@ -1,3 +1,4 @@
+import { identificarVinculoPush } from './vinculoNotificacaoPush';
 import { db } from '../config/database';
 import { env } from '../config/env';
 import { categoriaPermitida, categoriasDoPerfil } from '../constants/categoriasNotificacao';
@@ -78,8 +79,9 @@ export const pushService = {
   },
 
   /** `true` só se a assinatura existe, está ativa e é do usuário da sessão. */
-  async situacao(usuario: Usuario, endpoint: string): Promise<{ ativa: boolean }> {
-    return { ativa: await pushAssinaturaModel.ativaDoUsuario(usuario.id, endpoint) };
+  async situacao(usuario: Usuario, endpoint: string): Promise<{ ativa: boolean; vinculo?: string }> {
+    const chaves = await pushAssinaturaModel.chavesDaAssinaturaAtiva(usuario.id, endpoint);
+    return chaves ? { ativa: true, vinculo: identificarVinculoPush({ endpoint, ...chaves }) } : { ativa: false };
   },
 
   /** Também funciona com o push desligado: a pessoa sempre consegue encerrar a assinatura. */

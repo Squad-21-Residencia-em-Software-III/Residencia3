@@ -5,10 +5,16 @@ import { RECURSOS_BACKEND } from '../config/recursosBackend';
 import { ApiError } from '../services/api/http';
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
 import { marcarEncerramento } from '../utils/encerramentoPush';
+import { confirmarEncerramento } from '../sw/estadoPush';
 import { invalidarOperacoesPush } from '../utils/operacoesPush';
 import { encerrarPushAoSair, useVinculoPush } from './useVinculoPush';
 
 vi.mock('../services/api/notificacoesPushApi', () => ({ notificacoesPushApi: { situacao: vi.fn(), cancelar: vi.fn() } }));
+// Estes testes verificam a orquestração da assinatura; o IndexedDB/CacheStorage
+// são verificados separadamente em estadoPush.test.ts e barreiraPush.test.ts.
+vi.mock('../sw/estadoPush', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../sw/estadoPush')>(), confirmarEncerramento: vi.fn(),
+}));
 
 const api = vi.mocked(notificacoesPushApi);
 const recursosOriginais = { ...RECURSOS_BACKEND };
@@ -23,6 +29,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   localStorage.clear();
   invalidarOperacoesPush();
+  vi.mocked(confirmarEncerramento).mockResolvedValue(true);
   RECURSOS_BACKEND.webPush = true;
   api.cancelar.mockResolvedValue(undefined);
   unsubscribe.mockResolvedValue(true);
@@ -192,6 +199,19 @@ describe('Conferência que falhou', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(2);
     expect(localStorage).toHaveLength(0);
     expect(api.situacao).not.toHaveBeenCalled();
+  });
+
+  it('mantém a marca até confirmar o encerramento persistente, mesmo após unsubscribe', async () => {
+    vi.mocked(confirmarEncerramento).mockResolvedValueOnce(false);
+    marcarEncerramento();
+    renderHook(() => useVinculoPush(undefined));
+    await passar();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(localStorage).toHaveLength(1);
+    getSubscription.mockResolvedValue(null);
+    await passar(5_000);
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(localStorage).toHaveLength(0);
   });
 });
 

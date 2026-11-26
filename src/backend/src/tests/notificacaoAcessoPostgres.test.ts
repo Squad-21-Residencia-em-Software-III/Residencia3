@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../app';
+import { configNotificacoes } from '../config/notificacoes';
 import { db } from '../config/database';
 import { env } from '../config/env';
 
@@ -112,6 +113,28 @@ describe.skipIf(!habilitado)('Acesso ao registro do aviso em PostgreSQL descart�
     expect(res.body.itens[0]).toMatchObject({ ...REVOGADO, tipo: 'TIPO_DO_EVENTO', lida_em: null });
     expect(res.text).not.toMatch(/original|minhas-coletas/);
     expect((await ver(mantido))[0]).toMatchObject({ ...INTEIRO, referencia_id: id });
+  });
+
+  it('revalida titularidade e designação antes de devolver o aviso para abertura', async () => {
+    const [titular, outra] = [await conta('INTEGRANTE_SVO'), await conta('INTEGRANTE_SVO')];
+    const id = await ordem();
+    await designar(id, titular, gestor);
+    await designar(id, outra, gestor);
+    const aviso = await avisar(titular, naOrdem(id));
+    const obter = (u: Conta) => request(app).get(`/api/notificacoes/${aviso}`).set('Authorization', u.token);
+    const anterior = configNotificacoes.ativas;
+    configNotificacoes.ativas = true;
+    try {
+      expect((await obter(titular)).body).toMatchObject({ ...INTEIRO, id: aviso, lida_em: null });
+      expect((await obter(titular)).headers['cache-control']).toBe('no-store');
+      expect((await obter(outra)).status).toBe(404);
+      await revogar(id, titular, gestor);
+      expect((await obter(titular)).status).toBe(404);
+      configNotificacoes.ativas = false;
+      expect((await obter(titular)).status).toBe(404);
+    } finally {
+      configNotificacoes.ativas = anterior;
+    }
   });
 
   it('designado de novo, volta a ver', async () => {

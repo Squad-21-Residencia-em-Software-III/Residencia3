@@ -16,6 +16,16 @@ const mockUseAuth = vi.fn();
 const mockUseOnlineStatus = vi.fn();
 const mockListar = vi.fn();
 const mockContador = vi.fn();
+const mockObter = vi.fn();
+const mockBadge = vi.fn();
+const mockLerEstado = vi.fn();
+const mockAtualizarBadge = vi.fn();
+const vinculo = 'A'.repeat(43);
+
+vi.mock('../sw/estadoPush', () => ({
+  lerEstadoPush: () => mockLerEstado(),
+  atualizarBadgeDoVinculo: (...args: unknown[]) => mockAtualizarBadge(...args),
+}));
 const mockMarcarLida = vi.fn();
 const mockMarcarTodasLidas = vi.fn();
 const mockMarcarReferenciaLida = vi.fn();
@@ -30,6 +40,8 @@ vi.mock('../hooks/useOnlineStatus', () => ({
 
 vi.mock('../services/api/notificacoesApi', () => ({
   notificacoesApi: {
+    obter: (...args: unknown[]) => mockObter(...args),
+    badge: (...args: unknown[]) => mockBadge(...args),
     listar: (...args: unknown[]) => mockListar(...args),
     contador: (...args: unknown[]) => mockContador(...args),
     marcarLida: (...args: unknown[]) => mockMarcarLida(...args),
@@ -521,5 +533,49 @@ describe('NotificacoesContext', () => {
       await avancar(0);
       expect(result.current.naoLidas).toBe(2);
     });
+  });
+  it('hidrata o Toast na API, deduplica reenvios e conta o badge separadamente do sino', async () => {
+    const { RECURSOS_BACKEND } = await import('../config/recursosBackend');
+    const flag = RECURSOS_BACKEND.webPush;
+    RECURSOS_BACKEND.webPush = true;
+    const swTarget = Object.assign(new EventTarget(), { controller: window });
+    const swOriginal = navigator.serviceWorker;
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: swTarget });
+    const estado = { vinculo, geracao: '1', encerramento: false };
+    mockLerEstado.mockResolvedValue(estado);
+    mockBadge.mockResolvedValue({ elegiveis: 0 });
+    mockObter.mockResolvedValue(criarNotificacao(301));
+
+    const entregar = (id: number, token = vinculo, source: Window | null = window) => act(async () => {
+      swTarget.dispatchEvent(new MessageEvent('message', {
+        source, data: { tipo: 'PUSH_EM_PRIMEIRO_PLANO', notificacao_id: id, vinculo: token, corpo: 'Texto não confiável' },
+      }));
+    });
+
+    try {
+      const { result, rerender } = renderHook(() => useNotificacoes(), { wrapper: wrapper(true) });
+      await act(async () => { await Promise.resolve(); });
+      expect(result.current.naoLidas).toBe(2);
+      expect(mockAtualizarBadge).toHaveBeenCalledWith(estado, 0, expect.any(Function), expect.any(Number));
+      await entregar(301, 'B'.repeat(43));
+      await entregar(301, vinculo, null);
+      expect(mockObter).not.toHaveBeenCalled();
+      await entregar(301);
+      expect(result.current.toastAtivo).toMatchObject({ id: 301, titulo: 'Viagem #301 agendada' });
+      await entregar(301);
+      expect(mockObter).toHaveBeenCalledOnce();
+
+      let resolver!: (item: NotificacaoInApp) => void;
+      const antiga = new Promise<NotificacaoInApp>((resolve) => { resolver = resolve; });
+      mockObter.mockReturnValueOnce(antiga);
+      await entregar(302);
+      mockUseAuth.mockReturnValue({ usuario: null, versaoSessao: 2 });
+      rerender();
+      await act(async () => resolver(criarNotificacao(302)));
+      expect(result.current.toastAtivo).toBeNull();
+    } finally {
+      RECURSOS_BACKEND.webPush = flag;
+      Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: swOriginal });
+    }
   });
 });
