@@ -235,6 +235,24 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
       expect(filaCancelamento).toHaveLength(2);
       for (const item of filaCancelamento) expect(item.payload_push.tag).toBe('viagem-' + cancelada.viagemId);
 
+      const avisoCondutor = cancelamentos.find(({ usuario_id }) => usuario_id === cancelada.condutor.id);
+      const avisoAutor = cancelamentos.find(({ usuario_id }) => usuario_id === autor.id);
+      const abrirAviso = (id: number, token: string) => request(app).get(`/api/notificacoes/${id}`)
+        .set('Authorization', token);
+      expect((await abrirAviso(avisoCondutor.id, cancelada.condutor.token)).status).toBe(200);
+
+      // Dado de teste: o cancelamento preserva o vínculo histórico até uma perda real de acesso.
+      const novoCondutor = await recursos('FROTA');
+      await db('viagens_frota').where({ id: cancelada.viagemId }).update({ motorista_id: novoCondutor.motorista.id });
+      expect((await abrirAviso(avisoCondutor.id, cancelada.condutor.token)).status).toBe(404);
+      expect((await abrirAviso(avisoAutor.id, autor.token)).status).toBe(200);
+      const central = await request(app).get('/api/notificacoes').set('Authorization', cancelada.condutor.token);
+      expect(central.status).toBe(200);
+      expect(central.body.itens).toContainEqual(expect.objectContaining({
+        id: avisoCondutor.id, acesso_revogado: true, titulo: 'Registro indisponível',
+        referencia_tipo: null, referencia_id: null, url_destino: '/',
+      }));
+
       const concluida = await agendar();
       const lerResumo = async (token: string) => {
         const consultar = (rota: string) => request(app).get(`/api/notificacoes/${rota}`).set('Authorization', token);
