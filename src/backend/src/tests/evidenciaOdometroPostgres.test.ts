@@ -26,7 +26,7 @@ let JPEG: Buffer;
 const driverOriginal = env.evidenciasStorage;
 const limiteOriginal = env.evidenciasPostgresLimiteBytes;
 
-type Perfil = 'ADMINISTRADOR' | 'GESTOR_FROTA' | 'GESTOR_SVO' | 'MOTORISTA_FROTA' | 'MOTORISTA_SVO';
+type Perfil = 'SOLICITANTE' | 'ADMINISTRADOR' | 'GESTOR_FROTA' | 'GESTOR_SVO' | 'MOTORISTA_FROTA' | 'MOTORISTA_SVO';
 
 async function usuario(perfil: Perfil) {
   const chave = nonce();
@@ -183,6 +183,72 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
        FROM evidencias_odometro WHERE viagem_frota_id = ? AND status = 'ATIVA'`, [viagem.id]);
     expect(rows[0]).toEqual({ doze_meses: true, total: 2 });
   });
+
+  it.skipIf(process.env.SCRUM231_POSTGRES_TESTS !== '1')(
+    'SCRUM-219 valida agendamento, cancelamento e andamento administrativo pela API e pela fila',
+    async () => {
+      configNotificacoes.ativas = true;
+      const gestor = await usuario('GESTOR_FROTA');
+      const autor = await usuario('SOLICITANTE');
+      const gestorSvo = await usuario('GESTOR_SVO');
+      const agendar = async () => {
+        const r = await recursos('FROTA');
+        const [solicitacao] = await db('solicitacoes_viagem').insert({
+          solicitante_id: autor.id, origem: 'Sede', destino: 'Hospital', finalidade: 'Teste',
+          data_saida_desejada: new Date(), data_chegada_desejada: new Date(Date.now() + 3600_000),
+          status: 'APROVADA',
+        }).returning('id');
+        const resposta = await request(app).post('/api/viagens').set('Authorization', gestor.token).send({
+          tipo_operacao: 'ADMINISTRATIVA', solicitacao_id: solicitacao.id,
+          veiculo_id: r.veiculo.id, motorista_id: r.motorista.id,
+        });
+        expect(resposta.status).toBe(201);
+        const viagemId: number = resposta.body.id;
+        const referencia = { referencia_tipo: 'VIAGEM_FROTA', referencia_id: viagemId, operacao: 'Administrativo' };
+        expect(await db('notificacoes').where(referencia)).toEqual([expect.objectContaining({
+          tipo: 'VIAGEM_AGENDADA', usuario_id: r.condutor.id, url_destino: '/viagens',
+        })]);
+        expect(await db('notificacao_outbox').where(referencia)).toEqual([expect.objectContaining({
+          evento_tipo: 'VIAGEM_AGENDADA', usuario_id: r.condutor.id,
+        })]);
+        return { ...r, viagemId, referencia };
+      };
+
+      const cancelada = await agendar();
+      const cancelar = () => request(app).patch('/api/viagens/' + cancelada.viagemId + '/cancelar')
+        .set('Authorization', gestor.token).send({ tipo_operacao: 'ADMINISTRATIVA' });
+      expect((await cancelar()).status).toBe(200);
+      expect((await cancelar()).status).toBe(400);
+      const cancelamentos = await db('notificacoes').where({ ...cancelada.referencia, tipo: 'VIAGEM_CANCELADA' });
+      expect(cancelamentos).toHaveLength(2);
+      expect(cancelamentos).toEqual(expect.arrayContaining([
+        expect.objectContaining({ usuario_id: cancelada.condutor.id, url_destino: '/viagens' }),
+        expect.objectContaining({ usuario_id: autor.id, url_destino: '/solicitacoes' }),
+      ]));
+      const filaCancelamento = await db('notificacao_outbox')
+        .where({ ...cancelada.referencia, evento_tipo: 'VIAGEM_CANCELADA' });
+      expect(filaCancelamento).toHaveLength(2);
+      for (const item of filaCancelamento) expect(item.payload_push.tag).toBe('viagem-' + cancelada.viagemId);
+
+      const concluida = await agendar();
+      const iniciar = () => transicao(concluida.condutor.token, 'iniciar', concluida.viagemId, { km_inicial: 1000 });
+      const finalizar = () => transicao(concluida.condutor.token, 'finalizar', concluida.viagemId, { km_final: 1010 });
+      expect((await iniciar()).status).toBe(200);
+      expect((await iniciar()).status).toBe(400);
+      expect((await finalizar()).status).toBe(200);
+      expect((await finalizar()).status).toBe(400);
+      const tiposA8 = ['VIAGEM_INICIADA', 'VIAGEM_FINALIZADA'];
+      for (const { id, destino } of [{ id: gestor.id, destino: '/viagens' }, { id: autor.id, destino: '/solicitacoes' }]) {
+        const avisos = await db('notificacoes').where({ ...concluida.referencia, usuario_id: id })
+          .whereIn('tipo', tiposA8).orderBy('id');
+        expect(avisos.map((aviso) => aviso.tipo)).toEqual(tiposA8);
+        expect(avisos.map((aviso) => aviso.url_destino)).toEqual([destino, destino]);
+      }
+      expect(await db('notificacoes').where(concluida.referencia).whereIn('tipo', tiposA8)
+        .whereIn('usuario_id', [gestorSvo.id, concluida.condutor.id])).toHaveLength(0);
+      expect(await db('notificacao_outbox').where(concluida.referencia).whereIn('evento_tipo', tiposA8)).toHaveLength(0);
+    }
+  );
 
   it('autoriza a dispensa administrativa só para a fase e a viagem designadas, com auditoria', async () => {
     configNotificacoes.ativas = true;
