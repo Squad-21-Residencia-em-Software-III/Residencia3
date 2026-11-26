@@ -48,10 +48,10 @@ Os canais representam o contrato. Badge significa elegibilidade ao App Badge, co
 
 | Evento | Destinatários | Canais | Rota | Resultado observado |
 | --- | --- | --- | --- | --- |
-| A1 | Gestor Frota e Admin | In-App, Badge previsto | /solicitacoes | Passou no backend. Badge em dispositivo pendente. |
+| A1 | Gestor Frota e Admin | In-App, sino interno | /solicitacoes | Passou no backend, com aviso exclusivamente In-App. |
 | A2 | Solicitante ou Gestor SVO autor | In-App, Push, Badge | /solicitacoes | Passou no backend com operação administrativa. |
 | A3 | Solicitante ou Gestor SVO autor | In-App, Push neutro, Badge | /solicitacoes | Passou no backend com motivo restrito ao conteúdo autorizado. |
-| A4 | Autor e Gestor Frota | Autor com Push, ambos In-App, Badge previsto | /solicitacoes | Passou no backend usando a rotina real de mudança para EXPIRADA no PostgreSQL isolado. Workflow publicado pendente. |
+| A4 | Autor e Gestor Frota | Ambos In-App, Push e elegibilidade ao Badge para o autor | /solicitacoes | Passou no backend usando a rotina real de mudança para EXPIRADA no PostgreSQL isolado. Workflow publicado pendente. |
 | A5 | Motorista Frota | In-App, Push, Badge | /viagens | Passou via API e PostgreSQL, incluindo rollback de agendamento, central e outbox. |
 | A6 | Motorista Frota e solicitante ativos e autorizados | In-App, Push, Badge, tag viagem-{id} | /viagens e /solicitacoes | Oito casos HTTP/PostgreSQL passaram, com mudanças sucessivas, versão, autorização por unidade e rollback. |
 | A7 | Motorista Frota e autor autorizado | In-App, Push, Badge, tag viagem-{id} | /viagens e /solicitacoes | Passou via API e fila com tag e destinatários. A revogação específica após cancelamento requer aceite complementar. |
