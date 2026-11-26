@@ -1,6 +1,6 @@
 # SCRUM-242 · Retenção de notificações
 
-O job aplica os prazos documentados em SCRUM-224 e SCRUM-242. Notificações lidas ficam por 30 dias após a leitura e as não lidas ficam por 90 dias após a criação. Registros exatamente no limite são preservados. Cada exclusão revalida a elegibilidade na própria operação PostgreSQL para proteger leituras concorrentes. A simulação só conta candidatos.
+A liderança aprovou a entrega incremental da SCRUM-242 para retenção In-App. O job aplica os prazos documentados em SCRUM-224 e SCRUM-242. Notificações lidas ficam por 30 dias após a leitura e as não lidas ficam por 90 dias após a criação. Registros exatamente no limite são preservados. Cada exclusão revalida a elegibilidade na própria operação PostgreSQL para proteger leituras concorrentes. A simulação só conta candidatos. A execução em lotes pode ser repetida sem excluir novamente registros já processados. O modo definitivo permanece desativado por padrão e requer autorização para operação em produção.
 
 A role de retenção lê as colunas necessárias ao filtro e pode excluir notificações. A aplicação e a rotina de expiração permanecem sem esse DELETE.
 

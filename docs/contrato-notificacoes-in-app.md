@@ -86,7 +86,7 @@ Marca uma notificação específica como lida (idempotente).
 
 ### 4. `PATCH /api/notificacoes/ler-todas`
 
-Marca como lidas somente as notificações não lidas apresentadas na central. Cada requisição aceita até 1.000 IDs.
+A liderança aprovou a ação **Marcar avisos exibidos como lidos** (SCRUM-227). A central envia os IDs exatos dos avisos não lidos exibidos, em lotes de até 1.000. A ação fica desabilitada quando a lista carregada não contém avisos não lidos, mesmo que o contador indique pendências. O campo `nao_lidas` da resposta continua representando todos os avisos não lidos da conta.
 
 ```json
 {
@@ -136,6 +136,6 @@ Marca como lidas todas as notificações vinculadas à mesma entidade de negóci
 
 ## Regras de Retenção, Segurança e RBAC no Frontend
 
-- **Retenção:** notificações lidas ficam disponíveis por **30 dias** e não lidas por **90 dias** (`SCRUM-225`).
+- **Retenção:** notificações lidas ficam disponíveis por **30 dias após a leitura** e não lidas por **90 dias após a criação**. Confira os limites e o rollout em [SCRUM-242](scrum-242-retencao-notificacoes.md).
 - **`acesso_revogado`:** quando `true`, o item é exibido sem link de navegação, permitindo apenas a marcação como lida.
 - **Validação de rotas:** `src/frontend/src/utils/destinoNotificacao.ts` valida `url_destino` por **match exato** contra as rotas existentes em `src/frontend/src/routes/index.tsx` e contra `perfilPode`, aplicando o fallback seguro do perfil (`/minhas-coletas`, `/solicitacoes`, `/viagens` ou `/inicio`) para qualquer destino inválido, inexistente ou sem permissão.
