@@ -85,6 +85,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
   itensRef.current = itens;
   const carregandoContadorRef = useRef(false);
   const carregandoListaRef = useRef(false);
+  const ultimaConsultaListaRef = useRef<number | null>(null);
   const ultimoSyncFocoRef = useRef(0);
   const centralAbertaRef = useRef(false);
   const idsToastExibidosRef = useRef<Set<string>>(new Set());
@@ -100,6 +101,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     precisaSincronizarLeituras.current = false;
     carregandoContadorRef.current = false;
     carregandoListaRef.current = false;
+    ultimaConsultaListaRef.current = null;
     ultimoSyncFocoRef.current = 0;
     centralAbertaRef.current = false;
     idsToastExibidosRef.current.clear();
@@ -118,7 +120,8 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     centralAbertaRef.current = aberta;
   }, []);
 
-  const carregarLista = useCallback(async (opcoes?: { forcar?: boolean; silencioso?: boolean }) => {
+  const carregarListaInterna = useCallback(async (opcoes?: { forcar?: boolean; silencioso?: boolean }) => {
+    if (sessaoRef.current !== sessao) return;
     if (!recursoHabilitado || sessao.id === null) {
       setJaCarregouLista(true);
       return;
@@ -129,6 +132,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     const leitura = revisaoLeitura.current;
     const valida = () => sessaoRef.current === sessao && revisaoLista.current === revisao;
     carregandoListaRef.current = true;
+    ultimaConsultaListaRef.current = Date.now();
     paginasPendentes.current = false;
     setCarregandoMais(false);
     if (!opcoes?.silencioso) {
@@ -150,15 +154,24 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       }
       setJaCarregouLista(true);
       setErro(null);
+      return true;
     } catch (e) {
-      if (valida() && !opcoes?.silencioso) setErro(mensagemDeErro(e));
+      if (valida()) {
+        if (!opcoes?.silencioso) setErro(mensagemDeErro(e));
+        return false;
+      }
     } finally {
       if (valida()) {
         carregandoListaRef.current = false;
         setCarregando(false);
       }
     }
+    return undefined;
   }, [online, recursoHabilitado, sessao]);
+
+  const carregarLista = useCallback(async (opcoes?: { forcar?: boolean; silencioso?: boolean }) => {
+    await carregarListaInterna(opcoes);
+  }, [carregarListaInterna]);
 
   const atualizarContador = useCallback(async () => {
     if (!recursoHabilitado || sessao.id === null || !online) return;
@@ -199,44 +212,81 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     let proximaTentativa = 0;
     let falhas = 0;
     let repetir: ReturnType<typeof setTimeout> | undefined;
+    let repetirLista: ReturnType<typeof setTimeout> | undefined;
+    let falhasLista = 0;
+    let proximaTentativaLista = 0;
+    const inicioCoordenacao = Date.now();
     const aplicar = (total: number, em: number) => {
-      if (!ativo || sessaoRef.current !== sessao || em < ultimaResposta || em <= ultimaLeituraConcluida.current) return;
+      if (!ativo || sessaoRef.current !== sessao || !Number.isSafeInteger(em) ||
+          em < inicioCoordenacao || em < ultimaResposta || em <= ultimaLeituraConcluida.current) return;
       if (!Number.isSafeInteger(total) || total < 0) return;
       ultimaResposta = em;
       proximaTentativa = 0;
       falhas = 0;
-      if (operacoesPendentes.current === 0) setNaoLidas(total);
+      clearTimeout(repetir);
+      if (operacoesPendentes.current === 0 && !carregandoListaRef.current &&
+          (ultimaConsultaListaRef.current === null || em >= ultimaConsultaListaRef.current)) setNaoLidas(total);
     };
     if (canal) canal.onmessage = ({ data }: MessageEvent<{ total?: number; em?: number }>) => {
       if (typeof data?.total === 'number' && typeof data.em === 'number') aplicar(data.total, data.em);
     };
 
-    const consultar = async (janelaMs: number) => {
-      if (!ativo || document.visibilityState !== 'visible' || consultando || operacoesPendentes.current > 0) return;
+    type OrigemConsulta = 'polling' | 'foco' | 'retry-lista' | 'retry-contador';
+    const consultar = async (origem: OrigemConsulta) => {
+      if (!ativo || sessaoRef.current !== sessao || document.visibilityState !== 'visible' ||
+          consultando || operacoesPendentes.current > 0) return;
       const agora = Date.now();
-      if (agora < proximaTentativa) return;
       if (centralAbertaRef.current) {
-        await atualizarContador();
+        if (origem === 'retry-contador' || agora < proximaTentativaLista || carregandoListaRef.current) return;
+        // A lista é revalidada por aba, inclusive quando o contador não muda (revogação de acesso).
+        // O tick de coordenação não reduz a janela periódica para cinco segundos.
+        const ultima = ultimaConsultaListaRef.current;
+        if (origem === 'polling' && ultima !== null && agora - ultima < INTERVALO_POLLING_NOTIFICACOES_MS) return;
+        consultando = true;
+        try {
+          const sucesso = await carregarListaInterna({ silencioso: true });
+          if (!ativo || sessaoRef.current !== sessao) return;
+          if (sucesso === true) {
+            falhasLista = 0;
+            proximaTentativaLista = 0;
+            clearTimeout(repetirLista);
+          } else if (sucesso === false) {
+            falhasLista += 1;
+            const espera = Math.min(INTERVALO_POLLING_NOTIFICACOES_MS, 5_000 * 2 ** (falhasLista - 1)) + Math.random() * 1_000;
+            proximaTentativaLista = Date.now() + espera;
+            clearTimeout(repetirLista);
+            repetirLista = setTimeout(() => void consultar('retry-lista'), Math.ceil(espera));
+          }
+        } finally {
+          consultando = false;
+        }
         return;
       }
-      if (canal && ultimaResposta && agora - ultimaResposta < janelaMs) return;
+      if (origem === 'retry-lista' || agora < proximaTentativa) return;
+      const janelaMs = origem === 'foco' ? DEBOUNCE_FOCO_NOTIFICACOES_MS : INTERVALO_POLLING_NOTIFICACOES_MS;
+      const recente = () => Boolean(origem !== 'retry-contador' && (canal || origem === 'polling') &&
+        ultimaResposta && Date.now() - ultimaResposta < janelaMs);
+      if (recente()) return;
       consultando = true;
       const leitura = revisaoLeitura.current;
       const consultarApi = async () => {
-        if (!ativo || carregandoContadorRef.current) return;
+        if (!ativo || sessaoRef.current !== sessao || centralAbertaRef.current ||
+            carregandoContadorRef.current || operacoesPendentes.current > 0 || recente()) return;
         carregandoContadorRef.current = true;
+        const iniciadoEm = Date.now();
         try {
           const resposta = await notificacoesApi.contador();
           if (!ativo || sessaoRef.current !== sessao || leitura !== revisaoLeitura.current) return;
           const total = resposta?.nao_lidas ?? 0;
-          aplicar(total, agora);
-          canal?.postMessage({ total, em: agora });
+          aplicar(total, iniciadoEm);
+          canal?.postMessage({ total, em: iniciadoEm });
         } catch {
           if (!ativo) return;
           falhas += 1;
           const espera = Math.min(INTERVALO_POLLING_NOTIFICACOES_MS, 5_000 * 2 ** (falhas - 1)) + Math.random() * 1_000;
           proximaTentativa = Date.now() + espera;
-          repetir = setTimeout(() => void consultar(janelaMs), Math.ceil(espera));
+          clearTimeout(repetir);
+          repetir = setTimeout(() => void consultar('retry-contador'), Math.ceil(espera));
         } finally {
           if (sessaoRef.current === sessao) carregandoContadorRef.current = false;
         }
@@ -256,18 +306,18 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       }
     };
 
-    const polling = () => void consultar(INTERVALO_POLLING_NOTIFICACOES_MS);
+    const polling = () => void consultar('polling');
     // Distribui a primeira consulta de navegadores capazes de compartilhar o resultado.
     const inicio = canal ? setTimeout(polling, 2_000 * Math.random()) : undefined;
     if (!canal) polling();
-    const intervalo = window.setInterval(polling, canal ? DEBOUNCE_FOCO_NOTIFICACOES_MS : INTERVALO_POLLING_NOTIFICACOES_MS);
+    const intervalo = window.setInterval(polling, DEBOUNCE_FOCO_NOTIFICACOES_MS);
 
     const revalidarComDebounce = () => {
       if (document.visibilityState !== 'visible') return;
       const agora = Date.now();
       if (agora - ultimoSyncFocoRef.current < DEBOUNCE_FOCO_NOTIFICACOES_MS) return;
       ultimoSyncFocoRef.current = agora;
-      void consultar(DEBOUNCE_FOCO_NOTIFICACOES_MS);
+      void consultar('foco');
     };
 
     window.addEventListener('focus', revalidarComDebounce);
@@ -278,11 +328,12 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       canal?.close();
       clearTimeout(inicio);
       clearTimeout(repetir);
+      clearTimeout(repetirLista);
       window.clearInterval(intervalo);
       window.removeEventListener('focus', revalidarComDebounce);
       document.removeEventListener('visibilitychange', revalidarComDebounce);
     };
-  }, [atualizarContador, online, recursoHabilitado, sessao]);
+  }, [carregarListaInterna, online, recursoHabilitado, sessao]);
 
   const carregarMais = useCallback(async () => {
     if (!recursoHabilitado || sessao.id === null || !online || !proximoCursor ||

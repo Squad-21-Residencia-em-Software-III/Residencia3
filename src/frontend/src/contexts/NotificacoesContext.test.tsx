@@ -357,4 +357,169 @@ describe('NotificacoesContext', () => {
     await act(async () => { await Promise.resolve(); });
     expect(mockMarcarReferenciaLida).toHaveBeenCalledTimes(3);
   });
+
+  describe('polling com coordenação entre abas', () => {
+    const canais = new Set<CanalTeste>();
+    let travado = false;
+    const locksOriginal = Object.getOwnPropertyDescriptor(navigator, 'locks');
+
+    class CanalTeste {
+      name: string;
+      onmessage: ((event: MessageEvent<{ total: number; em: number }>) => void) | null = null;
+      constructor(name: string) {
+        this.name = name;
+        canais.add(this);
+      }
+      postMessage(data: { total: number; em: number }) {
+        for (const canal of canais) {
+          if (canal !== this && canal.name === this.name) canal.onmessage?.(new MessageEvent('message', { data }));
+        }
+      }
+      close() { canais.delete(this); }
+    }
+
+    beforeEach(() => {
+      travado = false;
+      vi.stubGlobal('BroadcastChannel', CanalTeste);
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: {
+          request: async (_name: string, _options: object, callback: (lock: object | null) => Promise<void>) => {
+            if (travado) return callback(null);
+            travado = true;
+            try { await callback({}); } finally { travado = false; }
+          },
+        },
+      });
+    });
+
+    afterEach(() => {
+      canais.clear();
+      if (locksOriginal) Object.defineProperty(navigator, 'locks', locksOriginal);
+      else Reflect.deleteProperty(navigator, 'locks');
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    const avancar = async (ms: number) => {
+      await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+    };
+
+    it('central aberta atualiza lista em 60s, não em cada tick de 5s, mesmo com contador igual', async () => {
+      const { result, unmount } = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      await avancar(0);
+      act(() => result.current.definirCentralAberta(true));
+      await act(async () => result.current.carregarLista());
+      expect(mockListar).toHaveBeenCalledTimes(1);
+      await avancar(55_000);
+      expect(mockListar).toHaveBeenCalledTimes(1);
+      mockListar.mockResolvedValueOnce({ itens: [{ ...criarNotificacao(1), acesso_revogado: true }], nao_lidas: 0 });
+      await avancar(5_000);
+      expect(mockListar).toHaveBeenCalledTimes(2);
+      expect(result.current.itens[0]?.acesso_revogado).toBe(true);
+      unmount();
+      await avancar(120_000);
+      expect(mockListar).toHaveBeenCalledTimes(2);
+    });
+
+    it('revalida lista por foco com debounce independente do polling', async () => {
+      const { result } = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      await avancar(0);
+      act(() => result.current.definirCentralAberta(true));
+      await act(async () => result.current.carregarLista());
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+        window.dispatchEvent(new Event('focus'));
+      });
+      expect(mockListar).toHaveBeenCalledTimes(2);
+      await avancar(5_000);
+      expect(mockListar).toHaveBeenCalledTimes(2);
+      await act(async () => { window.dispatchEvent(new Event('focus')); });
+      expect(mockListar).toHaveBeenCalledTimes(3);
+    });
+
+    it('compartilha uma consulta de contador entre duas abas por ciclo', async () => {
+      const primeira = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      const segunda = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      await avancar(0);
+      expect(mockContador).toHaveBeenCalledTimes(1);
+      expect(primeira.result.current.naoLidas).toBe(2);
+      expect(segunda.result.current.naoLidas).toBe(2);
+      await avancar(55_000);
+      expect(mockContador).toHaveBeenCalledTimes(1);
+      await avancar(5_000);
+      expect(mockContador).toHaveBeenCalledTimes(2);
+    });
+
+    it('recupera falha temporária da lista aberta sem voltar ao polling de 5s', async () => {
+      const { result } = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      await avancar(0);
+      act(() => result.current.definirCentralAberta(true));
+      mockListar.mockRejectedValueOnce(Object.assign(new Error('HTTP 503'), { status: 503 }));
+      await avancar(5_000);
+      expect(mockListar).toHaveBeenCalledTimes(1);
+      await avancar(5_000);
+      expect(mockListar).toHaveBeenCalledTimes(2);
+      await avancar(55_000);
+      expect(mockListar).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['BroadcastChannel', 'Web Locks'])('mantém polling individual sem %s', async (ausente) => {
+      if (ausente === 'BroadcastChannel') vi.stubGlobal('BroadcastChannel', undefined);
+      else Reflect.deleteProperty(navigator, 'locks');
+      const { result } = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      await avancar(0);
+      expect(mockContador).toHaveBeenCalledTimes(1);
+      act(() => result.current.definirCentralAberta(true));
+      await act(async () => result.current.carregarLista());
+      await avancar(55_000);
+      expect(mockListar).toHaveBeenCalledTimes(1);
+      await avancar(5_000);
+      expect(mockListar).toHaveBeenCalledTimes(2);
+    });
+
+    it('recupera 503 do contador sem uma consulta a cada tick', async () => {
+      mockContador.mockRejectedValueOnce(Object.assign(new Error('HTTP 503'), { status: 503 }));
+      const { result } = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      await avancar(0);
+      expect(mockContador).toHaveBeenCalledTimes(1);
+      await avancar(5_000);
+      expect(mockContador).toHaveBeenCalledTimes(2);
+      expect(result.current.naoLidas).toBe(2);
+      await avancar(55_000);
+      expect(mockContador).toHaveBeenCalledTimes(2);
+    });
+
+    it('resposta HTTP atrasada não restaura contador de outra sessão', async () => {
+      let versaoSessao = 1;
+      mockUseAuth.mockImplementation(() => ({ usuario: USUARIO_PADRAO, versaoSessao }));
+      let resolver!: (valor: unknown) => void;
+      mockContador.mockReturnValueOnce(new Promise((resolve) => { resolver = resolve; }));
+      const { result, rerender } = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      await avancar(0);
+      versaoSessao += 1;
+      rerender();
+      await act(async () => { resolver({ nao_lidas: 99 }); });
+      expect(result.current.naoLidas).toBe(0);
+      await avancar(5_000);
+      expect(result.current.naoLidas).toBe(2);
+    });
+
+    it('descarta mensagens do contador iniciadas antes da sessão atual', async () => {
+      let versaoSessao = 1;
+      mockUseAuth.mockImplementation(() => ({ usuario: USUARIO_PADRAO, versaoSessao }));
+      const { result, rerender } = renderHook(() => useNotificacoes(), { wrapper: wrapper() });
+      await avancar(0);
+      const em = Date.now();
+      await avancar(1_000);
+      versaoSessao += 1;
+      rerender();
+      const canal = [...canais][0];
+      act(() => canal.onmessage?.(new MessageEvent('message', { data: { total: 99, em } })));
+      expect(result.current.naoLidas).toBe(0);
+      await avancar(0);
+      expect(result.current.naoLidas).toBe(2);
+    });
+  });
 });
