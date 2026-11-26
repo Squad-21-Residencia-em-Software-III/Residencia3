@@ -21,8 +21,8 @@ Publicados por `services/notificacaoSvoService.ts` **na transação da transiç�
 - **S8, uma solicitação por ocorrência operacional e uma decisão por pedido:**
   - A ocorrência é `<fase>:<id do pedido>:<solicitada|aprovada|recusada>`.
   - O reenvio com o pedido aberto devolve o mesmo pedido e não avisa de novo. Uma decisão repetida responde 409.
-  - Enquanto há pedido pendente da mesma fase, no mesmo deslocamento e com o mesmo motorista e veículo, apenas o primeiro gera aviso. A chave e a referência do aviso são as do primeiro pedido.
-  - Cada ordem mantém seu próprio pedido, decisão e autorização. Ordens sem deslocamento seguem independentes. Uma nova solicitação depois de encerrados os pedidos pendentes pode gerar outro aviso.
+  - Na chegada, pedidos pendentes do mesmo deslocamento, motorista e veículo são atendidos por ordem de criação. O aviso aponta para o pedido válido mais antigo. Quando ele é decidido ou sua ordem é finalizada, o próximo pedido válido gera seu próprio aviso se a fase ainda estiver sem evidência.
+  - Cada ordem mantém seu próprio pedido, decisão e autorização. Pedidos de saída e ordens sem deslocamento seguem independentes. Uma nova solicitação após recusa recebe nova identidade e entra na fila de pedidos.
 - **Contadores:** S6 e S7 incrementam o contador do sino da central. Eles nunca geram Push nem provocam atualizações independentes do App Badge.
 - **Sempre:** o autor da ação nunca é avisado, e inativos e repetidos são descartados (`publicarNotificacao`).
 

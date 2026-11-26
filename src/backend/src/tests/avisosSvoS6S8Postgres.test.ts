@@ -331,9 +331,43 @@ describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL 
         evento_tipo: EVENTO_SVO_S8_PEDIDO, usuario_id: gestor.id,
       }).whereIn('referencia_id', [a, b]).whereLike('ocorrencia_versao', 'CHEGADA:%');
       expect(await fila()).toHaveLength(1);
-      for (const pedido of pedidos) expect((await decidir(gestor, pedido.body.id, 'RECUSADA')).status).toBe(200);
+      const [primeiro, remanescente] = pedidos.sort((x, y) => x.body.id - y.body.id);
+      expect((await decidir(gestor, primeiro.body.id, 'RECUSADA')).status).toBe(200);
+      const avisosAposDecisao = await fila();
+      expect(avisosAposDecisao).toHaveLength(2);
+      expect(avisosAposDecisao).toContainEqual(expect.objectContaining({
+        referencia_id: remanescente.body.viagem_id,
+        ocorrencia_versao: `CHEGADA:${remanescente.body.id}:solicitada`,
+      }));
+      expect(await db('excecoes_odometro').where({ id: remanescente.body.id }).first('status'))
+        .toEqual({ status: 'PENDENTE' });
+      expect((await decidir(gestor, remanescente.body.id, 'RECUSADA')).status).toBe(200);
       expect((await pedirSemFoto(r.condutor, b, 'CHEGADA')).status).toBe(201);
-      expect(await fila()).toHaveLength(2);
+      expect(await fila()).toHaveLength(3);
+    });
+
+    it('avisa o pedido remanescente quando a ordem do primeiro é finalizada sem evidência compartilhada', async () => {
+      const r = await veiculoComMotorista();
+      const [a, b] = [await ordem(r, gestor.id), await ordem(r, gestor.id)];
+      for (const id of [a, b]) expect((await iniciar(r.condutor, id)).status).toBe(200);
+      const primeiro = await pedirSemFoto(r.condutor, a, 'CHEGADA');
+      const segundo = await pedirSemFoto(r.condutor, b, 'CHEGADA');
+      expect([primeiro.status, segundo.status]).toEqual([201, 201]);
+      expect(await destinatarios(EVENTO_SVO_S8_PEDIDO, b)).not.toContain(gestor.id);
+
+      expect((await finalizar(r.condutor, a)).status).toBe(200);
+      expect((await decidir(gestor, primeiro.body.id, 'APROVADA')).status).toBe(409);
+      expect(await filaDe(EVENTO_SVO_S8_PEDIDO, b).where({ usuario_id: gestor.id })).toHaveLength(1);
+      expect((await decidir(gestor, segundo.body.id, 'APROVADA')).status).toBe(200);
+    });
+
+    it('publica um aviso por ordem legada sem vínculo com deslocamento', async () => {
+      const r = await veiculoComMotorista();
+      const [a, b] = [await ordem(r, gestor.id), await ordem(r, gestor.id)];
+      for (const id of [a, b]) {
+        expect((await pedirSemFoto(r.condutor, id)).status).toBe(201);
+        expect(await filaDe(EVENTO_SVO_S8_PEDIDO, id).where({ usuario_id: gestor.id })).toHaveLength(1);
+      }
     });
 
     it('reverte a decisão e sua auditoria quando a publicação falha', async () => {
