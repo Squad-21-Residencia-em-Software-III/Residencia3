@@ -11,6 +11,11 @@ import { limitar, publicarNotificacao } from './publicacaoNotificacoes';
 export const URL_DESTINO_TRIAGEM_SVO = '/solicitacoes?aba=svo';
 export const CATEGORIA_NOTIFICACAO_SVO = 'SVO';
 export const EVENTO_SVO_S1 = 'SVO_SOLICITACAO_CRIADA';
+// SCRUM-234 (docs/scrum-234-avisos-svo-s3-s5.md)
+export const EVENTO_SVO_S3 = 'SVO_ORDEM_ATRIBUIDA';
+export const EVENTO_SVO_S4 = 'SVO_ORDEM_REAGENDADA';
+export const EVENTO_SVO_S5 = 'SVO_ORDEM_CANCELADA';
+export const URL_DESTINO_INTEGRANTE_SVO = '/minhas-coletas';
 // SCRUM-235 (docs/scrum-235-avisos-svo-s6-s8.md)
 export const EVENTO_SVO_S6 = 'SVO_CHEGADA_LOCAL';
 export const EVENTO_SVO_S7 = 'SVO_COLETA_CONCLUIDA';
@@ -55,10 +60,63 @@ function listaDeOrdens(ids: number[]): string {
   return resto > 0 ? `${citadas} e mais ${resto}` : citadas;
 }
 
+/**
+ * Quem está designado individualmente para a ordem: o motorista dela (perfil Motorista SVO) e cada
+ * integrante com designação não revogada. Nunca a equipe inteira.
+ */
+export interface EquipeDaOrdem {
+  ordemId: number;
+  motoristaUsuarioId: number | null;
+  motoristaId: number | null;
+  equipeId: number | null;
+  /** usuario_id → id da designação (ordens_svo_integrantes) */
+  integrantes: Map<number, number>;
+  inicio: Date | null;
+  fim: Date | null;
+  veiculoId: number | null;
+}
+
+const FORMATO_HORARIO = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Maceio', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+const horario = (data: Date | null) => (data ? FORMATO_HORARIO.format(data) : null);
+
+export async function equipeDaOrdem(trx: Knex.Transaction, ordemId: number): Promise<EquipeDaOrdem> {
+  const ordem = await trx('ordens_svo as o')
+    .leftJoin('motoristas as m', 'm.id', 'o.motorista_id')
+    .leftJoin('usuarios as u', function () {
+      this.on('u.id', '=', 'm.usuario_id').andOnVal('u.perfil', '=', PERFIS.MOTORISTA_SVO);
+    })
+    .where('o.id', ordemId)
+    .first('o.inicio_previsto', 'o.fim_previsto', 'o.veiculo_id', 'o.motorista_id', 'o.equipe_id', 'u.id as motorista_usuario_id');
+  const designacoes: { id: number; usuario_id: number }[] = await trx('ordens_svo_integrantes as d')
+    .join('usuarios as u', 'u.id', 'd.usuario_id')
+    .where({ 'd.ordem_id': ordemId, 'u.perfil': PERFIS.INTEGRANTE_SVO })
+    .whereNull('d.revogado_em')
+    .orderBy('d.usuario_id')
+    .select('d.id', 'd.usuario_id');
+  const data = (valor: unknown) => (valor ? new Date(valor as string) : null);
+  return {
+    ordemId,
+    motoristaUsuarioId: ordem?.motorista_usuario_id ?? null,
+    motoristaId: ordem?.motorista_id ?? null,
+    equipeId: ordem?.equipe_id ?? null,
+    integrantes: new Map(designacoes.map((d) => [d.usuario_id, d.id])),
+    inicio: data(ordem?.inicio_previsto),
+    fim: data(ordem?.fim_previsto),
+    veiculoId: ordem?.veiculo_id ?? null,
+  };
+}
+
 /** Conclusão vinda da transição: deslocamento físico encerrado, ou ordem antiga sem deslocamento. */
 export type ConclusaoColetaSvo = { deslocamentoId: number; ordens: number[] } | { deslocamentoId: null; ordens: [number] };
 
 export const notificacaoSvoService = {
+  /** Equipe designada para os avisos S3 a S5; `null` com os avisos desligados (nenhuma consulta a mais). */
+  async equipeParaAvisos(trx: Knex.Transaction, ordemId: number): Promise<EquipeDaOrdem | null> {
+    return configNotificacoes.ativas ? equipeDaOrdem(trx, ordemId) : null;
+  },
+
   async publicarAlertasRegistroSolicitacao(
     solicitacao: Pick<SolicitacaoSvo, 'id'>,
     registranteId: number,
@@ -84,6 +142,84 @@ export const notificacaoSvoService = {
         tag: `svo-solicitacao-${solicitacao.id}`,
       },
     });
+  },
+
+  /**
+   * S3 (atribuição) e S4 (reagendamento), na transação da alocação ou da reprogramação. `antes` é a equipe
+   * antes da reprogramação (`null` na alocação):
+   * - quem entrou (motorista novo, integrante com designação nova) recebe S3;
+   * - quem continua recebe S4 quando mudam horário, veículo ou composição;
+   * - quem saiu não recebe nada e perde o acesso ao conteúdo dos avisos anteriores (designação revogada).
+   */
+  async publicarDesignacoes(
+    antes: EquipeDaOrdem | null,
+    depois: EquipeDaOrdem | null,
+    autorId: number,
+    trx: Knex.Transaction,
+    auditoriaId?: number,
+  ): Promise<void> {
+    if (!configNotificacoes.ativas || !depois) return;
+    if (antes && !auditoriaId) throw new Error('A reprogramação exige uma identidade persistida');
+    const ocorrencia = auditoriaId === undefined ? 'alocacao' : `auditoria:${auditoriaId}`;
+    const { ordemId } = depois;
+    const quando = horario(depois.inicio);
+    const tag = `ordem-svo-${ordemId}`;
+    const atribuir = (urlDestino: string, ocorrencia: string, destinatario: number) =>
+      publicarNotificacao(trx, {
+        tipo: EVENTO_SVO_S3, operacao: 'SVO', severidade: 'info',
+        titulo: 'Nova coleta SVO atribuída',
+        mensagem: `Você foi designado para a ordem SVO #${ordemId}${quando ? `, com saída prevista para ${quando}` : ''}.`,
+        urlDestino, referencia: { tipo: 'ORDEM_SVO', id: ordemId }, ocorrencia, autorId, destinatarios: [destinatario],
+        push: { categoria: CATEGORIA_NOTIFICACAO_SVO, titulo: 'Nova coleta atribuída', corpo: 'Confira a coleta e o horário previsto.', tag },
+      });
+    const reagendar = (urlDestino: string, destinatarios: number[]) =>
+      publicarNotificacao(trx, {
+        tipo: EVENTO_SVO_S4, operacao: 'SVO', severidade: 'warning',
+        titulo: 'Coleta SVO reagendada',
+        mensagem: `A ordem SVO #${ordemId} foi reagendada${quando ? ` para ${quando}` : ''}.`,
+        urlDestino, referencia: { tipo: 'ORDEM_SVO', id: ordemId }, ocorrencia, autorId, destinatarios,
+        push: { categoria: CATEGORIA_NOTIFICACAO_SVO, titulo: 'Coleta reagendada', corpo: 'Confira as alterações na coleta.', tag },
+      });
+
+    const motorista = depois.motoristaUsuarioId;
+    const coletaMudou = antes !== null && (
+      antes.inicio?.getTime() !== depois.inicio?.getTime() || antes.fim?.getTime() !== depois.fim?.getTime() ||
+      antes.veiculoId !== depois.veiculoId || antes.motoristaId !== depois.motoristaId ||
+      antes.equipeId !== depois.equipeId || antes.integrantes.size !== depois.integrantes.size ||
+      [...depois.integrantes.keys()].some((id) => !antes.integrantes.has(id))
+    );
+    if (motorista !== null) {
+      if (antes?.motoristaUsuarioId !== motorista || antes.motoristaId !== depois.motoristaId) {
+        await atribuir(URL_DESTINO_MOTORISTA_SVO, `motorista:${ocorrencia}`, motorista);
+      } else if (coletaMudou) {
+        await reagendar(URL_DESTINO_MOTORISTA_SVO, [motorista]);
+      }
+    }
+    const continuam: number[] = [];
+    for (const [usuarioId, designacaoId] of depois.integrantes) {
+      if (antes?.integrantes.has(usuarioId)) continuam.push(usuarioId);
+      else await atribuir(URL_DESTINO_INTEGRANTE_SVO, `designacao:${designacaoId}`, usuarioId);
+    }
+    if (coletaMudou && continuam.length) await reagendar(URL_DESTINO_INTEGRANTE_SVO, continuam);
+  },
+
+  /**
+   * S5: cancelamento da ordem alocada. Avisa o motorista e os integrantes designados naquele momento. O
+   * cancelamento não revoga as designações: quem participava continua vendo o histórico.
+   */
+  async publicarCancelamento(equipe: EquipeDaOrdem | null, autorId: number, trx: Knex.Transaction): Promise<void> {
+    if (!configNotificacoes.ativas || !equipe) return;
+    const { ordemId } = equipe;
+    const cancelar = (urlDestino: string, destinatarios: number[]) =>
+      publicarNotificacao(trx, {
+        tipo: EVENTO_SVO_S5, operacao: 'SVO', severidade: 'danger',
+        titulo: 'Coleta SVO cancelada',
+        mensagem: `A ordem SVO #${ordemId} foi cancelada.`,
+        urlDestino, referencia: { tipo: 'ORDEM_SVO', id: ordemId }, ocorrencia: 'cancelamento', autorId, destinatarios,
+        push: { categoria: CATEGORIA_NOTIFICACAO_SVO, titulo: 'Coleta cancelada', corpo: 'Uma coleta designada a você foi cancelada.', tag: `ordem-svo-${ordemId}` },
+      });
+    if (equipe.motoristaUsuarioId !== null) await cancelar(URL_DESTINO_MOTORISTA_SVO, [equipe.motoristaUsuarioId]);
+    if (equipe.integrantes.size) await cancelar(URL_DESTINO_INTEGRANTE_SVO, [...equipe.integrantes.keys()]);
   },
 
   /**

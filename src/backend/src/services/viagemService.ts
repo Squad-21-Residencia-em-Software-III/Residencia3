@@ -443,14 +443,23 @@ export const viagemService = {
       const anterior = await buscarParaAtualizar(trx, 'SVO', id);
       if (anterior.status !== 'ALOCADA') throw new AppError('Apenas coletas agendadas podem ser reprogramadas', 409);
       if (dados.solicitacao_id !== anterior.solicitacao_id) throw new AppError('Solicitação não corresponde à ordem', 409);
+      const equipeAntes = await notificacaoSvoService.equipeParaAvisos(trx, id);
       await alocarOrdemSvo(trx, dados, autor.id, id);
       await trx('alertas_atraso_svo').where({ ordem_afetada_id: id }).whereNull('resolvido_em')
         .update({ resolvido_em: trx.fn.now() });
       await sincronizarStatus(trx, anterior.veiculo_id, anterior.motorista_id);
       await sincronizarStatus(trx, dados.veiculo_id, dados.motorista_id);
       await reavaliarFilaSvo(trx, autor.id);
-      await registrarAuditoria(trx, autor.id,
-        `REPROGRAMOU_SVO id=${id} inicio=${dados.inicio_previsto} fim=${dados.fim_previsto} veiculo=${dados.veiculo_id} motorista=${dados.motorista_id} equipe=${dados.equipe_id ?? 'nenhuma'}`);
+      const acao = `REPROGRAMOU_SVO id=${id} inicio=${dados.inicio_previsto} fim=${dados.fim_previsto} veiculo=${dados.veiculo_id} motorista=${dados.motorista_id} equipe=${dados.equipe_id ?? 'nenhuma'}`;
+      const equipeDepois = await notificacaoSvoService.equipeParaAvisos(trx, id);
+      if (equipeAntes && equipeDepois) {
+        const auditoriaId = await auditoriaModel.registrarComId({
+          usuario_id: autor.id, modulo: MODULOS_AUDITORIA.VIAGENS, acao,
+        }, trx);
+        await notificacaoSvoService.publicarDesignacoes(equipeAntes, equipeDepois, autor.id, trx, auditoriaId);
+      } else {
+        await registrarAuditoria(trx, autor.id, acao);
+      }
       return detalhar(trx, 'SVO', id);
     });
   },
@@ -515,7 +524,11 @@ export const viagemService = {
         dados.solicitacao_id,
         OPERACOES[dados.tipo_operacao].solicitacaoAtendida
       );
-      if (dados.tipo_operacao === 'SVO') await reavaliarFilaSvo(trx, autor.id);
+      if (dados.tipo_operacao === 'SVO') {
+        await reavaliarFilaSvo(trx, autor.id);
+        // S3 (SCRUM-234): motorista e integrantes designados, individualmente
+        await notificacaoSvoService.publicarDesignacoes(null, await notificacaoSvoService.equipeParaAvisos(trx, id), autor.id, trx);
+      }
 
       await registrarAuditoria(
         trx,
@@ -685,7 +698,10 @@ export const viagemService = {
         );
       }
 
+      // S5 (SCRUM-234): quem estava designado na ordem alocada (a aguardando alocação não tem ninguém)
+      const equipeCancelada = tipo === 'SVO' && !aguardandoAlocacao ? await notificacaoSvoService.equipeParaAvisos(trx, viagemId) : null;
       await trx(operacao.tabela).where({ id: viagemId }).update({ status: 'CANCELADA' });
+      if (equipeCancelada) await notificacaoSvoService.publicarCancelamento(equipeCancelada, autor.id, trx);
 
       // Libera veículo e motorista, se não houver outra viagem ativa.
       // A ordem aguardando alocação não tem recursos a liberar.

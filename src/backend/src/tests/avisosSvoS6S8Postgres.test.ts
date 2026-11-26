@@ -56,6 +56,9 @@ async function veiculoComMotorista() {
 const LOCAL_SENSIVEL = 'Rua Sigilosa, 123';
 const SOLICITANTE_SENSIVEL = 'Familiar Reservado';
 
+// Pendências de push criadas aqui: removidas ao fim de cada caso, para não ocuparem a vez de outras suítes na fila
+const ordensCriadas: number[] = [];
+
 async function ordem(r: Awaited<ReturnType<typeof veiculoComMotorista>>, registranteId: number): Promise<number> {
   const [solicitacao] = await db('solicitacoes_svo').insert({
     registrante_id: registranteId, dados_solicitante: SOLICITANTE_SENSIVEL, local_ocorrencia: LOCAL_SENSIVEL,
@@ -65,6 +68,7 @@ async function ordem(r: Awaited<ReturnType<typeof veiculoComMotorista>>, registr
     solicitacao_id: solicitacao.id, veiculo_id: r.veiculo.id, motorista_id: r.motorista.id,
     status: 'ALOCADA', capacidade_utilizada: 1,
   }).returning('id');
+  ordensCriadas.push(o.id);
   return o.id;
 }
 
@@ -87,13 +91,26 @@ const destinatarios = async (tipo: string, ordemId: number) => (await avisos(tip
 const filaDe = (tipo: string, ordemId: number) =>
   db('notificacao_outbox').where({ evento_tipo: tipo, operacao: 'SVO', referencia_tipo: 'ORDEM_SVO', referencia_id: ordemId });
 
+// A fila trata no máximo 200 itens por passada, os mais antigos primeiro; com itens de outras suítes à frente,
+// repete até processar as pendências da ordem
+async function processarAte(enviador: EnviadorPush, ordemId: number) {
+  for (let passada = 0; passada < 20; passada += 1) {
+    await processarFilaPush(enviador);
+    const pendente = await db('notificacao_outbox')
+      .where({ referencia_tipo: 'ORDEM_SVO', referencia_id: ordemId }).whereIn('status', ['PENDENTE', 'PROCESSANDO']).first('id');
+    if (!pendente) return;
+  }
+  throw new Error('A fila não processou as pendências da ordem');
+}
+
 function semDadoSensivel(texto: string) {
   expect(texto).not.toContain('Sigilosa');
   expect(texto).not.toContain('Reservado');
   expect(texto).not.toContain('Câmera');
 }
 
-describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL descartável', () => {
+// Cada caso faz várias operações HTTP em sequência sob o lock da agenda SVO: o limite padrão de 5 s é curto no CI
+describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL descartável', { timeout: 30_000 }, () => {
   usarBancoComExclusividade();
   let gestor: Conta;
   let admin: Conta;
@@ -119,10 +136,11 @@ describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL 
     env.fotosOdometroObrigatorias = false;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
   });
-  afterEach(() => {
+  afterEach(async () => {
     configNotificacoes.ativas = false;
     env.excecoesOdometroAtivas = false;
     vi.restoreAllMocks();
+    await db('notificacao_outbox').where({ referencia_tipo: 'ORDEM_SVO' }).whereIn('referencia_id', ordensCriadas.splice(0)).del();
   });
   afterAll(() => db.destroy());
 
@@ -295,7 +313,7 @@ describe.skipIf(!habilitado)('SCRUM-235 · avisos SVO S6, S7 e S8 em PostgreSQL 
       });
       await db('preferencias_notificacao').insert({ usuario_id: r.condutor.id, categoria: 'SVO', habilitado: true });
       const enviador = vi.fn<EnviadorPush>().mockResolvedValue({ status: 201 });
-      await processarFilaPush(enviador);
+      await processarAte(enviador, id);
       const entrega = enviador.mock.calls.find(([, payload]) => payload.notificacao_id === aviso.id);
       expect(entrega?.[1]).toEqual({
         notificacao_id: aviso.id, titulo: 'Decisão do pedido sem foto', corpo: 'Seu pedido foi recusado.',
