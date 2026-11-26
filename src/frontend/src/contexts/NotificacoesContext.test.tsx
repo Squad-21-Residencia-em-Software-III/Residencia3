@@ -357,4 +357,63 @@ describe('NotificacoesContext', () => {
     await act(async () => { await Promise.resolve(); });
     expect(mockMarcarReferenciaLida).toHaveBeenCalledTimes(3);
   });
+
+  it('recebe PUSH_EM_PRIMEIRO_PLANO do Service Worker e sincroniza App Badging incluindo limpeza no logout', async () => {
+    const swTarget = new EventTarget();
+    const swOriginal = navigator.serviceWorker;
+    const setAppBadge = vi.fn().mockResolvedValue(undefined);
+    const clearAppBadge = vi.fn().mockResolvedValue(undefined);
+    const navBadge = navigator as Navigator & { setAppBadge?: unknown; clearAppBadge?: unknown };
+    const setOrig = navBadge.setAppBadge;
+    const clearOrig = navBadge.clearAppBadge;
+
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: swTarget });
+    Object.defineProperty(navigator, 'setAppBadge', { configurable: true, value: setAppBadge });
+    Object.defineProperty(navigator, 'clearAppBadge', { configurable: true, value: clearAppBadge });
+
+    try {
+      let usuarioAtual: Usuario | null = USUARIO_PADRAO;
+      mockUseAuth.mockImplementation(() => ({ usuario: usuarioAtual }));
+
+      const { result, rerender } = renderHook(() => useNotificacoes(), { wrapper: wrapper(true) });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(setAppBadge).toHaveBeenCalledWith(2);
+
+      act(() => {
+        swTarget.dispatchEvent(
+          new MessageEvent('message', {
+            data: {
+              tipo: 'PUSH_EM_PRIMEIRO_PLANO',
+              payload: {
+                notificacao_id: 301,
+                titulo: 'Nova coleta SVO',
+                corpo: 'Ordem #301 atribuída.',
+                url: '/viagens',
+                tag: 'ordem-svo-301',
+              },
+            },
+          }),
+        );
+      });
+      expect(result.current.toastAtivo).toEqual({
+        id: 301,
+        titulo: 'Nova coleta SVO',
+        mensagem: 'Ordem #301 atribuída.',
+        url_destino: '/viagens',
+      });
+
+      // Logout deve limpar App Badge
+      clearAppBadge.mockClear();
+      usuarioAtual = null;
+      rerender();
+      expect(clearAppBadge).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: swOriginal });
+      Object.defineProperty(navigator, 'setAppBadge', { configurable: true, writable: true, value: setOrig });
+      Object.defineProperty(navigator, 'clearAppBadge', { configurable: true, writable: true, value: clearOrig });
+    }
+  });
 });

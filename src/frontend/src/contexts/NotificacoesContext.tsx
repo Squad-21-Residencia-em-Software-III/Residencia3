@@ -4,11 +4,16 @@ import { recursoAtivo } from '../config/recursosBackend';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { mensagemDeErro } from '../services/api/http';
 import { notificacoesApi } from '../services/api/notificacoesApi';
+import {
+  TIPO_MSG_PUSH_FOREGROUND,
+  type MensagemPushForeground,
+} from '../sw/logicaPushSw';
 import type {
   NotificacaoInApp,
   PayloadNotificacaoPrimeiroPlano,
   RespostaMarcarLida,
 } from '../types/notificacao';
+import { limparAppBadge, sincronizarAppBadge } from '../utils/appBadging';
 import { useAuth } from './AuthContext';
 
 export const INTERVALO_POLLING_NOTIFICACOES_MS = 60_000;
@@ -335,6 +340,43 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     });
     return { itens: lista, naoLidas: Math.max(0, naoLidas - novasLeituras) };
   }, [itens, leiturasPendentes, naoLidas]);
+
+  // Sincroniza App Badging opcional com o contador exibido e limpa no logout ou ao zerar.
+  useEffect(() => {
+    if (!usuario || !recursoHabilitado || exibicao.naoLidas <= 0) {
+      void limparAppBadge();
+      return;
+    }
+    void sincronizarAppBadge(exibicao.naoLidas);
+  }, [exibicao.naoLidas, recursoHabilitado, usuario]);
+
+  // Recebe Push em primeiro plano do Service Worker (SCRUM-239) para exibir Toast sem duplicar alerta do SO.
+  useEffect(() => {
+    if (!usuario) return;
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+    const sw = navigator.serviceWorker;
+    if (!sw || typeof sw.addEventListener !== 'function') return;
+
+    const aoReceberMensagem = (evento: MessageEvent<Partial<MensagemPushForeground>>) => {
+      const dados = evento.data;
+      if (!dados || dados.tipo !== TIPO_MSG_PUSH_FOREGROUND || !dados.payload) return;
+      const { notificacao_id, titulo, corpo, url, tag } = dados.payload;
+      const idSeguro = notificacao_id ?? `push-${tag ?? titulo}-${corpo.slice(0, 24)}`;
+      notificarEmPrimeiroPlano({
+        id: idSeguro,
+        titulo,
+        mensagem: corpo,
+        url_destino: url,
+      });
+    };
+
+    sw.addEventListener('message', aoReceberMensagem);
+    return () => {
+      sw.removeEventListener('message', aoReceberMensagem);
+    };
+  }, [notificarEmPrimeiroPlano, usuario]);
 
   const valor = useMemo<NotificacoesContextValue>(
     () => ({
