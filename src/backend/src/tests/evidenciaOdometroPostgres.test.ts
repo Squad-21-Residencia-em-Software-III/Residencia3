@@ -234,6 +234,17 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
       for (const item of filaCancelamento) expect(item.payload_push.tag).toBe('viagem-' + cancelada.viagemId);
 
       const concluida = await agendar();
+      const lerResumo = async (token: string) => {
+        const consultar = (rota: string) => request(app).get(`/api/notificacoes/${rota}`).set('Authorization', token);
+        const [contador, badge] = await Promise.all([consultar('contador'), consultar('badge')]);
+        expect(contador.status).toBe(200);
+        expect(badge.status).toBe(200);
+        return { naoLidas: contador.body.nao_lidas, elegiveis: badge.body.elegiveis };
+      };
+      const destinatarios = [
+        { ...gestor, destino: '/viagens', antes: await lerResumo(gestor.token) },
+        { ...autor, destino: '/solicitacoes', antes: await lerResumo(autor.token) },
+      ];
       const iniciar = () => transicao(concluida.condutor.token, 'iniciar', concluida.viagemId, { km_inicial: 1000 });
       const finalizar = () => transicao(concluida.condutor.token, 'finalizar', concluida.viagemId, { km_final: 1010 });
       expect((await iniciar()).status).toBe(200);
@@ -241,7 +252,8 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
       expect((await finalizar()).status).toBe(200);
       expect((await finalizar()).status).toBe(400);
       const tiposA8 = ['VIAGEM_INICIADA', 'VIAGEM_FINALIZADA'];
-      for (const { id, destino } of [{ id: gestor.id, destino: '/viagens' }, { id: autor.id, destino: '/solicitacoes' }]) {
+      for (const { id, token, destino, antes } of destinatarios) {
+        expect(await lerResumo(token)).toEqual({ naoLidas: antes.naoLidas + 2, elegiveis: antes.elegiveis });
         const avisos = await db('notificacoes').where({ ...concluida.referencia, usuario_id: id })
           .whereIn('tipo', tiposA8).orderBy('id');
         expect(avisos.map((aviso) => aviso.tipo)).toEqual(tiposA8);
