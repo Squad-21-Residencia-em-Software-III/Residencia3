@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { configNotificacoes } from '../config/notificacoes';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { ORDENS_SVO_EM_CURSO, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 import { AppError } from '../errors/AppError';
@@ -13,6 +14,14 @@ import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
 import { garantirPerfilOperacional } from './autorizacaoOperacionalSvo';
 import { concluirOperacao, registrarEvidenciaNaTransicao } from './evidenciaOdometroTransicao';
 import { reavaliarFilaSvo } from './filaSvoService';
+import { publicarNotificacao } from './publicacaoNotificacoes';
+import { buscarDestinatariosViagemAdministrativa } from './avisosViagem';
+import {
+  montarAvisoViagemAgendada,
+  montarAvisosViagemCancelada,
+  montarAvisosAndamentoViagem,
+} from './eventosViagemAdministrativa';
+import { prepararEventoViagem } from './publicacaoEventosViagem';
 import { atualizarDesignacoesSvo } from './designacoesSvoService';
 import {
   periodoDaSolicitacao,
@@ -520,6 +529,15 @@ export const viagemService = {
         `${dados.tipo_operacao === 'SVO' ? 'ALOCOU_ORDEM_SVO' : 'CRIOU_VIAGEM'} tipo=${dados.tipo_operacao} id=${id} veiculo=${dados.veiculo_id} motorista=${dados.motorista_id}`
       );
 
+      if (dados.tipo_operacao === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, id);
+        const aviso = montarAvisoViagemAgendada(id);
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(id, aviso, autor.id, destinatarios.motorista)
+        );
+      }
+
       return detalhar(trx, dados.tipo_operacao, id);
     });
   },
@@ -596,6 +614,24 @@ export const viagemService = {
       await registrarAuditoria(trx, autor.id,
         `INICIOU_VIAGEM tipo=${tipo} id=${viagemId} km_inicial=${kmInicial}${evidenciaSaida ? ` evidencia=${evidenciaSaida}` : ''}`);
 
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
+        const avisos = montarAvisosAndamentoViagem(viagemId, 'INICIADA');
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.gestor, autor.id, destinatarios.gestores)
+        );
+
+        const gestores = new Set(destinatarios.gestores);
+        const solicitantes = destinatarios.solicitante.filter(id => !gestores.has(id));
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.solicitante, autor.id, solicitantes)
+        );
+      }
+
       return detalhar(trx, tipo, viagemId);
     });
   },
@@ -655,6 +691,24 @@ export const viagemService = {
       await registrarAuditoria(trx, autor.id,
         `FINALIZOU_VIAGEM tipo=${tipo} id=${viagemId} km_final=${kmFinal}${evidenciaChegada ? ` evidencia=${evidenciaChegada}` : ''}`);
 
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
+        const avisos = montarAvisosAndamentoViagem(viagemId, 'FINALIZADA');
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.gestor, autor.id, destinatarios.gestores)
+        );
+
+        const gestores = new Set(destinatarios.gestores);
+        const solicitantes = destinatarios.solicitante.filter(id => !gestores.has(id));
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.solicitante, autor.id, solicitantes)
+        );
+      }
+
       return detalhar(trx, tipo, viagemId);
     });
   },
@@ -703,6 +757,24 @@ export const viagemService = {
         autor.id,
         `CANCELOU_VIAGEM tipo=${tipo} id=${viagemId}${cancelarSolicitacao ? ' solicitacao_cancelada' : ''}`
       );
+
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
+        const avisos = montarAvisosViagemCancelada(viagemId);
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.motorista, autor.id, destinatarios.motorista)
+        );
+
+        const motoristas = new Set(destinatarios.motorista);
+        const solicitantes = destinatarios.solicitante.filter(id => !motoristas.has(id));
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.solicitante, autor.id, solicitantes)
+        );
+      }
 
       return detalhar(trx, tipo, viagemId);
     });
