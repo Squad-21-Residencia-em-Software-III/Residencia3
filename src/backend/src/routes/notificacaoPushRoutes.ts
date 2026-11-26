@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pushController } from '../controllers/pushController';
+import { configNotificacoes } from '../config/notificacoes';
 import { env } from '../config/env';
 import { PERFIS } from '../constants/perfis';
 import { autenticar, usuarioAutenticado } from '../middlewares/autenticar';
@@ -9,6 +10,11 @@ import { criarLimitador } from '../middlewares/limitarTentativasLogin';
 // Alertas no aparelho (SCRUM-237). Todos os perfis, sempre com sessão e sempre sobre o próprio usuário.
 // Router próprio no mesmo prefixo dos avisos (/notificacoes, SCRUM-226): os caminhos não se sobrepõem.
 export const notificacaoPushRoutes = Router();
+
+// Consultado pelo SW quando o aplicativo está fechado. Nenhum dado de sessão ou do aparelho.
+notificacaoPushRoutes.get('/push-disponivel', (_req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ativo: configNotificacoes.ativas && Boolean(env.webPush) });
+});
 
 const ROTAS = ['/vapid-public-key', '/subscribe', '/unsubscribe', '/preferencias', '/metricas'];
 notificacaoPushRoutes.use(ROTAS, autenticar);

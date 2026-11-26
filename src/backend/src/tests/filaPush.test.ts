@@ -19,7 +19,7 @@ const payload = { notificacao_id: 9, titulo: 'Viagem agendada', corpo: 'Sa√≠da √
 const item = (dados: Partial<ItemFilaPush> = {}): ItemFilaPush => ({
   id: 1, usuario_id: 7, categoria: 'VIAGENS', payload_push: payload, tentativas: 1, max_tentativas: 5, ...dados,
 });
-const aparelho = (id: number) => ({ id, endpoint: `https://push.exemplo/${id}`, p256dh: `p${id}`, auth: `a${id}` });
+const aparelho = (id: number) => ({ id, geracao_vinculo: 1, endpoint: `https://push.exemplo/${id}`, p256dh: `p${id}`, auth: `a${id}` });
 const aparelhos = (...ids: number[]) => modelo.destino.mockResolvedValue(ids.map(aparelho));
 const responder = (...status: number[]) => status.forEach((s) => enviador.mockResolvedValueOnce({ status: s }));
 const conclusao = () => modelo.concluir.mock.calls[0]![1];
