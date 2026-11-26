@@ -24,8 +24,10 @@ const knexConfig = require('../knexfile');
  *   podeAcessarMigrations?: boolean,
  *   privilegiosExcessivosTabelas?: string[]
  * }} estado
+ * @param {{ permitirDeletarNotificacoes?: boolean }} [opcoes] Somente a role do job de
+ *   retencao de notificacoes (SCRUM-242) pode manter DELETE em notificacoes.
  */
-function validarEstadoMinimoPrivilegio(estado) {
+function validarEstadoMinimoPrivilegio(estado, opcoes = {}) {
   if (!estado || !estado.rolname) {
     throw new Error('Role da aplicacao nao encontrada em pg_roles apos o provisionamento.');
   }
@@ -68,7 +70,7 @@ function validarEstadoMinimoPrivilegio(estado) {
     );
   }
 
-  if (estado.podeDeletarNotificacoes) {
+  if (estado.podeDeletarNotificacoes && !opcoes.permitirDeletarNotificacoes) {
     violacoes.push(
       'role nao pode ter privilegio DELETE sobre a tabela notificacoes (o expurgo deve ser executado exclusivamente pelo job de retencao)'
     );
