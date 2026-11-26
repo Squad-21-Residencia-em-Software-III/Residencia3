@@ -117,7 +117,7 @@ jobs:
         run: npm run build
 
       - name: Executar testes automatizados
-        run: npm test
+        run: npm test -- --no-file-parallelism
         env:
           JWT_SECRET: ci-test-only-secret-not-for-production
 
