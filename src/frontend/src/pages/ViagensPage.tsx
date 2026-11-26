@@ -49,6 +49,7 @@ import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
 import { ModalExcecoesOdometro } from './viagens/ModalExcecoesOdometro';
 import { ModalEvidenciasOdometro } from './viagens/ModalEvidenciasOdometro';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
+import { ModalReprogramarAdministrativa, podeReprogramarAdministrativa } from './viagens/ModalReprogramarAdministrativa';
 import { useRegistrarChegada } from './viagens/useRegistrarChegada';
 import { usePermissao } from '../utils/permissoes';
 
@@ -204,6 +205,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const [erroPendentes, setErroPendentes] = useState<string | null>(null);
   const [ordemAgendar, setOrdemAgendar] = useState<OrdemPendenteSvo | null>(null);
   const [viagemReprogramar, setViagemReprogramar] = useState<Viagem | null>(null);
+  const [administrativaReprogramar, setAdministrativaReprogramar] = useState<Viagem | null>(null);
   const [alertasSvo, setAlertasSvo] = useState<Awaited<ReturnType<typeof viagensApi.listarAlertasSvo>>>([]);
   const [erroAlertas, setErroAlertas] = useState<string | null>(null);
   const [dadosAgendarColeta, setDadosAgendarColeta] = useState<DadosAgendarColeta | null>(null);
@@ -861,6 +863,12 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                         <div className="inline-flex items-center justify-end gap-2">
                           {v.status === 'AGENDADA' && (
                             <>
+                              {podeReprogramarAdministrativa(v, podeAgendar) && (
+                                <Button variant="outline" size="sm" onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAdministrativaReprogramar(v);
+                                }}>Reprogramar</Button>
+                              )}
                               {podeAlocarSvo && agendaSvoAtiva && (
                                 <Button variant="outline" size="sm" onClick={(e) => {
                                   e.stopPropagation();
@@ -955,6 +963,17 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       </Card>
 
       {/* Modais */}
+      {podeAgendar && administrativaReprogramar && (
+        <ModalReprogramarAdministrativa
+          viagem={administrativaReprogramar}
+          onClose={() => setAdministrativaReprogramar(null)}
+          onSalva={async () => {
+            setAdministrativaReprogramar(null);
+            await carregarViagens();
+            exibirFeedback('Programação da viagem atualizada com sucesso.');
+          }}
+        />
+      )}
       {modalNovaAberto && dadosNovaViagem && (
         <ModalNovaViagem
           solicitacoesAprovadas={dadosNovaViagem.solicitacoes}

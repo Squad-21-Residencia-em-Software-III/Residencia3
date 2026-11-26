@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { configNotificacoes } from '../config/notificacoes';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { ORDENS_SVO_EM_CURSO, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 import { AppError } from '../errors/AppError';
@@ -8,12 +9,22 @@ import { motoristaModel } from '../models/motoristaModel';
 import { solicitacaoViagemModel } from '../models/solicitacaoViagemModel';
 import { veiculoModel } from '../models/veiculoModel';
 import { viagemModel, type ViagemDetalhada } from '../models/viagemModel';
-import type { CriarViagemInput, TipoOperacao } from '../validators/viagemSchemas';
+import { unidadeModel } from '../models/unidadeModel';
+import type { CriarViagemInput, ReprogramarViagemAdministrativaInput, TipoOperacao } from '../validators/viagemSchemas';
 import { travarAgendaSvo, validarAgendaSvo } from './agendaSvoService';
 import { garantirPerfilOperacional } from './autorizacaoOperacionalSvo';
 import { concluirOperacao, registrarEvidenciaNaTransicao } from './evidenciaOdometroTransicao';
 import { reavaliarFilaSvo } from './filaSvoService';
 import { notificacaoSvoService } from './notificacaoSvoService';
+import { publicarNotificacao } from './publicacaoNotificacoes';
+import { buscarDestinatariosViagemAdministrativa } from './avisosViagem';
+import {
+  montarAvisoViagemAgendada,
+  montarAvisosViagemCancelada,
+  montarAvisosAndamentoViagem,
+  montarAvisosViagemReprogramada,
+} from './eventosViagemAdministrativa';
+import { prepararEventoViagem } from './publicacaoEventosViagem';
 import { atualizarDesignacoesSvo } from './designacoesSvoService';
 import {
   periodoDaSolicitacao,
@@ -278,6 +289,8 @@ async function criarViagemFrota(trx: Knex.Transaction, dados: CriarViagemFrotaIn
       veiculo_id: dados.veiculo_id,
       motorista_id: dados.motorista_id,
       status: 'AGENDADA',
+      inicio_previsto: inicio,
+      fim_previsto: fim,
     })
     .returning('id');
 
@@ -505,8 +518,103 @@ export const viagemService = {
 
   const tiposPermitidos = TIPOS_POR_PERFIL[autor.perfil] ?? [];
 
-  return viagemModel.listar(tiposPermitidos);
+  const viagens = await viagemModel.listar(tiposPermitidos);
+  if (!viagens.length || !tiposPermitidos.includes('ADMINISTRATIVA')) return viagens;
+  const unidades = autor.perfil === PERFIS.GESTOR_FROTA
+    ? await unidadeModel.idsDasUnidadesDoGestor(autor.id) : [];
+  return viagens.map((v) => v.tipo_operacao === 'ADMINISTRATIVA' ? {
+    ...v,
+    pode_reprogramar: v.status === 'AGENDADA' && !v.data_hora_efetiva_saida && !v.data_hora_efetiva_chegada &&
+      (autor.perfil === PERFIS.ADMINISTRADOR || (v.unidade_id != null && unidades.includes(v.unidade_id))),
+  } : v);
   },
+  // A6: somente o período muda; os recursos, a aprovação, as evidências e os horários reais permanecem.
+  async reprogramarAdministrativa(id: number, dados: ReprogramarViagemAdministrativaInput, autor: Autor): Promise<ViagemDetalhada> {
+    if (autor.perfil !== PERFIS.ADMINISTRADOR && autor.perfil !== PERFIS.GESTOR_FROTA) throw new AppError('Sem permissão para reprogramar', 403);
+    if (dados.tipo_operacao !== 'ADMINISTRATIVA') throw new AppError('Operação inválida', 400);
+    const inicio = new Date(dados.inicio_previsto);
+    const fim = new Date(dados.fim_previsto);
+    if (!Number.isFinite(inicio.getTime()) || !Number.isFinite(fim.getTime()) || fim <= inicio) {
+      throw new AppError('O término planejado deve ser posterior ao início', 400);
+    }
+    return db.transaction(async (trx) => {
+      const viagem = await buscarParaAtualizar(trx, 'ADMINISTRATIVA', id);
+      const solicitacao = await trx('solicitacoes_viagem').where({ id: viagem.solicitacao_id }).first();
+      if (!solicitacao) throw new AppError('Solicitação da viagem não encontrada', 404);
+      // A competência geral para analisar solicitações não concede reprogramação de unidade alheia.
+      if (autor.perfil !== PERFIS.ADMINISTRADOR) {
+        const vinculo = solicitacao.unidade_id != null && await trx('gestores_unidades')
+          .where({ unidade_id: solicitacao.unidade_id, usuario_id: autor.id }).forShare().first('unidade_id');
+        if (!vinculo) throw new AppError('Você não tem autorização para reprogramar esta unidade', 403);
+      }
+      const chave = dados.chave_idempotencia.toLowerCase();
+      const anterior = await trx('reprogramacoes_viagem_frota').where({ viagem_id: id, chave }).first();
+      if (anterior) {
+        if (anterior.autor_id !== autor.id || anterior.versao_esperada !== dados.versao_programacao ||
+          new Date(anterior.inicio_previsto).getTime() !== inicio.getTime() ||
+          new Date(anterior.fim_previsto).getTime() !== fim.getTime()) {
+          throw new AppError('Chave de reprogramação já utilizada com outros dados', 409);
+        }
+        // Mesmo se a viagem foi reprogramada novamente, o retry nunca reaplica o comando.
+        return detalhar(trx, 'ADMINISTRATIVA', id);
+      }
+      if (viagem.status !== 'AGENDADA' || solicitacao.status !== 'AGENDADA' ||
+          viagem.data_hora_efetiva_saida != null || viagem.data_hora_efetiva_chegada != null) {
+        throw new AppError('Somente viagens agendadas e ainda não iniciadas podem ser reprogramadas', 409);
+      }
+      if (viagem.versao_programacao !== dados.versao_programacao) {
+        throw new AppError('A programação mudou. Atualize a viagem antes de tentar novamente.', 409, 'PROGRAMACAO_DESATUALIZADA');
+      }
+      const periodo = periodoDaSolicitacao({
+        data_saida_desejada: viagem.inicio_previsto ?? solicitacao.data_saida_desejada,
+        data_chegada_desejada: viagem.fim_previsto ?? solicitacao.data_chegada_desejada,
+      });
+      const mudou = periodo.inicio.getTime() !== inicio.getTime() || periodo.fim.getTime() !== fim.getTime();
+      let auditoriaId: number | null = null;
+      if (mudou) {
+        // Mesma ordem e mesmas linhas bloqueadas pela criação/alocação e início: veículo, motorista.
+        // A viagem está bloqueada desde a leitura, portanto cancelamento/início e retries são serializados.
+        const veiculo = await bloquearVeiculo(trx, viagem.veiculo_id);
+        if (veiculo.tipo_frota !== 'ADMINISTRATIVA') throw new AppError('Veículo fora da frota administrativa', 400);
+        const motorista = await bloquearMotorista(trx, viagem.motorista_id);
+        if (motorista.tipo_motorista !== 'FROTA') throw new AppError('Motorista fora da frota administrativa', 400);
+        await garantirCnhValida(trx, viagem.motorista_id, ultimoDiaDaSolicitacao({
+          data_saida_desejada: inicio, data_chegada_desejada: fim,
+        }));
+        const conflito = () => viagensConflitantes(trx, inicio, fim).whereNot('vf.id', id);
+        if (await conflito().where('vf.veiculo_id', viagem.veiculo_id).first('vf.id')) {
+          throw new AppError('O veículo já possui viagem no período planejado', 409, 'CONFLITO_AGENDA');
+        }
+        if (await conflito().where('vf.motorista_id', viagem.motorista_id).first('vf.id')) {
+          throw new AppError('O motorista já possui viagem no período planejado', 409, 'CONFLITO_AGENDA');
+        }
+        // Evidências e exceções são vinculadas ao mesmo registro, condutor, veículo e fase.
+        // Nenhum desses vínculos muda: preserva-se a autorização e a validade original das evidências.
+        await trx('viagens_frota').where({ id }).update({
+          inicio_previsto: inicio, fim_previsto: fim, versao_programacao: viagem.versao_programacao + 1,
+        });
+        auditoriaId = await auditoriaModel.registrarComId({
+          usuario_id: autor.id, modulo: MODULOS_AUDITORIA.VIAGENS,
+          acao: `REPROGRAMOU_VIAGEM id=${id} antes=${periodo.inicio.toISOString()}/${periodo.fim.toISOString()} depois=${inicio.toISOString()}/${fim.toISOString()}`,
+        }, trx);
+        if (configNotificacoes.ativas) {
+          const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, id);
+          const avisos = montarAvisosViagemReprogramada(id, `auditoria:${auditoriaId}`);
+          await publicarNotificacao(trx, prepararEventoViagem(id, avisos.motorista, autor.id, destinatarios.motorista));
+          const motoristas = new Set(destinatarios.motorista);
+          await publicarNotificacao(trx, prepararEventoViagem(id, avisos.solicitante, autor.id,
+            destinatarios.solicitante.filter((uid) => !motoristas.has(uid))));
+        }
+      }
+      // Persiste inclusive a resposta sem alteração: retry posterior não se transforma em mudança.
+      await trx('reprogramacoes_viagem_frota').insert({
+        viagem_id: id, chave, autor_id: autor.id, versao_esperada: dados.versao_programacao,
+        inicio_previsto: inicio, fim_previsto: fim, auditoria_id: auditoriaId,
+      });
+      return detalhar(trx, 'ADMINISTRATIVA', id);
+    });
+  },
+
   async criar(dados: CriarViagemInput, autor: Autor): Promise<ViagemDetalhada> {
     garantirAcesso(autor.perfil, dados.tipo_operacao);
 
@@ -535,6 +643,15 @@ export const viagemService = {
         autor.id,
         `${dados.tipo_operacao === 'SVO' ? 'ALOCOU_ORDEM_SVO' : 'CRIOU_VIAGEM'} tipo=${dados.tipo_operacao} id=${id} veiculo=${dados.veiculo_id} motorista=${dados.motorista_id}`
       );
+
+      if (dados.tipo_operacao === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, id);
+        const aviso = montarAvisoViagemAgendada(id);
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(id, aviso, autor.id, destinatarios.motorista)
+        );
+      }
 
       return detalhar(trx, dados.tipo_operacao, id);
     });
@@ -612,6 +729,24 @@ export const viagemService = {
       await registrarAuditoria(trx, autor.id,
         `INICIOU_VIAGEM tipo=${tipo} id=${viagemId} km_inicial=${kmInicial}${evidenciaSaida ? ` evidencia=${evidenciaSaida}` : ''}`);
 
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
+        const avisos = montarAvisosAndamentoViagem(viagemId, 'INICIADA');
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.gestor, autor.id, destinatarios.gestores)
+        );
+
+        const gestores = new Set(destinatarios.gestores);
+        const solicitantes = destinatarios.solicitante.filter(id => !gestores.has(id));
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.solicitante, autor.id, solicitantes)
+        );
+      }
+
       return detalhar(trx, tipo, viagemId);
     });
   },
@@ -674,6 +809,24 @@ export const viagemService = {
       await registrarAuditoria(trx, autor.id,
         `FINALIZOU_VIAGEM tipo=${tipo} id=${viagemId} km_final=${kmFinal}${evidenciaChegada ? ` evidencia=${evidenciaChegada}` : ''}`);
 
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
+        const avisos = montarAvisosAndamentoViagem(viagemId, 'FINALIZADA');
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.gestor, autor.id, destinatarios.gestores)
+        );
+
+        const gestores = new Set(destinatarios.gestores);
+        const solicitantes = destinatarios.solicitante.filter(id => !gestores.has(id));
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.solicitante, autor.id, solicitantes)
+        );
+      }
+
       return detalhar(trx, tipo, viagemId);
     });
   },
@@ -725,6 +878,24 @@ export const viagemService = {
         autor.id,
         `CANCELOU_VIAGEM tipo=${tipo} id=${viagemId}${cancelarSolicitacao ? ' solicitacao_cancelada' : ''}`
       );
+
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        const destinatarios = await buscarDestinatariosViagemAdministrativa(trx, viagemId);
+        const avisos = montarAvisosViagemCancelada(viagemId);
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.motorista, autor.id, destinatarios.motorista)
+        );
+
+        const motoristas = new Set(destinatarios.motorista);
+        const solicitantes = destinatarios.solicitante.filter(id => !motoristas.has(id));
+
+        await publicarNotificacao(
+          trx,
+          prepararEventoViagem(viagemId, avisos.solicitante, autor.id, solicitantes)
+        );
+      }
 
       return detalhar(trx, tipo, viagemId);
     });

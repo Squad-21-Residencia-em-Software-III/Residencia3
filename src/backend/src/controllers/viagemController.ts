@@ -11,6 +11,7 @@ import {
   criarViagemSchema,
   finalizarViagemSchema,
   iniciarViagemSchema,
+  reprogramarViagemAdministrativaSchema,
 } from '../validators/viagemSchemas';
 
 const paginacaoSchema = z.object({
@@ -26,6 +27,11 @@ export const viagemController = {
   async listarMinhasColetasSvo(req: Request, res: Response): Promise<void> {
     const { pagina, limite } = paginacaoSchema.parse(req.query);
     res.json(await listarMinhasColetasSvo(usuarioAutenticado(req).id, pagina, limite));
+  },
+  async reprogramarAdministrativa(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    const dados = reprogramarViagemAdministrativaSchema.parse(req.body);
+    res.json(await viagemService.reprogramarAdministrativa(id, dados, usuarioAutenticado(req)));
   },
   async reprogramarOrdemSvo(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);

@@ -362,6 +362,12 @@ function SolicitacoesAdministrativas() {
                         Retorno: {formatarDataHora(s.data_chegada_desejada)}
                       </div>
                     )}
+                    {s.inicio_planejado && (
+                      <div className="mt-1 text-xs text-slate-700">
+                        Planejado: {formatarDataHora(s.inicio_planejado)}
+                        {s.fim_planejado && <> até {formatarDataHora(s.fim_planejado)}</>}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <span

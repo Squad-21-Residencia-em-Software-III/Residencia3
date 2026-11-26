@@ -2,6 +2,7 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 import type { TipoOperacao } from '../validators/viagemSchemas';
+import { INICIO_PLANEJADO_SQL, FIM_PLANEJADO_SQL } from './periodoViagemAdministrativa';
 
 export const LIMITE_MAXIMO_VIAGENS = 200;
 
@@ -29,6 +30,11 @@ export interface ViagemDetalhada {
   solicitante_nome: string | null;
   inicio_previsto: Date | null;
   fim_previsto: Date | null;
+  inicio_solicitado?: Date | null;
+  fim_solicitado?: Date | null;
+  versao_programacao?: number | null;
+  unidade_id?: number | null;
+  pode_reprogramar?: boolean;
   veiculo_id: number;
   veiculo_modelo: string;
   veiculo_placa: string;
@@ -56,8 +62,12 @@ export const VIAGENS_UNIFICADAS_SQL = `
     sv.finalidade,
     (to_jsonb(sv)->>'material_sensivel')::boolean AS material_sensivel,
     us.nome AS solicitante_nome,
-    sv.data_saida_desejada AS inicio_previsto,
-    sv.data_chegada_desejada AS fim_previsto,
+    ${INICIO_PLANEJADO_SQL} AS inicio_previsto,
+    ${FIM_PLANEJADO_SQL} AS fim_previsto,
+    sv.data_saida_desejada AS inicio_solicitado,
+    sv.data_chegada_desejada AS fim_solicitado,
+    vf.versao_programacao,
+    sv.unidade_id,
     vf.veiculo_id,
     v.modelo AS veiculo_modelo,
     v.placa AS veiculo_placa,
@@ -92,6 +102,10 @@ export const VIAGENS_UNIFICADAS_SQL = `
     ur.nome AS solicitante_nome,
     o.inicio_previsto,
     o.fim_previsto,
+    NULL::timestamptz AS inicio_solicitado,
+    NULL::timestamptz AS fim_solicitado,
+    NULL::integer AS versao_programacao,
+    NULL::integer AS unidade_id,
     o.veiculo_id,
     v.modelo AS veiculo_modelo,
     v.placa AS veiculo_placa,
@@ -147,8 +161,9 @@ export const viagemModel = {
           'vf.status', 'vf.data_hora_efetiva_saida', 'vf.data_hora_efetiva_chegada')
         .select(db.raw("'ADMINISTRATIVA' as tipo_operacao"))
         .select(db.raw("(to_jsonb(sv)->>'material_sensivel')::boolean as material_sensivel"))
-        .select('sv.data_saida_desejada as inicio_previsto', 'sv.data_chegada_desejada as fim_previsto')
-        .orderBy('sv.data_saida_desejada', 'desc', 'last')
+        .select(db.raw(`${INICIO_PLANEJADO_SQL} as inicio_previsto, ${FIM_PLANEJADO_SQL} as fim_previsto`))
+        .select('sv.data_saida_desejada as inicio_solicitado', 'sv.data_chegada_desejada as fim_solicitado')
+        .orderBy('inicio_previsto', 'desc', 'last')
         .orderBy('vf.id', 'desc')
         .limit(limite).offset((pagina - 1) * limite),
       base().count<{ total: string }[]>({ total: 'vf.id' }).first(),
@@ -173,6 +188,10 @@ export const viagemModel = {
         'solicitante_nome',
         'inicio_previsto',
         'fim_previsto',
+        'inicio_solicitado',
+        'fim_solicitado',
+        'versao_programacao',
+        'unidade_id',
         'veiculo_id',
         'veiculo_modelo',
         'veiculo_placa',
@@ -222,6 +241,10 @@ export const viagemModel = {
         'solicitante_nome',
         'inicio_previsto',
         'fim_previsto',
+        'inicio_solicitado',
+        'fim_solicitado',
+        'versao_programacao',
+        'unidade_id',
         'veiculo_id',
         'veiculo_modelo',
         'veiculo_placa',

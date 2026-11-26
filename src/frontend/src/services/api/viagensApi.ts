@@ -4,6 +4,7 @@ import type {
   AgendamentoColetaSvoInput,
   NovaViagemInput,
   OrdemPendenteSvo,
+  ReprogramarViagemAdministrativaInput,
   Viagem,
 } from '../../types/viagem'
 import { ApiError, CODIGO_CANCELADO, request } from './http'
@@ -88,6 +89,11 @@ export const viagensApi = {
   },
 
   criar: (dados: NovaViagemInput) => request<Viagem>('POST', '/viagens', { body: dados }),
+
+  reprogramarAdministrativa: (id: number, dados: ReprogramarViagemAdministrativaInput) =>
+    request<Viagem>('PATCH', `/viagens/administrativas/${id}/reprogramar`, {
+      body: { tipo_operacao: 'ADMINISTRATIVA', ...dados },
+    }),
 
   /**
    * Agenda a coleta de uma ordem SVO. Período e confirmação de intervalo curto só seguem com o
