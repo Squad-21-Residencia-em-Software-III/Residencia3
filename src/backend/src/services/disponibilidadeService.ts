@@ -2,6 +2,7 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
+import { INICIO_PLANEJADO_SQL, FIM_PLANEJADO_SQL } from '../models/periodoViagemAdministrativa';
 
 // Status de viagem que ocupam o veículo e o motorista
 const STATUS_VIAGEM_ATIVA = ['AGENDADA', 'EM_ANDAMENTO'];
@@ -12,12 +13,6 @@ export const STATUS_MOTORISTA_BLOQUEADO = ['INATIVO', 'AFASTADO'];
 
 // Fuso de referência para "fim do dia", independente do fuso do servidor ou da sessão do banco
 const FUSO_OPERACAO = 'America/Sao_Paulo';
-
-// Sem data de chegada, a viagem ocupa até o fim do dia da saída (meia-noite seguinte em Brasília)
-const FIM_VIAGEM_SQL = `COALESCE(sv.data_chegada_desejada,
-  (date_trunc('day', sv.data_saida_desejada AT TIME ZONE '${FUSO_OPERACAO}') + interval '1 day')
-    AT TIME ZONE '${FUSO_OPERACAO}'
-)`;
 
 // Data (ano, mês, dia) de um instante no horário de Brasília
 function dataEmBrasilia(instante: Date) {
@@ -71,7 +66,7 @@ export function periodoDaSolicitacao(solicitacao: SolicitacaoComPeriodo) {
     throw new AppError('Período da solicitação inválido', 400);
   }
 
-  // Mesma regra de FIM_VIAGEM_SQL: sem chegada, vai até o fim do dia da saída em Brasília
+  // Mesma regra de FIM_PLANEJADO_SQL: sem chegada, vai até o fim do dia da saída em Brasília
   const fim = solicitacao.data_chegada_desejada
     ? new Date(solicitacao.data_chegada_desejada)
     : fimDoDiaEmBrasilia(inicio);
@@ -111,8 +106,8 @@ export function viagensConflitantes(
       'vf.solicitacao_id'
     )
     .whereIn('vf.status', STATUS_VIAGEM_ATIVA)
-    .where('sv.data_saida_desejada', '<', fim)
-    .whereRaw(`${FIM_VIAGEM_SQL} > ?`, [inicio]);
+    .whereRaw(`${INICIO_PLANEJADO_SQL} < ?`, [fim])
+    .whereRaw(`${FIM_PLANEJADO_SQL} > ?`, [inicio]);
 }
 
 export const disponibilidadeService = {

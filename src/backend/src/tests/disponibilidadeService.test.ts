@@ -208,11 +208,10 @@ describe('disponibilidadeService.consultar', () => {
 
     expect(subconsultas).toContainEqual({
       tabela: 'viagens_frota as vf',
-      metodo: 'where',
+      metodo: 'whereRaw',
       argumentos: [
-        'sv.data_saida_desejada',
-        '<',
-        new Date('2026-11-10T17:00:00-03:00'),
+        'COALESCE(vf.inicio_previsto, sv.data_saida_desejada) < ?',
+        [new Date('2026-11-10T17:00:00-03:00')],
       ],
     });
 
@@ -221,7 +220,7 @@ describe('disponibilidadeService.consultar', () => {
       metodo: 'whereRaw',
       argumentos: [
         expect.stringMatching(
-          /COALESCE\(sv\.data_chegada_desejada[\s\S]*AT TIME ZONE 'America\/Sao_Paulo'\) \+ interval '1 day'\)\s*AT TIME ZONE 'America\/Sao_Paulo'/
+          /COALESCE\(vf\.fim_previsto, sv\.data_chegada_desejada[\s\S]*AT TIME ZONE 'America\/Sao_Paulo'\) \+ interval '1 day'\)\s*AT TIME ZONE 'America\/Sao_Paulo'/
         ),
         [new Date('2026-11-10T08:00:00-03:00')],
       ],

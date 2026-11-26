@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotificacoesOpcional } from '../../contexts/NotificacoesContext';
 import type { SeveridadeNotificacao } from '../../types/notificacao';
+import { ApiError } from '../../services/api/http';
+import { notificacoesApi } from '../../services/api/notificacoesApi';
+import { idNotificacao } from '../../sw/logicaPushSw';
+import { comLimite, sinalDaSessao } from '../../utils/operacoesPush';
 import { cn } from '../../utils/cn';
 import { resolverDestinoNotificacao } from '../../utils/destinoNotificacao';
 
@@ -39,13 +43,22 @@ export function ToastNotificacao() {
 
   const { caixa, Icone } = ESTILO_TOAST[toast.severidade ?? 'info'] ?? ESTILO_TOAST.info;
 
-  const aoAbrir = () => {
-    const { url } = resolverDestinoNotificacao(toast.url_destino, usuario?.perfil);
-    if (typeof toast.id === 'number' && marcarLida) {
-      void marcarLida(toast.id);
+  const aoAbrir = async () => {
+    if (!usuario || !idNotificacao(toast.id)) return;
+    const id = toast.id;
+    const sinal = sinalDaSessao();
+    try {
+      const item = await comLimite(sinal, (signal) => notificacoesApi.obter(id, signal));
+      if (sinal.aborted || item.id !== id) return;
+      fecharToast();
+      navigate(resolverDestinoNotificacao(item.acesso_revogado ? null : item.url_destino, usuario.perfil).url);
+      if (!item.acesso_revogado) void marcarLida?.(id);
+    } catch (erro) {
+      if (!sinal.aborted && erro instanceof ApiError && [400, 403, 404].includes(erro.status)) {
+        fecharToast();
+        navigate(resolverDestinoNotificacao(null, usuario.perfil).url);
+      }
     }
-    fecharToast();
-    navigate(url);
   };
 
   return (

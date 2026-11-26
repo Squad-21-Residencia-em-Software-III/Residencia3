@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { INICIO_PLANEJADO_SQL, FIM_PLANEJADO_SQL } from './periodoViagemAdministrativa';
 
 import type { StatusSolicitacaoViagem } from '../constants/solicitacoesViagem';
 
@@ -22,6 +23,8 @@ export interface SolicitacaoViagem extends Omit<NovaSolicitacaoViagem, 'unidade_
   unidade_id: number | null;
   status: StatusSolicitacaoViagem;
   motivo_recusa?: string | null;
+  inicio_planejado?: Date | null;
+  fim_planejado?: Date | null;
 }
 
 export interface SolicitacaoViagemDetalhada extends SolicitacaoViagem {
@@ -93,6 +96,10 @@ export const solicitacaoViagemModel = {
         .leftJoin('unidades as un', 'un.id', 'sv.unidade_id')
         .join('usuarios as u', 'u.id', 'sv.solicitante_id')
         .select('sv.*', 'un.nome as unidade_nome', 'u.nome as solicitante_nome')
+        .select(db.raw(`(SELECT ${INICIO_PLANEJADO_SQL} FROM viagens_frota vf
+          WHERE vf.solicitacao_id = sv.id AND vf.status <> 'CANCELADA' ORDER BY vf.id DESC LIMIT 1) AS inicio_planejado`))
+        .select(db.raw(`(SELECT ${FIM_PLANEJADO_SQL} FROM viagens_frota vf
+          WHERE vf.solicitacao_id = sv.id AND vf.status <> 'CANCELADA' ORDER BY vf.id DESC LIMIT 1) AS fim_planejado`))
         .orderBy([{ column: 'sv.data_saida_desejada' }, { column: 'sv.id' }])
         .limit(filtros.limite)
         .offset((filtros.pagina - 1) * filtros.limite),
@@ -120,7 +127,8 @@ export const solicitacaoViagemModel = {
         // Viagem mais recente não cancelada: mostra o veículo e o motorista do agendamento
         .joinRaw(
           `LEFT JOIN LATERAL (
-            SELECT vf.id, vf.status, v.placa, v.modelo, um.nome AS motorista_nome
+            SELECT vf.id, vf.status, v.placa, v.modelo, um.nome AS motorista_nome,
+              ${INICIO_PLANEJADO_SQL} AS inicio_planejado, ${FIM_PLANEJADO_SQL} AS fim_planejado
             FROM viagens_frota vf
             LEFT JOIN veiculos v ON v.id = vf.veiculo_id
             LEFT JOIN motoristas m ON m.id = vf.motorista_id
@@ -135,6 +143,8 @@ export const solicitacaoViagemModel = {
           'un.nome as unidade_nome',
           'viagem.id as viagem_id',
           'viagem.status as viagem_status',
+          'viagem.inicio_planejado',
+          'viagem.fim_planejado',
           'viagem.placa as veiculo_placa',
           'viagem.modelo as veiculo_modelo',
           'viagem.motorista_nome as motorista_nome'

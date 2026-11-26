@@ -43,6 +43,9 @@ viagemRoutes.patch(
   viagemController.registrarChegadaLocalSvo
 );
 
+viagemRoutes.patch('/administrativas/:id/reprogramar',
+  autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA), viagemController.reprogramarAdministrativa);
+
 viagemRoutes.post('/', gestores, viagemController.criar);
 
 viagemRoutes.patch('/:id/iniciar', gestoresEMotoristas, viagemController.iniciar);

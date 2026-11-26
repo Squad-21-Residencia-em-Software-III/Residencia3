@@ -24,6 +24,7 @@ export interface ItemFilaPush {
 
 export interface AssinaturaAtiva {
   id: number;
+  geracao_vinculo: number;
   endpoint: string;
   p256dh: string;
   auth: string;
@@ -146,13 +147,13 @@ export const notificacaoOutboxModel = {
     const assinaturas: AssinaturaAtiva[] = await conexao('push_subscriptions')
       .where({ usuario_id, ativa: true })
       .orderBy('id')
-      .select('id', 'endpoint', 'p256dh', 'auth');
+      .select('id', 'geracao_vinculo', 'endpoint', 'p256dh', 'auth');
     return assinaturas.length > 0 ? assinaturas : 'SEM_ASSINATURA';
   },
 
-  /** As chaves entram na condição: se a pessoa assinou de novo no meio do envio, o resultado antigo não vale. */
+  /** O resultado de um envio só altera a assinatura que efetivamente o recebeu. */
   async registrarEnvio(
-    { id, p256dh, auth }: AssinaturaAtiva,
+    { id, geracao_vinculo, p256dh, auth }: AssinaturaAtiva,
     resultado: 'sucesso' | 'expirada' | 'falha',
     statusHttp: number | null,
     conexao: Knex = db
@@ -164,7 +165,7 @@ export const notificacaoOutboxModel = {
       expirada: { status: 'EXPIRADA', ativa: false, expirada_em: agora, ultimo_erro_em: agora },
     }[resultado];
     await conexao('push_subscriptions')
-      .where({ id, p256dh, auth, ativa: true })
+      .where({ id, geracao_vinculo, p256dh, auth, ativa: true })
       .update({ ...campos, ultimo_status_http: statusHttp, atualizado_em: agora });
   },
 };
