@@ -212,7 +212,7 @@ npm run build
 
 ## Configuração dos fluxos por ambiente
 
-O [guia de operação](operacao-odometro-e-agenda-svo.md) informa as migrations, as flags da API e da Vercel, os crons e os passos de homologação. A interface está descrita no [manual do usuário](manual-fluxos-operacionais.md).
+O [guia de operação](operacao-odometro-e-agenda-svo.md) informa as migrations, as flags da API e da Vercel, os crons e os passos de homologação. A interface está descrita no [manual do usuário](manual-fluxos-operacionais.md). A liberação dos avisos e dos alertas no aparelho, com como desfazer, custo e métricas, está em [scrum-241-implantacao-push.md](scrum-241-implantacao-push.md).
 
 ## Problemas comuns
 - **`docker compose` não encontra o `.env`**: o arquivo precisa estar na **raiz** do projeto, não dentro de `src/backend`.
