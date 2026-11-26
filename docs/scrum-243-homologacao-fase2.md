@@ -10,11 +10,13 @@ Execução em **26/11/2026** para [SCRUM-243](https://squad21.atlassian.net/brow
 - Julgamentos específicos nos PRs [#219](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/219) (A9/A10, base da develop), [#222](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/222) (integração `d016f1a`, 41 aprovados e um omitido), [#221](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/221) (21 testes direcionados do frontend) e [#220](https://github.com/Squad-21-Residencia-em-Software-III/Residencia3/pull/220) (quatro testes de desempenho em API/PG local).
 - As linhas com falha por revisão identificam o comportamento diretamente no HEAD indicado. As linhas Não executado preservam o resultado parcial quando só uma parte do cenário foi exercitada.
 
+- Integração complementar em 450cb47720539db0c1845712cfe61f3c38696be5 com 24 testes administrativos aprovados e um omitido. Agendamento, cancelamento e A8 exercitados via HTTP e PostgreSQL. A revisão da branch confirmou que A6 possui montador e teste unitário, mas não acionamento por operação real.
+
 ## NF-01 a NF-28
 
 | NF | Perfil | Ambiente | Pré-condição e ação | Esperado | Observado e evidência | Status | Referência ou impedimento |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `NF-01` | Todos administrativos | PG + mocks | Executar **A1–A10**, incluindo aprovação, recusa, expiração, agendamento, reprogramação, cancelamento, início/fim e exceções de odômetro. | Destinatários/canais/conteúdo/deep links coincidem com a matriz; nenhum evento dispara para pessoa de operação indevida. | A1–A4 e A9/A10 no PostgreSQL. A5–A8 exercitados com mocks. | **Não executado** | #219, SCRUM-231 |
+| `NF-01` | Todos administrativos | PG + mocks | Executar **A1–A10**, incluindo aprovação, recusa, expiração, agendamento, reprogramação, cancelamento, início/fim e exceções de odômetro. | Destinatários/canais/conteúdo/deep links coincidem com a matriz; nenhum evento dispara para pessoa de operação indevida. | A1–A5 e A7–A10 exercitados em PostgreSQL. A6 sem gatilho administrativo no HEAD da SCRUM-231. | **Falhou** | #219, SCRUM-231 |
 | `NF-02` | Gestão e equipe SVO | PG | Executar **S1–S8**, inclusive prioridade de material sensível, designação individual, reagendamento, cancelamento, `NO_LOCAL`, conclusão e exceção. | Somente Gestor SVO/Administrador e equipe efetivamente autorizada recebem os avisos; integrante não designado não recebe nem consulta a notificação. | S1 e S3–S8 exercitados em suítes. S2 sem fonte. Identidade de S3/S4 ainda derivada da agenda. | **Falhou** | #208, #214 |
 | `NF-03` | Gestor SVO autor e gestores | PG | Repetir ações com o autor pertencendo também a um perfil destinatário; cenário de gestor SVO autor de solicitação administrativa. | A regra anti-autonotificação prevalece; demais destinatários permanecem corretos. | Suítes de solicitações e SVO excluem o autor da ação. | **Passou** | avisosSolicitacaoPostgres, avisosSvoS3S5Postgres |
 | `NF-04` | Todos com categorias | PG + mocks | Gerar eventos baixa/alta/crítica, alternando preferências permitidas. | Eventos leves ficam In-App conforme matriz; Push apenas quando previsto e consentido; categorias desativadas não provocam envio indevido. | Preferências atuais verificadas no envio. Cruzamento completo de prioridades e elegibilidade do App Badge pendente. | **Não executado** | pushPostgres, #216 |
@@ -53,10 +55,10 @@ Os canais representam o contrato. Badge significa elegibilidade ao App Badge, co
 | A2 | Solicitante ou Gestor SVO autor | In-App, Push, Badge | /solicitacoes | Passou no backend com operação administrativa. |
 | A3 | Solicitante ou Gestor SVO autor | In-App, Push neutro, Badge | /solicitacoes | Passou no backend com motivo restrito ao conteúdo autorizado. |
 | A4 | Autor e Gestor Frota | Autor com Push, ambos In-App, Badge previsto | /solicitacoes | Passou no backend usando a rotina real de mudança para EXPIRADA no PostgreSQL isolado. Workflow publicado pendente. |
-| A5 | Motorista Frota | In-App, Push, Badge | /viagens | Não executado ponta a ponta. Testes de serviço da SCRUM-231 exercitados. |
-| A6 | Motorista Frota e autor autorizado | In-App, Push, Badge, tag viagem-{id} | /viagens e /solicitacoes | Não executado ponta a ponta. Reprogramações no serviço exercitadas. |
-| A7 | Motorista Frota e autor autorizado | In-App, Push, Badge, tag viagem-{id} | /viagens e /solicitacoes | Não executado ponta a ponta. Montagem e serviço exercitados. |
-| A8 | Gestor Frota e autor autorizado | In-App, início e fim distintos | /viagens e /solicitacoes | Não executado ponta a ponta. Canal e fases verificados em testes da SCRUM-231. |
+| A5 | Motorista Frota | In-App, Push, Badge | /viagens | Passou via API, PostgreSQL e outbox na integração complementar. |
+| A6 | Motorista Frota e autor autorizado | In-App, Push, Badge, tag viagem-{id} | /viagens e /solicitacoes | Falhou na revisão. O montador de A6 não é chamado por serviço ou rota administrativa. |
+| A7 | Motorista Frota e autor autorizado | In-App, Push, Badge, tag viagem-{id} | /viagens e /solicitacoes | Passou via API e fila com tag e destinatários. A revogação específica após cancelamento requer aceite complementar. |
+| A8 | Gestor Frota e autor autorizado | In-App, início e fim distintos | /viagens e /solicitacoes | Passou via API e central com duas ocorrências distintas e sem outbox. Verificação do App Badge em dispositivo pendente. |
 | A9 | Gestor Frota e Admin autorizados | In-App, Push, Badge | /viagens | Passou via API, PostgreSQL e outbox no #219. |
 | A10 | Motorista Frota autorizado | In-App, Push neutro, Badge | /viagens | Passou via API, PostgreSQL e outbox no #219. |
 | S1 | Gestor SVO da unidade e Admin | In-App, Push, Badge | /solicitacoes?aba=svo | Passou no backend com exclusão do autor. |
@@ -80,4 +82,4 @@ Os canais representam o contrato. Badge significa elegibilidade ao App Badge, co
 | MOTORISTA_SVO | Condutor designado da coleta. /viagens. |
 | INTEGRANTE_SVO | Designação individual válida ou histórico autorizado. /minhas-coletas. |
 
-A homologação integrada segue bloqueada por autorização e isolamento no PWA, pela identidade de ocorrências SVO e pela ausência da fonte funcional do S2. A decisão de homologação pertence ao QA independente.
+A homologação integrada segue bloqueada pelo gatilho ausente de A6, por autorização e isolamento no PWA, pela identidade de ocorrências SVO e pela ausência da fonte funcional do S2. A decisão de homologação pertence ao QA independente.
