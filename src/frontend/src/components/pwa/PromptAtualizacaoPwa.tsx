@@ -18,7 +18,7 @@ export function PromptAtualizacaoPwa() {
     <div
       role="alert"
       aria-live="assertive"
-      className="fixed right-4 bottom-4 left-4 z-110 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3.5 shadow-xl md:left-auto md:max-w-md"
+      className="fixed right-4 bottom-[calc(1rem+var(--altura-barra-inferior,0px))] left-4 z-110 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3.5 shadow-xl md:left-auto md:max-w-md"
     >
       <div className="flex items-center gap-2.5 text-xs text-text">
         <RefreshCw size={16} className="shrink-0 text-primary" aria-hidden="true" />

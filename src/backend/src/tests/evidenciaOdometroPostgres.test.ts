@@ -5,14 +5,16 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import sharp from 'sharp';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
+import { configNotificacoes } from '../config/notificacoes';
 import { db } from '../config/database';
 import { env } from '../config/env';
 import { armazenamentoEvidencias, definirArmazenamentoEvidencias } from '../services/armazenamentoEvidencias';
 import { TABELA_ARQUIVOS_ODOMETRO } from '../services/armazenamentoEvidenciasPostgres';
 import { normalizarFotoOdometro } from '../services/imagemEvidencias';
 import { excecaoOdometroService } from '../services/excecaoOdometroService';
+import * as publicacao from '../services/publicacaoNotificacoes';
 import { processarRetencaoEvidencias } from '../services/retencaoEvidencias';
 import { AppError } from '../errors/AppError';
 
@@ -99,6 +101,8 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
+    configNotificacoes.ativas = false;
     env.fotosOdometroObrigatorias = false;
     env.excecoesOdometroAtivas = false;
     env.evidenciasPostgresLimiteBytes = limiteOriginal;
@@ -181,6 +185,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
   });
 
   it('autoriza a dispensa administrativa só para a fase e a viagem designadas, com auditoria', async () => {
+    configNotificacoes.ativas = true;
     env.excecoesOdometroAtivas = true;
     env.fotosOdometroObrigatorias = true;
     const { condutor, viagem } = await viagemAdministrativa();
@@ -201,8 +206,14 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(pedidos.map((r) => r.status)).toEqual([201, 201]);
     expect(pedidos[0]!.body.id).toBe(pedidos[1]!.body.id);
     const id = pedidos[0]!.body.id;
-    expect((await request(app).get(rota).query({ tipo_operacao: 'ADMINISTRATIVA' }).set('Authorization', gestor.token))
-      .body.dados).toEqual([expect.objectContaining({ id, fase: 'SAIDA', status: 'PENDENTE' })]);
+    const referencia = { referencia_tipo: 'VIAGEM_FROTA', referencia_id: viagem.id };
+    expect(await db('notificacoes').where({ ...referencia, usuario_id: gestor.id }))
+      .toEqual([expect.objectContaining({ tipo: 'EXCECAO_ODOMETRO_SOLICITADA' })]);
+    expect(await db('notificacoes').where({ ...referencia, usuario_id: gestorSvo.id })).toHaveLength(0);
+
+    const pendentes = await request(app).get(rota).query({ tipo_operacao: 'ADMINISTRATIVA' }).set('Authorization', gestor.token);
+    expect(pendentes.body.dados.filter((item: { viagem_id: number }) => item.viagem_id === viagem.id))
+      .toEqual([expect.objectContaining({ id, fase: 'SAIDA', status: 'PENDENTE' })]);
     expect((await transicao(condutor.token, 'iniciar', viagem.id, { km_inicial: 1010 })).body.codigo).toBe('EVIDENCIA_OBRIGATORIA');
 
     const decidir = (token: string, decisao = 'APROVADA', justificativa = 'Impossibilidade verificada em contato') =>
@@ -217,6 +228,19 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     const decisoes = await Promise.all([decidir(gestor.token), decidir(gestor.token)]);
     expect(decisoes.map((r) => r.status).sort()).toEqual([200, 409]);
 
+    const avisoMotorista = await db('notificacoes').where({ ...referencia, usuario_id: condutor.id }).first();
+    expect(avisoMotorista.mensagem).toContain('Impossibilidade verificada em contato');
+    const push = await db('notificacao_outbox').where({ notificacao_id: avisoMotorista.id }).first();
+    expect(push.ocorrencia_versao).toEqual('SAIDA:' + id + ':aprovada');
+    expect(JSON.stringify(push.payload_push)).not.toContain('Impossibilidade verificada');
+    const central = () => request(app).get('/api/notificacoes').set('Authorization', condutor.token);
+    expect((await central()).body.itens).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: avisoMotorista.id, acesso_revogado: false }),
+    ]));
+    const ler = await request(app).patch('/api/notificacoes/referencia/lida').set('Authorization', condutor.token)
+      .send(referencia);
+    expect(ler.body.atualizadas).toBe(1);
+
     const consulta = await request(app).get('/api/evidencias-odometro')
       .query({ tipo_operacao: 'ADMINISTRATIVA', viagem_id: viagem.id }).set('Authorization', condutor.token);
     expect(consulta.body.pedidos_excecao).toEqual([expect.objectContaining({ id, status: 'APROVADA' })]);
@@ -225,6 +249,10 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
       .toBe('EVIDENCIA_OBRIGATORIA');
     expect((await transicao(condutor.token, 'iniciar', viagem.id, { km_inicial: 1010 })).status).toBe(200);
     expect((await transicao(condutor.token, 'finalizar', viagem.id, { km_final: 1020 })).body.codigo).toBe('EVIDENCIA_OBRIGATORIA');
+    const chegada = await solicitar(condutor.token, { ...dados, fase: 'CHEGADA' });
+    expect(chegada.status).toBe(201);
+    expect(await db('notificacao_outbox').where({ ...referencia, usuario_id: gestor.id }).pluck('ocorrencia_versao'))
+      .toEqual(expect.arrayContaining(['SAIDA:' + id + ':solicitada', 'CHEGADA:' + chegada.body.id + ':solicitada']));
     const evidencia = await db('evidencias_odometro').where({ viagem_frota_id: viagem.id }).first();
     expect(evidencia).toMatchObject({
       fase: 'SAIDA', modalidade: 'EXCECAO_GESTOR', km_registrado: 1010,
@@ -233,9 +261,14 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(await db('excecoes_odometro').where({ id }).first()).toMatchObject({ evidencia_id: evidencia.id });
     expect(await db('auditorias').where({ id: evidencia.auditoria_id }).first()).toMatchObject({ usuario_id: gestor.id });
     expect(await db(TABELA_ARQUIVOS_ODOMETRO).where({ evidencia_id: evidencia.id })).toHaveLength(0);
+    await db('viagens_frota').where({ id: viagem.id }).update({ motorista_id: outra.motorista.id });
+    const itemRevogado = (await central()).body.itens.find((item: { id: number }) => item.id === avisoMotorista.id);
+    expect(itemRevogado).toMatchObject({ acesso_revogado: true, referencia_id: null });
+    expect(itemRevogado.mensagem).not.toContain('Impossibilidade verificada');
   });
 
   it('mantém a recusa e isola a autorização SVO até confirmar o deslocamento compartilhado', async () => {
+    configNotificacoes.ativas = true;
     env.excecoesOdometroAtivas = true;
     env.fotosOdometroObrigatorias = true;
     const gestor = await usuario('GESTOR_SVO');
@@ -257,6 +290,8 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(segundo.id).not.toBe(primeiro.id);
     expect((await decidir(segundo.id, 'APROVADA', administrador.token)).status).toBe(200);
     expect(await db('excecoes_odometro').where({ id: primeiro.id }).first()).toMatchObject({ status: 'RECUSADA' });
+    expect(await db('notificacao_outbox').where({ operacao: 'SVO' })
+      .whereIn('evento_tipo', ['EXCECAO_ODOMETRO_SOLICITADA', 'EXCECAO_ODOMETRO_DECIDIDA'])).toHaveLength(0);
 
     const saida = { tipo_operacao: 'SVO', km_inicial: 1000 };
     expect((await transicao(r.condutor.token, 'iniciar', b.id, saida)).body.codigo).toBe('EVIDENCIA_OBRIGATORIA');
@@ -534,4 +569,28 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(envios.find((r) => r.status === 409)?.body.codigo).toBe('EVIDENCIAS_LIMITE_ARMAZENAMENTO');
     expect(await db('evidencias_odometro').whereIn('viagem_frota_id', [a.viagem.id, b.viagem.id])).toHaveLength(1);
   });
+  it('SCRUM-232 preserva a operação com a flag desligada e reverte gravações se a publicação falhar', async () => {
+    env.excecoesOdometroAtivas = true;
+    const desligada = await viagemAdministrativa();
+    const ligada = await viagemAdministrativa();
+    const pedido = (alvo: typeof desligada) => excecaoOdometroService.solicitar({
+      tipo_operacao: 'ADMINISTRATIVA', viagem_id: alvo.viagem.id, fase: 'SAIDA', motivo: 'Câmera indisponível',
+    }, { id: alvo.condutor.id, perfil: 'MOTORISTA_FROTA' });
+    await pedido(desligada);
+    expect(await db('notificacoes').where({ referencia_tipo: 'VIAGEM_FROTA', referencia_id: desligada.viagem.id }))
+      .toHaveLength(0);
+    configNotificacoes.ativas = true;
+    await usuario('GESTOR_FROTA');
+    const publicar = publicacao.publicarNotificacao;
+    vi.spyOn(publicacao, 'publicarNotificacao').mockImplementationOnce(async (...args) => {
+      await publicar(...args);
+      throw new Error('Falha simulada depois da publicação');
+    });
+    await expect(pedido(ligada)).rejects.toThrow('Falha simulada');
+    expect(await db('excecoes_odometro').where({ viagem_frota_id: ligada.viagem.id })).toHaveLength(0);
+    for (const tabela of ['notificacoes', 'notificacao_outbox']) {
+      expect(await db(tabela).where({ referencia_tipo: 'VIAGEM_FROTA', referencia_id: ligada.viagem.id })).toHaveLength(0);
+    }
+  });
+
 });

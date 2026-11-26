@@ -6,6 +6,8 @@ import { rotuloStatusViagem, viagemEmCurso, type StatusViagem, type Viagem } fro
 interface DrawerDetalhesViagemProps {
   viagem: Viagem | null;
   somentePropria?: boolean;
+  /** Motorista no celular: rodapé com voltar e a ação do momento, em botões grandes. */
+  compacto?: boolean;
   onClose: () => void;
   onIniciar?: (viagem: Viagem) => void;
   onRegistrarChegada?: (viagem: Viagem) => Promise<void>;
@@ -74,6 +76,7 @@ export function DrawerDetalhesViagem({
   onCancelar,
   onVerFotos,
   somentePropria = false,
+  compacto = false,
 }: DrawerDetalhesViagemProps) {
   const [viagemState, setViagemState] = useState<Viagem | null>(viagemProp);
 
@@ -122,7 +125,29 @@ export function DrawerDetalhesViagem({
         </div>
       }
       subtitle={subtitulo}
-      footer={
+      footer={compacto ? (
+        <div className="flex gap-2 [&>button]:min-h-13 [&>button]:px-4 [&>button:last-child]:flex-1">
+          <Button variant="outline" onClick={onClose}>
+            Voltar
+          </Button>
+          {viagem.status === 'AGENDADA' && onIniciar && (
+            <Button onClick={() => onIniciar(viagem)}>
+              <Play size={18} aria-hidden="true" /> Iniciar
+            </Button>
+          )}
+          {viagem.tipo_operacao === 'SVO' && viagem.status === 'EM_ANDAMENTO' && onRegistrarChegada ? (
+            <Button disabled={registrandoChegada} onClick={() => void onRegistrarChegada(viagem)}>
+              <MapPin size={18} aria-hidden="true" /> Cheguei ao local
+            </Button>
+          ) : (
+            viagemEmCurso(viagem.status) && onFinalizar && (
+              <Button disabled={registrandoChegada} onClick={() => onFinalizar(viagem)}>
+                <Flag size={18} aria-hidden="true" /> Finalizar
+              </Button>
+            )
+          )}
+        </div>
+      ) : (
         <div className="flex items-center justify-between gap-3">
           {viagem.status === 'AGENDADA' && onCancelar && !somentePropria ? (
             <Button
@@ -204,7 +229,7 @@ export function DrawerDetalhesViagem({
             )}
           </div>
         </div>
-      }
+      )}
     >
       {mensagemSucesso && <Alert tone="success">{mensagemSucesso}</Alert>}
       {mensagemErro && <Alert tone="danger">{mensagemErro}</Alert>}

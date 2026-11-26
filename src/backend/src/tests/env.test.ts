@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { carregarEnv } from '../config/env';
+import { generateVAPIDKeys } from 'web-push';
+import { carregarEnv, HOSTS_PUSH_PADRAO } from '../config/env';
 
 const SEGREDO_VALIDO = 'k3J9-qZx81_LmPv0Wb7Rt2Ys5Hn4Gc6Df';
 
@@ -179,5 +180,72 @@ describe('Segredos da cadeia de proxies (env)', () => {
   it.each(['PROXY_SECRET', 'DIAGNOSTICO_PROXY_TOKEN'])('%s fraco é recusado sem exibir o valor', (nome) => {
     expect(() => carregar({ [nome]: 'curto' })).toThrow(nome);
     expect(() => carregar({ [nome]: 'a'.repeat(40) })).toThrow('previsível');
+  });
+});
+
+describe('Configuração do Web Push (VAPID, SCRUM-237)', () => {
+  // Gerado na hora: nenhuma chave real fica no repositório
+  const par = generateVAPIDKeys();
+  const vapid = (extras: Record<string, string | undefined> = {}) =>
+    carregar({ VAPID_PUBLIC_KEY: par.publicKey, VAPID_PRIVATE_KEY: par.privateKey, VAPID_SUBJECT: 'mailto:frota@fsph.invalid', ...extras });
+  const mensagemDe = (fn: () => unknown) => {
+    try {
+      fn();
+      return '';
+    } catch (erro) {
+      return (erro as Error).message;
+    }
+  };
+
+  it('sem nenhuma chave, o push fica desligado', () => {
+    expect(carregar().webPush).toBeNull();
+  });
+
+  it('com as três, liga o push com os hosts padrão', () => {
+    expect(vapid().webPush).toEqual({
+      publicKey: par.publicKey, privateKey: par.privateKey, subject: 'mailto:frota@fsph.invalid', hostsPermitidos: HOSTS_PUSH_PADRAO,
+    });
+    expect(vapid({ VAPID_SUBJECT: 'https://frota.fsph.se.gov.br/contato' }).webPush?.subject).toBe('https://frota.fsph.se.gov.br/contato');
+  });
+
+  it.each([
+    ['sem a privada', { VAPID_PRIVATE_KEY: undefined }],
+    ['sem a pública', { VAPID_PUBLIC_KEY: undefined }],
+    ['sem o assunto', { VAPID_SUBJECT: '' }],
+  ])('recusa configuração parcial (%s)', (_caso, extras) => {
+    expect(() => vapid(extras)).toThrow('VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY e VAPID_SUBJECT');
+  });
+
+  it('recusa chaves fora do formato, sem exibir o valor', () => {
+    const invalida = 'nao-e-uma-chave';
+    const mensagem = mensagemDe(() => vapid({ VAPID_PRIVATE_KEY: invalida }));
+    expect(mensagem).toContain('VAPID_PRIVATE_KEY');
+    expect(mensagem).not.toContain(invalida);
+    expect(() => vapid({ VAPID_PUBLIC_KEY: `${par.publicKey}+` })).toThrow('VAPID_PUBLIC_KEY');
+  });
+
+  it('recusa par que não combina, sem exibir as chaves', () => {
+    const outro = generateVAPIDKeys();
+    const mensagem = mensagemDe(() => vapid({ VAPID_PRIVATE_KEY: outro.privateKey }));
+    expect(mensagem).toContain('não formam um par');
+    expect(mensagem).not.toContain(outro.privateKey);
+    expect(mensagem).not.toContain(par.publicKey);
+  });
+
+  it('recusa os valores de exemplo da documentação', () => {
+    expect(() => vapid({ VAPID_PUBLIC_KEY: 'troque_pela_chave_publica_vapid' })).toThrow('exemplo');
+  });
+
+  it.each(['frota@fsph.invalid', 'http://frota.invalid', 'https://localhost', 'mailto:sem-arroba', 'ftp://x.invalid'])(
+    'recusa VAPID_SUBJECT inválido: %s', (assunto) => {
+      expect(() => vapid({ VAPID_SUBJECT: assunto })).toThrow('VAPID_SUBJECT');
+    }
+  );
+
+  it('aceita lista própria de hosts e recusa formato inválido', () => {
+    expect(vapid({ PUSH_HOSTS_PERMITIDOS: 'FCM.googleapis.com, *.push.exemplo.invalid' }).webPush?.hostsPermitidos)
+      .toEqual(['fcm.googleapis.com', '*.push.exemplo.invalid']);
+    expect(() => vapid({ PUSH_HOSTS_PERMITIDOS: 'https://fcm.googleapis.com' })).toThrow('PUSH_HOSTS_PERMITIDOS');
+    expect(() => vapid({ PUSH_HOSTS_PERMITIDOS: '*' })).toThrow('PUSH_HOSTS_PERMITIDOS');
   });
 });

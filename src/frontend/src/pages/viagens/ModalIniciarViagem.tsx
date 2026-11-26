@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal } from '../../components/ui';
 import type { Viagem } from '../../types/viagem';
+import { cn } from '../../utils/cn';
+import { CLASSES_ACOES_FOLHA } from './acoesFolha';
 import { ERRO_LIMITE_ODOMETRO, KM_ODOMETRO_MAXIMO } from './limiteOdometro';
 import { SituacaoFotoOdometro } from './SituacaoFotoOdometro';
 import { mensagemFalhaTransicao, useFotoOdometro } from './useFotoOdometro';
@@ -11,9 +13,13 @@ interface ModalIniciarViagemProps {
   onClose: () => void;
   /** `evidenciaId`: foto da saída já enviada (SCRUM-205), quando `fotosOdometro` está ligado. */
   onSalvar: (kmInicial: number, evidenciaId?: string) => Promise<void>;
+  /** Motorista no celular: folha inferior, dados essenciais e botões maiores. */
+  compacto?: boolean;
+  /** Km atual do veículo, só como referência do valor mínimo. */
+  kmReferencia?: number;
 }
 
-export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarViagemProps) {
+export function ModalIniciarViagem({ viagem, onClose, onSalvar, compacto = false, kmReferencia }: ModalIniciarViagemProps) {
   const [kmInicial, setKmInicial] = useState<string>('');
   const [erro, setErro] = useState<string>('');
   const [salvando, setSalvando] = useState(false);
@@ -65,6 +71,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
       gerenciarFoco
       ajustarAoTeclado
       bloquearFechamento={salvando}
+      folhaInferior={compacto}
     >
       <form noValidate onSubmit={handleSubmit}>
         {erro && (
@@ -75,14 +82,19 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
 
         <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-[13px]">
           <div className="font-bold text-slate-900">
-            {viagem.origem ?? '—'} → {viagem.destino ?? '—'}
+            {compacto && !viagem.origem ? '' : `${viagem.origem ?? '—'} → `}{viagem.destino ?? '—'}
           </div>
           <div className="mt-0.5 text-xs text-slate-500">
             Veículo:{' '}
             <strong>
               {viagem.veiculo_modelo} ({viagem.veiculo_placa})
-            </strong>{' '}
-            • Motorista: <strong>{viagem.motorista_nome}</strong>
+            </strong>
+            {!compacto && (
+              <>
+                {' '}
+                • Motorista: <strong>{viagem.motorista_nome}</strong>
+              </>
+            )}
           </div>
         </div>
 
@@ -90,8 +102,8 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
           label="Odômetro de Saída (Km Inicial) *"
           type="number"
           inputMode="numeric"
-          className="min-h-11 text-base md:text-sm"
-          placeholder="Ex: 35000"
+          className={cn('min-h-11 text-base md:text-sm', compacto && 'min-h-13 text-xl font-bold md:text-xl')}
+          placeholder={kmReferencia ? `Último km: ${kmReferencia}` : 'Ex: 35000'}
           value={kmInicial}
           readOnly={salvando}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setKmInicial(e.target.value)}
@@ -108,7 +120,13 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar }: ModalIniciarVi
           </p>
         )}
 
-        <div className="mt-4 flex flex-col gap-2 md:mt-5 md:flex-row md:justify-end md:gap-3 [&>button]:min-h-11">
+        <div
+          className={
+            compacto
+              ? CLASSES_ACOES_FOLHA
+              : 'mt-4 flex flex-col gap-2 md:mt-5 md:flex-row md:justify-end md:gap-3 [&>button]:min-h-11'
+          }
+        >
           {foto.enviando ? (
             <Button variant="ghost" type="button" onClick={foto.cancelarEnvio}>
               Cancelar envio

@@ -1,13 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { encerrarPushAoSair, useVinculoPush } from '../hooks/useVinculoPush'
 import { authApi } from '../services/api/authApi'
 import { EVENTO_SESSAO_EXPIRADA, tokenStorage } from '../services/api/http'
 import type { Perfil, Usuario } from '../types/usuario'
+import { invalidarOperacoesPush } from '../utils/operacoesPush'
 
 const CANAL_AUTENTICACAO = 'fsph_auth'
 
 interface AuthContextValue {
   usuario: Usuario | null
+  versaoSessao: number
   /** true enquanto a sessão (cookie HttpOnly) está sendo verificada via silent refresh. */
   carregando: boolean
   login: (email: string, senha: string) => Promise<void>
@@ -28,6 +31,7 @@ function criarCanalAutenticacao(): BroadcastChannel | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
+  const [versaoSessao, avancarSessao] = useState(0)
   const [carregando, setCarregando] = useState(true)
   const canalRef = useRef<BroadcastChannel | null>(null)
 
@@ -54,7 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  useVinculoPush(usuario?.id)
+
   const limparEstadoLocal = useCallback(() => {
+    avancarSessao((versao) => versao + 1)
+    invalidarOperacoesPush()
     tokenStorage.clear()
     setUsuario(null)
   }, [])
@@ -87,11 +95,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, senha: string) => {
     const resultado = await authApi.login(email, senha)
+    avancarSessao((versao) => versao + 1)
+    invalidarOperacoesPush()
     tokenStorage.set(resultado.token)
     setUsuario(resultado.usuario)
   }, [])
 
   const logout = useCallback(() => {
+    // Antes de limpar: o cancelamento no servidor usa o token desta sessão
+    encerrarPushAoSair(tokenStorage.get())
     limparEstadoLocal()
     void authApi.logout().catch(() => {})
     canalRef.current?.postMessage({ tipo: 'LOGOUT' })
@@ -100,12 +112,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       usuario,
+      versaoSessao,
       carregando,
       login,
       logout,
       temPerfil: (...perfis) => usuario !== null && perfis.includes(usuario.perfil),
     }),
-    [usuario, carregando, login, logout],
+    [usuario, versaoSessao, carregando, login, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

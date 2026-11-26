@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "solicitacoes:expirar": "node dist/scripts/expirarSolicitacoesViagem.js",
     "evidencias:retencao": "node dist/scripts/retencaoEvidencias.js",
+    "notificacoes:retencao": "node dist/scripts/retencaoNotificacoes.js",
     "test": "vitest run src/tests",
     "migrate": "knex migrate:latest",
     "migrate:rollback": "knex migrate:rollback",
@@ -23,7 +24,10 @@
     "db:avaliar-consultas": "node scripts/avaliar-consultas-db.cjs",
     "db:validar-scrum183": "node scripts/validar-migration-scrum183.cjs",
     "db:validar-scrum198": "node scripts/validar-migration-scrum198.cjs",
-    "db:validar-scrum210": "node scripts/validar-migration-scrum210.cjs"
+    "db:validar-scrum210": "node scripts/validar-migration-scrum210.cjs",
+    "db:validar-scrum225": "node scripts/validar-migration-scrum225.cjs",
+    "db:validar-scrum228": "node scripts/validar-migration-scrum228.cjs",
+    "db:validar-scrum236": "node scripts/validar-migration-scrum236.cjs"
   },
   "keywords": [],
   "author": "",
@@ -42,6 +46,7 @@
     "multer": "^2.5.0",
     "pg": "^8.23.1",
     "sharp": "0.35.5",
+    "web-push": "^3.6.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -52,6 +57,7 @@
     "@types/multer": "^2.3.0",
     "@types/node": "^26.6.5",
     "@types/supertest": "^7.2.1",
+    "@types/web-push": "^3.6.4",
     "supertest": "^7.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",

@@ -49,10 +49,12 @@ A matriz é verificada rota a rota por `src/backend/src/tests/matrizAcesso.test.
 | `GET /motoristas/me` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `GET /motoristas` | ✅ | ❌ | ✅ | 🔗² | ❌ | ❌ |
 | `GET /unidades` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/notificacoes`: `GET vapid-public-key`, `POST subscribe`, `POST subscribe/status`, `DELETE unsubscribe`, `GET preferencias`, `PATCH preferencias/:codigo` (SCRUM-237) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `/unidades/gestores` (consulta e associação) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `GET /dashboard` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `/solicitacoes-svo` (todas) | ✅ | ❌ | ❌ | 🔗² | ❌ | ❌ |
 | `GET /auditorias` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `/notificacoes` (todas) | 🔗⁸ | 🔗⁸ | 🔗⁸ | 🔗⁸ | 🔗⁸ | 🔗⁸ |
 
 Rotas públicas: `GET /status`, `POST /auth/login`, `POST /auth/refresh` e `POST /auth/logout`. As três de autenticação são protegidas por validação de origem e por limite de tentativas.
 
@@ -65,6 +67,7 @@ Rotas públicas: `GET /status`, `POST /auth/login`, `POST /auth/refresh` e `POST
 5. **Segregação de funções.** Ninguém aprova nem recusa uma solicitação criada por si mesmo, nem o Administrador. A resposta é 403 "Você não pode analisar uma solicitação criada por você".
 6. **Tipo de operação.** O Gestor de Frota gerencia viagens da frota administrativa, e o Gestor SVO, ordens SVO. O Administrador gerencia ambos.
 7. **Viagens do motorista.** O motorista só lista, inicia e finaliza as próprias viagens ou ordens, e só do seu tipo de frota. O condutor designado pode solicitar dispensa de foto por fase. A decisão exige justificativa e é restrita a Administrador (ambas as operações), Gestor de Frota (Administrativo) ou Gestor SVO associado (SVO). O condutor que solicitou a dispensa fica impedido de decidi-la. A consulta de situação do motorista se limita ao seu registro e o arquivo fica disponível apenas aos gestores competentes.
+8. **Notificações.** Cada usuário, inclusive o Integrante SVO, só lista, conta e marca os próprios avisos, e só os da operação que o perfil alcança. O Gestor SVO precisa da associação para os avisos SVO. Aviso de outra pessoa responde 404. O conteúdo exige acesso atual ao registro de origem; sem ele, só aparece que houve um aviso (`docs/scrum-226-api-notificacoes.md`). Implementação: `notificacaoService`.
 
 Outras proteções que já existiam:
 

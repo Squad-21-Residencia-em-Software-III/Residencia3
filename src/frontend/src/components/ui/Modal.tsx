@@ -18,6 +18,8 @@ type ModalProps = {
   gerenciarFoco?: boolean;
   ajustarAoTeclado?: boolean;
   bloquearFechamento?: boolean;
+  /** Abre presa à parte de baixo da tela, ao alcance do polegar. */
+  folhaInferior?: boolean;
 };
 
 export function Modal({
@@ -33,6 +35,7 @@ export function Modal({
   gerenciarFoco = false,
   ajustarAoTeclado = false,
   bloquearFechamento = false,
+  folhaInferior = false,
 }: ModalProps) {
   const fundo = useRef<HTMLDivElement>(null);
   const dialogo = useRef<HTMLDivElement>(null);
@@ -100,6 +103,7 @@ export function Modal({
         ajustarAoTeclado
           ? 'h-dvh px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]'
           : 'bottom-0',
+        folhaInferior && 'items-end px-0 pb-0',
       )}
       onClick={(e) => !bloquearFechamento && e.target === e.currentTarget && onClose()}
     >
@@ -107,6 +111,8 @@ export function Modal({
         className={cn(
           'relative mx-auto max-h-[88vh] w-[95vw] max-w-[95vw] overflow-y-auto rounded-lg bg-surface px-4 py-5 shadow-modal md:mx-4 md:max-h-[90vh] md:w-full md:max-w-[480px] md:rounded-modal md:p-8',
           ajustarAoTeclado && 'max-h-full w-full max-w-full overscroll-contain wrap-anywhere md:max-h-full',
+          folhaInferior &&
+            'mx-auto w-full max-w-[560px] rounded-t-modal rounded-b-none md:mx-auto md:w-full md:max-w-[560px] md:rounded-b-none md:px-4 md:py-5',
         )}
         ref={dialogo}
         tabIndex={gerenciarFoco ? -1 : undefined}

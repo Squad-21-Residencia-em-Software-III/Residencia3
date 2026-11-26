@@ -116,7 +116,7 @@ export function Drawer({
             type="button"
             onClick={onClose}
             aria-label="Fechar painel"
-            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border bg-surface text-slate-400 transition-colors hover:bg-surface-hover hover:text-slate-700"
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border bg-surface text-slate-400 transition-colors hover:bg-surface-hover hover:text-slate-700 [[data-layout=motorista]_&]:size-11"
           >
             <CloseIcon size={16} />
           </button>
