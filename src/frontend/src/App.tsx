@@ -2,6 +2,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { NotificacoesProvider } from './contexts/NotificacoesContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { BridgeNotificacoesSw } from './components/notificacoes/BridgeNotificacoesSw'
 import { ToastNotificacao } from './components/notificacoes/ToastNotificacao'
 import { BannerOffline } from './components/pwa/BannerOffline'
 import { PromptAtualizacaoPwa } from './components/pwa/PromptAtualizacaoPwa'
@@ -15,6 +16,7 @@ export default function App() {
           <NotificacoesProvider>
             <BannerOffline />
             <AppRoutes />
+            <BridgeNotificacoesSw />
             <ToastNotificacao />
             <PromptAtualizacaoPwa />
           </NotificacoesProvider>

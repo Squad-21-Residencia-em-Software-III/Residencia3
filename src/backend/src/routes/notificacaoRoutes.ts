@@ -15,6 +15,8 @@ notificacaoRoutes.use((_req, res, next) => {
 
 notificacaoRoutes.get('/', notificacaoController.listar);
 notificacaoRoutes.get('/contador', notificacaoController.contador);
+notificacaoRoutes.get('/badge', notificacaoController.badge);
+notificacaoRoutes.get('/:id', notificacaoController.obterAutorizada);
 notificacaoRoutes.patch('/ler-todas', notificacaoController.marcarTodasLidas);
 // Antes de /:id/lida, que também casaria com este caminho
 notificacaoRoutes.patch('/referencia/lida', notificacaoController.marcarReferenciaLida);

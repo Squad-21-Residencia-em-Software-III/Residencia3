@@ -2,6 +2,7 @@ import { generateRequestDetails } from 'web-push';
 import type { ConfiguracaoWebPush } from '../config/env';
 import type { PayloadPush } from '../models/notificacaoOutboxModel';
 import { hostPushPermitido } from '../validators/pushSchemas';
+import { identificarVinculoPush } from './vinculoNotificacaoPush';
 import type { EnviadorPush } from './filaPush';
 import { LIMITE_CORPO_PUSH, LIMITE_TITULO_PUSH, limitar } from './publicacaoNotificacoes';
 
@@ -51,13 +52,14 @@ export function criarEnviadorWebPush(
   transporte: TransporteHttp = fetch
 ): EnviadorPush {
   const vapidDetails = { subject: config.subject, publicKey: config.publicKey, privateKey: config.privateKey };
-  return async ({ endpoint, p256dh, auth }, payload, sinal) => {
+  return async (assinatura, payload, sinal) => {
+    const { endpoint, p256dh, auth } = assinatura;
     // Defesa em profundidade: a assinatura já foi validada ao ser criada (pushSchemas)
     if (!hostPushPermitido(endpoint, config.hostsPermitidos)) return { status: STATUS_RECUSADO_LOCALMENTE };
     const conteudo = conteudoDoPush(payload);
     let detalhes: ReturnType<typeof generateRequestDetails>;
     try {
-      detalhes = generateRequestDetails({ endpoint, keys: { p256dh, auth } }, JSON.stringify(conteudo), {
+      detalhes = generateRequestDetails({ endpoint, keys: { p256dh, auth } }, JSON.stringify({ ...conteudo, vinculo: identificarVinculoPush(assinatura) }), {
         vapidDetails,
         TTL: TTL_SEGUNDOS,
         urgency: 'normal',

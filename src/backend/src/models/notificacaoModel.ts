@@ -82,7 +82,28 @@ function temAcessoSql({ acesso }: EscopoNotificacoes): string {
   return `CASE WHEN referencia_tipo IS NULL THEN true ${casos.join(' ')} ELSE false END`;
 }
 
+const TABELAS_REFERENCIA: Record<ReferenciaNotificacao, string> = {
+  SOLICITACAO_VIAGEM: 'solicitacoes_viagem', VIAGEM_FROTA: 'viagens_frota',
+  SOLICITACAO_SVO: 'solicitacoes_svo', ORDEM_SVO: 'ordens_svo',
+};
+
 export const notificacaoModel = {
+  async obterAutorizada(escopo: EscopoNotificacoes, id: number, conexao: Knex = db): Promise<Notificacao | undefined> {
+    const existe = (Object.keys(TABELAS_REFERENCIA) as ReferenciaNotificacao[]).map((tipo) =>
+      `WHEN '${tipo}' THEN EXISTS (SELECT 1 FROM ${TABELAS_REFERENCIA[tipo]} r WHERE r.id = notificacoes.referencia_id)`);
+    return doEscopo(escopo, conexao).where({ id }).whereRaw(temAcessoSql(escopo))
+      .whereRaw(`(referencia_tipo IS NULL OR CASE referencia_tipo ${existe.join(' ')} ELSE false END)`).first(...CAMPOS);
+  },
+
+  async contarElegiveisParaBadge(escopo: EscopoNotificacoes, categorias: string[], conexao: Knex = db): Promise<number> {
+    const linha = await doEscopo(escopo, conexao).whereNull('lida_em').whereRaw(temAcessoSql(escopo))
+      .whereExists(conexao('notificacao_outbox as fila').select('fila.id')
+        .whereRaw('fila.notificacao_id = notificacoes.id').whereIn('fila.categoria', categorias)
+        .whereNot('fila.status', 'IGNORADO'))
+      .first(conexao.raw('count(*)::integer AS total'));
+    return linha?.total ?? 0;
+  },
+
   async podeEntregar(escopo: EscopoNotificacoes, id: number, conexao: Knex = db): Promise<boolean> {
     const aviso = await doEscopo(escopo, conexao).where({ id }).whereRaw(temAcessoSql(escopo)).first('id');
     return Boolean(aviso);
