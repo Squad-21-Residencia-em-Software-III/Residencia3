@@ -13,6 +13,7 @@ vi.mock('../contexts/AuthContext', () => ({ useAuth: vi.fn() }));
 function logarComo(perfil: Perfil) {
   vi.mocked(useAuth).mockReturnValue({
     usuario: { id: 1, nome: 'Ana Paula Lima', email: 'ana@exemplo.com', perfil } as Usuario,
+    versaoSessao: 1,
     carregando: false,
     login: vi.fn(),
     logout: vi.fn(),

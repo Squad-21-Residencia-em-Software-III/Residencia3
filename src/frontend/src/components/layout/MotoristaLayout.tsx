@@ -6,6 +6,7 @@ import { Modal } from '../ui';
 import { ModalPreferenciasPwa } from '../pwa/ModalPreferenciasPwa';
 import { cn } from '../../utils/cn';
 import type { NavItem } from './AppLayout';
+import { SinoNotificacoes } from './SinoNotificacoes';
 
 type MotoristaLayoutProps = {
   navItems: NavItem[];
@@ -49,11 +50,12 @@ export function MotoristaLayout({ navItems, title, user, onLogout, children }: M
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-page-bg">
-      <header className="flex h-14 shrink-0 items-center gap-3 bg-sidebar px-4 [@media(max-height:500px)]:h-12">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-3 bg-sidebar px-4 [@media(max-height:500px)]:h-12">
         <div className="flex min-w-0 items-center gap-2.5">
           <img src="/assets/icon.png" alt="FSPH" className="h-8 w-8 shrink-0 object-contain" />
           <h1 className="m-0 truncate font-display text-base font-bold text-white">{title}</h1>
         </div>
+        <SinoNotificacoes variante="escuro" className="shrink-0" />
       </header>
 
       <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
