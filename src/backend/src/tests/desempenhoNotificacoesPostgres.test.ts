@@ -31,6 +31,7 @@ const token = (id: number, perfil: Perfil, versao: number) => jwt.sign(
 
 const percentil = (valores: number[], p: number) => {
   const ordenados = [...valores].sort((a, b) => a - b);
+  if (ordenados.length === 0) return null;
   return Number(ordenados[Math.min(ordenados.length - 1, Math.ceil((p / 100) * ordenados.length) - 1)].toFixed(1));
 };
 const resumo = (tempos: number[]) => ({
@@ -208,20 +209,39 @@ describe.skipIf(!habilitado)('Desempenho dos avisos com histórico acumulado (SC
     };
   }, 120_000);
 
-  it('rajada: todas as abas consultando no mesmo instante', async () => {
+  it('mede lotes de polling de 10 e 50 usuários com uma ou várias abas', async () => {
+    const contarRegistros = async () => {
+      const { rows } = await db.raw<{ rows: { avisos: number; fila: number; pendentes: number }[] }>(
+        "SELECT (SELECT count(*)::int FROM notificacoes) AS avisos, " +
+        "(SELECT count(*)::int FROM notificacao_outbox) AS fila, " +
+        "(SELECT count(*)::int FROM notificacao_outbox WHERE status = 'PENDENTE') AS pendentes"
+      );
+      return rows[0];
+    };
+    const antes = await contarRegistros();
     const rajadas: Record<string, unknown> = {};
-    for (const abasPorPessoa of [1, 2, 3]) {
-      const chamadas = pessoas.flatMap((p) => Array.from({ length: abasPorPessoa }, () => p));
-      const inicio = performance.now();
-      const respostas = await Promise.all(chamadas.map((p) => chamar(p, '/api/notificacoes/contador')));
-      const porStatus: Record<number, number> = {};
-      for (const { status } of respostas) porStatus[status] = (porStatus[status] ?? 0) + 1;
-      rajadas[`${chamadas.length}_simultaneas`] = {
-        abas_por_pessoa: abasPorPessoa, total_ms: Number((performance.now() - inicio).toFixed(1)), status: porStatus,
-        ...resumo(respostas.filter((r) => r.status === 200).map((r) => r.ms)),
-      };
+    for (const usuarios of [10, 50]) {
+      for (const abas of [1, 2, 3]) {
+        const chamadas = pessoas.slice(0, usuarios).flatMap((p) => Array.from({ length: abas }, () => p));
+        const inicio = performance.now();
+        const respostas = await Promise.all(chamadas.map((p) => chamar(p, '/api/notificacoes/contador')));
+        const porStatus: Record<number, number> = {};
+        for (const { status } of respostas) porStatus[status] = (porStatus[status] ?? 0) + 1;
+        expect(porStatus[200]).toBeGreaterThan(0);
+        const errosPermitidos = chamadas.length > env.maxRequisicoesSimultaneas ? [503] : [];
+        expect(Object.keys(porStatus).map(Number).filter((status) => status !== 200)
+          .every((status) => errosPermitidos.includes(status))).toBe(true);
+        rajadas[[usuarios, 'usuarios', abas, 'abas'].join('_')] = {
+          requisicoes: chamadas.length,
+          total_ms: Number((performance.now() - inicio).toFixed(1)),
+          status: porStatus,
+          ...resumo(respostas.filter((r) => r.status === 200).map((r) => r.ms)),
+        };
+      }
     }
-    relatorio.rajada = { limite_simultaneas: env.maxRequisicoesSimultaneas, ...rajadas };
+    const depois = await contarRegistros();
+    expect(depois).toEqual(antes);
+    relatorio.rajada = { limite_simultaneas: env.maxRequisicoesSimultaneas, antes, depois, cenarios: rajadas };
   }, 120_000);
 
   it('vazão: quantas consultas por segundo a API atende, contra a demanda do sino', async () => {
