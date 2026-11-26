@@ -303,6 +303,42 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(await db('evidencias_odometro').where({ deslocamento_svo_id: evidencia.deslocamento_svo_id })).toHaveLength(1);
   });
 
+  it.skipIf(process.env.SCRUM235_POSTGRES_TESTS !== '1')(
+    'SCRUM-221 separa avisos A9 e S8 de mesmo tipo pela referência e pela operação',
+    async () => {
+      configNotificacoes.ativas = true;
+      env.excecoesOdometroAtivas = true;
+      const gestorSvo = await usuario('GESTOR_SVO');
+      const gestorFrota = await usuario('GESTOR_FROTA');
+      const admin = await usuario('ADMINISTRADOR');
+      const frota = await viagemAdministrativa();
+      const svo = await recursos('SVO');
+      const ordem = await ordemSvo(svo, gestorSvo.id);
+      const pedir = (token: string, tipo_operacao: string, viagem_id: number) =>
+        request(app).post('/api/evidencias-odometro/excecoes').set('Authorization', token)
+          .send({ tipo_operacao, viagem_id, fase: 'SAIDA', motivo: 'A câmera ficou indisponível' });
+
+      expect((await pedir(frota.condutor.token, 'ADMINISTRATIVA', frota.viagem.id)).status).toBe(201);
+      expect((await pedir(svo.condutor.token, 'SVO', ordem.id)).status).toBe(201);
+      const casos = [
+        { conta: gestorSvo, operacao: 'SVO', referencia_tipo: 'ORDEM_SVO', referencia_id: ordem.id },
+        { conta: gestorFrota, operacao: 'Administrativo', referencia_tipo: 'VIAGEM_FROTA', referencia_id: frota.viagem.id },
+        { conta: admin, operacao: 'Administrativo', referencia_tipo: 'VIAGEM_FROTA', referencia_id: frota.viagem.id },
+      ];
+      for (const { conta, ...referencia } of casos) {
+        const central = await request(app).get('/api/notificacoes').set('Authorization', conta.token);
+        expect(central.status).toBe(200);
+        const avisos = central.body.itens.filter((item: { tipo: string }) => item.tipo === 'EXCECAO_ODOMETRO_SOLICITADA');
+        expect(avisos).toEqual([expect.objectContaining({ ...referencia, acesso_revogado: false })]);
+        const fila = await db('notificacao_outbox').where({
+          usuario_id: conta.id, evento_tipo: 'EXCECAO_ODOMETRO_SOLICITADA', ...referencia,
+        });
+        expect(fila).toHaveLength(1);
+        expect(JSON.stringify(fila[0].payload_push)).not.toContain('A câmera ficou indisponível');
+      }
+    }
+  );
+
   it('encerra autorizações SVO quando a ordem é reprogramada para outro condutor', async () => {
     env.excecoesOdometroAtivas = true;
     const gestor = await usuario('GESTOR_SVO');
