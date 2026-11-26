@@ -189,13 +189,15 @@ describe('Provisionamento das roles de cron', () => {
     expect(destroy).toHaveBeenCalledOnce();
   });
 
-  it('não concede nenhum privilégio sobre notificacoes à role de expiração', async () => {
+  it('reserva o DELETE de notificacoes à role de retenção', async () => {
     const { criarConexao, raw } = simularBanco();
 
     await provisionarRolesCron({ env: envCron, criarConexao });
 
-    const concessoesNotificacoes = raw.mock.calls.filter(([sql]) => sql.startsWith('GRANT') && sql.includes('public.notificacoes'));
-    expect(concessoesNotificacoes).toEqual([[expect.any(String), [retUser]]]);
+    const concessoesDelete = raw.mock.calls.filter(([sql]) =>
+      sql.startsWith('GRANT') && /\bDELETE\b/.test(sql) && sql.includes('public.notificacoes'),
+    );
+    expect(concessoesDelete).toEqual([[expect.any(String), [retUser]]]);
   });
 
   it('rejeita o provisionamento se a validação detectar privilégios excessivos', async () => {
