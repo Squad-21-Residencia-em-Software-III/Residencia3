@@ -214,7 +214,7 @@ export function SinoNotificacoes({
           {/* Ponta apontando para o sino */}
           <span aria-hidden="true" className={classePonta} />
 
-          <div className="relative overflow-hidden rounded-lg bg-surface">
+          <div className="relative max-h-[calc(100dvh-5rem-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain rounded-lg bg-surface">
             {/* Cabeçalho do dropdown */}
             <div className="flex items-center justify-between gap-2 border-b border-divider px-3.5 py-2.5">
               <div className="flex items-center gap-2">
