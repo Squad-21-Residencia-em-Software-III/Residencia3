@@ -133,4 +133,19 @@ describe('http: token em memória e silent refresh via cookie HttpOnly', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(tokenStorage.get()).toBe('access-previo')
   })
+
+  it('com o token de uma sessão que acabou, não renova nem derruba a sessão atual', async () => {
+    tokenStorage.set('token-da-conta-seguinte')
+    const aoExpirar = vi.fn()
+    window.addEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar)
+    fetchMock.mockResolvedValueOnce(resposta(401))
+
+    await expect(request('DELETE', '/x', { token: 'token-anterior' })).rejects.toMatchObject({ status: 401 })
+
+    expect(autorizacao(fetchMock.mock.calls[0]!)).toBe('Bearer token-anterior')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(aoExpirar).not.toHaveBeenCalled()
+    expect(tokenStorage.get()).toBe('token-da-conta-seguinte')
+    window.removeEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar)
+  })
 })

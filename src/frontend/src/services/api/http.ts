@@ -130,6 +130,11 @@ interface Opcoes {
   query?: Record<string, string | number | boolean | undefined>
   /** Login não deve disparar "sessão expirada" quando a senha está errada. */
   semAutenticacao?: boolean
+  /**
+   * Token de uma sessão que está acabando. Não renova nem avisa "sessão expirada", para não atingir
+   * quem entrar em seguida.
+   */
+  token?: string
 }
 
 export async function request<T>(metodo: Metodo, caminho: string, opcoes: Opcoes = {}): Promise<T> {
@@ -226,7 +231,7 @@ async function executar<T>(
 
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (opcoes.body !== undefined) headers['Content-Type'] = 'application/json'
-  const token = tokenStorage.get()
+  const token = opcoes.token ?? tokenStorage.get()
   if (token && !opcoes.semAutenticacao) headers.Authorization = `Bearer ${token}`
 
   let resposta: Response
@@ -248,7 +253,7 @@ async function executar<T>(
   const dados = await resposta.json().catch(() => null)
 
   if (!resposta.ok) {
-    if (resposta.status === 401 && !opcoes.semAutenticacao) {
+    if (resposta.status === 401 && !opcoes.semAutenticacao && opcoes.token === undefined) {
       if (podeRenovar && (await renovarUmaVez())) {
         return executar<T>(metodo, caminho, opcoes, false)
       }
