@@ -32,6 +32,8 @@ export interface SolicitacaoViagem {
   material_sensivel?: boolean | null;
   data_saida_desejada: string; // timestamp (ISO string YYYY-MM-DDTHH:mm:ss)
   data_chegada_desejada?: string | null; // timestamp
+  inicio_planejado?: string | null;
+  fim_planejado?: string | null;
   status: StatusSolicitacao; // padrão: PENDENTE_APROVACAO
   motivo_recusa?: string | null; // preenchido apenas quando status = RECUSADA
   unidade_id?: number | null; // nula nas solicitações anteriores à escolha de unidade

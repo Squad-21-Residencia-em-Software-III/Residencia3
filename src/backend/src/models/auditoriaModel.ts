@@ -39,15 +39,21 @@ export interface Auditoria extends RegistroAuditoria {
   data_hora: Date;
 }
 
+function inserirAuditoria(registro: RegistroAuditoria, conn: Knex) {
+  return conn('auditorias').insert({ ...registro, acao: limitarAcao(registro.acao) });
+}
+
 export const auditoriaModel = {
   async registrar(
     registro: RegistroAuditoria,
     conn: Knex = db
   ): Promise<void> {
-    await conn('auditorias').insert({
-      ...registro,
-      acao: limitarAcao(registro.acao),
-    });
+    await inserirAuditoria(registro, conn);
+  },
+
+  async registrarComId(registro: RegistroAuditoria, conn: Knex.Transaction): Promise<number> {
+    const [linha] = await inserirAuditoria(registro, conn).returning<{ id: number }[]>('id');
+    return linha.id;
   },
 
   async listar(

@@ -59,6 +59,18 @@ vi.mock('../services/filaSvoService', () => ({ reavaliarFilaSvo: vi.fn() }));
 vi.mock('../services/publicacaoNotificacoes', () => ({
   publicarNotificacao: vi.fn(async () => ({ criadas: 1 })),
 }));
+// A suíte unitária administrativa não simula tabelas de notificações SVO.
+// As suítes HTTP/PostgreSQL S3-S8 validam o serviço real sem esse mock.
+vi.mock('../services/notificacaoSvoService', () => ({
+  notificacaoSvoService: {
+    equipeParaAvisos: vi.fn(async () => null),
+    publicarDesignacoes: vi.fn(),
+    publicarCancelamento: vi.fn(),
+    publicarChegadaLocal: vi.fn(),
+    publicarConclusaoColeta: vi.fn(),
+    avisarProximoPedidoDoDeslocamento: vi.fn(),
+  },
+}));
 // O vínculo das fotos do odômetro tem testes próprios (evidenciaOdometroTransicao.test.ts)
 vi.mock('../services/evidenciaOdometroTransicao', () => ({
   registrarEvidenciaNaTransicao: vi.fn(async () => undefined),

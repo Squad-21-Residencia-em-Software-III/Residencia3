@@ -1,4 +1,5 @@
 import { db } from '../config/database';
+import { INICIO_PLANEJADO_SQL } from './periodoViagemAdministrativa';
 
 export interface FiltrosIndicadores {
   // AAAA-MM-DD, inclusivos; ausentes deixam o lado do período aberto
@@ -51,7 +52,7 @@ export const dashboardModel = {
         FROM viagens_frota vf
         LEFT JOIN solicitacoes_viagem sv ON sv.id = vf.solicitacao_id
         WHERE vf.status = 'EM_ANDAMENTO'
-          AND ${NO_PERIODO('COALESCE(vf.data_hora_efetiva_saida, sv.data_saida_desejada)')}
+          AND ${NO_PERIODO(`COALESCE(vf.data_hora_efetiva_saida, ${INICIO_PLANEJADO_SQL})`)}
       ) vg
       CROSS JOIN (
         SELECT

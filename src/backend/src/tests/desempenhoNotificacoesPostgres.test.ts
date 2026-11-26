@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { performance } from 'node:perf_hooks';
+import { setTimeout as esperar } from 'node:timers/promises';
 import jwt from 'jsonwebtoken';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
@@ -31,6 +32,7 @@ const token = (id: number, perfil: Perfil, versao: number) => jwt.sign(
 
 const percentil = (valores: number[], p: number) => {
   const ordenados = [...valores].sort((a, b) => a - b);
+  if (ordenados.length === 0) return null;
   return Number(ordenados[Math.min(ordenados.length - 1, Math.ceil((p / 100) * ordenados.length) - 1)].toFixed(1));
 };
 const resumo = (tempos: number[]) => ({
@@ -208,20 +210,39 @@ describe.skipIf(!habilitado)('Desempenho dos avisos com histórico acumulado (SC
     };
   }, 120_000);
 
-  it('rajada: todas as abas consultando no mesmo instante', async () => {
+  it('mede lotes de polling de 10 e 50 usuários com uma ou várias abas', async () => {
+    const contarRegistros = async () => {
+      const { rows } = await db.raw<{ rows: { avisos: number; fila: number; pendentes: number }[] }>(
+        "SELECT (SELECT count(*)::int FROM notificacoes) AS avisos, " +
+        "(SELECT count(*)::int FROM notificacao_outbox) AS fila, " +
+        "(SELECT count(*)::int FROM notificacao_outbox WHERE status = 'PENDENTE') AS pendentes"
+      );
+      return rows[0];
+    };
+    const antes = await contarRegistros();
     const rajadas: Record<string, unknown> = {};
-    for (const abasPorPessoa of [1, 2, 3]) {
-      const chamadas = pessoas.flatMap((p) => Array.from({ length: abasPorPessoa }, () => p));
-      const inicio = performance.now();
-      const respostas = await Promise.all(chamadas.map((p) => chamar(p, '/api/notificacoes/contador')));
-      const porStatus: Record<number, number> = {};
-      for (const { status } of respostas) porStatus[status] = (porStatus[status] ?? 0) + 1;
-      rajadas[`${chamadas.length}_simultaneas`] = {
-        abas_por_pessoa: abasPorPessoa, total_ms: Number((performance.now() - inicio).toFixed(1)), status: porStatus,
-        ...resumo(respostas.filter((r) => r.status === 200).map((r) => r.ms)),
-      };
+    for (const usuarios of [10, 50]) {
+      for (const abas of [1, 2, 3]) {
+        const chamadas = pessoas.slice(0, usuarios).flatMap((p) => Array.from({ length: abas }, () => p));
+        const inicio = performance.now();
+        const respostas = await Promise.all(chamadas.map((p) => chamar(p, '/api/notificacoes/contador')));
+        const porStatus: Record<number, number> = {};
+        for (const { status } of respostas) porStatus[status] = (porStatus[status] ?? 0) + 1;
+        expect(porStatus[200]).toBeGreaterThan(0);
+        const errosPermitidos = chamadas.length > env.maxRequisicoesSimultaneas ? [503] : [];
+        expect(Object.keys(porStatus).map(Number).filter((status) => status !== 200)
+          .every((status) => errosPermitidos.includes(status))).toBe(true);
+        rajadas[[usuarios, 'usuarios', abas, 'abas'].join('_')] = {
+          requisicoes: chamadas.length,
+          total_ms: Number((performance.now() - inicio).toFixed(1)),
+          status: porStatus,
+          ...resumo(respostas.filter((r) => r.status === 200).map((r) => r.ms)),
+        };
+      }
     }
-    relatorio.rajada = { limite_simultaneas: env.maxRequisicoesSimultaneas, ...rajadas };
+    const depois = await contarRegistros();
+    expect(depois).toEqual(antes);
+    relatorio.rajada = { limite_simultaneas: env.maxRequisicoesSimultaneas, antes, depois, cenarios: rajadas };
   }, 120_000);
 
   it('vazão: quantas consultas por segundo a API atende, contra a demanda do sino', async () => {
@@ -241,5 +262,37 @@ describe.skipIf(!habilitado)('Desempenho dos avisos com histórico acumulado (SC
     relatorio.vazao = vazao;
     // Demanda estimada (não medida): uma consulta por minuto por aba visível
     relatorio.demanda_estimada_por_segundo = { '10_pessoas_1_aba': 0.17, '50_pessoas_1_aba': 0.83, '50_pessoas_3_abas': 2.5 };
+  }, 120_000);
+
+  it('mede três ciclos coordenados e a recuperação de uma rajada de 503', async () => {
+    const cenarios: Record<string, unknown> = {};
+    for (const usuarios of [10, 50]) {
+      for (const abas of [2, 3]) {
+        const grupo = pessoas.slice(0, usuarios);
+        const ciclos = [];
+        // Uma consulta por usuário e ciclo representa as abas que compartilham a resposta.
+        for (let ciclo = 0; ciclo < 3; ciclo += 1) {
+          const distribuido = await Promise.all(grupo.map(async (pessoa, i) => {
+            await esperar(((i + ciclo * 7) % usuarios) * 25);
+            return chamar(pessoa, '/api/notificacoes/contador');
+          }));
+          expect(distribuido.map(({ status }) => status)).toEqual(Array(usuarios).fill(200));
+          ciclos.push(resumo(distribuido.map(({ ms }) => ms)));
+        }
+        cenarios[`${usuarios}_usuarios_${abas}_abas`] = ciclos;
+      }
+    }
+    const lote = pessoas.flatMap((pessoa) => [pessoa, pessoa, pessoa]);
+    const rajada = await Promise.all(lote.map((pessoa) => chamar(pessoa, '/api/notificacoes/contador')));
+    const rejeitadas = rajada.flatMap(({ status }, i) => status === 503 ? [lote[i]!] : []);
+    expect(rejeitadas.length).toBeGreaterThan(0);
+    await esperar(5_000);
+    const recuperar = [...new Set(rejeitadas)];
+    const recuperadas = await Promise.all(recuperar.map(async (pessoa, i) => {
+      await esperar(i * 20);
+      return chamar(pessoa, '/api/notificacoes/contador');
+    }));
+    expect(recuperadas.map(({ status }) => status)).toEqual(Array(recuperar.length).fill(200));
+    relatorio.coordenado = { cenarios, rejeitadas: rejeitadas.length, recuperadas: recuperadas.length };
   }, 120_000);
 });
