@@ -39,7 +39,7 @@ import {
   type TipoOperacaoViagem,
   type Viagem,
 } from '../types/viagem';
-import { useAbaOperacao } from '../utils/abaOperacao';
+import { useAbaOperacao, useFiltrosPorOperacao } from '../utils/abaOperacao';
 import { cn } from '../utils/cn';
 import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
 import { useMarcarReferenciaLida } from '../contexts/NotificacoesContext';
@@ -54,6 +54,18 @@ import { useRegistrarChegada } from './viagens/useRegistrarChegada';
 import { usePermissao } from '../utils/permissoes';
 
 type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
+
+interface FiltrosViagens {
+  status: FiltroStatusViagem;
+  motorista: string;
+  veiculo: string;
+  busca: string;
+  abertos: boolean;
+}
+
+const FILTROS_INICIAIS: FiltrosViagens = {
+  status: 'TODOS', motorista: 'TODOS', veiculo: 'TODOS', busca: '', abertos: false,
+};
 
 interface DadosNovaViagem {
   veiculos: Veiculo[];
@@ -129,6 +141,7 @@ export default function ViagensPage() {
   const { pode, abasDeViagens } = usePermissao();
   const abas = abasDeViagens();
   const { ativa, mudar } = useAbaOperacao(abas);
+  const { filtros, atualizarFiltros } = useFiltrosPorOperacao(ativa, FILTROS_INICIAIS);
 
   if (!ativa) return null;
 
@@ -142,7 +155,12 @@ export default function ViagensPage() {
     <div className="grid w-full min-w-0 gap-5">
       <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
       <div key={ativa} className="animate-tab-fade">
-        <PainelViagens operacao={ativa} somenteProprias={somenteProprias} />
+        <PainelViagens
+          operacao={ativa}
+          somenteProprias={somenteProprias}
+          filtros={filtros}
+          atualizarFiltros={atualizarFiltros}
+        />
       </div>
     </div>
   );
@@ -152,9 +170,11 @@ interface PainelViagensProps {
   operacao: TipoOperacaoViagem;
   /** Só as viagens pedidas pelo próprio usuário, sem ações de gestão. */
   somenteProprias: boolean;
+  filtros: FiltrosViagens;
+  atualizarFiltros: (parcial: Partial<FiltrosViagens>) => void;
 }
 
-function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
+function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }: PainelViagensProps) {
   const location = useLocation();
   const { pode, podeNaFrota } = usePermissao();
   const isSvo = operacao === 'SVO';
@@ -189,11 +209,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
-  const [filtroStatus, setFiltroStatus] = useState<FiltroStatusViagem>('TODOS');
-  const [filtroMotorista, setFiltroMotorista] = useState<string>('TODOS');
-  const [filtroVeiculo, setFiltroVeiculo] = useState<string>('TODOS');
-  const [busca, setBusca] = useState('');
-  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const { status: filtroStatus, motorista: filtroMotorista, veiculo: filtroVeiculo, busca, abertos: filtrosAbertos } = filtros;
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
   const [filaExcecoesAberta, setFilaExcecoesAberta] = useState(false);
@@ -622,7 +638,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           ) : undefined}
           newLabel={podeAgendar ? 'Agendar Viagem' : undefined}
           onNew={podeAgendar ? () => setModalNovaAberto(true) : undefined}
-          onFilter={() => setFiltrosAbertos((f) => !f)}
+          onFilter={() => atualizarFiltros({ abertos: !filtrosAbertos })}
           isFilterActive={
             filtroStatus !== 'TODOS' ||
             filtroMotorista !== 'TODOS' ||
@@ -636,7 +652,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           {/* Busca por campo de texto na esquerda */}
           <SearchInput
             value={busca}
-            onChange={setBusca}
+            onChange={(busca) => atualizarFiltros({ busca })}
             placeholder={somenteProprias ? 'Buscar por trajeto...' : 'Buscar por trajeto, condutor ou placa...'}
           />
 
@@ -644,7 +660,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           <FilterSelect
             aria-label="Filtrar por status"
             value={filtroStatus}
-            onChange={(val) => setFiltroStatus(val as FiltroStatusViagem)}
+            onChange={(val) => atualizarFiltros({ status: val as FiltroStatusViagem })}
             options={[
               { value: 'TODOS', label: 'Todos os status' },
               { value: 'AGENDADA', label: 'Agendadas' },
@@ -658,7 +674,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           {!somenteProprias && <FilterSelect
             aria-label="Filtrar por motorista"
             value={filtroMotorista}
-            onChange={setFiltroMotorista}
+            onChange={(motorista) => atualizarFiltros({ motorista })}
             options={[
               { value: 'TODOS', label: 'Todos os motoristas' },
               ...opcoesMotoristas,
@@ -668,7 +684,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           {!somenteProprias && <FilterSelect
             aria-label="Filtrar por veículo"
             value={filtroVeiculo}
-            onChange={setFiltroVeiculo}
+            onChange={(veiculo) => atualizarFiltros({ veiculo })}
             options={[
               { value: 'TODOS', label: 'Todos os veículos' },
               ...opcoesVeiculos,
@@ -682,12 +698,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setBusca('');
-                setFiltroStatus('TODOS');
-                setFiltroMotorista('TODOS');
-                setFiltroVeiculo('TODOS');
-              }}
+              onClick={() => atualizarFiltros({ ...FILTROS_INICIAIS, abertos: filtrosAbertos })}
             >
               Limpar
             </Button>
