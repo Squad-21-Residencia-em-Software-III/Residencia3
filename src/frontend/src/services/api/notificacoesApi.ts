@@ -33,14 +33,9 @@ export const notificacoesApi = {
     return request<RespostaMarcarLida>('PATCH', `/notificacoes/${id}/lida`);
   },
 
-  /**
-   * Marca como lidas as notificações não lidas do usuário até `ateId` (maior id já exibido),
-   * evitando marcar involuntariamente avisos que chegaram após a última consulta.
-   */
-  marcarTodasLidas(ateId?: number) {
-    return request<RespostaMarcarLida>('PATCH', '/notificacoes/ler-todas', {
-      body: ateId != null ? { ate_id: ateId } : undefined,
-    });
+  /** Marca apenas os avisos já apresentados na central. */
+  marcarTodasLidas(ids: number[]) {
+    return request<RespostaMarcarLida>('PATCH', '/notificacoes/ler-todas', { body: { ids } });
   },
 
   /** Marca como lidas todas as notificações ligadas à mesma entidade de negócio. */

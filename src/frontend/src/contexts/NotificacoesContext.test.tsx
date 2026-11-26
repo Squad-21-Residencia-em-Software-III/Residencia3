@@ -88,7 +88,7 @@ describe('NotificacoesContext', () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('não dispara requisições quando a feature flag está desativada', async () => {
@@ -139,7 +139,7 @@ describe('NotificacoesContext', () => {
     expect(mockContador).toHaveBeenCalledTimes(4);
   });
 
-  it('envia ate_id em marcarTodasLidas, usa nao_lidas da resposta e faz rollback cirurgico sem apagar itens concorrentes', async () => {
+  it('envia IDs exibidos e preserva itens carregados durante um rollback', async () => {
     mockListar
       .mockResolvedValueOnce({
         itens: [criarNotificacao(10), criarNotificacao(8)],
@@ -173,7 +173,7 @@ describe('NotificacoesContext', () => {
     act(() => {
       promessaLerTodas = result.current.marcarTodasLidas();
     });
-    expect(mockMarcarTodasLidas).toHaveBeenCalledWith(10);
+    expect(mockMarcarTodasLidas).toHaveBeenCalledWith([10, 8]);
 
     // Enquanto marcarTodasLidas está em voo, usuário carrega mais itens
     await act(async () => {
@@ -199,11 +199,10 @@ describe('NotificacoesContext', () => {
     expect(result.current.naoLidas).toBe(1);
   });
 
-  it('recarrega a primeira pagina silenciosamente quando a versao do contador muda com a central aberta', async () => {
+  it('revalida a central aberta mesmo quando a versão do contador permanece igual', async () => {
     mockContador
       .mockResolvedValueOnce({ nao_lidas: 1, versao: 'v1' })
-      .mockResolvedValueOnce({ nao_lidas: 2, versao: 'v2' })
-      .mockResolvedValueOnce({ nao_lidas: 3, versao: 'v3' });
+      .mockResolvedValueOnce({ nao_lidas: 1, versao: 'v1' });
     mockListar.mockResolvedValue({
       itens: [criarNotificacao(1)],
       proximo_cursor: null,
@@ -224,7 +223,7 @@ describe('NotificacoesContext', () => {
     });
     expect(mockListar).not.toHaveBeenCalled();
 
-    // Central aberta: mudança de versão dispara recarga silenciosa da primeira página
+    // Central aberta: revalida o conteúdo mesmo com o contador estável
     act(() => {
       result.current.definirCentralAberta(true);
     });
@@ -232,6 +231,43 @@ describe('NotificacoesContext', () => {
       await result.current.atualizarContador();
     });
     expect(mockListar).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserva leitura confirmada quando a leitura em massa concorrente falha', async () => {
+    mockListar.mockResolvedValueOnce({ itens: [criarNotificacao(1)], nao_lidas: 1 });
+    const { result } = renderHook(() => useNotificacoes(), { wrapper: wrapper(true) });
+    await act(async () => result.current.carregarLista());
+    let rejeitar!: (erro: Error) => void;
+    mockMarcarTodasLidas.mockReturnValueOnce(new Promise((_, reject) => { rejeitar = reject; }));
+    let lote!: Promise<void>;
+    act(() => { lote = result.current.marcarTodasLidas(); });
+    await act(async () => result.current.marcarLida(1));
+    await act(async () => { rejeitar(new Error('falha')); await lote; });
+    expect(result.current.itens[0]?.lida_em).not.toBeNull();
+  });
+
+  it('descarta respostas obsoletas de paginação e de outra sessão da mesma conta', async () => {
+    let versaoSessao = 1;
+    mockUseAuth.mockImplementation(() => ({ usuario: USUARIO_PADRAO, versaoSessao }));
+    mockListar.mockResolvedValueOnce({ itens: [criarNotificacao(10)], proximo_cursor: 'antigo', nao_lidas: 1 });
+    const { result, rerender } = renderHook(() => useNotificacoes(), { wrapper: wrapper(true) });
+    await act(async () => result.current.carregarLista());
+    let resolver!: (resposta: unknown) => void;
+    mockListar.mockReturnValueOnce(new Promise((resolve) => { resolver = resolve; }));
+    let pagina!: Promise<void>;
+    act(() => { pagina = result.current.carregarMais(); });
+    mockListar.mockResolvedValueOnce({ itens: [{ ...criarNotificacao(10), acesso_revogado: true }], proximo_cursor: 'novo' });
+    await act(async () => result.current.carregarLista({ forcar: true }));
+    await act(async () => { resolver({ itens: [criarNotificacao(5)], proximo_cursor: 'obsoleto' }); await pagina; });
+    expect(result.current.proximoCursor).toBe('novo');
+    expect(result.current.itens).toEqual([expect.objectContaining({ id: 10, acesso_revogado: true })]);
+    mockListar.mockReturnValueOnce(new Promise((resolve) => { resolver = resolve; }));
+    act(() => { pagina = result.current.carregarLista(); });
+    versaoSessao += 1;
+    rerender();
+    await act(async () => { resolver({ itens: [criarNotificacao(99)], proximo_cursor: 'anterior' }); await pagina; });
+    expect(result.current.itens).toEqual([]);
+    expect(result.current.proximoCursor).toBeNull();
   });
 
   it('deduplica toast em primeiro plano por id e limpa todo o estado no logout', async () => {

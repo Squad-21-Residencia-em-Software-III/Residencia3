@@ -245,7 +245,7 @@ describe('SinoNotificacoes', () => {
     expect(screen.getByText('Tela Início')).toBeInTheDocument();
   });
 
-  it('marca item como lido e navega ao clicar, e suporta "Marcar todas como lidas"', async () => {
+  it('marca item como lido e navega ao clicar, e suporta "Marcar avisos exibidos como lidos"', async () => {
     const user = userEvent.setup();
     mockContador.mockResolvedValue({ nao_lidas: 2, versao: 'v1' });
     mockListar.mockResolvedValue({
@@ -270,8 +270,8 @@ describe('SinoNotificacoes', () => {
     await user.click(screen.getByRole('button', { name: /notificações/i }));
     expect(await screen.findByText('Viagem #10 confirmada')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /marcar todas como lidas/i }));
-    await waitFor(() => expect(mockMarcarTodasLidas).toHaveBeenCalledWith(11));
+    await user.click(screen.getByRole('button', { name: /marcar avisos exibidos como lidos/i }));
+    await waitFor(() => expect(mockMarcarTodasLidas).toHaveBeenCalledWith([10, 11]));
 
     await user.click(screen.getByText('Viagem #10 confirmada'));
     expect(screen.getByText('Lista de Viagens')).toBeInTheDocument();

@@ -86,13 +86,11 @@ Marca uma notificação específica como lida (idempotente).
 
 ### 4. `PATCH /api/notificacoes/ler-todas`
 
-Marca como lidas as notificações não lidas do usuário até o `ate_id` informado (maior `id` carregado na lista), evitando marcar avisos novos que chegaram entre a consulta e a ação.
-
-- **Body (opcional):**
+Marca como lidas somente as notificações não lidas apresentadas na central. Cada requisição aceita até 1.000 IDs.
 
 ```json
 {
-  "ate_id": 42
+  "ids": [42, 39]
 }
 ```
 

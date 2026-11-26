@@ -229,12 +229,12 @@ export function SinoNotificacoes({
               {recursoHabilitado && naoLidas > 0 && (
                 <button
                   type="button"
-                  disabled={!online}
+                  disabled={!online || !ctx.itens.some((item) => item.lida_em === null)}
                   onClick={() => void ctx.marcarTodasLidas()}
                   className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-display text-[11px] font-semibold text-primary transition-colors hover:bg-primary-soft disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <CheckCheck size={14} aria-hidden="true" />
-                  Marcar todas como lidas
+                  Marcar avisos exibidos como lidos
                 </button>
               )}
             </div>
