@@ -16,6 +16,7 @@ import {
 } from './sw/logicaPushSw';
 import { comTravaDeApresentacao, lerEstadoPush, registrarRecebimento, resetarBadgePush } from './sw/estadoPush';
 import { limparAppBadge } from './utils/appBadging';
+import { interpretarSuspensao, suspenderBarreira } from './sw/barreiraPush';
 
 declare let self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<PrecacheEntry | string>;
@@ -63,6 +64,17 @@ registerRoute(
 self.addEventListener('message', (event) => {
   const cliente = event.source;
   if (!cliente || !('url' in cliente) || new URL(cliente.url).origin !== self.location.origin) return;
+  const suspensao = interpretarSuspensao(event.data);
+  if (suspensao) {
+    // A própria aba pode fechar antes da gravação. O SW mantém sua própria
+    // barreira em memória e tenta persistir o mesmo pedido, sem depender dela.
+    event.waitUntil((async () => {
+      const aplicada = await suspenderBarreira(suspensao, true);
+      const atual = await lerEstadoPush();
+      if (aplicada || !atual?.vinculo || atual.encerramento) await limparApresentacao();
+    })().catch(() => undefined));
+    return;
+  }
   tratarMensagemSw(event.data, () => event.waitUntil(self.skipWaiting()));
 });
 
@@ -114,7 +126,9 @@ self.addEventListener('push', (event) => {
       await tratarEventoPush(payload, {
         origem: self.location.origin,
         listarJanelas: () => self.clients.matchAll({ type: 'window', includeUncontrolled: true }),
-        confirmarToast: (janela, mensagem) => new Promise((resolve) => {
+        confirmarToast: async (janela, mensagem) => {
+          if (!(await vinculoContinua())) return false;
+          return new Promise((resolve) => {
           const canal = new MessageChannel();
           const concluir = (recebido: boolean) => {
             clearTimeout(limite);
@@ -128,7 +142,8 @@ self.addEventListener('push', (event) => {
           } catch {
             concluir(false);
           }
-        }),
+          });
+        },
         exibirNotificacao: async (titulo, opcoes) => {
           if (await vinculoContinua()) await self.registration.showNotification(titulo, opcoes);
         },

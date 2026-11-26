@@ -44,7 +44,7 @@ export async function cumprirEncerramento(): Promise<boolean> {
   if (!marcado() && !(await lerEstadoPush())?.encerramento) return true;
   const assinatura = await assinaturaDoAparelho();
   if (assinatura && !(await encerrarAssinatura(assinatura.endpoint).catch(() => false))) return false;
-  await confirmarEncerramento();
+  if (!(await confirmarEncerramento())) return false;
   desmarcar();
   return true;
 }

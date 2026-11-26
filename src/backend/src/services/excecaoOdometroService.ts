@@ -16,6 +16,7 @@ import {
   montarAvisoExcecaoDecidida,
   destinatariosExcecaoOdometro,
 } from './eventosExcecaoOdometro';
+import { notificacaoSvoService } from './notificacaoSvoService';
 import { publicarNotificacao } from './publicacaoNotificacoes';
 import {
   deslocamentoDaOrdem, deslocamentoEmCursoDoVeiculo, evidenciaDaFase, type FaseOdometro,
@@ -89,6 +90,10 @@ export const excecaoOdometroService = {
           destinatarios: await destinatariosExcecaoOdometro(trx),
         });
       }
+      // S8 (SCRUM-235): pedido do motorista SVO aos gestores SVO da unidade, com push
+      if (tipo === 'SVO' && !await notificacaoSvoService.avisarProximoPedidoDoDeslocamento(id, fase, trx)) {
+        await notificacaoSvoService.publicarExcecaoSolicitada(registro!, id, autor.id, trx);
+      }
 
       return apresentarExcecao(registro!);
     });
@@ -152,6 +157,11 @@ export const excecaoOdometroService = {
           autorId: autor.id,
           destinatarios: [registro.solicitada_por],
         });
+      }
+      // S8 (SCRUM-235): decisão ao motorista SVO que pediu, com push
+      if (tipo === 'SVO') {
+        await notificacaoSvoService.publicarExcecaoDecidida(registro, decisao, justificativa, viagemId, autor.id, trx);
+        await notificacaoSvoService.avisarProximoPedidoDoDeslocamento(viagemId, registro.fase, trx);
       }
 
       return apresentarExcecao(atual!);
