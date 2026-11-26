@@ -59,23 +59,25 @@ async function recursos(tipo: 'FROTA' | 'SVO') {
   return { condutor, veiculo, motorista };
 }
 
-async function viagemAdministrativa() {
+async function viagemAdministrativa(id?: number) {
   const r = await recursos('FROTA');
   const [solicitacao] = await db('solicitacoes_viagem').insert({
     origem: 'Sede', destino: 'Hospital', finalidade: 'Teste', data_saida_desejada: new Date(), status: 'AGENDADA',
   }).returning('*');
   const [viagem] = await db('viagens_frota').insert({
+    id,
     solicitacao_id: solicitacao.id, veiculo_id: r.veiculo.id, motorista_id: r.motorista.id, status: 'AGENDADA',
   }).returning('*');
   return { ...r, viagem };
 }
 
-async function ordemSvo(r: Awaited<ReturnType<typeof recursos>>, registranteId: number) {
+async function ordemSvo(r: Awaited<ReturnType<typeof recursos>>, registranteId: number, id?: number) {
   const [solicitacao] = await db('solicitacoes_svo').insert({
     registrante_id: registranteId, dados_solicitante: 'Solicitante teste', local_ocorrencia: 'Local de teste',
     material_sensivel: false, status: 'EM_ANDAMENTO', confirmado_por: registranteId, confirmado_em: new Date(),
   }).returning('*');
   const [ordem] = await db('ordens_svo').insert({
+    id,
     solicitacao_id: solicitacao.id, veiculo_id: r.veiculo.id, motorista_id: r.motorista.id,
     status: 'ALOCADA', capacidade_utilizada: 1,
   }).returning('*');
@@ -442,6 +444,47 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(await db('deslocamentos_svo_ordens').where({ deslocamento_svo_id: evidencia.deslocamento_svo_id })).toHaveLength(2);
     expect(await db('evidencias_odometro').where({ deslocamento_svo_id: evidencia.deslocamento_svo_id })).toHaveLength(1);
   });
+
+  it.skipIf(process.env.SCRUM235_POSTGRES_TESTS !== '1')(
+    'SCRUM-221 separa avisos A9 e S8 de mesmo tipo mesmo quando as referências têm o mesmo ID',
+    async () => {
+      configNotificacoes.ativas = true;
+      env.excecoesOdometroAtivas = true;
+      const gestorSvo = await usuario('GESTOR_SVO');
+      const gestorFrota = await usuario('GESTOR_FROTA');
+      const admin = await usuario('ADMINISTRADOR');
+      // O ID compartilhado fica longe das sequências normais das duas tabelas.
+      const { rows: [{ id }] } = await db.raw(`
+        SELECT GREATEST((SELECT MAX(id) FROM viagens_frota), (SELECT MAX(id) FROM ordens_svo), 0) + 100000 AS id
+      `);
+      const frota = await viagemAdministrativa(id);
+      const svo = await recursos('SVO');
+      const ordem = await ordemSvo(svo, gestorSvo.id, id);
+      expect(frota.viagem.id).toBe(ordem.id);
+      const pedir = (token: string, tipo_operacao: string, viagem_id: number) =>
+        request(app).post('/api/evidencias-odometro/excecoes').set('Authorization', token)
+          .send({ tipo_operacao, viagem_id, fase: 'SAIDA', motivo: 'A câmera ficou indisponível' });
+
+      expect((await pedir(frota.condutor.token, 'ADMINISTRATIVA', frota.viagem.id)).status).toBe(201);
+      expect((await pedir(svo.condutor.token, 'SVO', ordem.id)).status).toBe(201);
+      const casos = [
+        { conta: gestorSvo, operacao: 'SVO', referencia_tipo: 'ORDEM_SVO', referencia_id: ordem.id },
+        { conta: gestorFrota, operacao: 'Administrativo', referencia_tipo: 'VIAGEM_FROTA', referencia_id: frota.viagem.id },
+        { conta: admin, operacao: 'Administrativo', referencia_tipo: 'VIAGEM_FROTA', referencia_id: frota.viagem.id },
+      ];
+      for (const { conta, ...referencia } of casos) {
+        const central = await request(app).get('/api/notificacoes').set('Authorization', conta.token);
+        expect(central.status).toBe(200);
+        const avisos = central.body.itens.filter((item: { tipo: string }) => item.tipo === 'EXCECAO_ODOMETRO_SOLICITADA');
+        expect(avisos).toEqual([expect.objectContaining({ ...referencia, acesso_revogado: false })]);
+        const fila = await db('notificacao_outbox').where({
+          usuario_id: conta.id, evento_tipo: 'EXCECAO_ODOMETRO_SOLICITADA', ...referencia,
+        });
+        expect(fila).toHaveLength(1);
+        expect(JSON.stringify(fila[0].payload_push)).not.toContain('A câmera ficou indisponível');
+      }
+    }
+  );
 
   it('encerra autorizações SVO quando a ordem é reprogramada para outro condutor', async () => {
     env.excecoesOdometroAtivas = true;
