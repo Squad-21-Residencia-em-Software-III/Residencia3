@@ -7,6 +7,7 @@ interface EstadoPush {
   encerramento: boolean;
   recentes: number[];
   badge?: number;
+  badgeConsultadoEm?: number;
 }
 
 const INICIAL: EstadoPush = { geracao: 'inicial', vinculo: null, encerramento: false, recentes: [] };
@@ -65,15 +66,18 @@ export async function registrarVinculo(geracao: string | undefined, vinculo: unk
   if (!geracao || !vinculoValido(vinculo) || sinal.aborted) return;
   await comTravaDeApresentacao(() => estado((atual) =>
     atual.geracao === geracao && !atual.encerramento && !sinal.aborted && atual.vinculo !== vinculo
-      ? { ...atual, vinculo, recentes: [], badge: undefined }
+      ? { ...atual, vinculo, recentes: [], badge: undefined, badgeConsultadoEm: undefined }
       : atual));
 }
 
 export async function suspenderApresentacao(encerramento: boolean) {
+  const invalidar = () => estado((atual) => ({
+    ...INICIAL, geracao: crypto.randomUUID(), encerramento: encerramento || atual.encerramento,
+  }));
+  // O worker verá a geração encerrada mesmo se outra aba estiver ocupando a trava de apresentação.
+  if (encerramento) await invalidar().catch(() => undefined);
   await comTravaDeApresentacao(async () => {
-    await estado((atual) => ({
-      ...INICIAL, geracao: crypto.randomUUID(), encerramento: encerramento || atual.encerramento,
-    }));
+    if (!encerramento) await invalidar();
     await sincronizarAppBadge(0);
     if ('serviceWorker' in navigator) {
       const registro = await navigator.serviceWorker.getRegistration();
@@ -100,15 +104,17 @@ export function registrarRecebimento(geracao: string, id: number) {
 }
 
 export async function atualizarBadgeDoVinculo(
-  anterior: EstadoPush, elegiveis: number, valido: () => boolean,
+  anterior: EstadoPush, elegiveis: number, valido: () => boolean, iniciadoEm: number,
 ) {
   if (!Number.isSafeInteger(elegiveis) || elegiveis < 0) return;
   await comTravaDeApresentacao(async () => {
     const atual = await estado();
     if (!valido() || atual.geracao !== anterior.geracao || !atual.vinculo ||
         atual.vinculo !== anterior.vinculo || atual.recentes.at(-1) !== anterior.recentes.at(-1) ||
-        atual.badge === elegiveis) return;
-    await sincronizarAppBadge(elegiveis);
-    await estado((a) => ({ ...a, badge: elegiveis }));
+        iniciadoEm <= (atual.badgeConsultadoEm ?? 0)) return;
+    if (atual.badge !== elegiveis) await sincronizarAppBadge(elegiveis);
+    await estado((a) => a.geracao === atual.geracao && a.vinculo === atual.vinculo
+      ? { ...a, badge: elegiveis, badgeConsultadoEm: iniciadoEm }
+      : a);
   });
 }

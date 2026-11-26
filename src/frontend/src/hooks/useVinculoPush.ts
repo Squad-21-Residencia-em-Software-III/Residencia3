@@ -85,7 +85,6 @@ export function encerrarPushAoSair(token: string | null): Promise<void> {
   marcarEncerramento();
   const suspensao = suspenderApresentacao(true);
   emSequencia(async () => {
-    await suspensao;
     const assinatura = await assinaturaDoAparelho();
     if (assinatura && token) {
       const { endpoint } = assinatura;

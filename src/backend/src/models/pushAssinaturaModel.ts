@@ -38,8 +38,8 @@ export const pushAssinaturaModel = {
   },
 
   async chavesDaAssinaturaAtiva(usuario_id: number, endpoint: string, conexao: Knex = db) {
-    return conexao<NovaAssinatura & { ativa: boolean }>('push_subscriptions')
-      .where({ usuario_id, endpoint, ativa: true }).first('p256dh', 'auth');
+    return conexao<NovaAssinatura & { ativa: boolean; id: number; geracao_vinculo: number }>('push_subscriptions')
+      .where({ usuario_id, endpoint, ativa: true }).first('id', 'geracao_vinculo', 'p256dh', 'auth');
   },
 
   /** Apaga (as chaves não ficam guardadas sem uso). Só a do próprio usuário; repetir não tem efeito. */

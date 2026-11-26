@@ -107,12 +107,33 @@ self.addEventListener('push', (event) => {
       const id = payload.notificacao_id;
       if (id !== null && atual.recentes.includes(id)) return;
       const nav = self.navigator as WorkerNavigator & { setAppBadge?: () => Promise<void> };
+      const vinculoContinua = async () => {
+        const novo = await lerEstadoPush();
+        return novo?.geracao === atual.geracao && novo.vinculo === atual.vinculo && !novo.encerramento;
+      };
       await tratarEventoPush(payload, {
         origem: self.location.origin,
         listarJanelas: () => self.clients.matchAll({ type: 'window', includeUncontrolled: true }),
-        exibirNotificacao: (titulo, opcoes) => self.registration.showNotification(titulo, opcoes),
+        confirmarToast: (janela, mensagem) => new Promise((resolve) => {
+          const canal = new MessageChannel();
+          const concluir = (recebido: boolean) => {
+            clearTimeout(limite);
+            canal.port1.close();
+            resolve(recebido);
+          };
+          const limite = setTimeout(() => concluir(false), 1_000);
+          canal.port1.onmessage = (evento) => concluir(evento.data === true);
+          try {
+            janela.postMessage(mensagem, { transfer: [canal.port2] });
+          } catch {
+            concluir(false);
+          }
+        }),
+        exibirNotificacao: async (titulo, opcoes) => {
+          if (await vinculoContinua()) await self.registration.showNotification(titulo, opcoes);
+        },
         definirBadgeGenerico: typeof nav.setAppBadge === 'function'
-          ? () => nav.setAppBadge!()
+          ? async () => { if (await vinculoContinua()) await nav.setAppBadge!(); }
           : undefined,
       });
       if (id !== null) await registrarRecebimento(atual.geracao, id);

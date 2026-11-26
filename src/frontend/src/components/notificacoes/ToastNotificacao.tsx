@@ -49,10 +49,10 @@ export function ToastNotificacao() {
     const sinal = sinalDaSessao();
     try {
       const item = await comLimite(sinal, (signal) => notificacoesApi.obter(id, signal));
-      if (sinal.aborted || item.id !== id || item.acesso_revogado) return;
+      if (sinal.aborted || item.id !== id) return;
       fecharToast();
-      navigate(resolverDestinoNotificacao(item.url_destino, usuario.perfil).url);
-      void marcarLida?.(id);
+      navigate(resolverDestinoNotificacao(item.acesso_revogado ? null : item.url_destino, usuario.perfil).url);
+      if (!item.acesso_revogado) void marcarLida?.(id);
     } catch (erro) {
       if (!sinal.aborted && erro instanceof ApiError && [400, 403, 404].includes(erro.status)) {
         fecharToast();

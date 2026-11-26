@@ -27,7 +27,7 @@ function aparelho() {
   return {
     ecdh,
     authSecret: auth,
-    assinatura: { endpoint: ENDPOINT, p256dh: ecdh.getPublicKey().toString('base64url'), auth: auth.toString('base64url') },
+    assinatura: { id: 1, geracao_vinculo: 1, endpoint: ENDPOINT, p256dh: ecdh.getPublicKey().toString('base64url'), auth: auth.toString('base64url') },
   };
 }
 

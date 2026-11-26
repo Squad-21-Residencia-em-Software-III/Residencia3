@@ -62,10 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [versaoSessao, avancarSessao] = useState(0)
   const [carregando, setCarregando] = useState(true)
   const canalRef = useRef<BroadcastChannel | null>(null)
+  const geracaoAuth = useRef(0)
 
   // Cold start / F5: tenta restaurar a sessão em memória usando o cookie HttpOnly de refresh.
   useEffect(() => {
     let cancelado = false
+    const geracao = geracaoAuth.current
+    const atual = () => !cancelado && geracaoAuth.current === geracao
     const aoConectar = () => { void comTravaDeCookie(concluirLogout).catch(() => undefined) }
     window.addEventListener('online', aoConectar)
     void comTravaDeCookie(async () => {
@@ -73,15 +76,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await concluirLogout()
         return null
       }
-      return authApi.refresh()
+      return comLimite(null, authApi.refresh)
     })
       .then((sessao) => {
-        if (cancelado || !sessao || logoutPendente()) return
+        if (!atual() || !sessao || logoutPendente()) return
         tokenStorage.set(sessao.token)
         setUsuario(sessao.usuario)
       })
       .catch(() => {
-        if (cancelado) return
+        if (!atual()) return
         tokenStorage.clear()
         setUsuario(null)
       })
@@ -97,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useVinculoPush(usuario?.id)
 
   const limparEstadoLocal = useCallback(() => {
+    geracaoAuth.current += 1
     avancarSessao((versao) => versao + 1)
     invalidarOperacoesPush()
     tokenStorage.clear()
@@ -113,46 +117,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const canal = criarCanalAutenticacao()
     canalRef.current = canal
-    if (!canal) return
-
     const aoReceberMensagem = (evento: MessageEvent<{ tipo?: string }>) => {
       if (evento.data?.tipo === 'LOGOUT') {
         limparEstadoLocal()
       }
     }
 
-    canal.addEventListener('message', aoReceberMensagem)
+    const aoMudarStorage = (evento: StorageEvent) => {
+      if (evento.key === CHAVE_LOGOUT && evento.newValue === '1') limparEstadoLocal()
+    }
+    canal?.addEventListener('message', aoReceberMensagem)
+    window.addEventListener('storage', aoMudarStorage)
     return () => {
-      canal.removeEventListener('message', aoReceberMensagem)
-      canal.close()
+      canal?.removeEventListener('message', aoReceberMensagem)
+      canal?.close()
+      window.removeEventListener('storage', aoMudarStorage)
       if (canalRef.current === canal) canalRef.current = null
     }
   }, [limparEstadoLocal])
 
   const login = useCallback(async (email: string, senha: string) => {
+    const geracao = ++geracaoAuth.current
+    const garantirAtual = () => {
+      if (geracaoAuth.current !== geracao) throw new Error('A sessão foi encerrada.')
+    }
     const resultado = await comTravaDeCookie(async () => {
-      const resultado = await authApi.login(email, senha)
+      garantirAtual()
+      const resultado = await comLimite(null, (signal) => authApi.login(email, senha, signal))
+      garantirAtual()
       marcarLogout(false)
       return resultado
     })
     avancarSessao((versao) => versao + 1)
     invalidarOperacoesPush()
     canalRef.current?.postMessage({ tipo: 'LOGOUT' })
-    await suspenderApresentacao(false)
+    await comLimite(null, () => suspenderApresentacao(false)).catch(() => undefined)
+    garantirAtual()
     tokenStorage.set(resultado.token)
     setUsuario(resultado.usuario)
   }, [])
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(() => {
     // Antes de limpar: o cancelamento no servidor usa o token desta sessão
     marcarLogout(true)
-    invalidarOperacoesPush()
-    const encerramento = encerrarPushAoSair(tokenStorage.get())
+    void encerrarPushAoSair(tokenStorage.get())
+    limparEstadoLocal()
     try { sessionStorage.removeItem(CHAVE_CLIQUE_PUSH) } catch { /* Armazenamento indisponível. */ }
     canalRef.current?.postMessage({ tipo: 'LOGOUT' })
     void comTravaDeCookie(concluirLogout).catch(() => undefined)
-    await encerramento
-    limparEstadoLocal()
   }, [limparEstadoLocal])
 
   const value = useMemo<AuthContextValue>(

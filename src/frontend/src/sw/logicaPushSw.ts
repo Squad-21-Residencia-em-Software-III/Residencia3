@@ -35,7 +35,7 @@ export interface ClienteJanelaSw {
   focused?: boolean;
   visibilityState?: string;
   focus: () => Promise<unknown>;
-  postMessage: (mensagem: unknown) => void;
+  postMessage: (mensagem: unknown, opcoes?: StructuredSerializeOptions) => void;
 }
 
 export interface OpcoesNotificacaoSw {
@@ -51,6 +51,7 @@ export interface AmbientePushSw {
   listarJanelas: () => Promise<readonly ClienteJanelaSw[]>;
   exibirNotificacao: (titulo: string, opcoes: OpcoesNotificacaoSw) => Promise<void>;
   definirBadgeGenerico?: () => Promise<void>;
+  confirmarToast?: (janela: ClienteJanelaSw, mensagem: unknown) => Promise<boolean>;
 }
 
 export interface AmbienteCliqueSw {
@@ -118,8 +119,12 @@ export async function tratarEventoPush(payload: PayloadPushNormalizado, ambiente
   const janelas = referencia ? await ambiente.listarJanelas() : [];
   const janelaFocada = janelas.find((janela) => clienteEmPrimeiroPlano(janela, ambiente.origem));
   if (janelaFocada && referencia) {
-    janelaFocada.postMessage({ tipo: TIPO_MSG_PUSH_FOREGROUND, ...referencia });
-    return;
+    const mensagem = { tipo: TIPO_MSG_PUSH_FOREGROUND, ...referencia };
+    if (!ambiente.confirmarToast) {
+      janelaFocada.postMessage(mensagem);
+      return;
+    }
+    if (await ambiente.confirmarToast(janelaFocada, mensagem)) return;
   }
 
   await ambiente.exibirNotificacao(payload.titulo, {

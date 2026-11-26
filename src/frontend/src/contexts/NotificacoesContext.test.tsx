@@ -392,7 +392,7 @@ describe('NotificacoesContext', () => {
       const { result, rerender } = renderHook(() => useNotificacoes(), { wrapper: wrapper(true) });
       await act(async () => { await Promise.resolve(); });
       expect(result.current.naoLidas).toBe(2);
-      expect(mockAtualizarBadge).toHaveBeenCalledWith(estado, 0, expect.any(Function));
+      expect(mockAtualizarBadge).toHaveBeenCalledWith(estado, 0, expect.any(Function), expect.any(Number));
       await entregar(301, 'B'.repeat(43));
       await entregar(301, vinculo, null);
       expect(mockObter).not.toHaveBeenCalled();

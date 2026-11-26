@@ -172,8 +172,9 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     const estado = await lerEstadoPush();
     if (!estado?.vinculo || estado.encerramento || !valido()) return;
     try {
+      const iniciadoEm = Date.now();
       const { elegiveis } = await comLimite(sinal, notificacoesApi.badge);
-      await atualizarBadgeDoVinculo(estado, elegiveis, valido);
+      await atualizarBadgeDoVinculo(estado, elegiveis, valido, iniciadoEm);
     } catch {
       // O sino continua usando seu próprio contador e o badge será revalidado na próxima sincronização.
     }
@@ -374,19 +375,23 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
           typeof evento.data !== 'object' || !('tipo' in evento.data) ||
           evento.data.tipo !== TIPO_MSG_PUSH_FOREGROUND) return;
       const referencia = lerReferenciaPush(evento.data);
-      if (!referencia || emConsulta.has(referencia.notificacao_id) ||
-          idsToastExibidosRef.current.has(String(referencia.notificacao_id))) return;
+      if (!referencia || emConsulta.has(referencia.notificacao_id)) return;
+      const confirmar = (aceito: boolean) => evento.ports[0]?.postMessage(aceito);
 
       const id = referencia.notificacao_id;
       emConsulta.add(id);
       try {
         const estado = await lerEstadoPush();
         if (!valido() || estado?.vinculo !== referencia.vinculo || estado.encerramento) return;
+        if (idsToastExibidosRef.current.has(String(id))) {
+          confirmar(true);
+          return;
+        }
         const item = await comLimite(sinal, (signal) => notificacoesApi.obter(id, signal));
         const atual = await lerEstadoPush();
-        if (valido() && atual?.geracao === estado.geracao && atual.vinculo === referencia.vinculo &&
-            item.id === id && !item.acesso_revogado && item.lida_em === null) {
-          notificarEmPrimeiroPlano(item);
+        if (valido() && atual?.geracao === estado.geracao && atual.vinculo === referencia.vinculo && item.id === id) {
+          if (!item.acesso_revogado && item.lida_em === null) notificarEmPrimeiroPlano(item);
+          confirmar(true);
         }
       } catch {
         // A central continua disponível e o Toast exige confirmação da API.

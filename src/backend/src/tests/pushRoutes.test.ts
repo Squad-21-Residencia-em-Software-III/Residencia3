@@ -188,7 +188,9 @@ describe('POST /subscribe', () => {
 
 describe('POST /subscribe/status e DELETE /unsubscribe', () => {
   it('situação: true só para a assinatura ativa do próprio usuário', async () => {
-    vi.mocked(pushAssinaturaModel.chavesDaAssinaturaAtiva).mockResolvedValueOnce({ p256dh: "teste-publica", auth: "teste-auth" });
+    vi.mocked(pushAssinaturaModel.chavesDaAssinaturaAtiva).mockResolvedValueOnce({
+      id: 1, geracao_vinculo: 1, p256dh: 'teste-publica', auth: 'teste-auth',
+    });
     const resposta = await request(app).post(`${BASE}/subscribe/status`).set('Authorization', 'Bearer x').send({ endpoint: ENDPOINT });
     expect(resposta.body).toEqual({ ativa: true, vinculo: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
     expect(pushAssinaturaModel.chavesDaAssinaturaAtiva).toHaveBeenCalledWith(7, ENDPOINT);

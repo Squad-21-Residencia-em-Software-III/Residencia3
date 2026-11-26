@@ -14,6 +14,7 @@ export const EVENTO_SESSAO_EXPIRADA = 'auth:expirada'
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 
 let accessToken: string | null = null
+let revisaoSessao = 0
 
 /** Remove tokens ou caches legados que possam ter ficado no navegador de versões anteriores. */
 export function limparResiduosArmazenamento(): void {
@@ -50,17 +51,19 @@ limparResiduosArmazenamento()
 export const tokenStorage = {
   get: () => accessToken,
   set: (token: string) => {
+    revisaoSessao += 1
     accessToken = token
   },
   clear: () => {
+    revisaoSessao += 1
     accessToken = null
     limparResiduosArmazenamento()
   },
 }
 
-let renovacaoEmAndamento: Promise<boolean> | null = null
+let renovacaoEmAndamento: { revisao: number; resultado: Promise<boolean> } | null = null
 
-async function renovarSessao(): Promise<boolean> {
+async function renovarSessao(revisao: number): Promise<boolean> {
   try {
     const resposta = await fetch(new URL(`${BASE_URL}/auth/refresh`, window.location.origin), {
       method: 'POST',
@@ -69,19 +72,21 @@ async function renovarSessao(): Promise<boolean> {
     })
     if (!resposta.ok) return false
     const sessao = (await resposta.json().catch(() => null)) as { token?: string } | null
-    if (!sessao?.token) return false
-    tokenStorage.set(sessao.token)
+    if (!sessao?.token || revisao !== revisaoSessao) return false
+    accessToken = sessao.token
     return true
   } catch {
     return false
   }
 }
 
-function renovarUmaVez(): Promise<boolean> {
-  renovacaoEmAndamento ??= renovarSessao().finally(() => {
-    renovacaoEmAndamento = null
+function renovarUmaVez(revisao: number): Promise<boolean> {
+  if (renovacaoEmAndamento?.revisao === revisao) return renovacaoEmAndamento.resultado
+  const resultado = renovarSessao(revisao).finally(() => {
+    if (renovacaoEmAndamento?.resultado === resultado) renovacaoEmAndamento = null
   })
-  return renovacaoEmAndamento
+  renovacaoEmAndamento = { revisao, resultado }
+  return resultado
 }
 
 export interface DetalheErro {
@@ -178,6 +183,7 @@ async function executarDownload(
   }
 
   const headers: Record<string, string> = {}
+  const revisao = revisaoSessao
   const token = tokenStorage.get()
   if (token) headers.Authorization = `Bearer ${token}`
 
@@ -194,12 +200,15 @@ async function executarDownload(
 
   if (!resposta.ok) {
     const dados = await resposta.json().catch(() => null)
-    if (resposta.status === 401) {
-      if (podeRenovar && (await renovarUmaVez())) {
+    if (resposta.status === 401 && revisao === revisaoSessao) {
+      const renovou = podeRenovar && await renovarUmaVez(revisao)
+      if (renovou && revisao === revisaoSessao) {
         return executarDownload(caminho, query, false)
       }
-      tokenStorage.clear()
-      window.dispatchEvent(new Event(EVENTO_SESSAO_EXPIRADA))
+      if (revisao === revisaoSessao) {
+        tokenStorage.clear()
+        window.dispatchEvent(new Event(EVENTO_SESSAO_EXPIRADA))
+      }
     }
     const semCorpo = dados === null && resposta.status >= 500
     throw new ApiError(
@@ -230,6 +239,7 @@ async function executar<T>(
   }
 
   const headers: Record<string, string> = { Accept: 'application/json' }
+  const revisao = revisaoSessao
   if (opcoes.body !== undefined) headers['Content-Type'] = 'application/json'
   const token = opcoes.token ?? tokenStorage.get()
   if (token && !opcoes.semAutenticacao) headers.Authorization = `Bearer ${token}`
@@ -253,12 +263,15 @@ async function executar<T>(
   const dados = await resposta.json().catch(() => null)
 
   if (!resposta.ok) {
-    if (resposta.status === 401 && !opcoes.semAutenticacao && opcoes.token === undefined) {
-      if (podeRenovar && (await renovarUmaVez())) {
+    if (resposta.status === 401 && !opcoes.semAutenticacao && opcoes.token === undefined && revisao === revisaoSessao) {
+      const renovou = podeRenovar && await renovarUmaVez(revisao)
+      if (renovou && revisao === revisaoSessao) {
         return executar<T>(metodo, caminho, opcoes, false)
       }
-      tokenStorage.clear()
-      window.dispatchEvent(new Event(EVENTO_SESSAO_EXPIRADA))
+      if (revisao === revisaoSessao) {
+        tokenStorage.clear()
+        window.dispatchEvent(new Event(EVENTO_SESSAO_EXPIRADA))
+      }
     }
     const semCorpo = dados === null && resposta.status >= 500
     throw new ApiError(

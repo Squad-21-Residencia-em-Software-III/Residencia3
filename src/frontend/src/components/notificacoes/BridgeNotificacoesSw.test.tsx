@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECURSOS_BACKEND } from '../../config/recursosBackend';
@@ -123,7 +123,8 @@ describe('BridgeNotificacoesSw', () => {
     mockUseAuth.mockReturnValue({ usuario: { id: 16, perfil: PERFIS.GESTOR_FROTA }, versaoSessao: 2 });
     rerender(app());
     await act(async () => resolver({ id: 42, url_destino: '/viagens' }));
-    await waitFor(() => expect(mockObter).toHaveBeenCalledTimes(2));
+    expect(mockObter).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(CHAVE_CLIQUE_PUSH)).toBeNull();
     expect(screen.getByText('Tela Início')).toBeInTheDocument();
     expect(mockMarcarLida).not.toHaveBeenCalled();
   });

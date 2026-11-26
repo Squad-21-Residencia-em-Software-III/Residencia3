@@ -45,12 +45,26 @@ export function BridgeNotificacoesSw() {
   const usuarioId = usuario?.id;
   const pendente = useRef<number | null>(intencaoInicial());
   const emConsulta = useRef<symbol | null>(null);
+  const sessaoDaIntencao = useRef({ versaoSessao, usuarioId });
 
   useEffect(() => {
+    const anterior = sessaoDaIntencao.current;
+    sessaoDaIntencao.current = { versaoSessao, usuarioId };
+    if (anterior.usuarioId !== undefined &&
+        (anterior.versaoSessao !== versaoSessao || anterior.usuarioId !== usuarioId)) {
+      pendente.current = null;
+      salvarIntencao(null);
+      const params = new URLSearchParams(location.search);
+      if (params.has('aviso')) {
+        params.delete('aviso');
+        navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true });
+      }
+      return;
+    }
     const avisoNaUrl = lerIntencao(new URLSearchParams(location.search).get('aviso'));
     if (avisoNaUrl !== null) pendente.current = avisoNaUrl;
     if (pendente.current !== null) salvarIntencao(pendente.current);
-  }, [location.search]);
+  }, [location.hash, location.pathname, location.search, navigate, usuarioId, versaoSessao]);
 
   useEffect(() => {
     if (!recursoAtivo('webPush')) return;
@@ -66,11 +80,11 @@ export function BridgeNotificacoesSw() {
       emConsulta.current = operacao;
       try {
         const item = await comLimite(sinal, (signal) => notificacoesApi.obter(id, signal));
-        if (!valido() || item.id !== id || item.acesso_revogado) return;
+        if (!valido() || item.id !== id) return;
         pendente.current = null;
         salvarIntencao(null);
-        navigate(resolverDestinoNotificacao(item.url_destino, perfil).url, { replace: true });
-        void marcarLida?.(id);
+        navigate(resolverDestinoNotificacao(item.acesso_revogado ? null : item.url_destino, perfil).url, { replace: true });
+        if (!item.acesso_revogado) void marcarLida?.(id);
       } catch (erro) {
         if (valido() && erro instanceof ApiError && [400, 403, 404].includes(erro.status)) {
           pendente.current = null;
@@ -91,8 +105,9 @@ export function BridgeNotificacoesSw() {
           evento.data.tipo !== TIPO_MSG_NAVEGAR_NOTIFICACAO) return;
       const referencia = lerReferenciaPush(evento.data);
       if (!referencia) return;
+      const sinal = sinalDaSessao();
       const estado = await lerEstadoPush();
-      if (!ativo || estado?.vinculo !== referencia.vinculo || estado.encerramento) return;
+      if (!ativo || sinal.aborted || estado?.vinculo !== referencia.vinculo || estado.encerramento) return;
       pendente.current = referencia.notificacao_id;
       salvarIntencao(pendente.current);
       void resolver();

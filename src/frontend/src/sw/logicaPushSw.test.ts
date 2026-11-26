@@ -72,6 +72,17 @@ describe('apresentação e clique no Service Worker', () => {
     expect(definirBadgeGenerico).toHaveBeenCalledOnce();
   });
 
+  it('apresenta no SO quando a aba em primeiro plano não confirma o Toast', async () => {
+    const ativa = cliente(origem + '/viagens', true);
+    const exibirNotificacao = vi.fn();
+    const confirmarToast = vi.fn().mockResolvedValue(false);
+    await tratarEventoPush(extrairPayloadPush(JSON.stringify(dados)), {
+      origem, listarJanelas: async () => [ativa], exibirNotificacao, confirmarToast,
+    });
+    expect(confirmarToast).toHaveBeenCalledWith(ativa, { tipo: 'PUSH_EM_PRIMEIRO_PLANO', ...referencia });
+    expect(exibirNotificacao).toHaveBeenCalledOnce();
+  });
+
   it('envia o clique só à aba escolhida e abre a raiz com apenas o ID quando fechada', async () => {
     const ativa = cliente(origem + '/login', true);
     const outra = cliente(origem);

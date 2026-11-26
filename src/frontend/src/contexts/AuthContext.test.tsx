@@ -90,6 +90,18 @@ describe('AuthContext: cold start via silent refresh e logout', () => {
     expect(tokenStorage.get()).toBeNull()
   })
 
+  it('limpa a sessão mesmo quando a suspensão do Push permanece bloqueada', async () => {
+    vi.mocked(authApi.refresh).mockResolvedValueOnce({
+      token: 'token-local', tipo: 'Bearer', expiraEm: '2h', usuario: mockUsuario,
+    })
+    vi.mocked(encerrarPushAoSair).mockReturnValueOnce(new Promise(() => {}))
+    render(<AuthProvider><ConsumidorTeste /></AuthProvider>)
+    await screen.findByText(mockUsuario.nome)
+    await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
+    expect(screen.getByText('Deslogado')).toBeInTheDocument()
+    expect(tokenStorage.get()).toBeNull()
+  })
+
   it('limpa a RAM, chama authApi.logout e notifica outras abas ao deslogar', async () => {
     const postMessageSpy = vi.fn()
     const closeSpy = vi.fn()

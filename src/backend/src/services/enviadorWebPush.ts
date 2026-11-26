@@ -52,13 +52,14 @@ export function criarEnviadorWebPush(
   transporte: TransporteHttp = fetch
 ): EnviadorPush {
   const vapidDetails = { subject: config.subject, publicKey: config.publicKey, privateKey: config.privateKey };
-  return async ({ endpoint, p256dh, auth }, payload, sinal) => {
+  return async (assinatura, payload, sinal) => {
+    const { endpoint, p256dh, auth } = assinatura;
     // Defesa em profundidade: a assinatura já foi validada ao ser criada (pushSchemas)
     if (!hostPushPermitido(endpoint, config.hostsPermitidos)) return { status: STATUS_RECUSADO_LOCALMENTE };
     const conteudo = conteudoDoPush(payload);
     let detalhes: ReturnType<typeof generateRequestDetails>;
     try {
-      detalhes = generateRequestDetails({ endpoint, keys: { p256dh, auth } }, JSON.stringify({ ...conteudo, vinculo: identificarVinculoPush({ endpoint, p256dh, auth }) }), {
+      detalhes = generateRequestDetails({ endpoint, keys: { p256dh, auth } }, JSON.stringify({ ...conteudo, vinculo: identificarVinculoPush(assinatura) }), {
         vapidDetails,
         TTL: TTL_SEGUNDOS,
         urgency: 'normal',
