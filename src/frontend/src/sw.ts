@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+/// <reference types="vite/client" />
 
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -8,10 +9,13 @@ import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkOnly } from 'workbox-strategies';
 import {
   extrairPayloadPush,
+  lerReferenciaPush,
   tratarCliqueNotificacao,
   tratarEventoPush,
   tratarMensagemSw,
 } from './sw/logicaPushSw';
+import { comTravaDeApresentacao, lerEstadoPush, registrarRecebimento, resetarBadgePush } from './sw/estadoPush';
+import { limparAppBadge } from './utils/appBadging';
 
 declare let self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<PrecacheEntry | string>;
@@ -54,47 +58,81 @@ registerRoute(
   }),
 );
 
-// Atualização controlada (registerType: 'prompt'): evita skipWaiting automático e reload-loop.
+
+// O cliente Workbox só pede esta transição após confirmação explícita.
 self.addEventListener('message', (event) => {
-  tratarMensagemSw(event.data, () => {
-    void self.skipWaiting();
-  });
+  const cliente = event.source;
+  if (!cliente || !('url' in cliente) || new URL(cliente.url).origin !== self.location.origin) return;
+  tratarMensagemSw(event.data, () => event.waitUntil(self.skipWaiting()));
 });
 
-// Recebimento de Web Push (contrato SCRUM-237).
+const PUSH_NO_BUILD = import.meta.env.VITE_WEB_PUSH_ATIVO === 'true' &&
+  import.meta.env.VITE_NOTIFICACOES_IN_APP_ATIVAS === 'true';
+
+async function limparApresentacao() {
+  await limparAppBadge();
+  (await self.registration.getNotifications()).forEach((aviso) => aviso.close());
+  await resetarBadgePush();
+}
+
+self.addEventListener('activate', (event) => {
+  if (!PUSH_NO_BUILD) event.waitUntil(comTravaDeApresentacao(limparApresentacao));
+});
+
+async function pushDisponivel() {
+  if (!PUSH_NO_BUILD) return false;
+  try {
+    const api = import.meta.env.VITE_API_URL ?? '/api';
+    const resposta = await fetch(new URL(api + '/notificacoes/push-disponivel', self.location.origin), {
+      cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(5000),
+    });
+    return resposta.ok && (await resposta.json())?.ativo === true;
+  } catch {
+    return false;
+  }
+}
+
 self.addEventListener('push', (event) => {
-  const textoBruto = event.data ? event.data.text() : null;
-  const payload = extrairPayloadPush(textoBruto);
-
-  const navComBadge = self.navigator as WorkerNavigator & {
-    setAppBadge?: (count?: number) => Promise<void>;
-  };
-
-  event.waitUntil(
-    tratarEventoPush(payload, {
-      origem: self.location.origin,
-      listarJanelas: () => self.clients.matchAll({ type: 'window', includeUncontrolled: true }),
-      exibirNotificacao: (titulo, opcoes) => self.registration.showNotification(titulo, opcoes),
-      definirBadgeGenerico:
-        typeof navComBadge.setAppBadge === 'function'
-          ? () => navComBadge.setAppBadge!()
+  const payload = extrairPayloadPush(event.data?.text());
+  event.waitUntil((async () => {
+    if (!payload.vinculo) return;
+    const disponivel = await pushDisponivel();
+    await comTravaDeApresentacao(async () => {
+      const atual = await lerEstadoPush();
+      if (!atual || atual.encerramento || atual.vinculo !== payload.vinculo) return;
+      if (!disponivel) {
+        await limparApresentacao();
+        return;
+      }
+      const id = payload.notificacao_id;
+      if (id !== null && atual.recentes.includes(id)) return;
+      const nav = self.navigator as WorkerNavigator & { setAppBadge?: () => Promise<void> };
+      await tratarEventoPush(payload, {
+        origem: self.location.origin,
+        listarJanelas: () => self.clients.matchAll({ type: 'window', includeUncontrolled: true }),
+        exibirNotificacao: (titulo, opcoes) => self.registration.showNotification(titulo, opcoes),
+        definirBadgeGenerico: typeof nav.setAppBadge === 'function'
+          ? () => nav.setAppBadge!()
           : undefined,
-    }),
-  );
+      });
+      if (id !== null) await registrarRecebimento(atual.geracao, id);
+    });
+  })());
 });
 
-// Clique na notificação do sistema operacional: foco em aba existente ou abertura segura.
 self.addEventListener('notificationclick', (event) => {
-  const dados = event.notification.data as
-    | { notificacao_id?: number | string | null; url?: unknown }
-    | undefined;
-
-  event.waitUntil(
-    tratarCliqueNotificacao(dados, {
+  event.waitUntil((async () => {
+    const referencia = lerReferenciaPush(event.notification.data);
+    const atual = await lerEstadoPush();
+    if (referencia && (!atual || atual.encerramento || atual.vinculo !== referencia.vinculo)) {
+      event.notification.close();
+      return;
+    }
+    await tratarCliqueNotificacao(referencia, {
       origem: self.location.origin,
       fecharNotificacao: () => event.notification.close(),
       listarJanelas: () => self.clients.matchAll({ type: 'window', includeUncontrolled: true }),
       abrirJanela: (url) => self.clients.openWindow(url),
-    }),
-  );
+    });
+  })());
 });

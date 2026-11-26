@@ -16,6 +16,16 @@ const mockUseAuth = vi.fn();
 const mockUseOnlineStatus = vi.fn();
 const mockListar = vi.fn();
 const mockContador = vi.fn();
+const mockObter = vi.fn();
+const mockBadge = vi.fn();
+const mockLerEstado = vi.fn();
+const mockAtualizarBadge = vi.fn();
+const vinculo = 'A'.repeat(43);
+
+vi.mock('../sw/estadoPush', () => ({
+  lerEstadoPush: () => mockLerEstado(),
+  atualizarBadgeDoVinculo: (...args: unknown[]) => mockAtualizarBadge(...args),
+}));
 const mockMarcarLida = vi.fn();
 const mockMarcarTodasLidas = vi.fn();
 const mockMarcarReferenciaLida = vi.fn();
@@ -30,6 +40,8 @@ vi.mock('../hooks/useOnlineStatus', () => ({
 
 vi.mock('../services/api/notificacoesApi', () => ({
   notificacoesApi: {
+    obter: (...args: unknown[]) => mockObter(...args),
+    badge: (...args: unknown[]) => mockBadge(...args),
     listar: (...args: unknown[]) => mockListar(...args),
     contador: (...args: unknown[]) => mockContador(...args),
     marcarLida: (...args: unknown[]) => mockMarcarLida(...args),
@@ -358,62 +370,48 @@ describe('NotificacoesContext', () => {
     expect(mockMarcarReferenciaLida).toHaveBeenCalledTimes(3);
   });
 
-  it('recebe PUSH_EM_PRIMEIRO_PLANO do Service Worker e sincroniza App Badging incluindo limpeza no logout', async () => {
-    const swTarget = new EventTarget();
+  it('hidrata o Toast na API, deduplica reenvios e conta o badge separadamente do sino', async () => {
+    const { RECURSOS_BACKEND } = await import('../config/recursosBackend');
+    const flag = RECURSOS_BACKEND.webPush;
+    RECURSOS_BACKEND.webPush = true;
+    const swTarget = Object.assign(new EventTarget(), { controller: window });
     const swOriginal = navigator.serviceWorker;
-    const setAppBadge = vi.fn().mockResolvedValue(undefined);
-    const clearAppBadge = vi.fn().mockResolvedValue(undefined);
-    const navBadge = navigator as Navigator & { setAppBadge?: unknown; clearAppBadge?: unknown };
-    const setOrig = navBadge.setAppBadge;
-    const clearOrig = navBadge.clearAppBadge;
-
     Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: swTarget });
-    Object.defineProperty(navigator, 'setAppBadge', { configurable: true, value: setAppBadge });
-    Object.defineProperty(navigator, 'clearAppBadge', { configurable: true, value: clearAppBadge });
+    const estado = { vinculo, geracao: '1', encerramento: false };
+    mockLerEstado.mockResolvedValue(estado);
+    mockBadge.mockResolvedValue({ elegiveis: 0 });
+    mockObter.mockResolvedValue(criarNotificacao(301));
+
+    const entregar = (id: number, token = vinculo, source: Window | null = window) => act(async () => {
+      swTarget.dispatchEvent(new MessageEvent('message', {
+        source, data: { tipo: 'PUSH_EM_PRIMEIRO_PLANO', notificacao_id: id, vinculo: token, corpo: 'Texto não confiável' },
+      }));
+    });
 
     try {
-      let usuarioAtual: Usuario | null = USUARIO_PADRAO;
-      mockUseAuth.mockImplementation(() => ({ usuario: usuarioAtual }));
-
       const { result, rerender } = renderHook(() => useNotificacoes(), { wrapper: wrapper(true) });
+      await act(async () => { await Promise.resolve(); });
+      expect(result.current.naoLidas).toBe(2);
+      expect(mockAtualizarBadge).toHaveBeenCalledWith(estado, 0, expect.any(Function));
+      await entregar(301, 'B'.repeat(43));
+      await entregar(301, vinculo, null);
+      expect(mockObter).not.toHaveBeenCalled();
+      await entregar(301);
+      expect(result.current.toastAtivo).toMatchObject({ id: 301, titulo: 'Viagem #301 agendada' });
+      await entregar(301);
+      expect(mockObter).toHaveBeenCalledOnce();
 
-      await act(async () => {
-        await Promise.resolve();
-      });
-      expect(setAppBadge).toHaveBeenCalledWith(2);
-
-      act(() => {
-        swTarget.dispatchEvent(
-          new MessageEvent('message', {
-            data: {
-              tipo: 'PUSH_EM_PRIMEIRO_PLANO',
-              payload: {
-                notificacao_id: 301,
-                titulo: 'Nova coleta SVO',
-                corpo: 'Ordem #301 atribuída.',
-                url: '/viagens',
-                tag: 'ordem-svo-301',
-              },
-            },
-          }),
-        );
-      });
-      expect(result.current.toastAtivo).toEqual({
-        id: 301,
-        titulo: 'Nova coleta SVO',
-        mensagem: 'Ordem #301 atribuída.',
-        url_destino: '/viagens',
-      });
-
-      // Logout deve limpar App Badge
-      clearAppBadge.mockClear();
-      usuarioAtual = null;
+      let resolver!: (item: NotificacaoInApp) => void;
+      const antiga = new Promise<NotificacaoInApp>((resolve) => { resolver = resolve; });
+      mockObter.mockReturnValueOnce(antiga);
+      await entregar(302);
+      mockUseAuth.mockReturnValue({ usuario: null, versaoSessao: 2 });
       rerender();
-      expect(clearAppBadge).toHaveBeenCalled();
+      await act(async () => resolver(criarNotificacao(302)));
+      expect(result.current.toastAtivo).toBeNull();
     } finally {
+      RECURSOS_BACKEND.webPush = flag;
       Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: swOriginal });
-      Object.defineProperty(navigator, 'setAppBadge', { configurable: true, writable: true, value: setOrig });
-      Object.defineProperty(navigator, 'clearAppBadge', { configurable: true, writable: true, value: clearOrig });
     }
   });
 });

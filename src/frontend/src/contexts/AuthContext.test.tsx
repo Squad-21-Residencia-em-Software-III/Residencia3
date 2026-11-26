@@ -45,6 +45,7 @@ describe('AuthContext: cold start via silent refresh e logout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     tokenStorage.clear()
+    localStorage.clear()
     vi.mocked(authApi.logout).mockResolvedValue(undefined)
   })
 
@@ -130,6 +131,27 @@ describe('AuthContext: cold start via silent refresh e logout', () => {
     expect(postMessageSpy).toHaveBeenCalledWith({ tipo: 'LOGOUT' })
 
     vi.unstubAllGlobals()
+  })
+
+  it('não restaura a conta depois de sair offline e fechar o aplicativo', async () => {
+    vi.mocked(authApi.refresh).mockResolvedValue({
+      token: 'token-anterior', tipo: 'Bearer', expiraEm: '2h', usuario: mockUsuario,
+    })
+    vi.mocked(authApi.logout).mockRejectedValue(new Error('Sem rede'))
+    const app = () => <AuthProvider><ConsumidorTeste /></AuthProvider>
+    const primeira = render(app())
+    await screen.findByText('Gestor Teste')
+    await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
+    await screen.findByText('Deslogado')
+    primeira.unmount()
+
+    render(app())
+    await screen.findByText('Deslogado')
+    expect(authApi.refresh).toHaveBeenCalledTimes(1)
+    vi.mocked(authApi.logout).mockResolvedValue(undefined)
+    act(() => window.dispatchEvent(new Event('online')))
+    await waitFor(() => expect(localStorage.length).toBe(0))
+    expect(tokenStorage.get()).toBeNull()
   })
 
   it('encerra a sessão local ao receber mensagem LOGOUT de outra aba', async () => {

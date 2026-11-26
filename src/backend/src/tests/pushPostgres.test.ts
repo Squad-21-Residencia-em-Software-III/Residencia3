@@ -93,6 +93,30 @@ describe.skipIf(!habilitado)('Alertas no aparelho (SCRUM-237) em PostgreSQL desc
   });
   afterAll(() => db.destroy());
 
+  it('mantém S6/S7 no sino e considera só avisos Push elegíveis no App Badge', async () => {
+    const p = await pessoa('MOTORISTA_SVO');
+    const consultar = (rota: string) => request(app).get(`${BASE}/${rota}`).set(com(p));
+    expect((await ligarCategoria(p, 'SVO')).status).toBe(200);
+    for (const tipo of ['SVO_CHEGADA_LOCAL', 'SVO_COLETA_CONCLUIDA']) {
+      await db.transaction((trx) => publicarNotificacao(trx, evento([p.id], { tipo, operacao: 'SVO', push: undefined })));
+    }
+    expect((await consultar('contador')).body.nao_lidas).toBe(2);
+    expect((await consultar('badge')).body).toEqual({ elegiveis: 0 });
+    await db.transaction((trx) => publicarNotificacao(trx, evento([p.id], {
+      tipo: 'EXCECAO_ODOMETRO_DECIDIDA', operacao: 'SVO',
+      push: { categoria: 'SVO', titulo: 'Decisão', corpo: 'Confira a decisão.' },
+    })));
+    expect((await consultar('contador')).body.nao_lidas).toBe(3);
+    expect((await consultar('badge')).body).toEqual({ elegiveis: 1 });
+    const [item] = await filaDe(p.id);
+    await request(app).patch(`${BASE}/${item.notificacao_id}/lida`).set(com(p));
+    expect((await consultar('badge')).body).toEqual({ elegiveis: 0 });
+    configNotificacoes.ativas = false;
+    const disponibilidade = await request(app).get(`${BASE}/push-disponivel`);
+    expect(disponibilidade.body).toEqual({ ativo: false });
+    expect(disponibilidade.headers['cache-control']).toBe('no-store');
+  });
+
   describe('Assinatura', () => {
     it('cria (201) e renova (204) o mesmo aparelho sem duplicar, trocando as chaves', async () => {
       const p = await pessoa();
@@ -147,7 +171,7 @@ describe.skipIf(!habilitado)('Alertas no aparelho (SCRUM-237) em PostgreSQL desc
       const dispositivo = aparelho();
       await assinar(a, dispositivo);
       const status = (p: Pessoa) => request(app).post(`${BASE}/subscribe/status`).set(com(p)).send({ endpoint: dispositivo.endpoint });
-      expect((await status(a)).body).toEqual({ ativa: true });
+      expect((await status(a)).body).toEqual({ ativa: true, vinculo: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
       expect((await status(b)).body).toEqual({ ativa: false });
     });
 

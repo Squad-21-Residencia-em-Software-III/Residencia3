@@ -2,6 +2,7 @@ import { generateRequestDetails } from 'web-push';
 import type { ConfiguracaoWebPush } from '../config/env';
 import type { PayloadPush } from '../models/notificacaoOutboxModel';
 import { hostPushPermitido } from '../validators/pushSchemas';
+import { identificarVinculoPush } from './vinculoNotificacaoPush';
 import type { EnviadorPush } from './filaPush';
 import { LIMITE_CORPO_PUSH, LIMITE_TITULO_PUSH, limitar } from './publicacaoNotificacoes';
 
@@ -57,7 +58,7 @@ export function criarEnviadorWebPush(
     const conteudo = conteudoDoPush(payload);
     let detalhes: ReturnType<typeof generateRequestDetails>;
     try {
-      detalhes = generateRequestDetails({ endpoint, keys: { p256dh, auth } }, JSON.stringify(conteudo), {
+      detalhes = generateRequestDetails({ endpoint, keys: { p256dh, auth } }, JSON.stringify({ ...conteudo, vinculo: identificarVinculoPush({ endpoint, p256dh, auth }) }), {
         vapidDetails,
         TTL: TTL_SEGUNDOS,
         urgency: 'normal',

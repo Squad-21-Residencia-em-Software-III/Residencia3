@@ -18,8 +18,8 @@ export const authApi = {
     request<ResultadoLogin>('POST', '/auth/refresh', { semAutenticacao: true }),
 
   /** Solicita ao servidor a remoção do cookie HttpOnly de sessão. */
-  logout: () =>
-    request<void>('POST', '/auth/logout', { semAutenticacao: true }),
+  logout: (signal?: AbortSignal) =>
+    request<void>('POST', '/auth/logout', { semAutenticacao: true, signal }),
 
   me: () => request<Usuario>('GET', '/auth/me'),
 

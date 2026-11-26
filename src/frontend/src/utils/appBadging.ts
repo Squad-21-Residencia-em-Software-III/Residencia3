@@ -1,4 +1,4 @@
-type NavigatorComBadge = Navigator & {
+type NavigatorComBadge = {
   setAppBadge?: (count?: number) => Promise<void>;
   clearAppBadge?: () => Promise<void>;
 };

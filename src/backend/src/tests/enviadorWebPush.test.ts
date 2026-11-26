@@ -97,6 +97,7 @@ describe('Enviador Web Push: cifra, VAPID e requisição', () => {
     expect(JSON.stringify(init)).not.toContain(vapid.privateKey);
 
     expect(await decifrar(init.body as Uint8Array, dispositivo)).toEqual({
+      vinculo: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
       notificacao_id: 42, titulo: 'Viagem agendada', corpo: 'Confira o horário.', url: '/viagens', tag: 'viagem-108',
     });
   });

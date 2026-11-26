@@ -1,3 +1,4 @@
+import { lerEstadoPush, registrarVinculo, suspenderApresentacao } from '../sw/estadoPush';
 import { useEffect } from 'react';
 import { recursoAtivo } from '../config/recursosBackend';
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
@@ -15,7 +16,7 @@ const ESPERA_MAXIMA_MS = 5 * 60_000;
  */
 export function useVinculoPush(usuarioId: number | undefined) {
   useEffect(() => {
-    if (!recursoAtivo('webPush')) return;
+
     let ativo = true;
     let rodando = false;
     let resolvido = false;
@@ -27,12 +28,18 @@ export function useVinculoPush(usuarioId: number | undefined) {
     const conferir = async () => {
       if (!valeAinda()) return;
       if (!(await cumprirEncerramento())) throw new Error('Encerramento pendente.');
-      if (usuarioId === undefined) return;
+      if (usuarioId === undefined || !recursoAtivo('webPush')) return;
+      const estado = await lerEstadoPush();
       const assinatura = await assinaturaDoAparelho();
       if (!assinatura) return;
-      const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
-      if (!valeAinda() || ativa) return;
-      if (!(await encerrarAssinatura(assinatura.endpoint))) throw new Error('A assinatura continua no navegador.');
+      const { ativa, vinculo } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+      if (!valeAinda()) return;
+      if (ativa) {
+        await registrarVinculo(estado?.geracao, vinculo, sinal);
+      } else {
+        await suspenderApresentacao(false);
+        if (!(await encerrarAssinatura(assinatura.endpoint))) throw new Error('A assinatura continua no navegador.');
+      }
     };
 
     const tentar = async () => {
@@ -71,13 +78,14 @@ export function useVinculoPush(usuarioId: number | undefined) {
 
 /**
  * Sair da conta encerra os alertas só neste aparelho. Chamar antes de limpar o token: ele é usado para
- * cancelar no servidor. Não atrasa nem impede a saída. Se o navegador falhar, fica marcado e `useVinculoPush`
+ * cancelar no servidor. A saída aguarda só a marca local. Se o navegador falhar, fica marcado e `useVinculoPush`
  * tenta de novo; se o servidor falhar, o back descarta no próximo envio (404/410).
  */
-export function encerrarPushAoSair(token: string | null): void {
-  if (!recursoAtivo('webPush')) return;
+export function encerrarPushAoSair(token: string | null): Promise<void> {
   marcarEncerramento();
+  const suspensao = suspenderApresentacao(true);
   emSequencia(async () => {
+    await suspensao;
     const assinatura = await assinaturaDoAparelho();
     if (assinatura && token) {
       const { endpoint } = assinatura;
@@ -85,4 +93,5 @@ export function encerrarPushAoSair(token: string | null): void {
     }
     await cumprirEncerramento();
   }).catch(() => undefined);
+  return suspensao;
 }

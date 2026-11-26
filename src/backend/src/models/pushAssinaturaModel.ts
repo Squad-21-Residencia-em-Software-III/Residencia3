@@ -2,7 +2,7 @@ import type { Knex } from 'knex';
 import { db } from '../config/database';
 
 // Assinaturas e preferências de alerta no aparelho (tabelas da SCRUM-236). As chaves (`p256dh`, `auth`)
-// só são lidas pela fila de envio: nada aqui as devolve.
+// permanecem no servidor ao enviar ou identificar o vínculo da assinatura.
 
 export interface NovaAssinatura {
   usuario_id: number;
@@ -37,8 +37,9 @@ export const pushAssinaturaModel = {
     return { criada: Boolean(rows[0].criada) };
   },
 
-  async ativaDoUsuario(usuario_id: number, endpoint: string, conexao: Knex = db): Promise<boolean> {
-    return Boolean(await conexao('push_subscriptions').where({ usuario_id, endpoint, ativa: true }).first('id'));
+  async chavesDaAssinaturaAtiva(usuario_id: number, endpoint: string, conexao: Knex = db) {
+    return conexao<NovaAssinatura & { ativa: boolean }>('push_subscriptions')
+      .where({ usuario_id, endpoint, ativa: true }).first('p256dh', 'auth');
   },
 
   /** Apaga (as chaves não ficam guardadas sem uso). Só a do próprio usuário; repetir não tem efeito. */

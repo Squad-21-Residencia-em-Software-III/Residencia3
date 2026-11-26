@@ -1,3 +1,4 @@
+import { lerEstadoPush, registrarVinculo, suspenderApresentacao } from '../sw/estadoPush';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, mensagemDeErro, tokenStorage } from '../services/api/http';
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
@@ -70,7 +71,9 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
         await cumprirEncerramentoAnterior();
         const assinatura = await assinaturaDoAparelho();
         if (!assinatura) return concluir('inativa');
-        const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+        const estado = await lerEstadoPush();
+        const { ativa, vinculo } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+        if (ativa && verificacao === ultimaVerificacao.current) await registrarVinculo(estado?.geracao, vinculo, sinal);
         concluir(ativa ? 'ativa' : 'inativa');
       });
     } catch (e) {
@@ -152,11 +155,15 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
       return emSequencia<SituacaoPush>(async () => {
         conferirSessao();
         await cumprirEncerramentoAnterior();
+        const estado = await lerEstadoPush();
         // Outra aba pode ter acabado de ligar: não troca a assinatura que já vale
         const existente = await assinaturaDoAparelho();
         if (existente) {
-          const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(existente.endpoint, s));
-          if (ativa) return 'ativa';
+          const { ativa, vinculo } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(existente.endpoint, s));
+          if (ativa) {
+            await registrarVinculo(estado?.geracao, vinculo, sinal);
+            return 'ativa';
+          }
         }
         const { publicKey } = await comLimite(sinal, (s) => notificacoesPushApi.chavePublica(s));
         conferirSessao();
@@ -167,6 +174,11 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
           conferirSessao();
           await comLimite(sinal, (s) => notificacoesPushApi.assinar(dados, s));
           conferirSessao();
+          if (estado) {
+            const { vinculo } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+            await registrarVinculo(estado.geracao, vinculo, sinal);
+            conferirSessao();
+          }
         } catch (e) {
           // Sem o registro no servidor, ou com outra sessão, o aparelho não pode ficar assinado
           await desfazerAtivacao(assinatura.endpoint, token, e);
@@ -180,6 +192,7 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
     executar((conferirSessao, sinal) =>
       emSequencia<SituacaoPush>(async () => {
         conferirSessao();
+        await suspenderApresentacao(false);
         const assinatura = await assinaturaDoAparelho();
         if (!assinatura) return 'inativa';
         const { endpoint } = assinatura;

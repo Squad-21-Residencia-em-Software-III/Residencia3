@@ -77,3 +77,7 @@ Vale para as SCRUM-236, 237, 238 e 239. Do back, o front precisa que:
 3. Chaves VAPID configuradas **só no back**; o front recebe apenas a pública.
 4. Gerar o front com `VITE_WEB_PUSH_ATIVO=true`.
 5. Testar em HTTPS: Android/Chrome, computador (Chrome e Edge) e iPhone com o aplicativo instalado; ligar, desligar, negar, sair da conta e trocar de conta.
+
+### Vínculo no Service Worker da SCRUM-239
+
+O transporte acrescenta `vinculo`, um identificador opaco de 43 caracteres calculado para a assinatura efetivamente usada no envio. A consulta autenticada de status retorna o mesmo valor somente para a assinatura ativa da sessão. O registro de publicação e a outbox continuam usando o contrato anterior. O Service Worker aceita apenas o vínculo confirmado para o dispositivo e exige as flags do frontend e da API. A extensão reaproveita as chaves existentes da assinatura, sem migration.

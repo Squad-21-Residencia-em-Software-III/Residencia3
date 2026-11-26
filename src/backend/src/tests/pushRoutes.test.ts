@@ -12,7 +12,7 @@ vi.mock('../services/authService', () => ({ authService: { usuarioDoToken: vi.fn
 vi.mock('../models/pushAssinaturaModel', () => ({
   pushAssinaturaModel: {
     assinar: vi.fn(async () => ({ criada: true })),
-    ativaDoUsuario: vi.fn(async () => false),
+    chavesDaAssinaturaAtiva: vi.fn(async () => undefined),
     cancelar: vi.fn(async () => undefined),
     preferencias: vi.fn(async () => new Map()),
     salvarPreferencia: vi.fn(async () => undefined),
@@ -188,10 +188,10 @@ describe('POST /subscribe', () => {
 
 describe('POST /subscribe/status e DELETE /unsubscribe', () => {
   it('situação: true só para a assinatura ativa do próprio usuário', async () => {
-    vi.mocked(pushAssinaturaModel.ativaDoUsuario).mockResolvedValueOnce(true);
+    vi.mocked(pushAssinaturaModel.chavesDaAssinaturaAtiva).mockResolvedValueOnce({ p256dh: "teste-publica", auth: "teste-auth" });
     const resposta = await request(app).post(`${BASE}/subscribe/status`).set('Authorization', 'Bearer x').send({ endpoint: ENDPOINT });
-    expect(resposta.body).toEqual({ ativa: true });
-    expect(pushAssinaturaModel.ativaDoUsuario).toHaveBeenCalledWith(7, ENDPOINT);
+    expect(resposta.body).toEqual({ ativa: true, vinculo: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
+    expect(pushAssinaturaModel.chavesDaAssinaturaAtiva).toHaveBeenCalledWith(7, ENDPOINT);
   });
 
   it('situação: false para endpoint de outra conta ou desconhecido', async () => {

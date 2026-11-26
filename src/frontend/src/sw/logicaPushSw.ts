@@ -1,3 +1,4 @@
+export const CHAVE_CLIQUE_PUSH = 'fsph.push.aviso';
 export const TIPO_MSG_SKIP_WAITING = 'SKIP_WAITING';
 export const TIPO_MSG_PUSH_FOREGROUND = 'PUSH_EM_PRIMEIRO_PLANO';
 export const TIPO_MSG_NAVEGAR_NOTIFICACAO = 'NAVEGAR_NOTIFICACAO';
@@ -7,25 +8,26 @@ export const BADGE_NOTIFICACAO_PADRAO = '/assets/pwa-badge-72x72.png';
 
 const TITULO_PADRAO = 'Frota FSPH';
 const CORPO_PADRAO = 'Você recebeu uma nova notificação.';
-const ORIGEM_FICTICIA = 'https://frota.fsph.local';
+
+export function idNotificacao(val: unknown): val is number {
+  return typeof val === 'number' && Number.isSafeInteger(val) && val > 0 && val <= 2147483647;
+}
+
+export function vinculoValido(valor: unknown): valor is string {
+  return typeof valor === 'string' && /^[A-Za-z0-9_-]{43}$/.test(valor);
+}
+
+export interface ReferenciaPush {
+  notificacao_id: number;
+  vinculo: string;
+}
 
 export interface PayloadPushNormalizado {
-  notificacao_id: number | string | null;
+  notificacao_id: number | null;
+  vinculo: string | null;
   titulo: string;
   corpo: string;
-  url: string;
   tag?: string;
-}
-
-export interface MensagemPushForeground {
-  tipo: typeof TIPO_MSG_PUSH_FOREGROUND;
-  payload: PayloadPushNormalizado;
-}
-
-export interface MensagemNavegarNotificacao {
-  tipo: typeof TIPO_MSG_NAVEGAR_NOTIFICACAO;
-  url: string;
-  notificacao_id: number | string | null;
 }
 
 export interface ClienteJanelaSw {
@@ -41,10 +43,7 @@ export interface OpcoesNotificacaoSw {
   icon: string;
   badge: string;
   tag?: string;
-  data: {
-    notificacao_id: number | string | null;
-    url: string;
-  };
+  data: ReferenciaPush | null;
 }
 
 export interface AmbientePushSw {
@@ -61,122 +60,66 @@ export interface AmbienteCliqueSw {
   abrirJanela: (url: string) => Promise<unknown>;
 }
 
-/**
- * Sanitiza a URL recebida no payload Push ou no clique da notificação:
- * aceita apenas rota interna iniciada por `/` (bloqueia domínios externos, `//`, `\`, espaços e controle).
- */
-export function normalizarUrlPush(url: unknown): string {
-  if (typeof url !== 'string' || url.length === 0) return '/';
-  if (!url.startsWith('/') || url.startsWith('//')) return '/';
-  if (/[\s\u0000-\u001f\u007f\\]/.test(url)) return '/';
-  if (url.includes('//')) return '/';
+const CAMPOS_PUSH = new Set(['notificacao_id', 'vinculo', 'titulo', 'corpo', 'url', 'tag']);
+const TAG_PUSH = /^[A-Za-z0-9_-]{1,64}$/;
+const ORIGEM_FICTICIA = 'https://frota.fsph.local';
 
-  try {
-    const parsed = new URL(url, ORIGEM_FICTICIA);
-    if (parsed.origin !== ORIGEM_FICTICIA || !parsed.pathname.startsWith('/')) return '/';
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return '/';
-  }
+function urlInterna(url: unknown): boolean {
+  if (typeof url !== 'string' || url.length > 256 || !url.startsWith('/') ||
+    url.includes('//') || /[\s\\\u0000-\u001f\u007f]|%(?:00|0a|0d|2f|5c)/i.test(url)) return false;
+  return new URL(url, ORIGEM_FICTICIA).origin === ORIGEM_FICTICIA;
 }
 
-/**
- * Interpreta o payload enviado pelo backend Web Push (SCRUM-237:
- * `{ notificacao_id, titulo, corpo, url, tag }`) com fallback seguro para texto simples ou JSON inválido.
- */
-export function extrairPayloadPush(textoBruto: string | null | undefined): PayloadPushNormalizado {
-  if (typeof textoBruto !== 'string' || textoBruto.trim().length === 0) {
-    return {
-      notificacao_id: null,
-      titulo: TITULO_PADRAO,
-      corpo: CORPO_PADRAO,
-      url: '/',
-    };
-  }
+function textoValido(valor: unknown, limite: number): valor is string {
+  return typeof valor === 'string' && valor.trim().length > 0 &&
+    [...valor].length <= limite && !/[\u0000-\u001f\u007f]/.test(valor);
+}
 
+/** Conteúdo inválido recebe o mesmo texto genérico. URLs do Push jamais são usadas para navegar. */
+export function extrairPayloadPush(textoBruto: string | null | undefined): PayloadPushNormalizado {
+  const fallback = { notificacao_id: null, vinculo: null, titulo: TITULO_PADRAO, corpo: CORPO_PADRAO };
+  if (!textoBruto || textoBruto.length > 2048) return fallback;
   try {
     const dados = JSON.parse(textoBruto) as Record<string, unknown>;
-    if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
-      throw new Error('Payload não é objeto');
+    if (!dados || typeof dados !== 'object' || Array.isArray(dados) || !vinculoValido(dados.vinculo)) return fallback;
+    const { notificacao_id, vinculo, titulo, corpo, tag } = dados;
+    if (!Object.keys(dados).every((campo) => CAMPOS_PUSH.has(campo)) ||
+        !idNotificacao(notificacao_id) || !textoValido(titulo, 45) || !textoValido(corpo, 110) ||
+        !urlInterna(dados.url) || (tag !== undefined && (typeof tag !== 'string' || !TAG_PUSH.test(tag)))) {
+      return { ...fallback, vinculo };
     }
-
-    const idBruto = dados.notificacao_id;
-    const notificacaoId =
-      typeof idBruto === 'number' && Number.isFinite(idBruto)
-        ? idBruto
-        : typeof idBruto === 'string' && idBruto.trim().length > 0
-          ? idBruto.trim()
-          : null;
-
-    const titulo =
-      typeof dados.titulo === 'string' && dados.titulo.trim().length > 0
-        ? dados.titulo.trim()
-        : TITULO_PADRAO;
-
-    const corpo = typeof dados.corpo === 'string' ? dados.corpo.trim() : '';
-    const url = normalizarUrlPush(dados.url);
-    const tag =
-      typeof dados.tag === 'string' && dados.tag.trim().length > 0
-        ? dados.tag.trim().slice(0, 64)
-        : undefined;
-
-    return {
-      notificacao_id: notificacaoId,
-      titulo,
-      corpo,
-      url,
-      ...(tag ? { tag } : {}),
-    };
+    return { notificacao_id, vinculo, titulo, corpo, ...(tag ? { tag } : {}) };
   } catch {
-    return {
-      notificacao_id: null,
-      titulo: TITULO_PADRAO,
-      corpo: textoBruto.trim().slice(0, 110),
-      url: '/',
-    };
+    return fallback;
   }
 }
 
-function mesmaOrigem(urlCliente: string, origemAtual: string): boolean {
+export function lerReferenciaPush(dados: unknown): ReferenciaPush | null {
+  if (!dados || typeof dados !== 'object') return null;
+  const { notificacao_id, vinculo } = dados as Partial<ReferenciaPush>;
+  return idNotificacao(notificacao_id) && vinculoValido(vinculo) ? { notificacao_id, vinculo } : null;
+}
+
+function mesmaOrigem(url: string, origem: string): boolean {
   try {
-    return new URL(urlCliente).origin === origemAtual;
+    return new URL(url).origin === origem;
   } catch {
     return false;
   }
 }
 
-function estaEmRotaDeLogin(urlCliente: string): boolean {
-  try {
-    return new URL(urlCliente).pathname.startsWith('/login');
-  } catch {
-    return false;
-  }
+export function clienteEmPrimeiroPlano(client: ClienteJanelaSw, origem: string): boolean {
+  return mesmaOrigem(client.url, origem) && !new URL(client.url).pathname.startsWith('/login') &&
+    client.visibilityState === 'visible' && client.focused === true;
 }
 
-/**
- * Verifica se há uma janela da mesma origem visível, focada e fora da tela de login.
- * Nessa condição, o app exibe Toast em primeiro plano sem duplicar alerta do sistema operacional.
- */
-export function clienteEmPrimeiroPlano(client: ClienteJanelaSw, origemAtual: string): boolean {
-  if (!mesmaOrigem(client.url, origemAtual)) return false;
-  if (estaEmRotaDeLogin(client.url)) return false;
-  return client.visibilityState === 'visible' && client.focused === true;
-}
-
-export async function tratarEventoPush(
-  payload: PayloadPushNormalizado,
-  ambiente: AmbientePushSw,
-): Promise<{ modo: 'foreground' | 'background' }> {
-  const janelas = await ambiente.listarJanelas();
+export async function tratarEventoPush(payload: PayloadPushNormalizado, ambiente: AmbientePushSw): Promise<void> {
+  const referencia = lerReferenciaPush(payload);
+  const janelas = referencia ? await ambiente.listarJanelas() : [];
   const janelaFocada = janelas.find((janela) => clienteEmPrimeiroPlano(janela, ambiente.origem));
-
-  if (janelaFocada) {
-    const mensagem: MensagemPushForeground = {
-      tipo: TIPO_MSG_PUSH_FOREGROUND,
-      payload,
-    };
-    janelaFocada.postMessage(mensagem);
-    return { modo: 'foreground' };
+  if (janelaFocada && referencia) {
+    janelaFocada.postMessage({ tipo: TIPO_MSG_PUSH_FOREGROUND, ...referencia });
+    return;
   }
 
   await ambiente.exibirNotificacao(payload.titulo, {
@@ -184,70 +127,29 @@ export async function tratarEventoPush(
     icon: ICONE_NOTIFICACAO_PADRAO,
     badge: BADGE_NOTIFICACAO_PADRAO,
     ...(payload.tag ? { tag: payload.tag } : {}),
-    data: {
-      notificacao_id: payload.notificacao_id,
-      url: payload.url,
-    },
+    data: referencia,
   });
-
-  if (ambiente.definirBadgeGenerico) {
-    try {
-      await ambiente.definirBadgeGenerico();
-    } catch {
-      // App Badging é opcional; falhas nunca bloqueiam a exibição da notificação.
-    }
-  }
-
-  return { modo: 'background' };
+  if (referencia) await ambiente.definirBadgeGenerico?.().catch(() => undefined);
 }
 
 export async function tratarCliqueNotificacao(
-  dados: { notificacao_id?: number | string | null; url?: unknown } | null | undefined,
-  ambiente: AmbienteCliqueSw,
-): Promise<{ acao: 'focar_existente' | 'abrir_janela'; url: string }> {
+  referencia: ReferenciaPush | null, ambiente: AmbienteCliqueSw,
+): Promise<void> {
   ambiente.fecharNotificacao();
-
-  const url = normalizarUrlPush(dados?.url);
-  const notificacaoId =
-    typeof dados?.notificacao_id === 'number' || typeof dados?.notificacao_id === 'string'
-      ? dados.notificacao_id
-      : null;
-
-  const janelas = await ambiente.listarJanelas();
-  const mesmasOrigem = janelas.filter((janela) => mesmaOrigem(janela.url, ambiente.origem));
-  const alvo =
-    mesmasOrigem.find((janela) => janela.focused) ??
-    mesmasOrigem.find((janela) => janela.visibilityState === 'visible') ??
-    mesmasOrigem[0];
-
+  const janelas = (await ambiente.listarJanelas()).filter((janela) => mesmaOrigem(janela.url, ambiente.origem));
+  const alvo = janelas.find((janela) => janela.focused) ??
+    janelas.find((janela) => janela.visibilityState === 'visible') ?? janelas[0];
   if (alvo) {
-    try {
-      await alvo.focus();
-    } catch {
-      // Alguns navegadores podem recusar focus; ainda assim enviamos a navegação.
-    }
-    const mensagem: MensagemNavegarNotificacao = {
-      tipo: TIPO_MSG_NAVEGAR_NOTIFICACAO,
-      url,
-      notificacao_id: notificacaoId,
-    };
-    alvo.postMessage(mensagem);
-    return { acao: 'focar_existente', url };
+    await alvo.focus().catch(() => undefined);
+    if (referencia) alvo.postMessage({ tipo: TIPO_MSG_NAVEGAR_NOTIFICACAO, ...referencia });
+    return;
   }
-
-  await ambiente.abrirJanela(url);
-  return { acao: 'abrir_janela', url };
+  await ambiente.abrirJanela(referencia ? '/?aviso=' + referencia.notificacao_id : '/');
 }
 
-/**
- * Atualização controlada para `registerType: 'prompt'`:
- * só executa `skipWaiting()` mediante confirmação explícita do usuário (`SKIP_WAITING`),
- * evitando reload-loop em PWAs já instalados.
- */
 export function tratarMensagemSw(data: unknown, skipWaiting: () => void): boolean {
-  if (data && typeof data === 'object' && (data as { type?: unknown }).type === TIPO_MSG_SKIP_WAITING) {
-    skipWaiting();
-    return true;
-  }
-  return false;
+  if (!data || typeof data !== 'object' || Object.keys(data).length !== 1 ||
+    !('type' in data) || data.type !== TIPO_MSG_SKIP_WAITING) return false;
+  skipWaiting();
+  return true;
 }

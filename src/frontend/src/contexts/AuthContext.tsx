@@ -4,9 +4,37 @@ import { encerrarPushAoSair, useVinculoPush } from '../hooks/useVinculoPush'
 import { authApi } from '../services/api/authApi'
 import { EVENTO_SESSAO_EXPIRADA, tokenStorage } from '../services/api/http'
 import type { Perfil, Usuario } from '../types/usuario'
-import { invalidarOperacoesPush } from '../utils/operacoesPush'
+import { CHAVE_CLIQUE_PUSH } from '../sw/logicaPushSw'
+import { suspenderApresentacao } from '../sw/estadoPush'
+import { comLimite, invalidarOperacoesPush } from '../utils/operacoesPush'
 
 const CANAL_AUTENTICACAO = 'fsph_auth'
+const CHAVE_LOGOUT = 'fsph.auth.logout-pendente'
+let logoutEmMemoria = false
+
+function logoutPendente(): boolean {
+  try { return localStorage.getItem(CHAVE_LOGOUT) === '1' } catch { return logoutEmMemoria }
+}
+
+function marcarLogout(pendente: boolean): void {
+  logoutEmMemoria = pendente
+  try {
+    if (pendente) localStorage.setItem(CHAVE_LOGOUT, '1')
+    else localStorage.removeItem(CHAVE_LOGOUT)
+  } catch {
+    // A aba ainda mantém o logout em memória.
+  }
+}
+
+function comTravaDeCookie<T>(acao: () => Promise<T>): Promise<T> {
+  return navigator.locks?.request('fsph-auth-cookie', acao) ?? acao()
+}
+
+async function concluirLogout() {
+  if (!logoutPendente()) return
+  await comLimite(null, authApi.logout)
+  marcarLogout(false)
+}
 
 interface AuthContextValue {
   usuario: Usuario | null
@@ -38,10 +66,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Cold start / F5: tenta restaurar a sessão em memória usando o cookie HttpOnly de refresh.
   useEffect(() => {
     let cancelado = false
-    authApi
-      .refresh()
+    const aoConectar = () => { void comTravaDeCookie(concluirLogout).catch(() => undefined) }
+    window.addEventListener('online', aoConectar)
+    void comTravaDeCookie(async () => {
+      if (logoutPendente()) {
+        await concluirLogout()
+        return null
+      }
+      return authApi.refresh()
+    })
       .then((sessao) => {
-        if (cancelado) return
+        if (cancelado || !sessao || logoutPendente()) return
         tokenStorage.set(sessao.token)
         setUsuario(sessao.usuario)
       })
@@ -55,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
     return () => {
       cancelado = true
+      window.removeEventListener('online', aoConectar)
     }
   }, [])
 
@@ -94,19 +130,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [limparEstadoLocal])
 
   const login = useCallback(async (email: string, senha: string) => {
-    const resultado = await authApi.login(email, senha)
+    const resultado = await comTravaDeCookie(async () => {
+      const resultado = await authApi.login(email, senha)
+      marcarLogout(false)
+      return resultado
+    })
     avancarSessao((versao) => versao + 1)
     invalidarOperacoesPush()
+    canalRef.current?.postMessage({ tipo: 'LOGOUT' })
+    await suspenderApresentacao(false)
     tokenStorage.set(resultado.token)
     setUsuario(resultado.usuario)
   }, [])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     // Antes de limpar: o cancelamento no servidor usa o token desta sessão
-    encerrarPushAoSair(tokenStorage.get())
-    limparEstadoLocal()
-    void authApi.logout().catch(() => {})
+    marcarLogout(true)
+    invalidarOperacoesPush()
+    const encerramento = encerrarPushAoSair(tokenStorage.get())
+    try { sessionStorage.removeItem(CHAVE_CLIQUE_PUSH) } catch { /* Armazenamento indisponível. */ }
     canalRef.current?.postMessage({ tipo: 'LOGOUT' })
+    void comTravaDeCookie(concluirLogout).catch(() => undefined)
+    await encerramento
+    limparEstadoLocal()
   }, [limparEstadoLocal])
 
   const value = useMemo<AuthContextValue>(

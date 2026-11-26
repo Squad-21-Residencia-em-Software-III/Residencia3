@@ -19,6 +19,7 @@ vi.mock('../../hooks/useOnlineStatus', () => ({
 
 vi.mock('../../services/api/notificacoesApi', () => ({
   notificacoesApi: {
+    obter: vi.fn().mockResolvedValue({ id: 501, url_destino: '/viagens', acesso_revogado: false }),
     contador: vi.fn().mockResolvedValue({ nao_lidas: 1 }),
     listar: vi.fn().mockResolvedValue({ itens: [], proximo_cursor: null, nao_lidas: 1 }),
     marcarLida: (...args: unknown[]) => mockMarcarLida(...args),
