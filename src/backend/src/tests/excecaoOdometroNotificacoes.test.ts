@@ -15,6 +15,8 @@ const { mockTrx, mockDb } = vi.hoisted(() => {
   };
 });
 
+vi.mock('../config/notificacoes', () => ({ configNotificacoes: { ativas: true } }));
+
 vi.mock('../config/env', () => ({
   env: {
     excecoesOdometroAtivas: true,
@@ -29,7 +31,7 @@ vi.mock('../services/publicacaoNotificacoes', () => ({
 }));
 
 vi.mock('../models/auditoriaModel', () => ({
-  MODULOS_AUDITORIA: { VIAGENS: 'VIAGENS' },
+  MODULOS_AUDITORIA: { VIAGENS: 'ODOMETRO' },
   auditoriaModel: {
     registrar: vi.fn(async () => undefined),
   },
@@ -156,7 +158,7 @@ function prepararTransacaoDecisao() {
       },
     };
 
-    if (!['excecoes_odometro', 'motoristas', 'auditorias'].includes(tabela)) {
+    if (!['excecoes_odometro', 'motoristas', 'auditorias', 'usuarios'].includes(tabela)) {
       throw new Error(`Tabela inesperada no teste: ${tabela}`);
     }
 
@@ -167,17 +169,6 @@ import { publicarNotificacao } from '../services/publicacaoNotificacoes';
 import { excecaoOdometroService } from '../services/excecaoOdometroService';
 import { PERFIS } from '../constants/perfis';
 
-describe('Integracao das notificacoes A9 e A10', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('utiliza um publicador simulado, sem acessar o banco real', () => {
-    expect(vi.isMockFunction(publicarNotificacao)).toBe(true);
-    expect(vi.isMockFunction(mockDb.transaction)).toBe(true);
-    expect(vi.isMockFunction(mockTrx)).toBe(true);
-  });
-});
 describe('A9 - Publicacao de solicitacao', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -218,13 +209,13 @@ describe('A9 - Publicacao de solicitacao', () => {
       expect.objectContaining({
         tipo: 'EXCECAO_ODOMETRO_SOLICITADA',
         operacao: 'Administrativo',
-        ocorrencia: 'solicitada',
+        ocorrencia: 'SAIDA:55:solicitada',
         autorId: 7,
         destinatarios: [1, 2, 3],
         urlDestino: '/viagens',
         referencia: {
-          tipo: 'EXCECAO_ODOMETRO',
-          id: 55,
+          tipo: 'VIAGEM_FROTA',
+          id: 10,
         },
       })
     );
@@ -253,14 +244,14 @@ describe('A10 - Publicacao de decisao', () => {
       expect.objectContaining({
         tipo: 'EXCECAO_ODOMETRO_DECIDIDA',
         operacao: 'Administrativo',
-        ocorrencia: 'aprovada',
+        ocorrencia: 'SAIDA:55:aprovada',
         severidade: 'success',
         autorId: 1,
         destinatarios: [7],
         urlDestino: '/viagens',
         referencia: {
-          tipo: 'EXCECAO_ODOMETRO',
-          id: 55,
+          tipo: 'VIAGEM_FROTA',
+          id: 10,
         },
       })
     );
@@ -289,17 +280,17 @@ describe('A10 - Recusa de excecao', () => {
       expect.objectContaining({
         tipo: 'EXCECAO_ODOMETRO_DECIDIDA',
         operacao: 'Administrativo',
-        ocorrencia: 'recusada',
+        ocorrencia: 'SAIDA:55:recusada',
         severidade: 'warning',
         autorId: 1,
         destinatarios: [7],
         urlDestino: '/viagens',
         referencia: {
-          tipo: 'EXCECAO_ODOMETRO',
-          id: 55,
+          tipo: 'VIAGEM_FROTA',
+          id: 10,
         },
         push: expect.objectContaining({
-          categoria: 'VIAGENS',
+          categoria: 'ODOMETRO',
           corpo: 'Seu pedido de exceção foi recusado.',
         }),
       })

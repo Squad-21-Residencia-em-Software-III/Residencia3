@@ -1,3 +1,6 @@
+import type { Knex } from 'knex';
+import { PERFIS } from '../constants/perfis';
+
 export interface AvisoExcecaoOdometro {
   tipo: string;
   titulo: string;
@@ -13,17 +16,18 @@ export interface AvisoExcecaoOdometro {
 }
 
 const DESTINO = '/viagens';
-const CATEGORIA = 'VIAGENS';
+const CATEGORIA = 'ODOMETRO';
 
 export function montarAvisoExcecaoSolicitada(
-  excecaoId: number
+  excecaoId: number,
+  fase: 'SAIDA' | 'CHEGADA' = 'SAIDA',
 ): AvisoExcecaoOdometro {
   return {
     tipo: 'EXCECAO_ODOMETRO_SOLICITADA',
     titulo: 'Exceção de odômetro solicitada',
     mensagem: `A exceção de odômetro nº ${excecaoId} aguarda análise.`,
     urlDestino: DESTINO,
-    ocorrencia: 'solicitada',
+    ocorrencia: `${fase}:${excecaoId}:solicitada`,
     push: {
       categoria: CATEGORIA,
       titulo: 'Exceção de odômetro',
@@ -35,16 +39,20 @@ export function montarAvisoExcecaoSolicitada(
 
 export function montarAvisoExcecaoDecidida(
   excecaoId: number,
-  decisao: 'APROVADA' | 'RECUSADA'
+  decisao: 'APROVADA' | 'RECUSADA',
+  fase: 'SAIDA' | 'CHEGADA' = 'SAIDA',
+  justificativa?: string,
 ): AvisoExcecaoOdometro {
   const aprovada = decisao === 'APROVADA';
+  const textoDecisao = `Seu pedido de exceção de odômetro nº ${excecaoId} foi ${aprovada ? 'aprovado' : 'recusado'}.`;
 
   return {
     tipo: 'EXCECAO_ODOMETRO_DECIDIDA',
     titulo: aprovada ? 'Exceção aprovada' : 'Exceção recusada',
-    mensagem: `Seu pedido de exceção de odômetro nº ${excecaoId} foi ${aprovada ? 'aprovado' : 'recusado'}.`,
+    mensagem: [textoDecisao, justificativa?.trim() && ("Justificativa: " + justificativa.trim().replace(/\s+/g, ' '))]
+      .filter(Boolean).join(' '),
     urlDestino: DESTINO,
-    ocorrencia: decisao.toLowerCase(),
+    ocorrencia: `${fase}:${excecaoId}:${decisao.toLowerCase()}`,
     push: {
       categoria: CATEGORIA,
       titulo: 'Decisão de exceção',
@@ -55,36 +63,7 @@ export function montarAvisoExcecaoDecidida(
     },
   };
 }
-import type { Knex } from 'knex';
-import { PERFIS } from '../constants/perfis';
-import { UNIDADES } from '../constants/unidades';
-
-export async function destinatariosExcecaoOdometro(
-  trx: Knex.Transaction,
-  tipo: 'ADMINISTRATIVA' | 'SVO'
-): Promise<number[]> {
-  const administradores = await trx('usuarios')
-    .where({ perfil: PERFIS.ADMINISTRADOR, ativo: true })
-    .pluck('id');
-
-  if (tipo === 'ADMINISTRATIVA') {
-    const gestores = await trx('usuarios')
-      .where({ perfil: PERFIS.GESTOR_FROTA, ativo: true })
-      .pluck('id');
-
-    return [...new Set([...administradores, ...gestores])];
-  }
-
-  const gestoresSvo = await trx('usuarios as u')
-    .join('gestores_unidades as gu', 'gu.usuario_id', 'u.id')
-    .join('unidades as unidade', 'unidade.id', 'gu.unidade_id')
-    .where({
-      'u.perfil': PERFIS.GESTOR_SVO,
-      'u.ativo': true,
-      'unidade.nome': UNIDADES.SVO,
-    })
-    .distinct()
-    .pluck('u.id');
-
-  return [...new Set([...administradores, ...gestoresSvo])];
+export function destinatariosExcecaoOdometro(trx: Knex.Transaction): Promise<number[]> {
+  return trx('usuarios').where({ ativo: true })
+    .whereIn('perfil', [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA]).orderBy('id').pluck('id');
 }
