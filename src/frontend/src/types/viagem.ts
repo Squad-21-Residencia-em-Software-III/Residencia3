@@ -39,8 +39,12 @@ export interface Viagem {
   destino: string | null; // herdado de solicitacoes_viagem.destino (local_ocorrencia no SVO)
   finalidade: string | null; // herdado de solicitacoes_viagem.finalidade (null em ordens SVO)
   solicitante_nome: string | null; // join usuarios.nome via solicitacoes_viagem.solicitante_id
-  inicio_previsto?: string | null; // data de saída desejada na solicitação
-  fim_previsto?: string | null; // data de chegada desejada na solicitação
+  inicio_previsto?: string | null; // período operacional planejado
+  fim_previsto?: string | null;
+  inicio_solicitado?: string | null;
+  fim_solicitado?: string | null;
+  versao_programacao?: number | null;
+  pode_reprogramar?: boolean;
   veiculo_id: number; // FK veiculos.id
   veiculo_modelo: string; // join veiculos.modelo
   veiculo_placa: string; // join veiculos.placa
@@ -107,3 +111,10 @@ export interface ConflitoIntervaloSvo {
 
 /** Código do erro que pede a segunda confirmação (intervalo entre 0 e 20 min). */
 export const CODIGO_CONFIRMAR_INTERVALO = 'CONFIRMACAO_INTERVALO_REDUZIDO';
+
+export interface ReprogramarViagemAdministrativaInput {
+  inicio_previsto: string;
+  fim_previsto: string;
+  versao_programacao: number;
+  chave_idempotencia: string;
+}

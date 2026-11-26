@@ -1,5 +1,6 @@
 import { request } from './http';
 import type {
+  NotificacaoInApp,
   RespostaContadorNotificacoes,
   RespostaListaNotificacoes,
   RespostaMarcarLida,
@@ -12,6 +13,14 @@ export interface ListarNotificacoesParams {
 }
 
 export const notificacoesApi = {
+  obter(id: number, signal: AbortSignal) {
+    return request<NotificacaoInApp>('GET', `/notificacoes/${id}`, { signal });
+  },
+
+  badge(signal: AbortSignal) {
+    return request<{ elegiveis: number }>('GET', '/notificacoes/badge', { signal });
+  },
+
   /** Lista notificações do usuário autenticado ordenadas da mais recente para a mais antiga. */
   listar({ limit = 20, cursor, apenasNaoLidas }: ListarNotificacoesParams = {}) {
     return request<RespostaListaNotificacoes>('GET', '/notificacoes', {

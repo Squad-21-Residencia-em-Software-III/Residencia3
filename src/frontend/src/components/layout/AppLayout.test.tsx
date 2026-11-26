@@ -41,6 +41,23 @@ describe('AppLayout - cabeçalho', () => {
     expect(screen.queryByText('Preferências do Aplicativo')).not.toBeInTheDocument();
   });
 
+  it('devolve foco ao único sino após Escape sem abrir preferências', async () => {
+    const user = userEvent.setup();
+    renderizar();
+    const sinos = screen.getAllByRole('button', { name: 'Notificações' });
+    expect(sinos).toHaveLength(1);
+    const sino = sinos[0];
+    sino.focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByText(/não tem notificações/i)).toBeInTheDocument();
+    expect(screen.queryByText('Preferências do Aplicativo')).not.toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByText(/não tem notificações/i)).not.toBeInTheDocument();
+    expect(sino).toHaveFocus();
+    expect(screen.getByRole('link', { name: 'Sobre Nós' })).toBeInTheDocument();
+  });
+
   it('mostra "Sobre Nós" só na home, convivendo com sino e engrenagem', () => {
     const { unmount } = renderizar('/');
     expect(screen.getByRole('link', { name: 'Sobre Nós' })).toBeInTheDocument();

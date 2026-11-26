@@ -74,21 +74,25 @@ describe('filtros de período nas consultas', () => {
     const multas = gerar(consultasRelatorio.multas({ inicio: '2026-11-01', fim: '2026-11-30' }, LIMITE, AS_DUAS));
     const viagens = gerar(consultasRelatorio.viagens(AS_DUAS, { inicio: '2026-11-01', fim: '2026-11-30' }, LIMITE));
 
-    for (const { sql, bindings } of [multas, viagens]) {
-      expect(sql).toContain('AT TIME ZONE ?');
-      expect(sql).toContain('CAST(? AS date) + 1');
-      expect(bindings).toContain('America/Sao_Paulo');
+    for (const [{ sql, bindings }, data, escopo] of [
+      [multas, 'mu.data_infracao', []],
+      [viagens, 'COALESCE(data_hora_efetiva_saida, inicio_previsto)', AS_DUAS],
+    ] as const) {
+      expect(sql).toContain(`${data} >= (CAST(? AS date)::timestamp AT TIME ZONE ?)`);
+      expect(sql).toContain(`${data} < ((CAST(? AS date) + 1)::timestamp AT TIME ZONE ?)`);
+      expect(bindings).toEqual([...escopo, '2026-11-01', 'America/Sao_Paulo', '2026-11-30', 'America/Sao_Paulo', LIMITE]);
     }
   });
 
   it('não acrescenta condição de data quando não há período', () => {
-    for (const { sql } of [
-      gerar(consultasRelatorio.abastecimentos(sem, LIMITE, AS_DUAS)),
-      gerar(consultasRelatorio.multas(sem, LIMITE, AS_DUAS)),
-      gerar(consultasRelatorio.viagens(AS_DUAS, sem, LIMITE)),
-    ]) {
-      expect(sql).not.toContain('AT TIME ZONE');
-      expect(sql).not.toContain('>= ?');
+    for (const [{ sql, bindings }, escopo] of [
+      [gerar(consultasRelatorio.abastecimentos(sem, LIMITE, AS_DUAS)), []],
+      [gerar(consultasRelatorio.manutencoes(sem, LIMITE, AS_DUAS)), []],
+      [gerar(consultasRelatorio.multas(sem, LIMITE, AS_DUAS)), []],
+      [gerar(consultasRelatorio.viagens(AS_DUAS, sem, LIMITE)), AS_DUAS],
+    ] as const) {
+      expect(sql).not.toMatch(/(?:>=|<=|<|>)\s*(?:\?|\(+CAST\(\? AS date\))/i);
+      expect(bindings).toEqual([...escopo, LIMITE]);
     }
   });
 
@@ -98,6 +102,16 @@ describe('filtros de período nas consultas', () => {
 });
 
 describe('viagens', () => {
+  it('mantém os horários efetivos e o período planejado, com fallback legado em Brasília', () => {
+    const { sql } = gerar(consultasRelatorio.viagens(AS_DUAS, sem, LIMITE));
+
+    expect(sql).toContain('COALESCE(vf.inicio_previsto, sv.data_saida_desejada) AS inicio_previsto');
+    expect(sql).toContain("COALESCE(vf.fim_previsto, sv.data_chegada_desejada, (date_trunc('day', sv.data_saida_desejada AT TIME ZONE 'America/Sao_Paulo') + interval '1 day') AT TIME ZONE 'America/Sao_Paulo' ) AS fim_previsto");
+    expect(sql).toContain('vf.data_hora_efetiva_saida');
+    expect(sql).toContain('vf.data_hora_efetiva_chegada');
+    expect(sql).toContain('order by COALESCE(data_hora_efetiva_saida, inicio_previsto) DESC');
+  });
+
   it('filtra pelos tipos de operação permitidos ao perfil', () => {
     const { sql, bindings } = gerar(consultasRelatorio.viagens(ADMINISTRATIVA, sem, LIMITE));
 

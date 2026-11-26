@@ -33,6 +33,7 @@ type TableToolbarProps = {
   onFilter?: () => void;
   isFilterActive?: boolean;
   actions?: ReactNode;
+  wrapActions?: boolean;
 };
 
 export function TableToolbar({
@@ -43,6 +44,7 @@ export function TableToolbar({
   onFilter,
   isFilterActive,
   actions,
+  wrapActions,
 }: TableToolbarProps) {
   return (
     <div className="flex flex-col items-stretch justify-between gap-3 border-b border-divider px-3.5 py-3 md:flex-row md:flex-wrap md:items-center md:px-6 md:py-4">
@@ -50,7 +52,14 @@ export function TableToolbar({
         <h2 className="text-[15px] font-bold text-text md:text-base">{title}</h2>
         {subtitle && <p className="mt-0.5 text-xs text-text-muted">{subtitle}</p>}
       </div>
-      <div className="flex w-full items-center justify-stretch gap-3 md:w-auto [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
+      <div
+        className={cn(
+          'flex w-full items-center justify-stretch gap-3 md:w-auto [&>button]:justify-center',
+          wrapActions
+            ? 'flex-wrap max-md:[&>button]:grow'
+            : '[&>button]:w-full md:[&>button]:w-auto',
+        )}
+      >
         {actions}
         {onFilter && (
           <Button

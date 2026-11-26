@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { TipoFrota } from '../types/veiculo';
 
@@ -41,4 +41,23 @@ export function useAbaOperacao(permitidas: TipoFrota[]) {
   };
 
   return { ativa, mudar };
+}
+
+/** Conserva filtros ao remontar o painel da operação, enquanto o módulo estiver aberto. */
+export function useFiltrosPorOperacao<Filtros extends object>(
+  operacao: TipoFrota | undefined,
+  iniciais: Filtros,
+) {
+  const [porOperacao, setPorOperacao] = useState<Partial<Record<TipoFrota, Filtros>>>({});
+  const filtros = operacao ? porOperacao[operacao] ?? iniciais : iniciais;
+
+  const atualizarFiltros = (parcial: Partial<Filtros>) => {
+    if (!operacao) return;
+    setPorOperacao((anteriores) => ({
+      ...anteriores,
+      [operacao]: { ...(anteriores[operacao] ?? iniciais), ...parcial },
+    }));
+  };
+
+  return { filtros, atualizarFiltros };
 }

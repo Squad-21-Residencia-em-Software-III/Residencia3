@@ -456,3 +456,9 @@ Em Viagens, o Gestor SVO consulta as viagens administrativas que solicitou em `G
 
 Em **Viagens**, a configuração do backend determina a disponibilidade de foto, a obrigatoriedade e a fila **Pedidos sem foto**. O build precisa de `VITE_FOTOS_ODOMETRO_ATIVAS=true`. Consulte o [guia de ativação e retenção](operacao-odometro-e-agenda-svo.md).
 
+
+O campo legado `material_sensivel` é mantido pelo contrato SVO para compatibilidade. A interface SVO trata toda coleta como sensível e a opção de marcar material sensível está no fluxo administrativo. A Fase 2 usa 17 eventos: A1–A10, S1 e S3–S8. [Eventos e canais](notificacoes-fase2.md)
+
+Em Viagens Administrativas, o período **solicitado** pertence à solicitação. O período **previsto** pertence à viagem e pode ser atualizado pelo formulário A6 antes da saída. O período **real** só muda após as transições de execução. O backend valida perfil, unidade, versão, idempotência e conflito de agenda. [Contrato A6](scrum-231-reprogramacao.md)
+
+No odômetro mobile, use os controles separados de câmera e seleção de arquivo, confira a prévia e acompanhe o retorno do envio antes de concluir. Prefira os formatos listados pelo componente e confirme a compatibilidade do aparelho na homologação. [Contrato e limites do arquivo](scrum-203-contrato-backend.md) · [Roteiro de demonstração](manual-fluxos-operacionais.md#roteiro-de-demonstração-e-homologação)

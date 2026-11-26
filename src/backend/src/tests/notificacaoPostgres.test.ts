@@ -132,6 +132,41 @@ describe.skipIf(!habilitado)('API In-App em PostgreSQL descartável', () => {
     expect(await percorrer(u, 2, () => avisar(u))).toEqual(ids);
   });
 
+  it.each([
+    [21, [20, 1]],
+    [40, [20, 20]],
+    [101, [20, 20, 20, 20, 20, 1]],
+  ])('pagina %i avisos com o mesmo timestamp sem deslocar o cursor após inserções', async (total, tamanhos) => {
+    const u = await conta('SOLICITANTE');
+    const criado_em = '2026-01-02T10:00:00.123456Z';
+    const originais = await db('notificacoes').insert(Array.from({ length: total }, () => ({
+      usuario_id: u.id, tipo: 'VIAGEM_AGENDADA', titulo: 'Viagem agendada', mensagem: 'Aviso sintético.',
+      operacao: 'Administrativo', url_destino: '/viagens', chave_idempotencia: nonce(), criado_em,
+    }))).returning<{ id: number }[]>('id');
+    const esperados = originais.map(({ id }) => id).sort((a, b) => b - a);
+    let caminho = '?limit=20';
+    const ids: number[] = [];
+    let novos: number[] = [];
+    for (const [indice, tamanho] of tamanhos.entries()) {
+      const { status, body } = await get(u, caminho);
+      expect(status).toBe(200);
+      expect(body.itens).toHaveLength(tamanho);
+      expect(body.nao_lidas).toBe(total + novos.length);
+      ids.push(...body.itens.map(({ id }: { id: number }) => id));
+      if (indice === tamanhos.length - 1) {
+        expect(body.proximo_cursor).toBeNull();
+      } else {
+        expect(body.proximo_cursor).toBe(`2026-01-02T10:00:00.123456Z|${ids.at(-1)}`);
+        caminho = `?limit=20&cursor=${encodeURIComponent(body.proximo_cursor)}`;
+      }
+      if (indice === 0) novos = await Promise.all([avisar(u, { criado_em }), avisar(u, { criado_em })]);
+    }
+    expect(ids).toEqual(esperados);
+    const novaPrimeiraPagina = await get(u, '?limit=20');
+    expect(novaPrimeiraPagina.body.itens.slice(0, 2).map(({ id }: { id: number }) => id))
+      .toEqual(novos.sort((a, b) => b - a));
+  });
+
   it('a página seguinte não depende do fuso da conexão', async () => {
     const u = await conta('SOLICITANTE');
     const antiga = await avisar(u, { criado_em: '2026-01-01T23:30:00.000001-03:00' });

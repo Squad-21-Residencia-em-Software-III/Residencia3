@@ -77,3 +77,11 @@ Vale para as SCRUM-236, 237, 238 e 239. Do back, o front precisa que:
 3. Chaves VAPID configuradas **só no back**; o front recebe apenas a pública.
 4. Gerar o front com `VITE_WEB_PUSH_ATIVO=true`.
 5. Testar em HTTPS: Android/Chrome, computador (Chrome e Edge) e iPhone com o aplicativo instalado; ligar, desligar, negar, sair da conta e trocar de conta.
+
+### Vínculo no Service Worker da SCRUM-239
+
+O transporte acrescenta `vinculo`, um identificador opaco de 43 caracteres calculado para a assinatura efetivamente usada no envio. A consulta autenticada de status retorna o mesmo valor somente para a assinatura ativa da sessão. O registro de publicação e a outbox continuam usando o contrato anterior. O Service Worker aceita apenas o vínculo confirmado para o dispositivo e exige as flags do frontend e da API.
+
+A migration `20261126143000_scrum_239_geracao_push.js` adiciona a geração do vínculo. Reassinatura idempotente preserva o vínculo. Reativação, mudança das chaves e recriação após cancelamento produzem um vínculo novo. Um resultado atrasado do transporte só altera a assinatura se a geração ainda for a mesma. Para implantar, aplicar a migration aditiva antes de atualizar o backend e confirmar o vínculo no PWA atualizado. Para reverter o aplicativo, reimplantar a versão anterior com a coluna aditiva ainda presente.
+
+Validação de 26/11/2026 em PostgreSQL 17 descartável. A instalação limpa aplicou as 31 migrations. O upgrade de 30 para 31 preservou os 12 registros de assinatura sintéticos, com hash `2e1a77f3ec9d9e097137b78b398d3b95` antes e depois para os campos originais. A nova geração iniciou em `1` nas 12 assinaturas.

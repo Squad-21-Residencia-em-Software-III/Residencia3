@@ -10,16 +10,16 @@ export interface ResultadoLogin {
 }
 
 export const authApi = {
-  login: (email: string, senha: string) =>
-    request<ResultadoLogin>('POST', '/auth/login', { body: { email, senha }, semAutenticacao: true }),
+  login: (email: string, senha: string, signal?: AbortSignal) =>
+    request<ResultadoLogin>('POST', '/auth/login', { body: { email, senha }, semAutenticacao: true, signal }),
 
   /** Usa o cookie HttpOnly de refresh para emitir novo access token em memória. */
-  refresh: () =>
-    request<ResultadoLogin>('POST', '/auth/refresh', { semAutenticacao: true }),
+  refresh: (signal?: AbortSignal) =>
+    request<ResultadoLogin>('POST', '/auth/refresh', { semAutenticacao: true, signal }),
 
   /** Solicita ao servidor a remoção do cookie HttpOnly de sessão. */
-  logout: () =>
-    request<void>('POST', '/auth/logout', { semAutenticacao: true }),
+  logout: (signal?: AbortSignal) =>
+    request<void>('POST', '/auth/logout', { semAutenticacao: true, signal }),
 
   me: () => request<Usuario>('GET', '/auth/me'),
 

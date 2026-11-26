@@ -1,3 +1,4 @@
+import { prepararEstadoPush, registrarVinculo, suspenderApresentacao } from '../sw/estadoPush';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, mensagemDeErro, tokenStorage } from '../services/api/http';
 import { notificacoesPushApi } from '../services/api/notificacoesPushApi';
@@ -70,7 +71,11 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
         await cumprirEncerramentoAnterior();
         const assinatura = await assinaturaDoAparelho();
         if (!assinatura) return concluir('inativa');
-        const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+        const estado = await prepararEstadoPush();
+        const { ativa, vinculo } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+        if (ativa && verificacao === ultimaVerificacao.current && !(await registrarVinculo(estado?.geracao, vinculo, sinal))) {
+          throw new Error('Não foi possível confirmar o vínculo local dos alertas.');
+        }
         concluir(ativa ? 'ativa' : 'inativa');
       });
     } catch (e) {
@@ -152,11 +157,16 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
       return emSequencia<SituacaoPush>(async () => {
         conferirSessao();
         await cumprirEncerramentoAnterior();
+        const estado = await prepararEstadoPush();
+        if (!estado) throw new Error('Armazenamento seguro de alertas indisponível. Tente novamente.');
         // Outra aba pode ter acabado de ligar: não troca a assinatura que já vale
         const existente = await assinaturaDoAparelho();
         if (existente) {
-          const { ativa } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(existente.endpoint, s));
-          if (ativa) return 'ativa';
+          const { ativa, vinculo } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(existente.endpoint, s));
+          if (ativa) {
+            if (!(await registrarVinculo(estado.geracao, vinculo, sinal))) throw new Error('Vínculo local não confirmado.');
+            return 'ativa';
+          }
         }
         const { publicKey } = await comLimite(sinal, (s) => notificacoesPushApi.chavePublica(s));
         conferirSessao();
@@ -166,6 +176,9 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
           const dados = dadosDaAssinatura(assinatura);
           conferirSessao();
           await comLimite(sinal, (s) => notificacoesPushApi.assinar(dados, s));
+          conferirSessao();
+          const { vinculo } = await comLimite(sinal, (s) => notificacoesPushApi.situacao(assinatura.endpoint, s));
+          if (!(await registrarVinculo(estado.geracao, vinculo, sinal))) throw new Error('Vínculo local não confirmado.');
           conferirSessao();
         } catch (e) {
           // Sem o registro no servidor, ou com outra sessão, o aparelho não pode ficar assinado
@@ -180,6 +193,7 @@ export function useAssinaturaPush({ usuarioId, online, permissao, solicitarPermi
     executar((conferirSessao, sinal) =>
       emSequencia<SituacaoPush>(async () => {
         conferirSessao();
+        await suspenderApresentacao(false);
         const assinatura = await assinaturaDoAparelho();
         if (!assinatura) return 'inativa';
         const { endpoint } = assinatura;

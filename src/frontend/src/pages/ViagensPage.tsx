@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { CalendarClock, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
+import { CalendarClock, CameraOff, ChevronRight, Flag, MapPin, Play } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -39,7 +39,7 @@ import {
   type TipoOperacaoViagem,
   type Viagem,
 } from '../types/viagem';
-import { useAbaOperacao } from '../utils/abaOperacao';
+import { useAbaOperacao, useFiltrosPorOperacao } from '../utils/abaOperacao';
 import { cn } from '../utils/cn';
 import { DrawerDetalhesViagem } from './viagens/DrawerDetalhesViagem';
 import { useMarcarReferenciaLida } from '../contexts/NotificacoesContext';
@@ -49,10 +49,23 @@ import { ModalIniciarViagem } from './viagens/ModalIniciarViagem';
 import { ModalExcecoesOdometro } from './viagens/ModalExcecoesOdometro';
 import { ModalEvidenciasOdometro } from './viagens/ModalEvidenciasOdometro';
 import { ModalNovaViagem } from './viagens/ModalNovaViagem';
+import { ModalReprogramarAdministrativa, podeReprogramarAdministrativa } from './viagens/ModalReprogramarAdministrativa';
 import { useRegistrarChegada } from './viagens/useRegistrarChegada';
 import { usePermissao } from '../utils/permissoes';
 
 type FiltroStatusViagem = 'TODOS' | 'AGENDADA' | 'EM_ANDAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
+
+interface FiltrosViagens {
+  status: FiltroStatusViagem;
+  motorista: string;
+  veiculo: string;
+  busca: string;
+  abertos: boolean;
+}
+
+const FILTROS_INICIAIS: FiltrosViagens = {
+  status: 'TODOS', motorista: 'TODOS', veiculo: 'TODOS', busca: '', abertos: false,
+};
 
 interface DadosNovaViagem {
   veiculos: Veiculo[];
@@ -128,6 +141,7 @@ export default function ViagensPage() {
   const { pode, abasDeViagens } = usePermissao();
   const abas = abasDeViagens();
   const { ativa, mudar } = useAbaOperacao(abas);
+  const { filtros, atualizarFiltros } = useFiltrosPorOperacao(ativa, FILTROS_INICIAIS);
 
   if (!ativa) return null;
 
@@ -141,7 +155,12 @@ export default function ViagensPage() {
     <div className="grid w-full min-w-0 gap-5">
       <SeletorOperacao operacoes={abas} ativa={ativa} onChange={mudar} />
       <div key={ativa} className="animate-tab-fade">
-        <PainelViagens operacao={ativa} somenteProprias={somenteProprias} />
+        <PainelViagens
+          operacao={ativa}
+          somenteProprias={somenteProprias}
+          filtros={filtros}
+          atualizarFiltros={atualizarFiltros}
+        />
       </div>
     </div>
   );
@@ -151,9 +170,11 @@ interface PainelViagensProps {
   operacao: TipoOperacaoViagem;
   /** Só as viagens pedidas pelo próprio usuário, sem ações de gestão. */
   somenteProprias: boolean;
+  filtros: FiltrosViagens;
+  atualizarFiltros: (parcial: Partial<FiltrosViagens>) => void;
 }
 
-function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
+function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }: PainelViagensProps) {
   const location = useLocation();
   const { pode, podeNaFrota } = usePermissao();
   const isSvo = operacao === 'SVO';
@@ -188,11 +209,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const [viagens, setViagens] = useState<Viagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
-  const [filtroStatus, setFiltroStatus] = useState<FiltroStatusViagem>('TODOS');
-  const [filtroMotorista, setFiltroMotorista] = useState<string>('TODOS');
-  const [filtroVeiculo, setFiltroVeiculo] = useState<string>('TODOS');
-  const [busca, setBusca] = useState('');
-  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const { status: filtroStatus, motorista: filtroMotorista, veiculo: filtroVeiculo, busca, abertos: filtrosAbertos } = filtros;
 
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
   const [filaExcecoesAberta, setFilaExcecoesAberta] = useState(false);
@@ -204,6 +221,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
   const [erroPendentes, setErroPendentes] = useState<string | null>(null);
   const [ordemAgendar, setOrdemAgendar] = useState<OrdemPendenteSvo | null>(null);
   const [viagemReprogramar, setViagemReprogramar] = useState<Viagem | null>(null);
+  const [administrativaReprogramar, setAdministrativaReprogramar] = useState<Viagem | null>(null);
   const [alertasSvo, setAlertasSvo] = useState<Awaited<ReturnType<typeof viagensApi.listarAlertasSvo>>>([]);
   const [erroAlertas, setErroAlertas] = useState<string | null>(null);
   const [dadosAgendarColeta, setDadosAgendarColeta] = useState<DadosAgendarColeta | null>(null);
@@ -401,8 +419,8 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         const termo = busca.trim().toLowerCase();
         const matchOrigem = (v.origem ?? '').toLowerCase().includes(termo);
         const matchDestino = (v.destino ?? '').toLowerCase().includes(termo);
-        const matchMotorista = v.motorista_nome.toLowerCase().includes(termo);
-        const matchPlaca = v.veiculo_placa.toLowerCase().includes(termo);
+        const matchMotorista = (v.motorista_nome ?? '').toLowerCase().includes(termo);
+        const matchPlaca = (v.veiculo_placa ?? '').toLowerCase().includes(termo);
         const matchSolicitante = (v.solicitante_nome ?? '').toLowerCase().includes(termo);
         if (!matchOrigem && !matchDestino && !matchMotorista && !matchPlaca && !matchSolicitante) {
           return false;
@@ -602,11 +620,17 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
         <TableToolbar
           title={textos.titulo}
           subtitle={`${filtradas.length} de ${viagens.length} ${textos.registro}`}
+          wrapActions
           actions={!somenteProprias ? (
             <>
               {podeDecidirExcecoes && (
-                <Button type="button" variant="outline" onClick={() => setFilaExcecoesAberta(true)}>
-                  Pedidos sem foto
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilaExcecoesAberta(true)}
+                >
+                  <CameraOff size={13} aria-hidden="true" /> Pedidos sem foto
                 </Button>
               )}
               <BotaoExportarRelatorio tipo="viagens" />
@@ -614,7 +638,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           ) : undefined}
           newLabel={podeAgendar ? 'Agendar Viagem' : undefined}
           onNew={podeAgendar ? () => setModalNovaAberto(true) : undefined}
-          onFilter={() => setFiltrosAbertos((f) => !f)}
+          onFilter={() => atualizarFiltros({ abertos: !filtrosAbertos })}
           isFilterActive={
             filtroStatus !== 'TODOS' ||
             filtroMotorista !== 'TODOS' ||
@@ -628,7 +652,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           {/* Busca por campo de texto na esquerda */}
           <SearchInput
             value={busca}
-            onChange={setBusca}
+            onChange={(busca) => atualizarFiltros({ busca })}
             placeholder={somenteProprias ? 'Buscar por trajeto...' : 'Buscar por trajeto, condutor ou placa...'}
           />
 
@@ -636,7 +660,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           <FilterSelect
             aria-label="Filtrar por status"
             value={filtroStatus}
-            onChange={(val) => setFiltroStatus(val as FiltroStatusViagem)}
+            onChange={(val) => atualizarFiltros({ status: val as FiltroStatusViagem })}
             options={[
               { value: 'TODOS', label: 'Todos os status' },
               { value: 'AGENDADA', label: 'Agendadas' },
@@ -650,7 +674,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           {!somenteProprias && <FilterSelect
             aria-label="Filtrar por motorista"
             value={filtroMotorista}
-            onChange={setFiltroMotorista}
+            onChange={(motorista) => atualizarFiltros({ motorista })}
             options={[
               { value: 'TODOS', label: 'Todos os motoristas' },
               ...opcoesMotoristas,
@@ -660,7 +684,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
           {!somenteProprias && <FilterSelect
             aria-label="Filtrar por veículo"
             value={filtroVeiculo}
-            onChange={setFiltroVeiculo}
+            onChange={(veiculo) => atualizarFiltros({ veiculo })}
             options={[
               { value: 'TODOS', label: 'Todos os veículos' },
               ...opcoesVeiculos,
@@ -674,12 +698,7 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setBusca('');
-                setFiltroStatus('TODOS');
-                setFiltroMotorista('TODOS');
-                setFiltroVeiculo('TODOS');
-              }}
+              onClick={() => atualizarFiltros({ ...FILTROS_INICIAIS, abertos: filtrosAbertos })}
             >
               Limpar
             </Button>
@@ -861,6 +880,12 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
                         <div className="inline-flex items-center justify-end gap-2">
                           {v.status === 'AGENDADA' && (
                             <>
+                              {podeReprogramarAdministrativa(v, podeAgendar) && (
+                                <Button variant="outline" size="sm" onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAdministrativaReprogramar(v);
+                                }}>Reprogramar</Button>
+                              )}
                               {podeAlocarSvo && agendaSvoAtiva && (
                                 <Button variant="outline" size="sm" onClick={(e) => {
                                   e.stopPropagation();
@@ -955,6 +980,17 @@ function PainelViagens({ operacao, somenteProprias }: PainelViagensProps) {
       </Card>
 
       {/* Modais */}
+      {podeAgendar && administrativaReprogramar && (
+        <ModalReprogramarAdministrativa
+          viagem={administrativaReprogramar}
+          onClose={() => setAdministrativaReprogramar(null)}
+          onSalva={async () => {
+            setAdministrativaReprogramar(null);
+            await carregarViagens();
+            exibirFeedback('Programação da viagem atualizada com sucesso.');
+          }}
+        />
+      )}
       {modalNovaAberto && dadosNovaViagem && (
         <ModalNovaViagem
           solicitacoesAprovadas={dadosNovaViagem.solicitacoes}

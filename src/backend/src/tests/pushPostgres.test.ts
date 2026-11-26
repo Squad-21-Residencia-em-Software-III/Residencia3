@@ -93,6 +93,30 @@ describe.skipIf(!habilitado)('Alertas no aparelho (SCRUM-237) em PostgreSQL desc
   });
   afterAll(() => db.destroy());
 
+  it('mantém S6/S7 no sino e considera só avisos Push elegíveis no App Badge', async () => {
+    const p = await pessoa('MOTORISTA_SVO');
+    const consultar = (rota: string) => request(app).get(`${BASE}/${rota}`).set(com(p));
+    expect((await ligarCategoria(p, 'SVO')).status).toBe(200);
+    for (const tipo of ['SVO_CHEGADA_LOCAL', 'SVO_COLETA_CONCLUIDA']) {
+      await db.transaction((trx) => publicarNotificacao(trx, evento([p.id], { tipo, operacao: 'SVO', push: undefined })));
+    }
+    expect((await consultar('contador')).body.nao_lidas).toBe(2);
+    expect((await consultar('badge')).body).toEqual({ elegiveis: 0 });
+    await db.transaction((trx) => publicarNotificacao(trx, evento([p.id], {
+      tipo: 'EXCECAO_ODOMETRO_DECIDIDA', operacao: 'SVO',
+      push: { categoria: 'SVO', titulo: 'Decisão', corpo: 'Confira a decisão.' },
+    })));
+    expect((await consultar('contador')).body.nao_lidas).toBe(3);
+    expect((await consultar('badge')).body).toEqual({ elegiveis: 1 });
+    const [item] = await filaDe(p.id);
+    await request(app).patch(`${BASE}/${item.notificacao_id}/lida`).set(com(p));
+    expect((await consultar('badge')).body).toEqual({ elegiveis: 0 });
+    configNotificacoes.ativas = false;
+    const disponibilidade = await request(app).get(`${BASE}/push-disponivel`);
+    expect(disponibilidade.body).toEqual({ ativo: false });
+    expect(disponibilidade.headers['cache-control']).toBe('no-store');
+  });
+
   describe('Assinatura', () => {
     it('cria (201) e renova (204) o mesmo aparelho sem duplicar, trocando as chaves', async () => {
       const p = await pessoa();
@@ -147,8 +171,33 @@ describe.skipIf(!habilitado)('Alertas no aparelho (SCRUM-237) em PostgreSQL desc
       const dispositivo = aparelho();
       await assinar(a, dispositivo);
       const status = (p: Pessoa) => request(app).post(`${BASE}/subscribe/status`).set(com(p)).send({ endpoint: dispositivo.endpoint });
-      expect((await status(a)).body).toEqual({ ativa: true });
+      expect((await status(a)).body).toEqual({ ativa: true, vinculo: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
       expect((await status(b)).body).toEqual({ ativa: false });
+    });
+
+    it('renova o vínculo em um novo ciclo mesmo com o mesmo endpoint e as mesmas chaves', async () => {
+      const p = await pessoa();
+      const dispositivo = aparelho();
+      const status = () => request(app).post(`${BASE}/subscribe/status`).set(com(p)).send({ endpoint: dispositivo.endpoint });
+      expect((await assinar(p, dispositivo)).status).toBe(201);
+      const inicial = (await status()).body.vinculo;
+      expect(inicial).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect((await assinar(p, dispositivo)).status).toBe(204);
+      expect((await status()).body.vinculo).toBe(inicial);
+
+      await db('push_subscriptions').where({ endpoint: dispositivo.endpoint })
+        .update({ status: 'EXPIRADA', ativa: false, expirada_em: db.fn.now() });
+      expect((await status()).body).toEqual({ ativa: false });
+      expect((await assinar(p, dispositivo)).status).toBe(204);
+      const reativado = (await status()).body.vinculo;
+      expect(reativado).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(reativado).not.toBe(inicial);
+
+      expect((await request(app).delete(`${BASE}/unsubscribe`).set(com(p)).send({ endpoint: dispositivo.endpoint })).status).toBe(204);
+      expect((await assinar(p, dispositivo)).status).toBe(201);
+      const recriado = (await status()).body.vinculo;
+      expect(recriado).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(recriado).not.toBe(reativado);
     });
 
     it('cancelar apaga só o aparelho do próprio usuário; repetir responde 204', async () => {

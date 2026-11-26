@@ -5,6 +5,7 @@ import { db } from '../config/database';
 import { processarFilaPush, type EnviadorPush } from '../services/filaPush';
 import { EVENTO_SVO_S1, CATEGORIA_NOTIFICACAO_SVO, notificacaoSvoService } from '../services/notificacaoSvoService';
 import { solicitacaoSvoService } from '../services/solicitacaoSvoService';
+import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 const habilitado = process.env.SCRUM233_POSTGRES_TESTS === '1';
 const dados = { dados_solicitante: 'Nome reservado', local_ocorrencia: 'Endereço reservado', material_sensivel: true };
@@ -21,6 +22,8 @@ async function conta(perfil: string, { associado = false, ativo = true } = {}) {
 }
 
 describe.skipIf(!habilitado)('SCRUM-233 com fila e PostgreSQL descartável', () => {
+  // Processa a fila de push compartilhada: uma suíte de fila por vez no banco
+  usarBancoComExclusividade();
   beforeAll(() => {
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('Banco de teste não autorizado');
@@ -41,13 +44,24 @@ describe.skipIf(!habilitado)('SCRUM-233 com fila e PostgreSQL descartável', () 
     const filtro = { operacao: 'SVO', referencia_tipo: 'SOLICITACAO_SVO', referencia_id: pedido.id };
     const avisos = await db('notificacoes').where({ ...filtro, tipo: EVENTO_SVO_S1 });
     expect(avisos.map((aviso) => aviso.usuario_id)).toEqual(expect.arrayContaining([gestor, admin]));
-    expect(await db('notificacoes').where({ ...filtro, tipo: 'SVO_PRIORIDADE_MATERIAL_SENSIVEL' })).toHaveLength(0);
+    const confirmacao = await solicitacaoSvoService.confirmar(pedido.id, { id: autor, perfil: 'GESTOR_SVO' });
+    const repeticao = await solicitacaoSvoService.confirmar(pedido.id, { id: autor, perfil: 'GESTOR_SVO' });
+    expect(repeticao.ordem.id).toBe(confirmacao.ordem.id);
+    expect(repeticao.criada).toBe(false);
+    expect(await db('notificacoes').where(filtro).distinct().pluck('tipo')).toEqual([EVENTO_SVO_S1]);
+    expect(await db('notificacao_outbox').where(filtro).distinct().pluck('evento_tipo')).toEqual([EVENTO_SVO_S1]);
+    const referenciaOrdem = { operacao: 'SVO', referencia_tipo: 'ORDEM_SVO', referencia_id: confirmacao.ordem.id };
+    expect(await db('notificacoes').where(referenciaOrdem)).toHaveLength(0);
+    expect(await db('notificacao_outbox').where(referenciaOrdem)).toHaveLength(0);
     expect(avisos.some((aviso) => [autor, semVinculo, inativo].includes(aviso.usuario_id))).toBe(false);
     const endpoint = 'https://push.exemplo/' + randomUUID();
     await db('push_subscriptions').insert({ usuario_id: gestor, endpoint, p256dh: randomUUID(), auth: randomUUID() });
     await db('preferencias_notificacao').insert({
       usuario_id: gestor, categoria: CATEGORIA_NOTIFICACAO_SVO, habilitado: true,
     });
+    // Prioriza as duas entregas deste cenário mesmo quando outras suítes deixaram a fila cheia.
+    await db('notificacao_outbox').where(filtro).whereIn('usuario_id', [gestor, admin])
+      .update({ proxima_execucao_em: '2000-01-01T00:00:00Z' });
     const enviador = vi.fn<EnviadorPush>().mockResolvedValue({ status: 201 });
     await processarFilaPush(enviador);
     const idAviso = avisos.find((aviso) => aviso.usuario_id === gestor).id;

@@ -82,6 +82,29 @@ describe('VeiculosPage', () => {
     expect(screen.getByText(/Disponíveis/i)).toBeInTheDocument();
   });
 
+  it('restaura a busca e o status de cada frota sem cruzar os filtros', async () => {
+    sessao.perfil = 'ADMINISTRADOR';
+    const user = userEvent.setup();
+    const busca = () => screen.getByPlaceholderText('Buscar por placa, modelo ou marca...');
+    const status = () => screen.getByLabelText('Filtrar por status do veículo');
+    render(<MemoryRouter><VeiculosPage /></MemoryRouter>);
+    await screen.findByText('BRA2E19');
+
+    await user.type(busca(), 'BRA2E19');
+    await user.selectOptions(status(), 'DISPONIVEL');
+    await user.click(screen.getByRole('tab', { name: 'SVO' }));
+    expect(busca()).toHaveValue('');
+    expect(status()).toHaveValue('TODOS');
+    await user.type(busca(), 'Ducato');
+    await user.selectOptions(status(), 'MANUTENCAO');
+
+    await user.click(screen.getByRole('tab', { name: 'Administrativo' }));
+    expect(busca()).toHaveValue('BRA2E19');
+    expect(status()).toHaveValue('DISPONIVEL');
+    await user.click(screen.getByRole('tab', { name: 'SVO' }));
+    expect(busca()).toHaveValue('Ducato');
+    expect(status()).toHaveValue('MANUTENCAO');
+  });
   it('Solicitante vê só modelo, capacidade e frota, sem placa, km nem ações', async () => {
     sessao.perfil = 'SOLICITANTE';
     // A API devolve a lista reduzida para o Solicitante

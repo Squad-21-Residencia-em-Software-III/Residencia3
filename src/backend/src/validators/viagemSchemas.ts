@@ -86,4 +86,15 @@ export const cancelarViagemSchema = z.object({
   cancelar_solicitacao: z.boolean({ error: 'O campo cancelar_solicitacao deve ser verdadeiro ou falso' }).default(false),
 });
 
+export const reprogramarViagemAdministrativaSchema = z.object({
+  tipo_operacao: z.literal('ADMINISTRATIVA'),
+  inicio_previsto: z.iso.datetime({ offset: true }),
+  fim_previsto: z.iso.datetime({ offset: true }),
+  versao_programacao: z.number().int().min(0).max(2_147_483_646),
+  chave_idempotencia: z.uuid(),
+}).strict().refine((dados) => new Date(dados.fim_previsto) > new Date(dados.inicio_previsto), {
+  path: ['fim_previsto'], message: 'O término planejado deve ser posterior ao início',
+});
+
+export type ReprogramarViagemAdministrativaInput = z.infer<typeof reprogramarViagemAdministrativaSchema>;
 export type CriarViagemInput = z.infer<typeof criarViagemSchema>;
