@@ -76,6 +76,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
   const sessaoRef = useRef(sessao);
   const revisaoLista = useRef(0);
   const revisaoLeitura = useRef(0);
+  const ultimaLeituraConcluida = useRef(0);
   const paginasPendentes = useRef(false);
   const operacoesPendentes = useRef(0);
   const precisaSincronizarLeituras = useRef(false);
@@ -93,6 +94,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
     sessaoRef.current = sessao;
     revisaoLista.current += 1;
     revisaoLeitura.current += 1;
+    ultimaLeituraConcluida.current = 0;
     paginasPendentes.current = false;
     operacoesPendentes.current = 0;
     precisaSincronizarLeituras.current = false;
@@ -181,35 +183,106 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
 
   // Polling econômico (60s) somente autenticado, online e com aba visível + revalidação em foco (debounce 5s).
   useEffect(() => {
-    if (!recursoHabilitado || !usuario || !online) return;
+    if (!recursoHabilitado || sessao.id === null || !online) return;
 
-    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-      void atualizarContador();
-    }
-
-    const intervalo = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void atualizarContador();
+    let canal: BroadcastChannel | undefined;
+    if (navigator.locks && typeof BroadcastChannel !== 'undefined') {
+      try {
+        canal = new BroadcastChannel(`fsph-contador-${sessao.id}`);
+      } catch {
+        // Algumas configurações do navegador bloqueiam comunicação entre abas.
       }
-    }, INTERVALO_POLLING_NOTIFICACOES_MS);
+    }
+    let ativo = true;
+    let consultando = false;
+    let ultimaResposta = 0;
+    let proximaTentativa = 0;
+    let falhas = 0;
+    let repetir: ReturnType<typeof setTimeout> | undefined;
+    const aplicar = (total: number, em: number) => {
+      if (!ativo || sessaoRef.current !== sessao || em < ultimaResposta || em <= ultimaLeituraConcluida.current) return;
+      if (!Number.isSafeInteger(total) || total < 0) return;
+      ultimaResposta = em;
+      proximaTentativa = 0;
+      falhas = 0;
+      if (operacoesPendentes.current === 0) setNaoLidas(total);
+    };
+    if (canal) canal.onmessage = ({ data }: MessageEvent<{ total?: number; em?: number }>) => {
+      if (typeof data?.total === 'number' && typeof data.em === 'number') aplicar(data.total, data.em);
+    };
+
+    const consultar = async (janelaMs: number) => {
+      if (!ativo || document.visibilityState !== 'visible' || consultando || operacoesPendentes.current > 0) return;
+      const agora = Date.now();
+      if (agora < proximaTentativa) return;
+      if (centralAbertaRef.current) {
+        await atualizarContador();
+        return;
+      }
+      if (canal && ultimaResposta && agora - ultimaResposta < janelaMs) return;
+      consultando = true;
+      const leitura = revisaoLeitura.current;
+      const consultarApi = async () => {
+        if (!ativo || carregandoContadorRef.current) return;
+        carregandoContadorRef.current = true;
+        try {
+          const resposta = await notificacoesApi.contador();
+          if (!ativo || sessaoRef.current !== sessao || leitura !== revisaoLeitura.current) return;
+          const total = resposta?.nao_lidas ?? 0;
+          aplicar(total, agora);
+          canal?.postMessage({ total, em: agora });
+        } catch {
+          if (!ativo) return;
+          falhas += 1;
+          const espera = Math.min(INTERVALO_POLLING_NOTIFICACOES_MS, 5_000 * 2 ** (falhas - 1)) + Math.random() * 1_000;
+          proximaTentativa = Date.now() + espera;
+          repetir = setTimeout(() => void consultar(janelaMs), Math.ceil(espera));
+        } finally {
+          if (sessaoRef.current === sessao) carregandoContadorRef.current = false;
+        }
+      };
+      try {
+        if (canal) {
+          await navigator.locks.request(canal.name, { ifAvailable: true }, async (trava) => {
+            if (trava) await consultarApi();
+          });
+        } else await consultarApi();
+      } catch {
+        canal?.close();
+        canal = undefined;
+        await consultarApi();
+      } finally {
+        consultando = false;
+      }
+    };
+
+    const polling = () => void consultar(INTERVALO_POLLING_NOTIFICACOES_MS);
+    // Distribui a primeira consulta de navegadores capazes de compartilhar o resultado.
+    const inicio = canal ? setTimeout(polling, 2_000 * Math.random()) : undefined;
+    if (!canal) polling();
+    const intervalo = window.setInterval(polling, canal ? DEBOUNCE_FOCO_NOTIFICACOES_MS : INTERVALO_POLLING_NOTIFICACOES_MS);
 
     const revalidarComDebounce = () => {
       if (document.visibilityState !== 'visible') return;
       const agora = Date.now();
       if (agora - ultimoSyncFocoRef.current < DEBOUNCE_FOCO_NOTIFICACOES_MS) return;
       ultimoSyncFocoRef.current = agora;
-      void atualizarContador();
+      void consultar(DEBOUNCE_FOCO_NOTIFICACOES_MS);
     };
 
     window.addEventListener('focus', revalidarComDebounce);
     document.addEventListener('visibilitychange', revalidarComDebounce);
 
     return () => {
+      ativo = false;
+      canal?.close();
+      clearTimeout(inicio);
+      clearTimeout(repetir);
       window.clearInterval(intervalo);
       window.removeEventListener('focus', revalidarComDebounce);
       document.removeEventListener('visibilitychange', revalidarComDebounce);
     };
-  }, [atualizarContador, online, recursoHabilitado, usuario]);
+  }, [atualizarContador, online, recursoHabilitado, sessao]);
 
   const carregarMais = useCallback(async () => {
     if (!recursoHabilitado || sessao.id === null || !online || !proximoCursor ||
@@ -254,6 +327,7 @@ export function NotificacoesProvider({ children, ativoOverride }: NotificacoesPr
       await enviar((idsConfirmados, resposta) => {
         if (sessaoRef.current !== sessao) return;
         revisaoLeitura.current += 1;
+        ultimaLeituraConcluida.current = Date.now();
         const alvos = new Set(idsConfirmados);
         const lidaEm = resposta?.lida_em ?? new Date().toISOString();
         setItens((anterior) => anterior.map((item) => alvos.has(item.id) && item.lida_em === null

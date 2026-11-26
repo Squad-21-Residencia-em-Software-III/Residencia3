@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { performance } from 'node:perf_hooks';
+import { setTimeout as esperar } from 'node:timers/promises';
 import jwt from 'jsonwebtoken';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
@@ -261,5 +262,37 @@ describe.skipIf(!habilitado)('Desempenho dos avisos com histórico acumulado (SC
     relatorio.vazao = vazao;
     // Demanda estimada (não medida): uma consulta por minuto por aba visível
     relatorio.demanda_estimada_por_segundo = { '10_pessoas_1_aba': 0.17, '50_pessoas_1_aba': 0.83, '50_pessoas_3_abas': 2.5 };
+  }, 120_000);
+
+  it('mede três ciclos coordenados e a recuperação de uma rajada de 503', async () => {
+    const cenarios: Record<string, unknown> = {};
+    for (const usuarios of [10, 50]) {
+      for (const abas of [2, 3]) {
+        const grupo = pessoas.slice(0, usuarios);
+        const ciclos = [];
+        // Uma consulta por usuário e ciclo representa as abas que compartilham a resposta.
+        for (let ciclo = 0; ciclo < 3; ciclo += 1) {
+          const distribuido = await Promise.all(grupo.map(async (pessoa, i) => {
+            await esperar(((i + ciclo * 7) % usuarios) * 25);
+            return chamar(pessoa, '/api/notificacoes/contador');
+          }));
+          expect(distribuido.map(({ status }) => status)).toEqual(Array(usuarios).fill(200));
+          ciclos.push(resumo(distribuido.map(({ ms }) => ms)));
+        }
+        cenarios[`${usuarios}_usuarios_${abas}_abas`] = ciclos;
+      }
+    }
+    const lote = pessoas.flatMap((pessoa) => [pessoa, pessoa, pessoa]);
+    const rajada = await Promise.all(lote.map((pessoa) => chamar(pessoa, '/api/notificacoes/contador')));
+    const rejeitadas = rajada.flatMap(({ status }, i) => status === 503 ? [lote[i]!] : []);
+    expect(rejeitadas.length).toBeGreaterThan(0);
+    await esperar(5_000);
+    const recuperar = [...new Set(rejeitadas)];
+    const recuperadas = await Promise.all(recuperar.map(async (pessoa, i) => {
+      await esperar(i * 20);
+      return chamar(pessoa, '/api/notificacoes/contador');
+    }));
+    expect(recuperadas.map(({ status }) => status)).toEqual(Array(recuperar.length).fill(200));
+    relatorio.coordenado = { cenarios, rejeitadas: rejeitadas.length, recuperadas: recuperadas.length };
   }, 120_000);
 });

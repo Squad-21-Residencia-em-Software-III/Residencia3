@@ -41,3 +41,7 @@ Base 6cbe676 e alteração de medição deste PR. Quatro casos passaram. A massa
 | 50 | 3 | 50 | 100 | 166,1 ms |
 
 A API local limita a 50 requisições simultâneas. A série de cinco a dez minutos com abas e a retomada real em Render/Neon continuam pendentes.
+
+Com BroadcastChannel e Web Locks, abas visíveis compartilham o resultado do contador por conta. A consulta inicial é distribuída em até dois segundos. A próxima sincronização periódica ocorre após 60 segundos e as falhas temporárias acionam nova tentativa com espera progressiva de 5 a 60 segundos, mais variação de até um segundo. A central aberta mantém sua atualização de lista. Navegadores sem suporte continuam usando o polling individual.
+
+Em PostgreSQL 17 local descartável, `desempenhoNotificacoesPostgres.test.ts` passou os cinco casos. Com 168.936 avisos, 100.062 registros de fila e 188 assinaturas, a simulação com 10 e 50 usuários em duas e três abas teve 360 respostas HTTP 200 em três ciclos por cenário. O maior p95 do contador nos ciclos coordenados foi 19,4 ms. Na rajada de controle, 100 requisições receberam 503. A recuperação após 5 segundos fez uma tentativa por usuário afetado e os 34 receberam HTTP 200. O teste simula a coordenação na carga HTTP. Suspensão real e reconexão em Render/Neon requerem um ambiente isolado autorizado.
