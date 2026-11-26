@@ -2,7 +2,7 @@
 
 O front está pronto atrás de `VITE_WEB_PUSH_ATIVO` (`webPush` em `recursosBackend.ts`), desligado por padrão. Desligado, nenhuma rota abaixo é chamada e as preferências do aplicativo ficam como antes.
 
-As rotas `vapid-public-key`, `subscribe` e `unsubscribe` vêm da SCRUM-222. **O restante é proposta do front**, a confirmar com quem assumir a SCRUM-236 e a SCRUM-237: formato dos corpos, rota de situação e rotas de preferências.
+As rotas `vapid-public-key`, `subscribe` e `unsubscribe` vêm da SCRUM-222. As demais eram proposta do front e foram **confirmadas pela SCRUM-237**: formato dos corpos, rota de situação e rotas de preferências. Os códigos de resposta, as categorias por perfil e as regras de envio estão em `docs/scrum-237-envio-push.md`.
 
 Todas as rotas ficam em `/api/notificacoes`, exigem sessão e usam o usuário **da sessão**, nunca um id enviado pelo cliente.
 

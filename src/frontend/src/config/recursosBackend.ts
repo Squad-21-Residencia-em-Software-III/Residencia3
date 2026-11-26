@@ -48,6 +48,14 @@ export const RECURSOS_BACKEND = {
    * Serviço: `evidenciasOdometroApi`.
    */
   fotosOdometro: import.meta.env.VITE_FOTOS_ODOMETRO_ATIVAS === 'true',
+
+  /**
+   * SCRUM-227: Central de Notificações In-App (sino, dropdown, leitura e polling econômico).
+   * Depende dos endpoints do backend (SCRUM-226) e da tabela `notificacoes` (SCRUM-225), conforme
+   * docs/contrato-notificacoes-in-app.md. Desligado, nenhuma chamada `/api/notificacoes/*` é feita.
+   * Serviço: `notificacoesApi`.
+   */
+  notificacoesInApp: import.meta.env.VITE_NOTIFICACOES_IN_APP_ATIVAS === 'true',
 };
 
 export type RecursoBackend = keyof typeof RECURSOS_BACKEND;

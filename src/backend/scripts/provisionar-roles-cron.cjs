@@ -145,10 +145,16 @@ async function provisionarRolesCron({ env = process.env, criarConexao = knex } =
         [retUser]
       );
       await trx.raw('GRANT SELECT (id, status) ON TABLE public.ordens_svo TO ??', [retUser]);
+      // Expurgo de notificacoes (SCRUM-242): le so as colunas de data e remove linhas elegiveis.
+      await trx.raw(
+        'GRANT SELECT (id, lida_em, criado_em), DELETE ON TABLE public.notificacoes TO ??',
+        [retUser]
+      );
 
       for (const r of nomesCron) {
         const estado = await inspecionarEstadoRole(trx, r);
-        validarEstadoMinimoPrivilegio(estado);
+        // Apenas a role de retencao pode deletar notificacoes; a de expiracao continua proibida.
+        validarEstadoMinimoPrivilegio(estado, { permitirDeletarNotificacoes: r === retUser });
       }
     });
 

@@ -1,3 +1,4 @@
+import { createECDH } from 'node:crypto';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import dotenv from 'dotenv';
@@ -214,6 +215,77 @@ function configuracaoEvidenciasOdometro(origem: Origem, nodeEnv: string) {
   };
 }
 
+// Alertas no aparelho (SCRUM-237, docs/scrum-237-envio-push.md). As três chaves VAPID juntas ligam o envio;
+// nenhuma desliga (os avisos continuam no sistema). A privada fica só aqui e no enviador.
+// Serviços de push dos navegadores: o endpoint vem do cliente, e só estes hosts recebem requisição da API
+export const HOSTS_PUSH_PADRAO = [
+  'fcm.googleapis.com',
+  '*.push.services.mozilla.com',
+  '*.notify.windows.com',
+  'web.push.apple.com',
+];
+const BASE64URL = /^[A-Za-z0-9_-]+$/;
+const CHAVES_VAPID_DE_EXEMPLO = ['troque_pela_chave_publica_vapid', 'troque_pela_chave_privada_vapid'];
+
+function chaveBase64Url(nome: string, valor: string, bytes: number): Buffer {
+  const decodificada = BASE64URL.test(valor) ? Buffer.from(valor, 'base64url') : Buffer.alloc(0);
+  if (decodificada.length !== bytes) {
+    throw new Error(`${nome} deve ser uma chave VAPID em base64url (gere com: npx web-push generate-vapid-keys)`);
+  }
+  return decodificada;
+}
+
+function hostsPush(valor: string | undefined): string[] {
+  if (valor === undefined || valor.trim() === '') return HOSTS_PUSH_PADRAO;
+  const itens = valor.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (itens.length === 0 || !itens.every((item) => /^(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(item))) {
+    throw new Error('PUSH_HOSTS_PERMITIDOS deve listar hosts separados por vírgula, como fcm.googleapis.com ou *.notify.windows.com');
+  }
+  return itens;
+}
+
+function configuracaoWebPush(origem: Origem) {
+  const publica = (origem.VAPID_PUBLIC_KEY ?? '').trim();
+  const privada = (origem.VAPID_PRIVATE_KEY ?? '').trim();
+  const assunto = (origem.VAPID_SUBJECT ?? '').trim();
+  const hostsPermitidos = hostsPush(origem.PUSH_HOSTS_PERMITIDOS);
+  if (!publica && !privada && !assunto) return { webPush: null };
+  if (!publica || !privada || !assunto) {
+    throw new Error('Defina VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY e VAPID_SUBJECT juntas, ou nenhuma delas');
+  }
+  if (CHAVES_VAPID_DE_EXEMPLO.includes(publica) || CHAVES_VAPID_DE_EXEMPLO.includes(privada)) {
+    throw new Error('As chaves VAPID não podem usar o valor de exemplo da documentação');
+  }
+  const bytesPublica = chaveBase64Url('VAPID_PUBLIC_KEY', publica, 65);
+  const bytesPrivada = chaveBase64Url('VAPID_PRIVATE_KEY', privada, 32);
+  // Par trocado ou de outra geração: o serviço de push recusaria todos os envios (403)
+  let derivada: Buffer | undefined;
+  try {
+    const ecdh = createECDH('prime256v1');
+    ecdh.setPrivateKey(bytesPrivada);
+    derivada = ecdh.getPublicKey();
+  } catch {
+    derivada = undefined;
+  }
+  if (!derivada || !derivada.equals(bytesPublica)) {
+    throw new Error('VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY não formam um par');
+  }
+  let url: URL | undefined;
+  try {
+    url = new URL(assunto);
+  } catch {
+    url = undefined;
+  }
+  const valido = url?.protocol === 'mailto:' ? /^[^@\s]+@[^@\s]+$/.test(url.pathname)
+    : url?.protocol === 'https:' && url.hostname !== 'localhost';
+  if (!valido) {
+    throw new Error('VAPID_SUBJECT deve ser mailto:contato@dominio ou uma URL https pública');
+  }
+  return { webPush: { publicKey: publica, privateKey: privada, subject: assunto, hostsPermitidos } };
+}
+
+export type ConfiguracaoWebPush = NonNullable<ReturnType<typeof configuracaoWebPush>['webPush']>;
+
 export function carregarEnv(origem: Origem = process.env) {
   const nodeEnv = origem.NODE_ENV ?? 'development';
   const producao = nodeEnv === 'production';
@@ -252,6 +324,7 @@ export function carregarEnv(origem: Origem = process.env) {
     maxRequisicoesSimultaneas: inteiroNaFaixa('MAX_REQUISICOES_SIMULTANEAS', origem.MAX_REQUISICOES_SIMULTANEAS, 50, 1, 1000),
     requestTimeoutMs: inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000),
     ...configuracaoEvidenciasOdometro(origem, nodeEnv),
+    ...configuracaoWebPush(origem),
   };
 }
 

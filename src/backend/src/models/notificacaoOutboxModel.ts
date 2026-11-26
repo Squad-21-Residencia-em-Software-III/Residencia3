@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { categoriaPermitida } from '../constants/categoriasNotificacao';
 import { notificacaoModel } from './notificacaoModel';
 import { escopoDasNotificacoes } from '../services/notificacaoService';
 
@@ -135,6 +136,8 @@ export const notificacaoOutboxModel = {
     if (!usuario) return 'USUARIO_INATIVO';
     const escopo = await escopoDasNotificacoes(usuario, conexao);
     if (!(await notificacaoModel.podeEntregar(escopo, payload_push.notificacao_id, conexao))) return 'ACESSO_REVOGADO';
+    // A categoria e a autorização por registro usam o perfil atual.
+    if (!categoriaPermitida(usuario.perfil, categoria)) return 'CATEGORIA_DESLIGADA';
     // Sem escolha registrada, a categoria fica desligada (padrão da SCRUM-236)
     const ligada = await conexao('preferencias_notificacao')
       .where({ usuario_id, categoria, canal: 'WEB_PUSH', habilitado: true })

@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import { db } from '../config/database';
+import { configNotificacoes } from '../config/notificacoes';
 import { env } from '../config/env';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { ordemSvoEmCurso } from '../constants/statusOrdemSvo';
@@ -10,6 +11,12 @@ import {
 } from '../models/excecaoOdometroModel';
 import type { TipoOperacao } from '../validators/viagemSchemas';
 import { travarAgendaSvo } from './agendaSvoService';
+import {
+  montarAvisoExcecaoSolicitada,
+  montarAvisoExcecaoDecidida,
+  destinatariosExcecaoOdometro,
+} from './eventosExcecaoOdometro';
+import { publicarNotificacao } from './publicacaoNotificacoes';
 import {
   deslocamentoDaOrdem, deslocamentoEmCursoDoVeiculo, evidenciaDaFase, type FaseOdometro,
 } from './evidenciaOdometroTransicao';
@@ -72,6 +79,17 @@ export const excecaoOdometroService = {
         usuario_id: autor.id, modulo: MODULOS_AUDITORIA.VIAGENS,
         acao: `SOLICITOU_EXCECAO_ODOMETRO tipo=${tipo} id=${id} fase=${fase} excecao=${registro!.id}`,
       }, trx);
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas) {
+        await publicarNotificacao(trx, {
+          ...montarAvisoExcecaoSolicitada(registro!.id, fase),
+          operacao: 'Administrativo',
+          severidade: 'warning',
+          referencia: { tipo: 'VIAGEM_FROTA', id },
+          autorId: autor.id,
+          destinatarios: await destinatariosExcecaoOdometro(trx),
+        });
+      }
+
       return apresentarExcecao(registro!);
     });
   },
@@ -124,6 +142,18 @@ export const excecaoOdometroService = {
         status: decisao, justificativa, decidida_por: autor.id, decidida_em: trx.fn.now(),
         auditoria_decisao_id: auditoria!.id,
       }).returning('*');
+      if (tipo === 'ADMINISTRATIVA' && configNotificacoes.ativas &&
+          await trx('usuarios').where({ id: registro.solicitada_por, perfil: PERFIS.MOTORISTA_FROTA, ativo: true }).first('id')) {
+        await publicarNotificacao(trx, {
+          ...montarAvisoExcecaoDecidida(registro.id, decisao, registro.fase, justificativa),
+          operacao: 'Administrativo',
+          severidade: decisao === 'APROVADA' ? 'success' : 'warning',
+          referencia: { tipo: 'VIAGEM_FROTA', id: viagemId },
+          autorId: autor.id,
+          destinatarios: [registro.solicitada_por],
+        });
+      }
+
       return apresentarExcecao(atual!);
     });
   },

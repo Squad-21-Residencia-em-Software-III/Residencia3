@@ -33,6 +33,12 @@ vi.mock('../models/auditoriaModel', () => ({
   auditoriaModel: { registrar: vi.fn() }, MODULOS_AUDITORIA: { SOLICITACOES_SVO: 'SOLICITACOES_SVO' },
 }));
 
+vi.mock('../services/notificacaoSvoService', () => ({
+  notificacaoSvoService: {
+    publicarAlertasRegistroSolicitacao: vi.fn(async () => undefined),
+  },
+}));
+
 const autor = { id: 4, perfil: PERFIS.GESTOR_SVO };
 const solicitacao = {
   id: 7, registrante_id: 2, dados_solicitante: 'Hospital', local_ocorrencia: 'Aracaju',

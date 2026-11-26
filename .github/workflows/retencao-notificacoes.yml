@@ -1,0 +1,69 @@
+name: Retenção de notificações
+
+on:
+  schedule:
+    # Uma vez por dia, às 03:23 em Fortaleza (06:23 UTC), fora do horário de uso.
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fsph-retencao-notificacoes
+  cancel-in-progress: false
+
+jobs:
+  retencao:
+    # Só roda no repositório oficial, na main e quando um responsável definir o modo:
+    # FSPH_RETENCAO_NOTIFICACOES_MODO = simular (apenas conta) ou aplicar (apaga).
+    # Sem a variável, o workflow não executa nenhuma exclusão.
+    if: >-
+      github.repository == 'Squad-21-Residencia-em-Software-III/Residencia3' &&
+      github.ref == 'refs/heads/main' &&
+      (vars.FSPH_RETENCAO_NOTIFICACOES_MODO == 'simular' || vars.FSPH_RETENCAO_NOTIFICACOES_MODO == 'aplicar')
+    environment:
+      name: fsph-retencao-neon
+      deployment: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: src/backend
+    env:
+      DB_ROLE: app
+      POSTGRES_SSL: 'true'
+      POSTGRES_POOL_MIN: '0'
+      POSTGRES_POOL_MAX: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/backend/package-lock.json
+      - name: Preparar comando
+        run: npm ci && npm run build
+      - name: Processar retenção de notificações
+        env:
+          POSTGRES_HOST: ${{ secrets.FSPH_CRON_PG_HOST }}
+          POSTGRES_DB: ${{ secrets.FSPH_CRON_PG_DATABASE }}
+          POSTGRES_APP_USER: ${{ secrets.FSPH_CRON_PG_USER }}
+          POSTGRES_APP_PASSWORD: ${{ secrets.FSPH_CRON_PG_PASSWORD }}
+          MODO_RETENCAO: ${{ vars.FSPH_RETENCAO_NOTIFICACOES_MODO }}
+          EVIDENCIAS_STORAGE: postgres
+          NODE_ENV: production
+          TRUST_PROXY: '0'
+        run: |
+          if [[ -z "$POSTGRES_HOST" || -z "$POSTGRES_DB" || -z "$POSTGRES_APP_USER" || -z "$POSTGRES_APP_PASSWORD" ]]; then
+            echo "::error::Configure os segredos de conexão no ambiente protegido deste workflow."
+            exit 1
+          fi
+          export JWT_SECRET="$(node -p 'require("node:crypto").randomBytes(32).toString("hex")')"
+          case "$MODO_RETENCAO" in
+            simular) npm run notificacoes:retencao -- --limite=500 ;;
+            aplicar) npm run notificacoes:retencao -- --aplicar --limite=200 --lotes=20 ;;
+            *) exit 1 ;;
+          esac

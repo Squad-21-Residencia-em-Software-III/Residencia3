@@ -3,6 +3,8 @@ import { env } from './config/env';
 import { configNotificacoes } from './config/notificacoes';
 import { app } from './app';
 import { configurarServidor } from './config/servidor';
+import { criarEnviadorWebPush } from './services/enviadorWebPush';
+import { definirEnviadorPush } from './services/filaPush';
 
 async function iniciar() {
   if (env.evidenciasStorage !== 'desativado') {
@@ -16,6 +18,10 @@ async function iniciar() {
     const existentes = await Promise.all(['notificacoes', 'notificacao_outbox'].map((tabela) => db.schema.hasTable(tabela)));
     if (existentes.some((existe) => !existe)) throw new Error('Schema das notificações incompleto');
   }
+
+  // Liga a fila de push (SCRUM-229) e retoma o que ficou pendente. Sem VAPID, os avisos ficam só no sistema
+  if (env.webPush && configNotificacoes.ativas) definirEnviadorPush(criarEnviadorWebPush(env.webPush));
+  else console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'PUSH_DESLIGADO' }));
 
   const servidor = app.listen(env.port, () => {
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'SERVIDOR_INICIADO', port: env.port }));
