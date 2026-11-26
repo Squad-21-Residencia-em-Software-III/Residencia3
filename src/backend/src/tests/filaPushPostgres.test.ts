@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { configNotificacoes } from '../config/notificacoes';
 import { db } from '../config/database';
 import { notificacaoOutboxModel } from '../models/notificacaoOutboxModel';
 import { definirEnviadorPush, processarFilaPush, type EnviadorPush } from '../services/filaPush';
@@ -12,8 +13,8 @@ const nonce = () => randomBytes(8).toString('hex');
 
 async function usuario(dados: Record<string, unknown> = {}): Promise<number> {
   const [u] = await db('usuarios').insert({
-    nome: 'Teste', email: `${nonce()}@testes.invalid`, senha: 'hash-de-teste', perfil: 'SOLICITANTE',
-    tipo_usuario: 'SOLICITANTE', ...dados,
+    nome: 'Teste', email: `${nonce()}@testes.invalid`, senha: 'hash-de-teste', perfil: 'GESTOR_FROTA',
+    tipo_usuario: 'GESTOR_FROTA', ...dados,
   }).returning('id');
   return u.id;
 }
@@ -30,7 +31,7 @@ async function ligarPush(usuario_id: number, aparelhos = 1): Promise<string[]> {
 
 const evento = (destinatarios: number[], dados: Partial<EventoNotificacao> = {}): EventoNotificacao => ({
   tipo: 'VIAGEM_AGENDADA', operacao: 'Administrativo', titulo: 'Viagem agendada', mensagem: 'Saída às 14:00.',
-  urlDestino: '/viagens', referencia: { tipo: 'VIAGEM', id: 108 }, ocorrencia: 'v1', autorId: null, destinatarios,
+  urlDestino: '/viagens', referencia: { tipo: 'VIAGEM_FROTA', id: 108 }, ocorrencia: 'v1', autorId: null, destinatarios,
   push: { categoria: 'VIAGENS', titulo: 'Viagem agendada', corpo: 'Você tem uma viagem.', tag: 'viagem-108' },
   ...dados,
 });
@@ -48,11 +49,12 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
     }
   });
   beforeEach(async () => {
+    configNotificacoes.ativas = true;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     // Fila limpa: o banco é descartável e as suítes não publicam em paralelo
     await db('notificacao_outbox').del();
   });
-  afterEach(() => definirEnviadorPush(null));
+  afterEach(() => { configNotificacoes.ativas = false; definirEnviadorPush(null); });
   afterAll(() => db.destroy());
 
   describe('Publicação', () => {
@@ -63,8 +65,8 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
         const [aviso] = await avisosDe(id);
         expect(aviso).toMatchObject({
           tipo: 'VIAGEM_AGENDADA', titulo: 'Viagem agendada', severidade: 'info', operacao: 'Administrativo',
-          referencia_tipo: 'VIAGEM', referencia_id: 108, url_destino: '/viagens', lida_em: null,
-          chave_idempotencia: 'VIAGEM_AGENDADA:VIAGEM:108:v1',
+          referencia_tipo: 'VIAGEM_FROTA', referencia_id: 108, url_destino: '/viagens', lida_em: null,
+          chave_idempotencia: 'VIAGEM_AGENDADA:VIAGEM_FROTA:108:v1',
         });
         expect(await umItem(id)).toMatchObject({
           notificacao_id: aviso.id, evento_tipo: 'VIAGEM_AGENDADA', categoria: 'VIAGENS', status: 'PENDENTE',
@@ -72,6 +74,23 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
           payload_push: { notificacao_id: aviso.id, titulo: 'Viagem agendada', corpo: 'Você tem uma viagem.', url: '/viagens', tag: 'viagem-108' },
         });
       }
+    });
+
+    it('diferencia reprogramações com o mesmo horário pela identidade da transição', async () => {
+      const a = await usuario();
+      for (const [id, horario] of [[101, '16:00'], [102, '15:00'], [103, '16:00']] as const) {
+        const reprogramacao = evento([a], { tipo: 'VIAGEM_REAGENDADA', ocorrencia: String(id), mensagem: horario });
+        expect(await publicar(reprogramacao)).toEqual({ criadas: 1 });
+        expect(await publicar(reprogramacao)).toEqual({ criadas: 0 });
+      }
+      expect(await filaDe(a)).toHaveLength(3);
+    });
+
+    it('mantém o domínio sem publicação com a flag desligada', async () => {
+      const a = await usuario();
+      configNotificacoes.ativas = false;
+      expect(await publicar(evento([a]))).toEqual({ criadas: 0 });
+      expect(await avisosDe(a)).toHaveLength(0);
     });
 
     it('sem push, o aviso fica só no sistema', async () => {
@@ -123,8 +142,8 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
       expect(await filaDe(a)).toHaveLength(1);
 
       await publicar(evento([a], { ocorrencia: 'v2' }));
-      await publicar(evento([a], { referencia: { tipo: 'VIAGEM', id: 109 } }));
-      await publicar(evento([a], { referencia: { tipo: 'ORDEM', id: 108 } }));
+      await publicar(evento([a], { referencia: { tipo: 'VIAGEM_FROTA', id: 109 } }));
+      await publicar(evento([a], { operacao: 'SVO', referencia: { tipo: 'ORDEM_SVO', id: 108 } }));
       await publicar(evento([a], { tipo: 'VIAGEM_CANCELADA' }));
       await publicar(evento([a], { referencia: undefined }));
       expect(await avisosDe(a)).toHaveLength(6);
@@ -156,7 +175,7 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
     it('grava sempre na ordem do usuário', async () => {
       const ids: number[] = [];
       for (let i = 0; i < 7; i += 1) ids.push(await usuario());
-      const chave = 'VIAGEM_AGENDADA:VIAGEM:108:v1';
+      const chave = 'VIAGEM_AGENDADA:VIAGEM_FROTA:108:v1';
       const direto = (usuario_id: number) => ({
         usuario_id, tipo: 'T', titulo: 't', mensagem: 'm', operacao: 'SVO', url_destino: '/x', chave_idempotencia: chave,
       });
@@ -193,7 +212,7 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
         await expect(publicar(evento([a], { ocorrencia }))).rejects.toThrow('A ocorrência');
       }
       await publicar(evento([a], {
-        tipo: 'T'.repeat(64), referencia: { tipo: 'R'.repeat(40), id: 2147483647 }, ocorrencia: 'x'.repeat(60),
+        tipo: 'T'.repeat(64), referencia: { tipo: 'VIAGEM_FROTA', id: 2147483647 }, ocorrencia: 'x'.repeat(60),
       }));
       expect(await filaDe(a)).toHaveLength(1);
     });
@@ -345,11 +364,11 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
       expect(assinatura).toMatchObject({ ativa: true, falhas_consecutivas: 0, ultimo_status_http: 201 });
     });
 
-    it('a nova tentativa não repete no aparelho que já recebeu', async () => {
+    it('a nova tentativa repete apenas no aparelho que respondeu 429', async () => {
       const a = await usuario();
-      const [um, dois] = await ligarPush(a, 2);
+      const [um, dois, tres] = await ligarPush(a, 3);
       await publicar(evento([a]));
-      enviador.mockImplementation(async ({ endpoint }) => ({ status: endpoint === dois ? 503 : 201 }));
+      enviador.mockImplementation(async ({ endpoint }) => ({ status: endpoint === dois ? 429 : endpoint === tres ? 400 : 201 }));
       await processarFilaPush(enviador);
       await vencerEspera(a);
       enviador.mockReset().mockResolvedValue({ status: 201 });
@@ -357,7 +376,18 @@ describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descart�
       expect(enviador.mock.calls.map(([x]) => x.endpoint)).toEqual([dois]);
       expect(enviador.mock.calls[0]![1]).not.toHaveProperty('entregues');
       expect(um).not.toBe(dois);
-      expect(await umItem(a)).toMatchObject({ status: 'ENVIADO' });
+      expect(enviador.mock.calls[0]![1]).not.toHaveProperty('definitivas');
+      expect(await umItem(a)).toMatchObject({ status: 'ENVIADO', ultimo_erro: 'ENTREGA_PARCIAL' });
+    });
+
+    it('revalida o perfil depois de enfileirar e antes de entregar', async () => {
+      const a = await usuario();
+      await ligarPush(a);
+      await publicar(evento([a]));
+      await db('usuarios').where({ id: a }).update({ perfil: 'MOTORISTA_SVO', tipo_usuario: 'MOTORISTA' });
+      await processarFilaPush(enviador);
+      expect(enviador).not.toHaveBeenCalled();
+      expect(await umItem(a)).toMatchObject({ status: 'IGNORADO', ultimo_erro: 'ACESSO_REVOGADO' });
     });
 
     it('não envia a assinatura encerrada', async () => {
