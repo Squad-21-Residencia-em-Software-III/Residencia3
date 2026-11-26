@@ -5,6 +5,7 @@ import { db } from '../config/database';
 import { notificacaoOutboxModel } from '../models/notificacaoOutboxModel';
 import { definirEnviadorPush, processarFilaPush, type EnviadorPush } from '../services/filaPush';
 import { publicarNotificacao, type EventoNotificacao } from '../services/publicacaoNotificacoes';
+import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 // Publicação e fila (SCRUM-229) contra as tabelas das SCRUM-225/228/236. Só executa num banco descartável
 // explicitamente identificado, depois de `npm run migrate`.
@@ -43,6 +44,7 @@ const vencerEspera = (usuario_id: number) =>
   db('notificacao_outbox').where({ usuario_id }).update({ proxima_execucao_em: db.raw("clock_timestamp() - interval '1 second'") });
 
 describe.skipIf(!habilitado)('Publicação e fila de push em PostgreSQL descartável', () => {
+  usarBancoComExclusividade();
   beforeAll(() => {
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('A suíte exige PostgreSQL descartável em 127.0.0.1/frotas_teste');

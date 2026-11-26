@@ -6,8 +6,8 @@ import { acordarFilaPush } from './filaPush';
 // Limites das colunas (SCRUM-225) e do texto do push (SCRUM-237)
 const LIMITE_TITULO = 120;
 const LIMITE_MENSAGEM = 280;
-const LIMITE_TITULO_PUSH = 45;
-const LIMITE_CORPO_PUSH = 110;
+export const LIMITE_TITULO_PUSH = 45;
+export const LIMITE_CORPO_PUSH = 110;
 // Com tipo e referência, a chave cabe nos 190 caracteres da coluna
 const LIMITE_OCORRENCIA = 60;
 
@@ -40,7 +40,7 @@ export interface EventoNotificacao {
 }
 
 // Por caractere, e não por unidade UTF-16: o banco conta assim, e um emoji não é partido ao meio
-function limitar(texto: string, limite: number): string {
+export function limitar(texto: string, limite: number): string {
   const caracteres = [...texto.trim()];
   return caracteres.length <= limite ? caracteres.join('') : `${caracteres.slice(0, limite - 1).join('').trimEnd()}…`;
 }
