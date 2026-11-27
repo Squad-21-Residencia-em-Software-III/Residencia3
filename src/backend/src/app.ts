@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { env } from './config/env';
 import { cabecalhosDeSeguranca, corsPorAmbiente } from './config/segurancaHttp';
 import { errorHandler, rotaNaoEncontrada } from './middlewares/errorHandler';
+import { exigirRecursoFase3 } from './middlewares/exigirRecursoFase3';
+import { protegerPortalSvo, verificarHoneypotPortalSvo } from './middlewares/protegerPortalSvo';
 import { identificarCliente } from './middlewares/identificarCliente';
 import { logRequisicao } from './middlewares/logRequisicao';
 import { limitarConcorrencia } from './middlewares/limitarConcorrencia';
@@ -31,7 +33,13 @@ app.use(limitarConcorrencia);
 // O envio da foto do odômetro tem tempo próprio, maior (ver evidenciaOdometroRoutes)
 app.use((req, res, next) => (ehEnvioDeFotoOdometro(req) ? next() : limitarTempoRequisicao(req, res, next)));
 app.use(cookieParser());
+const criacaoExternaSvo = '/api/solicitacoes-svo/externas';
+app.post(criacaoExternaSvo, (_req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+}, exigirRecursoFase3('portalSvo'), protegerPortalSvo('cadastrar'));
 app.use(express.json({ limit: '100kb' }));
+app.post(criacaoExternaSvo, verificarHoneypotPortalSvo);
 
 // Limites por tipo de operação: leitura e escrita por minuto, e consultas pesadas com limite menor
 app.use('/api', limitarPorTipoDeOperacao);

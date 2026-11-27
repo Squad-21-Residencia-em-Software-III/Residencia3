@@ -26,10 +26,14 @@ const textoEndereco = z.string().max(240).transform((texto) => texto.normalize('
 export const unidadeMapaSchema = z.enum(['HEMOSE', 'LACEN', 'SVO']);
 export type UnidadeMapa = z.infer<typeof unidadeMapaSchema>;
 
+const cepMapa = z.string().trim().regex(/^\d{5}-?\d{3}$/).transform((cep) => cep.replace('-', ''));
+export const buscarCepPublicoSchema = z.strictObject({ cep: cepMapa });
+export const reversoPublicoSchema = z.strictObject({ lat: latitude, lon: longitude });
+
 export const buscarMapaSchema = z.strictObject({
   operacao,
   q: textoEndereco.optional(),
-  cep: z.string().trim().regex(/^\d{5}-?\d{3}$/).transform((cep) => cep.replace('-', '')).optional(),
+  cep: cepMapa.optional(),
   unidade: z.string().trim().toUpperCase().pipe(unidadeMapaSchema).optional(),
 }).refine((query) => [query.q, query.cep, query.unidade].filter(Boolean).length === 1);
 

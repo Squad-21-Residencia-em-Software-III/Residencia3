@@ -26,7 +26,7 @@ export const solicitacaoSvoController = {
 
   async buscarPorId(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);
-    res.json(await solicitacaoSvoService.buscarPorId(id));
+    res.set('Cache-Control', 'private, no-store').json(await solicitacaoSvoService.buscarPorId(id));
   },
 
   // 201 quando a ordem é gerada agora; 200 quando a confirmação já tinha sido feita

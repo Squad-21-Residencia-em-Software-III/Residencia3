@@ -84,6 +84,23 @@ export const solicitacaoSvoModel = {
     return db<SolicitacaoSvo>('solicitacoes_svo').where({ id }).first(...COLUNAS_SOLICITACAO_SVO);
   },
 
+  async temPossivelDuplicidadeExterna(id: number): Promise<boolean> {
+    const { rows: [resultado] } = await db.raw<{ rows: { encontrada: boolean }[] }>(
+      `SELECT EXISTS (
+        SELECT 1 FROM solicitacoes_svo_dados_externos AS alvo
+        JOIN solicitacoes_svo_dados_externos AS outro
+          ON outro.data_hora_ocorrencia = alvo.data_hora_ocorrencia
+         AND outro.documento_falecido = alvo.documento_falecido
+         AND outro.solicitacao_id <> alvo.solicitacao_id
+        WHERE alvo.solicitacao_id = ?
+          AND alvo.anonimizado_em IS NULL AND alvo.expurgado_em IS NULL
+          AND outro.anonimizado_em IS NULL AND outro.expurgado_em IS NULL
+      ) AS encontrada`,
+      [id],
+    );
+    return resultado.encontrada;
+  },
+
   async buscarParaAtualizar(id: number, trx: Knex.Transaction): Promise<SolicitacaoSvo | undefined> {
     return trx<SolicitacaoSvo>('solicitacoes_svo').where({ id }).forUpdate().first(...COLUNAS_SOLICITACAO_SVO);
   },

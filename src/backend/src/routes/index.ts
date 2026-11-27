@@ -22,6 +22,7 @@ import { evidenciaOdometroRoutes } from './evidenciaOdometroRoutes';
 import { notificacaoPushRoutes } from './notificacaoPushRoutes';
 import { notificacaoRoutes } from './notificacaoRoutes';
 import { mapasRoutes } from './mapasRoutes';
+import { portalSvoMapasRoutes } from './portalSvoMapasRoutes';
 import { logFalha } from '../middlewares/logRequisicao';
 
 export const routes = Router();
@@ -53,6 +54,7 @@ routes.use('/auditorias', auditoriaRoutes);
 routes.use('/equipes-svo', equipeSvoRoutes);
 routes.use('/relatorios', relatorioRoutes);
 routes.use('/diagnostico', diagnosticoRoutes);
+routes.use('/portal-svo/mapas', portalSvoMapasRoutes);
 routes.use('/mapas', mapasRoutes);
 routes.use('/evidencias-odometro', evidenciaOdometroRoutes);
 routes.use('/notificacoes', notificacaoPushRoutes);

@@ -97,6 +97,7 @@ jobs:
       SCRUM235_POSTGRES_TESTS: '1'
       SCRUM234_POSTGRES_TESTS: '1'
       SCRUM241_POSTGRES_TESTS: '1'
+      SCRUM271_POSTGRES_TESTS: '1'
 
     defaults:
       run:

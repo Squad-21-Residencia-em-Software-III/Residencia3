@@ -18,7 +18,10 @@ import type { ListaPaginada } from './usuarioService';
 type Autor = { id: number; perfil: Perfil };
 
 // Solicitação com a ordem de coleta ativa, quando houver (BL27)
-export type SolicitacaoSvoDetalhada = SolicitacaoSvo & { ordem: OrdemSvo | null };
+export type SolicitacaoSvoDetalhada = SolicitacaoSvo & {
+  ordem: OrdemSvo | null;
+  possivel_duplicidade?: boolean;
+};
 
 interface ConfirmacaoSvo {
   solicitacao: SolicitacaoSvo;
@@ -102,8 +105,14 @@ export const solicitacaoSvoService = {
     if (!solicitacao) {
       throw new AppError('Solicitação SVO não encontrada', 404);
     }
-    const ordem = await solicitacaoSvoModel.buscarOrdemAtiva(id);
-    return { ...solicitacao, ordem: ordem ?? null };
+    const [ordem, possivelDuplicidade] = await Promise.all([
+      solicitacaoSvoModel.buscarOrdemAtiva(id),
+      solicitacao.canal_origem === 'EXTERNA' ? solicitacaoSvoModel.temPossivelDuplicidadeExterna(id) : undefined,
+    ]);
+    return {
+      ...solicitacao, ordem: ordem ?? null,
+      ...(possivelDuplicidade === undefined ? {} : { possivel_duplicidade: possivelDuplicidade }),
+    };
   },
 
   // Confirma a solicitação em triagem e gera a ordem de coleta na mesma transação (RF20/RF21/RN09).
