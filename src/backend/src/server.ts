@@ -30,6 +30,13 @@ async function iniciar() {
     notificacoes_ativas: configNotificacoes.ativas,
   }));
 
+  const { invalidas, bloqueadas } = env.fase3.diagnostico;
+  if (invalidas.length || bloqueadas.length) {
+    console.warn(JSON.stringify({
+      timestamp: new Date().toISOString(), level: 'WARN', evento: 'FASE3_CONFIG_BLOQUEADA', invalidas, bloqueadas,
+    }));
+  }
+
   const servidor = app.listen(env.port, () => {
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'SERVIDOR_INICIADO', port: env.port }));
   });

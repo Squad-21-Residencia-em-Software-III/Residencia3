@@ -2,6 +2,7 @@ import { createECDH } from 'node:crypto';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import { carregarFase3 } from './fase3';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env'), quiet: true });
 
@@ -325,6 +326,7 @@ export function carregarEnv(origem: Origem = process.env) {
     requestTimeoutMs: inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000),
     ...configuracaoEvidenciasOdometro(origem, nodeEnv),
     ...configuracaoWebPush(origem),
+    fase3: carregarFase3(origem),
   };
 }
 
