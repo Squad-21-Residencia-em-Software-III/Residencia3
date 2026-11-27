@@ -81,15 +81,6 @@ describe('Rotas de mapa no app real com autenticação e provedores simulados', 
     expect(http).not.toHaveBeenCalled();
   });
 
-  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.SOLICITANTE, PERFIS.GESTOR_SVO])(
-    'permite calcular rota ADM ao perfil %s sem conceder associação SVO', async (perfil) => {
-      autenticarComo(perfil);
-      vi.mocked(unidadeModel.estaAssociadoPorNome).mockClear().mockResolvedValue(false);
-      await request(app).get(urlRota(['0,0', '1,1', '2,2', '3,3'])).set('Authorization', token).expect(200);
-      expect(unidadeModel.estaAssociadoPorNome).not.toHaveBeenCalled();
-    },
-  );
-
   it('encaminha next(erro) da associação SVO uma vez e interrompe a rota', async () => {
     encaminharErroSvo.mockReturnValue(new AppError('Associação indisponível', 503, 'ASSOCIACAO_INDISPONIVEL'));
     autenticarComo(PERFIS.GESTOR_SVO);
@@ -119,6 +110,15 @@ describe('Rotas de mapa no app real com autenticação e provedores simulados', 
     await request(app).get(urlRota(['0,0', '1,1', '2,2'], 'SVO')).set('Authorization', token).expect(200);
     expect(http).toHaveBeenCalledTimes(1);
   });
+
+  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.SOLICITANTE, PERFIS.GESTOR_SVO])(
+    'permite calcular rota ADM ao perfil %s sem conceder associação SVO', async (perfil) => {
+      autenticarComo(perfil);
+      vi.mocked(unidadeModel.estaAssociadoPorNome).mockClear().mockResolvedValue(false);
+      await request(app).get(urlRota(['0,0', '1,1', '2,2', '3,3'])).set('Authorization', token).expect(200);
+      expect(unidadeModel.estaAssociadoPorNome).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     '/buscar?q=ab',
