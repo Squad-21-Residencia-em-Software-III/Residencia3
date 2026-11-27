@@ -103,6 +103,8 @@ export class ApiError extends Error {
     public readonly codigo?: string,
     /** Dados extras do erro (`contexto`), ex.: conflitos de agenda. */
     public readonly contexto?: unknown,
+    /** Segundos pedidos pelo servidor (`Retry-After`) antes de tentar de novo, quando houver. */
+    public readonly retryAfterSegundos?: number,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -140,6 +142,19 @@ interface Opcoes {
    * quem entrar em seguida.
    */
   token?: string
+  /**
+   * Chamada pública (visitante anônimo): não envia token nem cookies, não usa cache e nunca tenta
+   * renovar a sessão nem dispara "sessão expirada" (evita loop de login em páginas abertas).
+   */
+  publico?: boolean
+  /** Cabeçalhos extras, ex.: chave de idempotência. Nunca coloque segredo em URL. */
+  headers?: Record<string, string>
+}
+
+function lerRetryAfter(resposta: Response): number | undefined {
+  const bruto = resposta.headers?.get?.('Retry-After')
+  const segundos = bruto ? Number(bruto) : Number.NaN
+  return Number.isFinite(segundos) && segundos > 0 ? Math.ceil(segundos) : undefined
 }
 
 export async function request<T>(metodo: Metodo, caminho: string, opcoes: Opcoes = {}): Promise<T> {
@@ -241,15 +256,18 @@ async function executar<T>(
   const headers: Record<string, string> = { Accept: 'application/json' }
   const revisao = revisaoSessao
   if (opcoes.body !== undefined) headers['Content-Type'] = 'application/json'
+  const publico = opcoes.publico === true
   const token = opcoes.token ?? tokenStorage.get()
-  if (token && !opcoes.semAutenticacao) headers.Authorization = `Bearer ${token}`
+  if (token && !opcoes.semAutenticacao && !publico) headers.Authorization = `Bearer ${token}`
+  Object.assign(headers, opcoes.headers)
 
   let resposta: Response
   try {
     resposta = await fetch(url, {
       method: metodo,
       headers,
-      credentials: 'include',
+      credentials: publico ? 'omit' : 'include',
+      cache: publico ? 'no-store' : undefined,
       body: opcoes.formData ?? (opcoes.body !== undefined ? JSON.stringify(opcoes.body) : undefined),
       signal: opcoes.signal,
     })
@@ -263,7 +281,7 @@ async function executar<T>(
   const dados = await resposta.json().catch(() => null)
 
   if (!resposta.ok) {
-    if (resposta.status === 401 && !opcoes.semAutenticacao && opcoes.token === undefined && revisao === revisaoSessao) {
+    if (resposta.status === 401 && !opcoes.semAutenticacao && !publico && opcoes.token === undefined && revisao === revisaoSessao) {
       const renovou = podeRenovar && await renovarUmaVez(revisao)
       if (renovou && revisao === revisaoSessao) {
         return executar<T>(metodo, caminho, opcoes, false)
@@ -281,6 +299,7 @@ async function executar<T>(
       dados?.detalhes ?? [],
       typeof dados?.codigo === 'string' ? dados.codigo : undefined,
       dados?.contexto,
+      lerRetryAfter(resposta),
     )
   }
 

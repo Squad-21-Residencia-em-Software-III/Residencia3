@@ -4,6 +4,7 @@ import { ClipboardCheck, ScrollText, Wrench } from 'lucide-react'
 import { AppLayout } from '../components/layout/AppLayout'
 import type { NavItem } from '../components/layout/AppLayout'
 import { MotoristaLayout } from '../components/layout/MotoristaLayout'
+import { PublicLayout } from '../components/layout/PublicLayout'
 import { AlertIcon, CalendarIcon, FuelIcon, HomeIcon, RouteIcon, TruckIcon, UsersIcon } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import { useMotoristaMobile } from '../hooks/useMotoristaMobile'
@@ -27,10 +28,11 @@ import SobreNosPage from '../pages/SobreNosPage'
 import SolicitacoesPage from '../pages/SolicitacoesPage'
 import VeiculosPage from '../pages/VeiculosPage'
 import ViagensPage from '../pages/ViagensPage'
+import AcompanharSolicitacaoPage from '../pages/publico/AcompanharSolicitacaoPage'
 import { LABELS_PERFIS } from '../types/usuario'
 import { usePermissao } from '../utils/permissoes'
 import type { Permissao } from '../utils/permissoes'
-import { RotaComPermissao, RotaProtegida, RotaPublica } from './guards'
+import { RotaComPermissao, RotaComRecurso, RotaProtegida, RotaPublica } from './guards'
 
 type NavItemComPermissao = NavItem & { permissao?: Permissao }
 
@@ -133,6 +135,13 @@ export function AppRoutes() {
     <Routes>
       <Route element={<RotaPublica />}>
         <Route path="/login" element={<LoginPage />} />
+      </Route>
+
+      {/* Páginas públicas (sem login): só existem com a flag `solicitacaoExterna` (SCRUM-249/250) */}
+      <Route element={<RotaComRecurso recurso="solicitacaoExterna" />}>
+        <Route element={<PublicLayout />}>
+          <Route path="/acompanhar" element={<AcompanharSolicitacaoPage />} />
+        </Route>
       </Route>
 
       {/* Rotas de demonstração direta das páginas de erro */}
