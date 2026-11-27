@@ -375,7 +375,6 @@ Estrutura protegida 1:1 para dados pessoais, institucionais, clínicos, localiza
 | `nome_instituicao` | Varchar(180) | NULLABLE | Nome da instituição solicitante (obrigatório quando `INSTITUICAO`; nulo quando `PESSOA_FISICA`). |
 | `nome_falecido` | Varchar(150) | NULLABLE | Nome da pessoa falecida (imutável para `frotas_app`; nulo apenas após anonimização/expurgo de retenção). |
 | `documento_falecido` | Varchar(60) | NULLABLE | Documento opcional do falecido. |
-| `endereco_ocorrencia` | Varchar(255) | NULLABLE | Logradouro/endereço estruturado da ocorrência (sincronizado com `solicitacoes_svo.local_ocorrencia`). |
 | `numero_imovel` | Varchar(30) | NULLABLE | Número do imóvel quando `sem_numero_imovel = false` (`chk_solicitacoes_svo_dados_externos_numero_imovel`). |
 | `sem_numero_imovel` | Boolean | NOT NULL, DEFAULT false | Indica que o local da ocorrência não possui numeração predial (`numero_imovel IS NULL`). |
 | `complemento_ocorrencia` | Varchar(120) | NULLABLE | Complemento opcional do endereço. |
@@ -384,7 +383,7 @@ Estrutura protegida 1:1 para dados pessoais, institucionais, clínicos, localiza
 | `longitude_ocorrencia` | Double Precision | NULLABLE | Longitude opcional em par finito com `latitude_ocorrencia` (`[-180, 180]`, `chk_solicitacoes_svo_dados_externos_coordenadas`). |
 | `fora_area_cobertura` | Boolean | NOT NULL, DEFAULT false | Sinaliza ocorrência registrada fora de Sergipe sujeita a análise operacional. |
 | `descricao_ocorrencia` | Varchar(2000) | NULLABLE | Relato circunstanciado da ocorrência. |
-| `data_hora_ocorrencia` | Timestamptz | NOT NULL | Data e hora informadas da ocorrência. |
+| `data_hora_ocorrencia` | Timestamptz | NULLABLE | Horário obrigatório enquanto os dados externos forem mantidos. Removido no tratamento autorizado. |
 | `informacoes_medicas` | Varchar(2000) | NULLABLE | Informações médicas opcionais para triagem clínica. |
 | `ciencia_aviso_privacidade` | Boolean | NOT NULL | Ciência obrigatória (`true`) do aviso de privacidade no envio (`chk_solicitacoes_svo_dados_externos_aviso_privacidade`). |
 | `versao_aviso_privacidade` | Varchar(40) | NOT NULL | Versão do aviso de privacidade apresentada ao solicitante. |
@@ -398,7 +397,7 @@ Estrutura protegida 1:1 para dados pessoais, institucionais, clínicos, localiza
 | `cancelamento_justificativa_decisao` | Varchar(500) | NULLABLE | Justificativa da decisão do gestor sobre o pedido de cancelamento. |
 | `versao_dados` | Integer | NOT NULL, DEFAULT 1 | Controle de concorrência otimista (`CHECK: >= 1`) para edições externas durante a análise. |
 | `encerrado_operacional_em` | Timestamptz | NULLABLE | Marco de encerramento operacional para contagem da janela pública de 30 dias e retenção de 12 meses. |
-| `consulta_publica_expira_em` | Timestamptz | NULLABLE | Limite da consulta pública (`>= encerrado_operacional_em`, padrão 30 dias após encerramento). |
+| `consulta_publica_expira_em` | Timestamptz | GENERATED, NULLABLE | Limite público calculado em UTC como 30 dias após o encerramento operacional. |
 | `retencao_ate` | Timestamptz | NULLABLE | Prazo mínimo de retenção dos dados externos (`>= encerrado_operacional_em + interval '12 months'`). |
 | `preservacao_legal` | Boolean | NOT NULL, DEFAULT false | Bloqueia anonimização/expurgo quando houver exigência legal ou auditoria (`chk_solicitacoes_svo_dados_externos_preservacao`). |
 | `preservacao_motivo` | Text | NULLABLE | Motivo obrigatório quando `preservacao_legal = true`. |
@@ -410,7 +409,7 @@ Estrutura protegida 1:1 para dados pessoais, institucionais, clínicos, localiza
 | `atualizado_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Instante da última atualização permitida (`>= criado_em`). |
 
 ## 25. Tabela: `solicitacoes_svo_credenciais_externas`
-Armazena o digest protegido da credencial secreta de acompanhamento externo e os metadados de idempotência/recuperação de tentativa de criação (SCRUM-263 / SCRUM-264 / SCRUM-266), sem jamais persistir o segredo em texto claro.
+Armazena o digest protegido da credencial secreta de acompanhamento externo e os metadados de idempotência da tentativa de criação (SCRUM-263 / SCRUM-264 / SCRUM-266), sem jamais persistir o segredo em texto claro.
 
 | Coluna | Tipo | Restrições / Notas | Descrição |
 | :--- | :--- | :--- | :--- |
@@ -418,13 +417,10 @@ Armazena o digest protegido da credencial secreta de acompanhamento externo e os
 | `segredo_digest` | Char(64) | NOT NULL | Digest hexadecimal (`^[0-9a-f]{64}$`) da credencial secreta de alta entropia (imutável para `frotas_app`). |
 | `algoritmo_digest` | Varchar(30) | NOT NULL, DEFAULT 'SHA-256' | CHECK: `SHA-256`, `HMAC-SHA-256` (`chk_solicitacoes_svo_credenciais_digest`). |
 | `versao_credencial` | Integer | NOT NULL, DEFAULT 1 | Versão do esquema da credencial (`CHECK: >= 1`). |
-| `chave_idempotencia_criacao` | Varchar(120) | NULLABLE, UNIQUE | Chave de idempotência da tentativa de criação (`uq_solicitacoes_svo_credenciais_idempotencia`). |
-| `payload_criacao_digest` | Char(64) | NULLABLE | Digest SHA-256 do payload normalizado de criação para detectar reuso de chave com conteúdo divergente. |
+| `chave_idempotencia_criacao` | Varchar(120) | NOT NULL, UNIQUE | Chave de idempotência da tentativa de criação (`uq_solicitacoes_svo_credenciais_idempotencia`). |
+| `payload_criacao_digest` | Char(64) | NOT NULL | Digest SHA-256 do payload normalizado de criação para detectar reuso de chave com conteúdo divergente. |
 | `prova_tentativa_digest` | Char(64) | NULLABLE | Digest opcional da prova de posse da tentativa para replay autenticado quando a resposta inicial é perdida. |
-| `envelope_recuperacao` | Text | NULLABLE | Envelope cifrado temporário para recuperação da resposta de criação dentro da janela da tentativa. |
-| `recuperacao_expira_em` | Timestamptz | NULLABLE | Instante de expiração do envelope de recuperação (`>= emitida_em`). |
 | `emitida_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Instante de emissão da credencial. |
-| `valida_ate` | Timestamptz | NULLABLE | Limite de validade para consulta pública (até 30 dias após encerramento). |
 | `revogada_em` | Timestamptz | NULLABLE | Instante de revogação explícita da credencial (`>= emitida_em`). |
 | `revogada_motivo` | Varchar(120) | NULLABLE | Motivo obrigatório quando `revogada_em IS NOT NULL`. |
 | `ultimo_acesso_em` | Timestamptz | NULLABLE | Último acesso autenticado com sucesso pela credencial. |

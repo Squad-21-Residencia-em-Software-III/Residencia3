@@ -1,68 +1,37 @@
-# SCRUM-263 — Modelagem de Solicitações Externas SVO, Canal de Origem e Dados Protegidos
+# SCRUM-263 · Solicitações externas do SVO
 
-## 1. Objetivo e Visão Geral
+O portal usa a fila operacional existente. Solicitações internas exigem um registrante válido e têm protocolo nulo. Solicitações externas têm registrante nulo, protocolo público opaco e único, dados protegidos e credencial de acompanhamento em relações 1:1. A gravação dos três registros ocorre na mesma transação. O portal permanece desativado por padrão.
 
-Esta entrega implementa a evolução aditiva de banco de dados da **Fase 3 (`SCRUM-263`)** para permitir que solicitações vindas do Portal Público de Atendimento SVO sejam registradas sem criar contas fictícias em `usuarios`, sem quebrar nem exigir alterações nos chamados internos existentes e segregando dados pessoais/clínicos e credenciais secretas em tabelas protegidas com princípio de mínimo privilégio.
+## Endereço e fila
 
-Esta modelagem desbloqueia diretamente:
-- **`SCRUM-264`:** Endpoint público `POST /api/solicitacoes-svo/externas`, emissão transacional de protocolo e idempotência por tentativa.
-- **`SCRUM-266`:** Credenciais secretas de alta entropia (digest protegido), recuperação segura de resposta interrompida e acompanhamento externo até 30 dias após encerramento.
-- **`SCRUM-268`:** Correção autenticada de contato/localização enquanto em análise (`EM_TRIAGEM`), pedido externo de cancelamento decidido pelo gestor e justificativa pública de recusa separada da justificativa interna.
-- **`SCRUM-295`:** Retenção segura de 12 meses após encerramento operacional, preservação legal (`preservacao_legal`) e anonimização/expurgo sem apagar o histórico operacional de `solicitacoes_svo` e `ordens_svo`.
+- `solicitacoes_svo.local_ocorrencia` (VARCHAR(255)) é a fonte do endereço operacional, com entrada manual disponível. Fila, ordens de coleta e `VIAGENS_UNIFICADAS_SQL` leem esse campo. A correção autorizada durante a triagem atualiza o endereço e seus complementos na mesma transação e invalida o roteiro que depender da localização anterior (SCRUM-268/274).
+- Número ou indicação de imóvel sem número, complemento, referência, par opcional de coordenadas e indicador de cobertura permanecem separados. Use `dados_solicitante` para o rótulo operacional “Solicitação externa”. Identidade, dados clínicos, texto do registro e credenciais ficam nas tabelas protegidas.
+- O DTO operacional tem projeção explícita. O DTO público da SCRUM-266 deve definir sua própria lista de estados e a mensagem pública pertinente. O protocolo identifica um registro, e a autenticação exige o segredo correspondente. A justificativa pública permanece separada do motivo interno. O pedido externo de cancelamento depende de decisão autorizada e a emissão de protocolo mantém a solicitação para triagem.
+- A SCRUM-264 publica S1 na mesma transação/outbox com `registranteId: null`. As notificações públicas ou operacionais devem permanecer neutras, sem endereço, CPF ou dados clínicos, mantendo a exclusão do S2.
 
----
+## Credencial e tentativa de criação
 
-## 2. Alterações Aditivas em `public.solicitacoes_svo`
+O banco exige chave de idempotência única, digest do payload e digest da credencial, mantém o vínculo e o protocolo imutáveis e bloqueia reativação de credencial revogada. A primeira versão é 1. A role da aplicação pode registrar a revogação e o último acesso. Rotação de credencial exigirá contrato explícito da SCRUM-266.
 
-Arquivo da migration: `src/backend/database/migrations/20261127130000_scrum_263_solicitacoes_externas_svo.js`
+A única expiração pública é `solicitacoes_svo_dados_externos.consulta_publica_expira_em`, calculada a partir do encerramento operacional registrado uma vez, em UTC. Durante operação aberta, a coluna permanece nula. O serviço da SCRUM-266 valida o estado operacional real, o digest em tempo constante, a revogação e a janela de consulta a cada acesso. O serviço que encerra uma operação verifica o encerramento efetivo, inclusive a situação física de ordem ou deslocamento, antes de registrar a data. O banco rejeita encerramento em solicitação ativa, em data anterior à criação ou em data futura.
 
-1. **`registrante_id INTEGER NULL`:**
-   - A FK `solicitacoes_svo_registrante_id_foreign` (`REFERENCES usuarios(id) ON DELETE RESTRICT`) é integralmente preservada.
-   - A coluna passa a permitir `NULL` exclusivamente quando `canal_origem = 'EXTERNA'`.
-2. **`canal_origem VARCHAR(20) NOT NULL DEFAULT 'INTERNA'`:**
-   - Todos os registros legados recebem backfill explícito para `'INTERNA'` sem criação de protocolos ou dados externos fictícios.
-   - Constraint `chk_solicitacoes_svo_canal_origem`: `CHECK (canal_origem IN ('INTERNA', 'EXTERNA'))`.
-3. **`protocolo VARCHAR(64) NULL DEFAULT NULL`:**
-   - Protocolo público opaco exclusivo para solicitações externas (`UNIQUE (protocolo)` via `uq_solicitacoes_svo_protocolo`).
-   - Constraint `chk_solicitacoes_svo_canal_registrante_protocolo`:
-     - Quando `canal_origem = 'INTERNA'`: exige `registrante_id IS NOT NULL AND protocolo IS NULL`.
-     - Quando `canal_origem = 'EXTERNA'`: exige `registrante_id IS NULL AND protocolo IS NOT NULL` com formato opaco alfanumérico em maiúsculas e hífens (`^[A-Z0-9][A-Z0-9-]{10,62}[A-Z0-9]$`, comprimento entre 12 e 64 caracteres).
-4. **Reaproveitamento de `local_ocorrencia`:**
-   - O campo `solicitacoes_svo.local_ocorrencia` (`VARCHAR(255) NOT NULL`) continua sendo a fonte operacional de endereço exibida na fila única de triagem e em `VIAGENS_UNIFICADAS_SQL` (`viagemModel.ts`), evitando duplicação textual na tabela principal.
-5. **Índice e Imutabilidade de Canal/Protocolo:**
-   - Índice composto `idx_solicitacoes_svo_canal_status_id` em `(canal_origem, status, id DESC)` para filtragem e ordenação na fila única de triagem.
-   - Trigger `trg_proteger_integridade_canal_solicitacao_svo` (`proteger_integridade_canal_solicitacao_svo()`) impede que `canal_origem` seja trocado após o registro ou que o `protocolo` de um chamado externo seja adulterado após a emissão.
+A correção remove o armazenamento do envelope. A SCRUM-264 precisa vincular o retry da criação ao mesmo payload e à prova autenticada da tentativa original antes de devolver qualquer resposta com credencial. A prova deve ser imprevisível e independente da chave de idempotência. Se a retomada de resposta após commit exigir envelope, o serviço precisa de criptografia autenticada, chave separada, expiração curta e descarte, com uma migration revisada que exija o digest da prova. A recuperação de credencial perdida segue pendente de decisão institucional. O serviço deve rejeitar consulta somente pelo protocolo e recuperação somente pela chave de idempotência.
 
----
+## Privacidade e retenção
 
-## 3. Tabelas Protegidas Segregadas
+A SCRUM-295 é responsável por inventário, simulação, autorização e execução auditada com role segregada. O prazo de 12 meses após o encerramento segue condicionado à aprovação institucional. Antes de processar um registro, revalidar encerramento efetivo, prazo, integridade, retenção legal e qualquer reabertura ou vínculo ativo. A role de atendimento não grava legal hold, prazo de retenção, marcadores de tratamento ou auditoria de expurgo.
 
-### 3.1. `public.solicitacoes_svo_dados_externos` (Relação 1:1 com `solicitacoes_svo`)
-Guarda os dados pessoais, institucionais, clínicos, coordenadas opcionais e metadados de ciclo de vida do portal externo:
-- **Identificação do solicitante:** `nome_solicitante`, `telefone_solicitante`, `email_solicitante`, `cpf_solicitante` (`CHAR(11)` com validação de 11 dígitos e bloqueio de sequências repetidas), `tipo_solicitante` (`PESSOA_FISICA` | `INSTITUICAO`) e `nome_instituicao` (obrigatório quando `INSTITUICAO` e proibido quando `PESSOA_FISICA` via `chk_solicitacoes_svo_dados_externos_tipo_instituicao`).
-- **Identificação do falecido:** `nome_falecido` (obrigatório) e `documento_falecido` (opcional).
-- **Localização detalhada da ocorrência:** `endereco_ocorrencia` (`VARCHAR(255)`), `numero_imovel` (`VARCHAR(30)`), `sem_numero_imovel` (`BOOLEAN NOT NULL DEFAULT false`, com `chk_solicitacoes_svo_dados_externos_numero_imovel`), `complemento_ocorrencia` (`VARCHAR(120)`), `ponto_referencia` (`VARCHAR(255)`), `latitude_ocorrencia` e `longitude_ocorrencia` (par opcional finito em `[-90, 90]` e `[-180, 180]` via `chk_solicitacoes_svo_dados_externos_coordenadas`) e `fora_area_cobertura` (`BOOLEAN NOT NULL DEFAULT false`).
-- **Contexto clínico e ocorrência:** `descricao_ocorrencia` (`VARCHAR(2000)`), `data_hora_ocorrencia` (`TIMESTAMPTZ NOT NULL`) e `informacoes_medicas` (`VARCHAR(2000)` opcional).
-- **Privacidade:** `ciencia_aviso_privacidade` (`BOOLEAN NOT NULL`, exigido `true`), `versao_aviso_privacidade` (`VARCHAR(40) NOT NULL`) e `ciencia_registrada_em`.
-- **Recusa pública e pedido de cancelamento (`SCRUM-268`):** `motivo_recusa_publico` (`VARCHAR(500)` separado de `solicitacoes_svo.motivo_recusa`), `cancelamento_solicitado_em`, `cancelamento_motivo`, `cancelamento_status` (`PENDENTE` | `ACEITO` | `NEGADO`), `cancelamento_decidido_por`, `cancelamento_decidido_em`, `cancelamento_justificativa_decisao` e `versao_dados` (`INTEGER NOT NULL DEFAULT 1`).
-- **Retenção e preservação legal (`SCRUM-295`):** `encerrado_operacional_em`, `consulta_publica_expira_em`, `retencao_ate` ($\ge 12$ meses após `encerrado_operacional_em`), `preservacao_legal`, `preservacao_motivo`, `anonimizado_em`, `expurgado_em`, `expurgado_por` e `expurgo_motivo`.
+| Área | Tratamento após retenção autorizada |
+| --- | --- |
+| Identidade, contato e saúde | Remover nome, CPF, telefone, e-mail, documento e nome do falecido, instituição identificável, informações clínicas, descrição e data/hora exata da ocorrência. |
+| Localização e textos livres | Descaracterizar `local_ocorrencia`, remover número, complemento, referência e coordenadas. Limpar observações, motivo interno, recusa pública, razões e justificativas do cancelamento e texto livre relacionável. Inventariar cópias em ordens, evidências, rotas, serviços de mapas, logs, notificações, caches, exportações e backups. Aplicar às cópias a política da categoria correspondente ou a preservação legal documentada. |
+| Acompanhamento | Remover a credencial protegida, seus digests e a chave de idempotência ao consolidar o tratamento. O prazo de consulta pública encerra em até 30 dias, independentemente do tratamento posterior. |
+| Histórico mínimo | Preservar chaves relacionais, canal, estado operacional, ordens, vínculos indispensáveis, odômetro e auditoria segregada. O protocolo pode continuar como identificador opaco indisponível publicamente. A auditoria do tratamento registra evento, responsável, horário e motivo categorizado, sem transportar os dados tratados. |
 
-### 3.2. `public.solicitacoes_svo_credenciais_externas` (Relação 1:1 com `solicitacoes_svo`)
-Guarda o digest da credencial secreta de acompanhamento e a chave de idempotência da tentativa de criação:
-- `segredo_digest` (`CHAR(64) NOT NULL`, formato hex SHA-256/HMAC-SHA-256), `algoritmo_digest`, `versao_credencial`.
-- `chave_idempotencia_criacao` (`VARCHAR(120) UNIQUE`), `payload_criacao_digest` (`CHAR(64)`), `prova_tentativa_digest` (`CHAR(64)`), `envelope_recuperacao` (`TEXT`) e `recuperacao_expira_em` (`TIMESTAMPTZ`).
-- `emitida_em`, `valida_ate`, `revogada_em`, `revogada_motivo`, `ultimo_acesso_em`, `atualizado_em`.
+Constraint e triggers exigem descaracterização conjunta dos campos cobertos por esta migration e bloqueiam registro de tratamento antes da data elegível ou sob preservação legal. O mecanismo de execução e a verificação das cópias e vínculos dependentes pertencem à SCRUM-295.
 
-### 3.3. Barreira de Canal por Trigger
-As triggers `trg_validar_vinculo_canal_externo_dados_svo` e `trg_validar_vinculo_canal_externo_credenciais_svo` (`validar_vinculo_canal_externo_svo()`) garantem no PostgreSQL que nenhum registro possa ser inserido nas tabelas externas apontando para uma solicitação cujo `canal_origem` seja `'INTERNA'`.
+## Migrations e verificação
 
----
-
-## 4. Privilégios Mínimos (`frotas_app`) e Estratégia de Rollback / Roll-Forward
-
-- **Sem `DELETE` para `frotas_app`:** A role de aplicação não possui permissão `DELETE` em `solicitacoes_svo_dados_externos` nem em `solicitacoes_svo_credenciais_externas` (verificado automaticamente em `provisionar-usuario-app.cjs`).
-- **`UPDATE` granular por coluna:**
-  - Em `solicitacoes_svo_dados_externos`, `frotas_app` só pode atualizar colunas de contato (`telefone_solicitante`, `email_solicitante`), localização, recusa pública, fluxo de cancelamento, versionamento e metadados de encerramento/preservação. Colunas de identidade (`cpf_solicitante`, `nome_solicitante`, `tipo_solicitante`, `nome_falecido`, `ciencia_aviso_privacidade`, `versao_aviso_privacidade`) são imutáveis para a role da aplicação (`42501 insufficient_privilege`).
-  - Em `solicitacoes_svo_credenciais_externas`, `frotas_app` não pode sobrescrever `segredo_digest`, `chave_idempotencia_criacao` nem `payload_criacao_digest` após a emissão.
-- **Rollback seguro e Roll-Forward:**
-  - O método `down` verifica se existem registros em `solicitacoes_svo_dados_externos`, `solicitacoes_svo_credenciais_externas` ou chamados com `canal_origem = 'EXTERNA'` / `registrante_id IS NULL` / `protocolo IS NOT NULL`. Caso exista qualquer dado externo persistido, o rollback de schema é bloqueado com erro explícito para evitar perda de dados; nesses cenários, a recuperação deve ocorrer por **roll-forward** mantendo as tabelas e desativando a feature flag `FASE3_PORTAL_SVO`.
+- `20261127130000_scrum_263_solicitacoes_externas_svo.js` registra o histórico original e o backfill para `INTERNA`. `20261127140000_scrum_263_integridade_svo_externo.js` valida o catálogo e consolida endereço, credencial e privilégios. Em banco que já recebeu a primeira migration, a segunda bloqueia divergências de endereço, registros incompletos e dados que exigiriam reconciliação antes da remoção de campos.
+- Provisione a role da aplicação e configure `POSTGRES_APP_USER` antes da execução compartilhada. A migration exige role de login distinta e sem concessões administrativas ou memberships. A role recebe INSERT e UPDATE por coluna e SELECT nas duas tabelas, com verificação de ACL efetiva e remoção de permissões herdadas de PUBLIC ou defaults nas tabelas protegidas. `SCRUM263_DB_DESCARTAVEL=1` admite ausência da role somente em loopback isolado. O validador completo continua exigindo as duas roles.
+- `npm run db:validar-scrum263` roda as migrations Knex reais em dois bancos descartáveis criados no PostgreSQL local e preserva a validação histórica complementar em schemas temporários. Inclui `npm run migrate:status`, `npm run migrate` e novo status em banco vazio e upgrade de banco populado. Em caso de dados externos, ambas as migrations bloqueiam rollback. O caminho de recuperação é roll-forward com o portal desabilitado.
