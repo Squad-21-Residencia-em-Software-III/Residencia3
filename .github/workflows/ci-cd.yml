@@ -6,6 +6,8 @@ on:
     branches:
       - develop
       - main
+      # Base temporária do PR da SCRUM-275 até o merge da SCRUM-296.
+      - feature/scrum-296-flags-rollout
 
   push:
     branches:
@@ -82,6 +84,7 @@ jobs:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ci-test-only
       POSTGRES_SSL: 'false'
+      SCRUM263_DB_DESCARTAVEL: '1'
       SCRUM226_POSTGRES_TESTS: '1'
       EXPIRACAO_POSTGRES_TESTS: '1'
       NOTIFICACOES_POSTGRES_TESTS: '1'
@@ -120,6 +123,14 @@ jobs:
 
       - name: Migrar PostgreSQL descartável
         run: npm run migrate
+
+      - name: Validar upgrade e privilégios SCRUM-263
+        env:
+          POSTGRES_APP_USER: frotas_app_qa263
+          POSTGRES_APP_PASSWORD: ci-scrum263-test-only
+        run: |
+          npm run db:provisionar-app-user
+          npm run db:validar-scrum263
 
       - name: Compilar backend
         run: npm run build

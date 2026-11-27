@@ -1,0 +1,19 @@
+# SCRUM-296 · Matriz complementar de notificações
+
+Proposta para decisão da liderança. Cada linha está pendente. Os 17 eventos da Fase 2, incluindo S1, permanecem válidos. A integração futura reaproveita S1 para o registro externo encaminhado à fila SVO. S2 segue excluído. Referências: [matriz da Fase 2](notificacoes-fase2.md), [implantação Push](scrum-241-implantacao-push.md) e [publicação transacional](../src/backend/src/services/publicacaoNotificacoes.ts).
+
+| Evento | Gatilho | Destinatários, registro e unidade | Chave por ocorrência | Canal e conteúdo proposto | Decisão |
+| --- | --- | --- | --- | --- | --- |
+| Alteração de roteiro ADM | Gestor confirma nova versão operacional | Solicitante afetado e motorista atribuído, vinculados à viagem da unidade sob gestão | Roteiro + versão | In-App · “O roteiro de uma viagem foi atualizado.” | Pendente |
+| Alteração de destino SVO | Gestor confirma uma versão com destino diferente | Motorista atribuído e gestor SVO autorizado da coleta e da unidade. Integrante da própria coleta só após confirmação explícita do escopo. | Ordem + versão | In-App · “O destino de uma coleta foi atualizado.” | Pendente |
+| Parada não realizada | Resultado da parada é gravado como não realizada | Gestor de Frota autorizado daquela viagem e unidade | Parada + versão da decisão | In-App · “Uma parada requer acompanhamento.” | Pendente |
+| Pedido de exceção GPS | Pedido válido criado para um marco | Gestores autorizados da viagem/coleta, da unidade e do marco | Pedido + versão de criação | In-App · “Há uma solicitação de exceção para revisar.” | Pendente |
+| Decisão de exceção GPS | Gestor registra a decisão do pedido | Motorista requerente ainda autorizado naquele marco, viagem e unidade | Pedido + versão da decisão | In-App · “Há uma atualização em uma solicitação.” | Pendente |
+| Emergência e revisão | Uso emergencial autorizado é registrado ou revisão é concluída | Gestor responsável na abertura. Motorista afetado na decisão. Ambos limitados ao vínculo com registro, marco e unidade. | Exceção + etapa + versão | In-App · “Há uma atualização de execução.” | Pendente |
+| Pedido de correção de localização | Pedido ou decisão registrado na transação | Gestor SVO autorizado na unidade do registro. Motorista requerente na decisão se ainda vinculado e autorizado. | Pedido + etapa + versão | In-App · “Há uma atualização de localização.” | Pendente |
+| Alteração de solicitação externa | Nova versão externa validada e gravada | Gestor SVO autorizado na fila, registro e unidade. Cidadão consulta pelo portal com credencial. | Solicitação + versão | In-App · “Uma solicitação na fila foi atualizada.” | Pendente |
+| Pedido externo de cancelamento | Pedido é gravado na fila | Gestor SVO autorizado da fila, registro e unidade. Decisão visível para o cidadão no portal mediante credencial. | Pedido + versão | In-App · “Uma solicitação de cancelamento requer revisão.” | Pendente |
+
+Para **cada linha**, avalie preferências vigentes do destinatário para o canal e suprima o autor da ação identificada. O canal inicial proposto é In-App. Qualquer futura inclusão de Push exige decisão por evento, preferência e inscrição ativa, com título genérico, link autenticado e sem dados sensíveis. Cidadãos acompanham por credencial sem inscrição interna.
+
+Em eventual implementação, inclua o tipo do evento e o destinatário na chave da tabela. Grave a alteração e o evento com a mesma transação. Quando houver Push aprovado, persista a outbox com a alteração transacional, reutilize a chave em retries e revalide vínculo, autorização e preferências antes da entrega. Em In-App, revalide na consulta e proteja a ação que abre o registro. Textos e logs usam conteúdo neutro, sem nomes, CPF, endereços, coordenadas, identificadores públicos de acesso ou informação clínica. Evite avisos por ponto de GPS. Uma decisão favorável sobre a matriz deve explicitar se autoriza também a implementação e emissão.

@@ -1,8 +1,25 @@
+const env = import.meta.env;
+
+const fase3 = {
+  mapasInternos: env.VITE_FASE3_MAPAS_INTERNOS === 'true',
+  multiplasParadas: env.VITE_FASE3_MULTIPLAS_PARADAS === 'true',
+  mapasSvo: env.VITE_FASE3_MAPAS_SVO === 'true',
+  portalSvo: env.VITE_FASE3_PORTAL_SVO === 'true',
+  acompanhamentoExterno: env.VITE_FASE3_ACOMPANHAMENTO_EXTERNO === 'true',
+  gpsObrigatorio: env.VITE_FASE3_GPS_OBRIGATORIO === 'true',
+  capturaPeriodica: env.VITE_FASE3_CAPTURA_PERIODICA === 'true',
+};
+
 /**
  * Contratos da SCRUM-166. A implantação do frontend e do backend deve acompanhar a migration
  * de estado da agenda revisada pela frente DB, conforme docs/scrum-166-contrato-backend.md.
  */
 export const RECURSOS_BACKEND = {
+  ...fase3,
+  emergenciaGps: fase3.gpsObrigatorio && env.VITE_FASE3_EMERGENCIA_GPS === 'true',
+  confirmacaoAutomatica: fase3.multiplasParadas && fase3.capturaPeriodica &&
+    env.VITE_FASE3_CONFIRMACAO_AUTOMATICA === 'true',
+
   /**
    * SCRUM-178: `PATCH /solicitacoes-svo/:id/recusar` com `{ motivo_recusa }` e status RECUSADA.
    * Serviço: `solicitacoesSvoApi.recusar`.

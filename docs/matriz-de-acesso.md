@@ -97,3 +97,5 @@ Outras proteções que já existiam:
 ### Navegação da SCRUM-166
 
 O seletor não concede acesso à API. Em Solicitações, Administrador vê Administrativo e SVO; Gestor SVO vê SVO e Administrativo, nesta ordem; Gestor de Frota e Solicitante veem Administrativo. A triagem e o cadastro SVO exigem Administrador ou Gestor SVO, com a associação SVO exigida pelo servidor. O Gestor SVO acompanha suas solicitações administrativas por `/minhas`, sem ações de aprovação ou agendamento; as viagens que ele próprio solicitou ficam disponíveis em `/api/viagens/minhas`, com dados operacionais reduzidos. A consulta administrativa de veículos para Gestor SVO deve limitar os campos a modelo, placa, status/disponibilidade e capacidade de ocupantes. A validação por perfil, registro e campo é responsabilidade do servidor.
+
+O proxy cartográfico ADM permite busca, reverso e cálculo de rota aos perfis de criação de solicitações ADM. No contexto SVO, exige Administrador ou Gestor SVO associado à unidade SVO. As regras de registros e ações operacionais continuam nas respectivas rotas.

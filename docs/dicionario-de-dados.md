@@ -119,18 +119,20 @@ Triagem de pedidos para o Serviço de Verificação de Óbitos.
 | Coluna | Tipo | Restrições / Notas | Descrição |
 | :--- | :--- | :--- | :--- |
 | `id` | Integer / Serial | PRIMARY KEY | Identificador do pedido de SVO. |
-| `registrante_id` | Integer | FOREIGN KEY, NOT NULL | Utilizador que registou a ocorrência (RESTRICT). |
-| `dados_solicitante` | Text | NOT NULL | Informação de quem contactou a instituição. |
-| `local_ocorrencia` | Varchar(255) | NOT NULL | Morada do incidente. |
+| `registrante_id` | Integer | FOREIGN KEY, NULLABLE | Utilizador interno que registou a ocorrência (`usuarios.id`, `ON DELETE RESTRICT`). Obrigatório (`NOT NULL`) quando `canal_origem = 'INTERNA'`; obrigatoriamente `NULL` quando `canal_origem = 'EXTERNA'` (SCRUM-263). |
+| `canal_origem` | Varchar(20) | NOT NULL, DEFAULT 'INTERNA' | Canal de origem do chamado (`INTERNA` ou `EXTERNA`, `chk_solicitacoes_svo_canal_origem`, SCRUM-263). |
+| `protocolo` | Varchar(64) | NULLABLE, UNIQUE | Protocolo público opaco emitido apenas para solicitações externas (`uq_solicitacoes_svo_protocolo`; nulo em solicitações internas, SCRUM-263). |
+| `dados_solicitante` | Text | NOT NULL | Informação resumida de quem contactou a instituição para a fila de triagem. |
+| `local_ocorrencia` | Varchar(255) | NOT NULL | Morada do incidente (reaproveitado pelas solicitações internas e externas sem duplicar texto operacional). |
 | `observacoes` | Text | NULLABLE | Dados complementares da ocorrência e causa/contexto do óbito para triagem (RF20). |
 | `material_sensivel` | Boolean | NOT NULL, DEFAULT false | Exige protocolos específicos de transporte. |
 | `status` | Varchar(30) | NOT NULL, DEFAULT 'EM_TRIAGEM' | CHECK: `EM_TRIAGEM`, `CONFIRMADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `RECUSADA`, `CANCELADA`. |
-| `motivo_recusa` | Text | NULLABLE | Justificativa quando a solicitação é recusada na triagem (ex.: encaminhamento ao IML). |
+| `motivo_recusa` | Text | NULLABLE | Justificativa interna quando a solicitação é recusada na triagem (ex.: encaminhamento ao IML). |
 | `criado_em` | Timestamptz | NOT NULL, DEFAULT now() | Data e hora do registo do chamado para ordenação da fila e cálculo de SLA. |
 | `confirmado_por` | Integer | NULLABLE, FOREIGN KEY | Usuário que realizou a última confirmação (RESTRICT). Nulo em dados legados e limpo quando a solicitação volta à triagem. |
 | `confirmado_em` | Timestamptz | NULLABLE | Horário da última confirmação, definido pelo banco. Nulo em dados legados e limpo quando a solicitação volta à triagem. |
 
-Veja o [contrato BL27](bl27-triagem-confirmacao-svo.md) para confirmação e geração automática da ordem.
+Veja o [contrato BL27](bl27-triagem-confirmacao-svo.md) para confirmação e geração automática da ordem e o [contrato SCRUM-263](scrum-263-solicitacoes-externas-svo.md) para solicitações externas e dados protegidos.
 
 ## 11. Tabela: `escalas_svo`
 Planeamento de horários das equipas SVO.
@@ -358,5 +360,71 @@ Restrições e índices adicionais:
 - `uq_evidencias_odometro_storage_key`: `UNIQUE (storage_key) WHERE storage_key IS NOT NULL`.
 - `idx_evidencias_odometro_retencao_pendente`: índice parcial em `(retencao_ate) WHERE modalidade = 'FOTO' AND status = 'ATIVA' AND preservacao_legal = false AND retencao_ate IS NOT NULL`.
 - `idx_evidencias_odometro_operacao_criado`: índice em `(tipo_operacao, criado_em DESC, id DESC)`.
+
+## 24. Tabela: `solicitacoes_svo_dados_externos`
+Estrutura protegida 1:1 para dados pessoais, institucionais, clínicos, localização detalhada, pedido de cancelamento, justificativa pública de recusa e metadados de retenção das solicitações externas do portal público SVO (SCRUM-263), segregada do DTO operacional geral e da trilha de auditoria.
+
+| Coluna | Tipo | Restrições / Notas | Descrição |
+| :--- | :--- | :--- | :--- |
+| `solicitacao_id` | Integer | PRIMARY KEY, FOREIGN KEY | Solicitação SVO associada (`solicitacoes_svo.id`, `ON DELETE RESTRICT`, obrigatoriamente com `canal_origem = 'EXTERNA'`). |
+| `nome_solicitante` | Varchar(150) | NULLABLE | Nome do cidadão ou representante da instituição solicitante (obrigatório enquanto não anonimizado/expurgado). |
+| `telefone_solicitante` | Varchar(30) | NULLABLE | Telefone de contato do solicitante (`^[0-9+() -]{8,30}$`, editável apenas enquanto em análise). |
+| `email_solicitante` | Varchar(255) | NULLABLE | Correio eletrónico de contato do solicitante (editável apenas enquanto em análise). |
+| `cpf_solicitante` | Char(11) | NULLABLE | CPF do solicitante com 11 dígitos numéricos (`^[0-9]{11}$`, proibidas sequências repetidas; imutável para `frotas_app`). |
+| `tipo_solicitante` | Varchar(20) | NOT NULL | CHECK: `PESSOA_FISICA`, `INSTITUICAO` (`chk_solicitacoes_svo_dados_externos_tipo_instituicao`). |
+| `nome_instituicao` | Varchar(180) | NULLABLE | Nome da instituição solicitante (obrigatório quando `INSTITUICAO`; nulo quando `PESSOA_FISICA`). |
+| `nome_falecido` | Varchar(150) | NULLABLE | Nome da pessoa falecida (imutável para `frotas_app`; nulo apenas após anonimização/expurgo de retenção). |
+| `documento_falecido` | Varchar(60) | NULLABLE | Documento opcional do falecido. |
+| `numero_imovel` | Varchar(30) | NULLABLE | Número do imóvel quando `sem_numero_imovel = false` (`chk_solicitacoes_svo_dados_externos_numero_imovel`). |
+| `sem_numero_imovel` | Boolean | NOT NULL, DEFAULT false | Indica que o local da ocorrência não possui numeração predial (`numero_imovel IS NULL`). |
+| `complemento_ocorrencia` | Varchar(120) | NULLABLE | Complemento opcional do endereço. |
+| `ponto_referencia` | Varchar(255) | NULLABLE | Ponto de referência opcional para localização da equipe. |
+| `latitude_ocorrencia` | Double Precision | NULLABLE | Latitude opcional em par finito com `longitude_ocorrencia` (`[-90, 90]`, `chk_solicitacoes_svo_dados_externos_coordenadas`). |
+| `longitude_ocorrencia` | Double Precision | NULLABLE | Longitude opcional em par finito com `latitude_ocorrencia` (`[-180, 180]`, `chk_solicitacoes_svo_dados_externos_coordenadas`). |
+| `fora_area_cobertura` | Boolean | NOT NULL, DEFAULT false | Sinaliza ocorrência registrada fora de Sergipe sujeita a análise operacional. |
+| `descricao_ocorrencia` | Varchar(2000) | NULLABLE | Relato circunstanciado da ocorrência. |
+| `data_hora_ocorrencia` | Timestamptz | NULLABLE | Horário obrigatório enquanto os dados externos forem mantidos. Removido no tratamento autorizado. |
+| `informacoes_medicas` | Varchar(2000) | NULLABLE | Informações médicas opcionais para triagem clínica. |
+| `ciencia_aviso_privacidade` | Boolean | NOT NULL | Ciência obrigatória (`true`) do aviso de privacidade no envio (`chk_solicitacoes_svo_dados_externos_aviso_privacidade`). |
+| `versao_aviso_privacidade` | Varchar(40) | NOT NULL | Versão do aviso de privacidade apresentada ao solicitante. |
+| `ciencia_registrada_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Instante do registro da ciência do aviso. |
+| `motivo_recusa_publico` | Varchar(500) | NULLABLE | Justificativa pública específica exibida no portal quando a solicitação não é acolhida (separada de `solicitacoes_svo.motivo_recusa`). |
+| `cancelamento_solicitado_em` | Timestamptz | NULLABLE | Instante em que o solicitante externo pediu cancelamento no portal. |
+| `cancelamento_motivo` | Varchar(500) | NULLABLE | Motivo informado pelo solicitante no pedido de cancelamento. |
+| `cancelamento_status` | Varchar(20) | NULLABLE | CHECK: `NULL`, `PENDENTE`, `ACEITO`, `NEGADO` (`chk_solicitacoes_svo_dados_externos_cancelamento`). |
+| `cancelamento_decidido_por` | Integer | NULLABLE, FOREIGN KEY | Gestor/admin que decidiu o pedido de cancelamento (`usuarios.id`, `ON DELETE RESTRICT`). |
+| `cancelamento_decidido_em` | Timestamptz | NULLABLE | Instante da decisão operacional sobre o pedido de cancelamento. |
+| `cancelamento_justificativa_decisao` | Varchar(500) | NULLABLE | Justificativa da decisão do gestor sobre o pedido de cancelamento. |
+| `versao_dados` | Integer | NOT NULL, DEFAULT 1 | Controle de concorrência otimista (`CHECK: >= 1`) para edições externas durante a análise. |
+| `encerrado_operacional_em` | Timestamptz | NULLABLE | Marco de encerramento operacional para contagem da janela pública de 30 dias e retenção de 12 meses. |
+| `consulta_publica_expira_em` | Timestamptz | GENERATED, NULLABLE | Limite público calculado em UTC como 30 dias após o encerramento operacional. |
+| `retencao_ate` | Timestamptz | NULLABLE | Prazo mínimo de retenção dos dados externos (`>= encerrado_operacional_em + interval '12 months'`). |
+| `preservacao_legal` | Boolean | NOT NULL, DEFAULT false | Bloqueia anonimização/expurgo quando houver exigência legal ou auditoria (`chk_solicitacoes_svo_dados_externos_preservacao`). |
+| `preservacao_motivo` | Text | NULLABLE | Motivo obrigatório quando `preservacao_legal = true`. |
+| `anonimizado_em` | Timestamptz | NULLABLE | Instante em que os campos pessoais sensíveis foram anonimizados preservando o histórico operacional. |
+| `expurgado_em` | Timestamptz | NULLABLE | Instante do expurgo controlado pela rotina de retenção (`>= retencao_ate`). |
+| `expurgado_por` | Integer | NULLABLE, FOREIGN KEY | Usuário/processo responsável pelo expurgo (`usuarios.id`, `ON DELETE RESTRICT`). |
+| `expurgo_motivo` | Varchar(100) | NULLABLE | Política/motivo registrado no expurgo. |
+| `criado_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Instante de criação do registro protegido. |
+| `atualizado_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Instante da última atualização permitida (`>= criado_em`). |
+
+## 25. Tabela: `solicitacoes_svo_credenciais_externas`
+Armazena o digest protegido da credencial secreta de acompanhamento externo e os metadados de idempotência da tentativa de criação (SCRUM-263 / SCRUM-264 / SCRUM-266), sem jamais persistir o segredo em texto claro.
+
+| Coluna | Tipo | Restrições / Notas | Descrição |
+| :--- | :--- | :--- | :--- |
+| `solicitacao_id` | Integer | PRIMARY KEY, FOREIGN KEY | Solicitação externa associada (`solicitacoes_svo.id`, `ON DELETE RESTRICT`). |
+| `segredo_digest` | Char(64) | NOT NULL | Digest hexadecimal (`^[0-9a-f]{64}$`) da credencial secreta de alta entropia (imutável para `frotas_app`). |
+| `algoritmo_digest` | Varchar(30) | NOT NULL, DEFAULT 'SHA-256' | CHECK: `SHA-256`, `HMAC-SHA-256` (`chk_solicitacoes_svo_credenciais_digest`). |
+| `versao_credencial` | Integer | NOT NULL, DEFAULT 1 | Versão do esquema da credencial (`CHECK: >= 1`). |
+| `chave_idempotencia_criacao` | Varchar(120) | NOT NULL, UNIQUE | Chave de idempotência da tentativa de criação (`uq_solicitacoes_svo_credenciais_idempotencia`). |
+| `payload_criacao_digest` | Char(64) | NOT NULL | Digest SHA-256 do payload normalizado de criação para detectar reuso de chave com conteúdo divergente. |
+| `prova_tentativa_digest` | Char(64) | NULLABLE | Digest opcional da prova de posse da tentativa para replay autenticado quando a resposta inicial é perdida. |
+| `emitida_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Instante de emissão da credencial. |
+| `revogada_em` | Timestamptz | NULLABLE | Instante de revogação explícita da credencial (`>= emitida_em`). |
+| `revogada_motivo` | Varchar(120) | NULLABLE | Motivo obrigatório quando `revogada_em IS NOT NULL`. |
+| `ultimo_acesso_em` | Timestamptz | NULLABLE | Último acesso autenticado com sucesso pela credencial. |
+| `atualizado_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Última atualização de ciclo de vida da credencial. |
+
 
 
