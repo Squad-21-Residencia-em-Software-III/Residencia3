@@ -2,7 +2,7 @@ import { createECDH } from 'node:crypto';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import dotenv from 'dotenv';
-import { carregarFase3 } from './fase3';
+import { carregarRecursosOperacionais } from './recursosOperacionais';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env'), quiet: true });
 
@@ -335,7 +335,7 @@ export function carregarEnv(origem: Origem = process.env) {
     },
     ...configuracaoEvidenciasOdometro(origem, nodeEnv),
     ...configuracaoWebPush(origem),
-    fase3: carregarFase3(origem),
+    recursosOperacionais: carregarRecursosOperacionais(origem),
   };
 }
 

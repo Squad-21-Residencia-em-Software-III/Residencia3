@@ -27,7 +27,7 @@ Resposta (sempre `Cache-Control: private, no-store`):
 - Corpo mínimo: `protocolo`, `credencial`, `status` (`RECEBIDA`), `status_label`, `registrada_em`.
 - `409 IDEMPOTENCIA_CONFLITO`: mesma chave com conteúdo ou prova diferentes. Sem efeitos e sem devolver credencial.
 - `410 CREDENCIAL_INDISPONIVEL`: credencial da chave já revogada.
-- `404 RECURSO_DESATIVADO`: flag `FASE3_PORTAL_SVO` desligada (padrão).
+- `404 RECURSO_DESATIVADO`: flag `PORTAL_SVO_ATIVO` desligada (padrão).
 - `400` validação (mensagens nunca ecoam valores enviados), `413` corpo acima de 100 KB.
 
 ## Decisões
@@ -59,10 +59,10 @@ Resposta (sempre `Cache-Control: private, no-store`):
 ## Testes
 
 - `solicitacaoSvoExternaSchemas.test.ts` (25), `solicitacaoSvoExternaRoutes.test.ts` (20), `solicitacaoSvoExternaService.test.ts`.
-- `solicitacaoSvoExternaPostgres.test.ts` (10, HTTP + PostgreSQL real, `SCRUM264_POSTGRES_TESTS=1`): sucesso e fila sem PII,
+- `solicitacaoSvoExternaPostgres.test.ts` (10, HTTP + PostgreSQL real, `ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS=1`): sucesso e fila sem PII,
   S1 por destinatário, repetição, concorrência (6 chamadas = 1 chamado), conflito sem efeitos, rollback sem órfãos,
   resposta perdida recuperada, flag desligada, campos inválidos e 413, registro interno inalterado.
-- CI: variável `SCRUM264_POSTGRES_TESTS` adicionada ao job de testes.
+- CI: variável `ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS` adicionada ao job de testes.
 
 ## Evidências
 

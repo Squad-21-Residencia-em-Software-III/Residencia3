@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
 const knexConfig = require('../knexfile');
-const migrationScrum236 = require('../database/migrations/20261124203000_scrum_236_push_subscriptions_e_preferencias');
+const migrationPreferenciasEInscricoesPush = require('../database/migrations/20261124203000_scrum_236_push_subscriptions_e_preferencias');
 const {
   inspecionarEstadoRole,
   validarEstadoMinimoPrivilegio,
@@ -53,7 +53,7 @@ const CHAVE_P256DH_RENOVADA =
 const CHAVE_AUTH_VALIDA = 'tBHItJI5svbpez7KI4CCXg';
 const CHAVE_AUTH_RENOVADA = 'vI7_kL9mN2pQ4rS6tU8wXy';
 
-async function executarValidacaoCompletaScrum236() {
+async function executarValidacaoPreferenciasEInscricoesPush() {
   const configMigration = knexConfig.criarConfigKnex({
     ...process.env,
     DB_ROLE: 'migration',
@@ -71,7 +71,7 @@ async function executarValidacaoCompletaScrum236() {
 
         let bloqueouSemBase = false;
         try {
-          await migrationScrum236.up(trx);
+          await migrationPreferenciasEInscricoesPush.up(trx);
         } catch (e) {
           bloqueouSemBase = /tabela base usuarios ausente/i.test(e.message);
         }
@@ -99,7 +99,7 @@ async function executarValidacaoCompletaScrum236() {
 
         let bloqueouIncompativel = false;
         try {
-          await migrationScrum236.up(trx);
+          await migrationPreferenciasEInscricoesPush.up(trx);
         } catch (e) {
           bloqueouIncompativel = /Estrutura incompativel em push_subscriptions/i.test(e.message);
         }
@@ -123,10 +123,10 @@ async function executarValidacaoCompletaScrum236() {
     try {
       await db.transaction(async (trx) => {
         await criarBaseIsolada(trx, schemaCiclo);
-        await migrationScrum236.up(trx);
+        await migrationPreferenciasEInscricoesPush.up(trx);
       });
       relatorio.push(
-        '2. Aplicacao limpa da migration SCRUM-236 (up) e validacao de catalogo: OK'
+        '2. Aplicacao limpa da migration preferencias e inscricoes push (up) e validacao de catalogo: OK'
       );
 
       // 3.1 Testa FKs (ON DELETE CASCADE), validacao de endpoint HTTPS, chaves Base64/Base64URL p256dh/auth e propriedade imutavel de endpoint
@@ -736,7 +736,7 @@ async function executarValidacaoCompletaScrum236() {
 
         let bloqueouDownComPush = false;
         try {
-          await migrationScrum236.down(trx);
+          await migrationPreferenciasEInscricoesPush.down(trx);
         } catch (e) {
           bloqueouDownComPush =
             /Rollback bloqueado: existem registros em push_subscriptions/i.test(e.message);
@@ -751,7 +751,7 @@ async function executarValidacaoCompletaScrum236() {
 
         let bloqueouDownComPref = false;
         try {
-          await migrationScrum236.down(trx);
+          await migrationPreferenciasEInscricoesPush.down(trx);
         } catch (e) {
           bloqueouDownComPref =
             /Rollback bloqueado: existem registros em preferencias_notificacao/i.test(e.message);
@@ -763,8 +763,8 @@ async function executarValidacaoCompletaScrum236() {
         }
 
         await trx('preferencias_notificacao').del();
-        await migrationScrum236.down(trx);
-        await migrationScrum236.up(trx);
+        await migrationPreferenciasEInscricoesPush.down(trx);
+        await migrationPreferenciasEInscricoesPush.up(trx);
 
         relatorio.push(
           '8. Protecao contra rollback destrutivo em ambas as tabelas e ciclo completo down -> up idempotente: OK'
@@ -774,7 +774,7 @@ async function executarValidacaoCompletaScrum236() {
       await db.raw('DROP SCHEMA ?? CASCADE', [schemaCiclo]);
     }
 
-    console.log('=== VALIDACAO MIGRATION SCRUM-236 CONCLUIDA COM SUCESSO ===');
+    console.log('=== VALIDACAO MIGRATION preferencias e inscricoes push CONCLUIDA COM SUCESSO ===');
     for (const item of relatorio) {
       console.log(` - ${item}`);
     }
@@ -784,12 +784,12 @@ async function executarValidacaoCompletaScrum236() {
 }
 
 module.exports = {
-  executarValidacaoCompletaScrum236,
+  executarValidacaoPreferenciasEInscricoesPush,
 };
 
 if (require.main === module) {
-  executarValidacaoCompletaScrum236().catch((erro) => {
-    console.error('Falha na validacao da migration SCRUM-236:', erro.message);
+  executarValidacaoPreferenciasEInscricoesPush().catch((erro) => {
+    console.error('Falha na validacao da migration preferencias e inscricoes push:', erro.message);
     process.exit(1);
   });
 }

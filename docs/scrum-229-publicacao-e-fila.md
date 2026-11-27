@@ -70,4 +70,4 @@ Os IDs internos em entregues, definitivas e expiradas ficam no outbox e são rem
 ## Testes
 
 - `filaPush.test.ts`: resultados, tentativas, isolamento, log e execução no servidor.
-- `filaPushPostgres.test.ts`: transação, repetição, concorrência, reservas e preferências. Só roda com `SCRUM229_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`, depois de `npm run migrate`. Roda no CI.
+- `filaPushPostgres.test.ts`: transação, repetição, concorrência, reservas e preferências. Só roda com `FILA_PUSH_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`, depois de `npm run migrate`. Roda no CI.

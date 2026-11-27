@@ -218,3 +218,5 @@ O [guia de operação](operacao-odometro-e-agenda-svo.md) informa as migrations,
 - **`docker compose` não encontra o `.env`**: o arquivo precisa estar na **raiz** do projeto, não dentro de `src/backend`.
 - **Porta 5432 ou 3000 em uso**: pare o serviço que está usando a porta ou ajuste a porta.
 - **Erro de autenticação no banco depois de trocar a senha**: as variáveis de inicialização do PostgreSQL são aplicadas quando o diretório de dados é criado. Recriar apenas o contêiner preserva o volume e não altera a senha existente. Em ambiente compartilhado, solicite a alteração ao responsável pelo banco; em ambiente local, confira as credenciais já configuradas antes de tomar qualquer medida sobre os dados.
+
+As chaves de disponibilidade, autorizações e retenção de mapas, GPS e portal SVO estão no [guia de configuração dos recursos operacionais](configuracao-recursos-operacionais.md).

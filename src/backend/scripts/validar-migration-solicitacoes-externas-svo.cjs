@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
 const knexConfig = require('../knexfile');
-const migrationScrum263 = require('../database/migrations/20261127130000_scrum_263_solicitacoes_externas_svo');
+const migrationSolicitacoesExternasSvo = require('../database/migrations/20261127130000_scrum_263_solicitacoes_externas_svo');
 const {
   inspecionarEstadoRole,
   validarEstadoMinimoPrivilegio,
@@ -87,7 +87,7 @@ async function criarBaseIsoladaSvo(trx, schema, { popularLegado = false } = {}) 
           'Av. Tancredo Neves, 7501 - Capucho, Aracaju/SE',
           false,
           'CONFIRMADA',
-          'Chamado interno legado antes da Fase 3',
+          'Chamado interno legado',
           2,
           CURRENT_TIMESTAMP
         ),
@@ -107,7 +107,7 @@ async function criarBaseIsoladaSvo(trx, schema, { popularLegado = false } = {}) 
   }
 }
 
-async function executarValidacaoCompletaScrum263() {
+async function executarValidacaoSolicitacoesExternasSvo() {
   const configMigration = knexConfig.criarConfigKnex({
     ...process.env,
     DB_ROLE: 'migration',
@@ -125,7 +125,7 @@ async function executarValidacaoCompletaScrum263() {
 
         let bloqueouSemBase = false;
         try {
-          await migrationScrum263.up(trx);
+          await migrationSolicitacoesExternasSvo.up(trx);
         } catch (e) {
           bloqueouSemBase = /tabelas base \(usuarios, solicitacoes_svo\) ausentes/i.test(e.message);
         }
@@ -154,7 +154,7 @@ async function executarValidacaoCompletaScrum263() {
 
         let bloqueouIncompativel = false;
         try {
-          await migrationScrum263.up(trx);
+          await migrationSolicitacoesExternasSvo.up(trx);
         } catch (e) {
           bloqueouIncompativel = /Estrutura incompativel em solicitacoes_svo_dados_externos/i.test(
             e.message
@@ -180,9 +180,9 @@ async function executarValidacaoCompletaScrum263() {
     await db
       .transaction(async (trx) => {
         await criarBaseIsoladaSvo(trx, schemaVazio, { popularLegado: false });
-        await migrationScrum263.up(trx);
-        await migrationScrum263.down(trx);
-        await migrationScrum263.up(trx);
+        await migrationSolicitacoesExternasSvo.up(trx);
+        await migrationSolicitacoesExternasSvo.down(trx);
+        await migrationSolicitacoesExternasSvo.up(trx);
         throw new Error('ROLLBACK_ISOLADO');
       })
       .catch((e) => {
@@ -198,7 +198,7 @@ async function executarValidacaoCompletaScrum263() {
     try {
       await db.transaction(async (trx) => {
         await criarBaseIsoladaSvo(trx, schemaCiclo, { popularLegado: true });
-        await migrationScrum263.up(trx);
+        await migrationSolicitacoesExternasSvo.up(trx);
       });
 
       // 4.1 Verifica backfill dos chamados legados como INTERNA sem inventar protocolo ou dados externos
@@ -677,7 +677,7 @@ async function executarValidacaoCompletaScrum263() {
         await trx.raw('SET LOCAL search_path TO ??', [schemaCiclo]);
         let bloqueouDownComDados = false;
         try {
-          await migrationScrum263.down(trx);
+          await migrationSolicitacoesExternasSvo.down(trx);
         } catch (e) {
           bloqueouDownComDados = /Rollback bloqueado/i.test(e.message);
         }
@@ -785,7 +785,7 @@ async function executarValidacaoCompletaScrum263() {
       await db.raw('DROP SCHEMA IF EXISTS ?? CASCADE', [schemaCiclo]);
     }
 
-    console.log('=== VALIDACAO COMPLETA SCRUM-263 CONCLUIDA COM SUCESSO ===');
+    console.log('=== VALIDACAO COMPLETA solicitacoes externas svo CONCLUIDA COM SUCESSO ===');
     for (const item of relatorio) {
       console.log(`- ${item}`);
     }
@@ -795,15 +795,15 @@ async function executarValidacaoCompletaScrum263() {
 }
 
 if (require.main === module) {
-  const { validarScrum263SchemaReal } = require('./validar-schema-real-scrum263.cjs');
+  const { validarSchemaSolicitacoesExternasSvo } = require('./validar-schema-solicitacoes-externas-svo.cjs');
   const validar = async () => {
-    if (!process.argv.includes('--somente-complementar')) await validarScrum263SchemaReal();
-    await executarValidacaoCompletaScrum263();
+    if (!process.argv.includes('--somente-complementar')) await validarSchemaSolicitacoesExternasSvo();
+    await executarValidacaoSolicitacoesExternasSvo();
   };
   validar().catch((erro) => {
-    console.error('Falha na validacao da migration SCRUM-263:', erro);
+    console.error('Falha na validacao da migration solicitacoes externas svo:', erro);
     process.exit(1);
   });
 }
 
-module.exports = { executarValidacaoCompletaScrum263 };
+module.exports = { executarValidacaoSolicitacoesExternasSvo };

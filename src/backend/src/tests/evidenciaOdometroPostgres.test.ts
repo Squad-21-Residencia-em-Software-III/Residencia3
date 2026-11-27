@@ -21,7 +21,7 @@ import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 // Fluxo completo das fotos do odômetro (SCRUM-208/209) contra as tabelas da SCRUM-210.
 // Só executa num banco descartável explicitamente identificado (ver docs/evidencias-odometro.md).
-const habilitado = process.env.SCRUM208_POSTGRES_TESTS === '1';
+const habilitado = process.env.EVIDENCIAS_ODOMETRO_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(4).toString('hex');
 let JPEG: Buffer;
 const driverOriginal = env.evidenciasStorage;
@@ -189,7 +189,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(rows[0]).toEqual({ doze_meses: true, total: 2 });
   });
 
-  it.skipIf(process.env.SCRUM231_POSTGRES_TESTS !== '1')(
+  it.skipIf(process.env.REPROGRAMACAO_ADMINISTRATIVA_POSTGRES_TESTS !== '1')(
     'SCRUM-219 valida agendamento, cancelamento e andamento administrativo pela API e pela fila',
     async () => {
       configNotificacoes.ativas = true;
@@ -285,7 +285,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     }
   );
 
-  it.skipIf(process.env.SCRUM231_POSTGRES_TESTS !== '1')('A5 reverte agendamento e avisos se a publicação falhar', async () => {
+  it.skipIf(process.env.REPROGRAMACAO_ADMINISTRATIVA_POSTGRES_TESTS !== '1')('A5 reverte agendamento e avisos se a publicação falhar', async () => {
     configNotificacoes.ativas = true;
     const gestor = await usuario('GESTOR_FROTA');
     const r = await recursos('FROTA');
@@ -463,7 +463,7 @@ describe.skipIf(!habilitado)('SCRUM-208/209 com PostgreSQL isolado e HTTP autent
     expect(await db('evidencias_odometro').where({ deslocamento_svo_id: evidencia.deslocamento_svo_id })).toHaveLength(1);
   });
 
-  it.skipIf(process.env.SCRUM235_POSTGRES_TESTS !== '1')(
+  it.skipIf(process.env.AVISOS_SVO_COLETA_POSTGRES_TESTS !== '1')(
     'SCRUM-221 separa avisos A9 e S8 de mesmo tipo mesmo quando as referências têm o mesmo ID',
     async () => {
       configNotificacoes.ativas = true;

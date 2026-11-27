@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
 import { env } from '../config/env';
-import { carregarFase3 } from '../config/fase3';
+import { carregarRecursosOperacionais } from '../config/recursosOperacionais';
 import { AppError } from '../errors/AppError';
 import { solicitacaoSvoExternaService } from '../services/solicitacaoSvoExternaService';
 
@@ -42,8 +42,8 @@ const resultado = {
 const enviar = (corpo: unknown = payload, cabecalhos: Record<string, string> = { 'Idempotency-Key': CHAVE, 'X-Prova-Tentativa': PROVA }) =>
   request(app).post(URL).set(cabecalhos).send(corpo as object);
 
-const faseOriginal = env.fase3;
-const ligar = () => { env.fase3 = carregarFase3({ FASE3_PORTAL_SVO: 'true' }); };
+const faseOriginal = env.recursosOperacionais;
+const ligar = () => { env.recursosOperacionais = carregarRecursosOperacionais({ PORTAL_SVO_ATIVO: 'true' }); };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -52,13 +52,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  env.fase3 = faseOriginal;
+  env.recursosOperacionais = faseOriginal;
   vi.restoreAllMocks();
 });
 
 describe('POST /api/solicitacoes-svo/externas (SCRUM-264, rota pública)', () => {
   it('com a flag desligada responde 404 sem chamar o serviço', async () => {
-    env.fase3 = carregarFase3({});
+    env.recursosOperacionais = carregarRecursosOperacionais({});
     const resposta = await enviar();
     expect(resposta.status).toBe(404);
     expect(resposta.body.codigo).toBe('RECURSO_DESATIVADO');

@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { app } from '../app';
 import { db } from '../config/database';
 import { env } from '../config/env';
-import { carregarFase3 } from '../config/fase3';
+import { carregarRecursosOperacionais } from '../config/recursosOperacionais';
 import { configNotificacoes } from '../config/notificacoes';
 import { calcularDigestCredencialExterna } from '../services/credencialExternaSvo';
 import { EVENTO_SVO_S1, notificacaoSvoService } from '../services/notificacaoSvoService';
@@ -15,7 +15,7 @@ import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 // SCRUM-264 de ponta a ponta por HTTP e PostgreSQL: criação pública, transação, idempotência, concorrência,
 // rollback e resposta perdida. Só roda num banco descartável explicitamente identificado, depois de
 // `npm run migrate`. Todos os dados são sintéticos.
-const habilitado = process.env.SCRUM264_POSTGRES_TESTS === '1';
+const habilitado = process.env.ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(4).toString('hex');
 const URL_EXTERNA = '/api/solicitacoes-svo/externas';
 
@@ -107,7 +107,7 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
   }, 60_000);
 
   beforeEach(() => {
-    env.fase3 = carregarFase3({ FASE3_PORTAL_SVO: 'true' });
+    env.recursosOperacionais = carregarRecursosOperacionais({ PORTAL_SVO_ATIVO: 'true' });
     configNotificacoes.ativas = true;
   });
 
@@ -286,7 +286,7 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
   });
 
   it('flag desligada bloqueia sem gravar nada', async () => {
-    env.fase3 = carregarFase3({});
+    env.recursosOperacionais = carregarRecursosOperacionais({});
     const antes = await contarExternas();
     const resposta = await enviar(corpo(), tentativa());
     expect(resposta.status).toBe(404);
