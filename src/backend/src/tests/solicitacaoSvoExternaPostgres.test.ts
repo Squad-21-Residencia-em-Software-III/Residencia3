@@ -1,0 +1,312 @@
+import { randomBytes } from 'node:crypto';
+import jwt from 'jsonwebtoken';
+import knex, { type Knex } from 'knex';
+import request from 'supertest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { app } from '../app';
+import { db } from '../config/database';
+import { env } from '../config/env';
+import { carregarFase3 } from '../config/fase3';
+import { configNotificacoes } from '../config/notificacoes';
+import { calcularDigestCredencialExterna } from '../services/credencialExternaSvo';
+import { EVENTO_SVO_S1, notificacaoSvoService } from '../services/notificacaoSvoService';
+import { usarBancoComExclusividade } from './exclusividadeNoBanco';
+
+// SCRUM-264 de ponta a ponta por HTTP e PostgreSQL: criação pública, transação, idempotência, concorrência,
+// rollback e resposta perdida. Só roda num banco descartável explicitamente identificado, depois de
+// `npm run migrate`. Todos os dados são sintéticos.
+const habilitado = process.env.SCRUM264_POSTGRES_TESTS === '1';
+const nonce = () => randomBytes(4).toString('hex');
+const URL_EXTERNA = '/api/solicitacoes-svo/externas';
+
+interface Conta { id: number; token: string }
+
+async function conta(admin: Knex, perfil: 'ADMINISTRADOR' | 'GESTOR_SVO' | 'SOLICITANTE', ativo = true): Promise<Conta> {
+  const chave = nonce();
+  const [u] = await admin('usuarios').insert({
+    nome: `Teste ${chave}`, email: `${chave}@testes.invalid`, senha: 'hash-de-teste', perfil, ativo,
+    tipo_usuario: perfil,
+  }).returning('*');
+  if (perfil === 'GESTOR_SVO') {
+    const unidade = await admin('unidades').where({ nome: 'SVO' }).first('id');
+    await admin('gestores_unidades').insert({ unidade_id: unidade.id, usuario_id: u.id });
+  }
+  const agora = Math.floor(Date.now() / 1000);
+  const token = jwt.sign({ typ: 'access', perfil, sv: u.versao_sessao, sessao_exp: agora + 3600 }, env.jwtSecret, {
+    algorithm: 'HS256', issuer: 'fsph-frotas-api', audience: 'fsph-frotas-web', subject: String(u.id), expiresIn: 1800,
+  });
+  return { id: u.id, token: `Bearer ${token}` };
+}
+
+const corpo = (extra: Record<string, unknown> = {}) => ({
+  tipo_solicitante: 'PESSOA_FISICA',
+  nome_solicitante: 'Nome Sentinela Sintetico',
+  telefone_solicitante: '(79) 99999-0000',
+  email_solicitante: 'sentinela@example.com',
+  cpf_solicitante: '529.982.247-25',
+  nome_falecido: 'Falecido Sintetico',
+  local_ocorrencia: 'Rua Ficticia dos Testes',
+  numero_imovel: '10',
+  descricao_ocorrencia: 'Descricao sintetica da ocorrencia.',
+  data_hora_ocorrencia: '2026-01-10T10:00:00-03:00',
+  ciencia_aviso_privacidade: true,
+  versao_aviso_privacidade: '2026-11-v1',
+  ...extra,
+});
+
+const tentativa = () => ({ chave: `tentativa-${nonce()}${nonce()}`, prova: `${nonce()}${nonce()}`.repeat(4) });
+
+const enviar = (dados: unknown, t: { chave: string; prova: string }) =>
+  request(app).post(URL_EXTERNA).set({ 'Idempotency-Key': t.chave, 'X-Prova-Tentativa': t.prova }).send(dados as object);
+
+const contarExternas = async (): Promise<number> =>
+  Number((await db('solicitacoes_svo').where({ canal_origem: 'EXTERNA' }).count({ total: '*' }).first())?.total ?? 0);
+const contarAuditoriasExternas = async (): Promise<number> =>
+  Number((await db('auditorias').where('acao', 'like', 'CRIOU_SOLICITACAO_SVO_EXTERNA%').count({ total: '*' }).first())?.total ?? 0);
+const solicitacaoPorProtocolo = (protocolo: string) => db('solicitacoes_svo').where({ protocolo }).first();
+
+// Mesma regra de quem recebe o S1: administradores ativos e gestores SVO ativos associados à unidade SVO
+async function audienciaEsperada(): Promise<number[]> {
+  return db('usuarios as u')
+    .leftJoin('gestores_unidades as gu', 'gu.usuario_id', 'u.id')
+    .leftJoin('unidades as un', function () { this.on('un.id', '=', 'gu.unidade_id').andOnVal('un.nome', '=', 'SVO'); })
+    .where('u.ativo', true)
+    .andWhere(function () {
+      this.where('u.perfil', 'ADMINISTRADOR').orWhere(function () { this.where('u.perfil', 'GESTOR_SVO').whereNotNull('un.id'); });
+    })
+    .distinct().orderBy('u.id').pluck('u.id');
+}
+
+const avisosS1 = (id: number) =>
+  db('notificacoes').where({ referencia_tipo: 'SOLICITACAO_SVO', referencia_id: id, tipo: EVENTO_SVO_S1 }).orderBy('usuario_id');
+
+describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartável (SCRUM-264)', () => {
+  let administrador: Conta, gestorSvo: Conta;
+  let administradorInativo: Conta, solicitante: Conta;
+  let admin: Knex;
+  const criadas: number[] = [];
+  usarBancoComExclusividade();
+
+  beforeAll(async () => {
+    if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
+      throw new Error('A suíte exige PostgreSQL descartável em 127.0.0.1/frotas_teste');
+    }
+    admin = knex({
+      client: 'pg',
+      pool: { min: 0, max: 1 },
+      connection: {
+        host: process.env.POSTGRES_HOST, port: Number(process.env.POSTGRES_PORT), database: process.env.POSTGRES_DB,
+        user: process.env.POSTGRES_MIGRATION_USER || process.env.POSTGRES_USER,
+        password: process.env.POSTGRES_MIGRATION_PASSWORD || process.env.POSTGRES_PASSWORD,
+      },
+    });
+    administrador = await conta(admin, 'ADMINISTRADOR');
+    gestorSvo = await conta(admin, 'GESTOR_SVO');
+    administradorInativo = await conta(admin, 'ADMINISTRADOR', false);
+    solicitante = await conta(admin, 'SOLICITANTE');
+  }, 60_000);
+
+  beforeEach(() => {
+    env.fase3 = carregarFase3({ FASE3_PORTAL_SVO: 'true' });
+    configNotificacoes.ativas = true;
+  });
+
+  afterEach(() => {
+    configNotificacoes.ativas = false;
+    vi.restoreAllMocks();
+  });
+
+  afterAll(async () => {
+    // Limpeza best-effort do que esta suíte criou, para não interferir nas outras suítes
+    for (const comando of [
+      (ids: number[]) => admin('notificacao_outbox').where({ referencia_tipo: 'SOLICITACAO_SVO' }).whereIn('referencia_id', ids).delete(),
+      (ids: number[]) => admin('notificacoes').where({ referencia_tipo: 'SOLICITACAO_SVO' }).whereIn('referencia_id', ids).delete(),
+      (ids: number[]) => admin('solicitacoes_svo_credenciais_externas').whereIn('solicitacao_id', ids).delete(),
+      (ids: number[]) => admin('solicitacoes_svo_dados_externos').whereIn('solicitacao_id', ids).delete(),
+      (ids: number[]) => admin('solicitacoes_svo').whereIn('id', ids).delete(),
+    ]) {
+      try { if (criadas.length > 0) await comando(criadas); } catch { /* o banco é descartável */ }
+    }
+    await admin.destroy();
+    await db.destroy();
+  });
+
+  it('sucesso: devolve o protocolo após o commit, grava tudo e aparece na fila', async () => {
+    const t = tentativa();
+    const antes = await contarExternas();
+    const resposta = await enviar(corpo(), t);
+
+    expect(resposta.status).toBe(201);
+    expect(resposta.headers['cache-control']).toContain('no-store');
+    expect(Object.keys(resposta.body).sort()).toEqual(['credencial', 'protocolo', 'registrada_em', 'status', 'status_label']);
+    expect(resposta.body.protocolo).toMatch(/^SVO-[0-9]{8}-[A-Z0-9]{12}$/);
+    expect(await contarExternas()).toBe(antes + 1);
+
+    const s = await solicitacaoPorProtocolo(resposta.body.protocolo);
+    criadas.push(s.id);
+    expect(s).toMatchObject({
+      canal_origem: 'EXTERNA', registrante_id: null, status: 'EM_TRIAGEM', material_sensivel: false,
+      dados_solicitante: 'Solicitação externa', local_ocorrencia: 'Rua Ficticia dos Testes',
+    });
+
+    const dados = await db('solicitacoes_svo_dados_externos').where({ solicitacao_id: s.id }).first();
+    expect(dados).toMatchObject({ cpf_solicitante: '52998224725', tipo_solicitante: 'PESSOA_FISICA', nome_instituicao: null });
+
+    // Só digests: a credencial e a prova nunca ficam em texto claro
+    const credencial = await db('solicitacoes_svo_credenciais_externas').where({ solicitacao_id: s.id }).first();
+    expect(credencial.segredo_digest).toBe(calcularDigestCredencialExterna(resposta.body.credencial));
+    expect(credencial.algoritmo_digest).toBe('HMAC-SHA-256');
+    expect(JSON.stringify(credencial)).not.toContain(resposta.body.credencial);
+    expect(JSON.stringify(credencial)).not.toContain(t.prova);
+
+    // Na fila interna, sem dados pessoais
+    const fila = await request(app).get('/api/solicitacoes-svo?status=EM_TRIAGEM&limite=100').set('Authorization', gestorSvo.token);
+    expect(fila.status).toBe(200);
+    const item = fila.body.dados.find((linha: { id: number }) => linha.id === s.id);
+    expect(item).toMatchObject({ canal_origem: 'EXTERNA', registrante_id: null, dados_solicitante: 'Solicitação externa' });
+    expect(JSON.stringify(item)).not.toMatch(/Sentinela|52998224725|example\.com/);
+  });
+
+  it('um S1 por destinatário elegível, sem S2 e sem avisar quem não deve', async () => {
+    const resposta = await enviar(corpo(), tentativa());
+    expect(resposta.status).toBe(201);
+    const s = await solicitacaoPorProtocolo(resposta.body.protocolo);
+    criadas.push(s.id);
+
+    const esperados = await audienciaEsperada();
+    expect(esperados).toEqual(expect.arrayContaining([administrador.id, gestorSvo.id]));
+    expect(esperados).not.toContain(administradorInativo.id);
+    expect(esperados).not.toContain(solicitante.id);
+
+    const avisos = await avisosS1(s.id);
+    expect(avisos.map((a) => a.usuario_id)).toEqual(esperados);
+    const todos = await db('notificacoes').where({ referencia_tipo: 'SOLICITACAO_SVO', referencia_id: s.id });
+    expect(todos).toHaveLength(esperados.length);
+    // Texto neutro: sem endereço, CPF ou dados clínicos
+    expect(JSON.stringify(todos)).not.toMatch(/Rua Ficticia|52998224725|Sentinela|Falecido/);
+    const outbox = await db('notificacao_outbox').where({ referencia_tipo: 'SOLICITACAO_SVO', referencia_id: s.id });
+    expect(outbox.map((o) => o.usuario_id).sort()).toEqual([...esperados].sort());
+  });
+
+  it('repetição da mesma intenção devolve o mesmo resultado, sem novo chamado nem novo S1', async () => {
+    const t = tentativa();
+    const primeira = await enviar(corpo(), t);
+    expect(primeira.status).toBe(201);
+    const s = await solicitacaoPorProtocolo(primeira.body.protocolo);
+    criadas.push(s.id);
+    const antes = await contarExternas();
+    const avisosAntes = (await avisosS1(s.id)).length;
+
+    const segunda = await enviar(corpo(), t);
+    expect(segunda.status).toBe(200);
+    expect(segunda.body).toEqual(primeira.body);
+    expect(await contarExternas()).toBe(antes);
+    expect((await avisosS1(s.id)).length).toBe(avisosAntes);
+  });
+
+  it('concorrência com a mesma chave gera um chamado e um S1 por destinatário', async () => {
+    const t = tentativa();
+    const antes = await contarExternas();
+    const respostas = await Promise.all(Array.from({ length: 6 }, () => enviar(corpo(), t)));
+
+    expect(respostas.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(respostas.filter((r) => r.status === 200)).toHaveLength(5);
+    const protocolos = new Set(respostas.map((r) => r.body.protocolo));
+    const credenciais = new Set(respostas.map((r) => r.body.credencial));
+    expect(protocolos.size).toBe(1);
+    expect(credenciais.size).toBe(1);
+    expect(await contarExternas()).toBe(antes + 1);
+
+    const s = await solicitacaoPorProtocolo([...protocolos][0]!);
+    criadas.push(s.id);
+    const esperados = await audienciaEsperada();
+    expect((await avisosS1(s.id)).map((a) => a.usuario_id)).toEqual(esperados);
+  });
+
+  it('mesma chave com conteúdo ou prova diferentes falha sem efeitos e sem credencial', async () => {
+    const t = tentativa();
+    const primeira = await enviar(corpo(), t);
+    expect(primeira.status).toBe(201);
+    criadas.push((await solicitacaoPorProtocolo(primeira.body.protocolo)).id);
+    const antes = await contarExternas();
+    const auditoriasAntes = await contarAuditoriasExternas();
+
+    const outroConteudo = await enviar(corpo({ descricao_ocorrencia: 'Outra descricao sintetica.' }), t);
+    expect(outroConteudo.status).toBe(409);
+    expect(outroConteudo.body.codigo).toBe('IDEMPOTENCIA_CONFLITO');
+
+    const outraProva = await enviar(corpo(), { ...t, prova: 'Z'.repeat(43) });
+    expect(outraProva.status).toBe(409);
+    expect(JSON.stringify(outraProva.body)).not.toContain(primeira.body.credencial);
+
+    expect(await contarExternas()).toBe(antes);
+    expect(await contarAuditoriasExternas()).toBe(auditoriasAntes);
+  });
+
+  it('rollback: falha ao publicar o S1 não deixa chamado, credencial, aviso ou auditoria órfãos', async () => {
+    const t = tentativa();
+    const antes = await contarExternas();
+    const auditoriasAntes = await contarAuditoriasExternas();
+    const avisosAntes = Number((await db('notificacoes').where({ tipo: EVENTO_SVO_S1 }).count({ total: '*' }).first())?.total ?? 0);
+    vi.spyOn(notificacaoSvoService, 'publicarAlertasRegistroSolicitacao').mockRejectedValueOnce(new Error('falha simulada'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const falha = await enviar(corpo(), t);
+    expect(falha.status).toBe(500);
+    expect(falha.body).toEqual({ erro: 'Erro interno do servidor' });
+
+    expect(await contarExternas()).toBe(antes);
+    expect(await contarAuditoriasExternas()).toBe(auditoriasAntes);
+    expect(await db('solicitacoes_svo_credenciais_externas').where({ chave_idempotencia_criacao: t.chave })).toHaveLength(0);
+    const avisosDepois = Number((await db('notificacoes').where({ tipo: EVENTO_SVO_S1 }).count({ total: '*' }).first())?.total ?? 0);
+    expect(avisosDepois).toBe(avisosAntes);
+
+    // A chave não ficou "queimada": a mesma tentativa funciona depois
+    const novamente = await enviar(corpo(), t);
+    expect(novamente.status).toBe(201);
+    criadas.push((await solicitacaoPorProtocolo(novamente.body.protocolo)).id);
+  });
+
+  it('perda da primeira resposta após o commit: a repetição recupera protocolo e credencial válidos', async () => {
+    const t = tentativa();
+    const perdida = await enviar(corpo(), t); // o cidadão nunca viu esta resposta
+    expect(perdida.status).toBe(201);
+    const s = await solicitacaoPorProtocolo(perdida.body.protocolo);
+    criadas.push(s.id);
+
+    const recuperada = await enviar(corpo(), t);
+    expect(recuperada.status).toBe(200);
+    expect(recuperada.body.protocolo).toBe(perdida.body.protocolo);
+    expect(recuperada.body.credencial).toBe(perdida.body.credencial);
+
+    const credencial = await db('solicitacoes_svo_credenciais_externas').where({ solicitacao_id: s.id }).first();
+    expect(credencial.segredo_digest).toBe(calcularDigestCredencialExterna(recuperada.body.credencial));
+    expect(await db('solicitacoes_svo').where({ protocolo: perdida.body.protocolo })).toHaveLength(1);
+    expect((await avisosS1(s.id)).length).toBe((await audienciaEsperada()).length);
+  });
+
+  it('flag desligada bloqueia sem gravar nada', async () => {
+    env.fase3 = carregarFase3({});
+    const antes = await contarExternas();
+    const resposta = await enviar(corpo(), tentativa());
+    expect(resposta.status).toBe(404);
+    expect(await contarExternas()).toBe(antes);
+  });
+
+  it('campos inválidos e corpo acima do teto não gravam nada', async () => {
+    const antes = await contarExternas();
+    expect((await enviar(corpo({ cpf_solicitante: '529.982.247-26' }), tentativa())).status).toBe(400);
+    expect((await enviar(corpo({ status: 'CONFIRMADA' }), tentativa())).status).toBe(400);
+    expect((await enviar(corpo({ descricao_ocorrencia: 'a'.repeat(150_000) }), tentativa())).status).toBe(413);
+    expect(await contarExternas()).toBe(antes);
+  });
+
+  it('o registro interno continua válido: registrante do usuário, canal INTERNA e sem protocolo', async () => {
+    const resposta = await request(app).post('/api/solicitacoes-svo').set('Authorization', gestorSvo.token)
+      .send({ dados_solicitante: 'Familiar Sintetico', local_ocorrencia: 'Rua Interna Sintetica' });
+    expect(resposta.status).toBe(201);
+    criadas.push(resposta.body.id);
+    const s = await db('solicitacoes_svo').where({ id: resposta.body.id }).first();
+    expect(s).toMatchObject({ registrante_id: gestorSvo.id, canal_origem: 'INTERNA', protocolo: null, status: 'EM_TRIAGEM' });
+  });
+});
