@@ -7,11 +7,18 @@ export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO
 
 export type StatusSolicitacaoSvo = (typeof STATUS_SOLICITACAO_SVO)[number];
 
+// Espelha a constraint chk_solicitacoes_svo_canal_origem (SCRUM-263)
+export const CANAIS_ORIGEM_SOLICITACAO_SVO = ['INTERNA', 'EXTERNA'] as const;
+
+export type CanalOrigemSolicitacaoSvo = (typeof CANAIS_ORIGEM_SOLICITACAO_SVO)[number];
+
 // Ordens de coleta que ainda ocupam a solicitação (BL27)
 export const ORDENS_SVO_ATIVAS = ['AGUARDANDO_ALOCACAO', 'ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'] as const;
 
 export interface NovaSolicitacaoSvo {
-  registrante_id: number;
+  registrante_id: number | null;
+  canal_origem?: CanalOrigemSolicitacaoSvo;
+  protocolo?: string | null;
   dados_solicitante: string;
   local_ocorrencia: string;
   material_sensivel: boolean;
@@ -20,6 +27,8 @@ export interface NovaSolicitacaoSvo {
 
 export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
   id: number;
+  canal_origem?: CanalOrigemSolicitacaoSvo;
+  protocolo?: string | null;
   observacoes?: string | null;
   motivo_recusa?: string | null;
   criado_em?: Date | string;
