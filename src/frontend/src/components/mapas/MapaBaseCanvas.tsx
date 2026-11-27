@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import Map, { Marker, NavigationControl } from 'react-map-gl/maplibre';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import Map, { Marker, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -45,17 +45,76 @@ export default function MapaBaseCanvas({
   const longitude = centroInicial?.longitude ?? marcadorPadrao?.longitude ?? CENTRO_PADRAO_SERGIPE.longitude;
   const zoom = centroInicial?.zoom ?? CENTRO_PADRAO_SERGIPE.zoom;
   const estiloMapa = obterEstiloMapa(tema);
-  const carregamento = useRef({ abriu: false, recebeuTile: false });
+  const carregamento = useRef({ estiloPronto: false, recebeuTile: false, perdeuContexto: false });
+  const prazo = useRef<number | undefined>(undefined);
+  const removerListeners = useRef<(() => void) | undefined>(undefined);
   const aoFalhar = useRef(onErroCarregamento);
+  const falhaComunicada = useRef(false);
 
   useEffect(() => { aoFalhar.current = onErroCarregamento; }, [onErroCarregamento]);
-  useEffect(() => {
-    const prazo = window.setTimeout(() => {
-      const { abriu, recebeuTile } = carregamento.current;
-      if (!abriu || !recebeuTile) aoFalhar.current?.();
-    }, LIMITE_CARREGAMENTO_MAPA_MS);
-    return () => window.clearTimeout(prazo);
+
+  const cancelarPrazo = useCallback(() => {
+    window.clearTimeout(prazo.current);
+    prazo.current = undefined;
   }, []);
+  const reportarFalha = useCallback(() => {
+    if (falhaComunicada.current) return;
+    falhaComunicada.current = true;
+    cancelarPrazo();
+    aoFalhar.current?.();
+  }, [cancelarPrazo]);
+  const aguardar = useCallback((mapaRecuperado: () => boolean) => {
+    if (prazo.current !== undefined) return;
+    prazo.current = window.setTimeout(() => {
+      prazo.current = undefined;
+      if (!mapaRecuperado()) reportarFalha();
+    }, LIMITE_CARREGAMENTO_MAPA_MS);
+  }, [reportarFalha]);
+  const recuperado = useCallback(() => {
+    const { estiloPronto, recebeuTile, perdeuContexto } = carregamento.current;
+    return estiloPronto && recebeuTile && !perdeuContexto;
+  }, []);
+  const liberarPrazoSeRecuperado = useCallback(() => {
+    if (recuperado()) cancelarPrazo();
+  }, [cancelarPrazo, recuperado]);
+  const registrarEstilo = useCallback(() => {
+    carregamento.current.estiloPronto = true;
+    liberarPrazoSeRecuperado();
+  }, [liberarPrazoSeRecuperado]);
+
+  const registrarMapa = useCallback((referencia: MapRef | null) => {
+    removerListeners.current?.();
+    removerListeners.current = undefined;
+    if (!referencia) return;
+    const mapa = referencia.getMap();
+
+    const perdeuContexto = () => {
+      carregamento.current = { estiloPronto: false, recebeuTile: false, perdeuContexto: true };
+      cancelarPrazo();
+      aguardar(recuperado);
+    };
+    const restaurouContexto = () => {
+      carregamento.current.perdeuContexto = false;
+      if (mapa.isStyleLoaded()) registrarEstilo();
+      liberarPrazoSeRecuperado();
+    };
+
+    mapa.on('style.load', registrarEstilo);
+    mapa.on('webglcontextlost', perdeuContexto);
+    mapa.on('webglcontextrestored', restaurouContexto);
+    removerListeners.current = () => {
+      mapa.off('style.load', registrarEstilo);
+      mapa.off('webglcontextlost', perdeuContexto);
+      mapa.off('webglcontextrestored', restaurouContexto);
+    };
+  }, [aguardar, cancelarPrazo, liberarPrazoSeRecuperado, recuperado, registrarEstilo]);
+
+  useEffect(() => {
+    carregamento.current.estiloPronto = false;
+    carregamento.current.recebeuTile = false;
+    aguardar(recuperado);
+    return cancelarPrazo;
+  }, [estiloMapa, aguardar, cancelarPrazo, recuperado]);
 
   return (
     <div
@@ -65,20 +124,28 @@ export default function MapaBaseCanvas({
       aria-label={tituloAcessivel}
     >
       <Map
+        ref={registrarMapa}
         initialViewState={{ latitude, longitude, zoom }}
         mapStyle={estiloMapa}
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}
-        onLoad={() => { carregamento.current.abriu = true; }}
+        onLoad={registrarEstilo}
         onSourceData={(evento) => {
-          if (evento.tile && (evento.source?.type === 'vector' || evento.source?.type === 'raster')) {
+          if (evento.tile?.hasData() && (evento.source?.type === 'vector' || evento.source?.type === 'raster')) {
             carregamento.current.recebeuTile = true;
+            liberarPrazoSeRecuperado();
           }
         }}
         onError={(evento) => {
-          // react-map-gl informa target nulo quando a instância não pôde ser criada.
-          // Erros com mapa existente podem ser de um único tile. O prazo verifica a renderização inicial.
-          if (!evento.target) onErroCarregamento?.();
+          const mapa = evento.target;
+          if (!mapa) {
+            reportarFalha();
+            return;
+          }
+          // Preserve tiles que ainda renderizam durante falhas de rede ou de recursos.
+          if (recuperado()) {
+            aguardar(() => !!mapa.isStyleLoaded() && mapa.queryRenderedFeatures().length > 0);
+          }
         }}
       >
         <NavigationControl position="top-right" showCompass={false} />

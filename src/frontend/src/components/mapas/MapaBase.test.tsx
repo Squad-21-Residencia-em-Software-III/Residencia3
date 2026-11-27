@@ -107,4 +107,64 @@ describe('MapaBase', () => {
       relogio.mockRestore();
     }
   });
+
+  it.each([
+    { falha: 'Perder contexto WebGL', recupera: true },
+    { falha: 'Perder contexto WebGL', recupera: false },
+    { falha: 'Interromper todos os tiles', recupera: false },
+  ])('acompanha falhas depois da renderização ($falha, recupera: $recupera)', async ({ falha, recupera }) => {
+    vi.spyOn(suporteWebgl, 'verificarSuporteWebgl').mockReturnValue(true);
+    const onIndisponivel = vi.fn();
+    render(<StrictMode><MapaBase onIndisponivel={onIndisponivel} fallback={<p>Entrada manual</p>} /></StrictMode>);
+    const carregarMapa = await screen.findByRole('button', { name: 'Carregar mapa e tile' });
+    fireEvent.click(carregarMapa);
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole('button', { name: falha }));
+      expect(screen.getByTestId('mock-maplibre')).toBeInTheDocument();
+      if (recupera) {
+        fireEvent.click(screen.getByRole('button', { name: 'Restaurar contexto WebGL' }));
+        fireEvent.click(carregarMapa);
+      }
+      act(() => { vi.advanceTimersByTime(LIMITE_CARREGAMENTO_MAPA_MS); });
+      if (recupera) {
+        expect(screen.getByTestId('mock-maplibre')).toBeInTheDocument();
+        expect(onIndisponivel).not.toHaveBeenCalled();
+      } else {
+        expect(screen.getByText('Entrada manual')).toBeInTheDocument();
+        expect(onIndisponivel).toHaveBeenCalledExactlyOnceWith('erro');
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([true, false])('acompanha a troca de estilo sem desmontar o mapa (carregou: %s)', async (carregou) => {
+    vi.spyOn(suporteWebgl, 'verificarSuporteWebgl').mockReturnValue(true);
+    const onIndisponivel = vi.fn();
+    const { rerender } = render(<MapaBase onIndisponivel={onIndisponivel} />);
+    const carregarMapa = await screen.findByRole('button', { name: 'Carregar mapa e tile' });
+    fireEvent.click(carregarMapa);
+    vi.useFakeTimers();
+    vi.stubEnv('VITE_MAPA_ESTILO_URL', 'https://tiles.openfreemap.org/styles/positron');
+    try {
+      rerender(<MapaBase tema="escuro" onIndisponivel={onIndisponivel} />);
+      expect(screen.getByTestId('mock-maplibre')).toHaveAttribute(
+        'data-map-style', 'https://tiles.openfreemap.org/styles/positron',
+      );
+      if (carregou) fireEvent.click(carregarMapa);
+      act(() => { vi.advanceTimersByTime(LIMITE_CARREGAMENTO_MAPA_MS); });
+      if (carregou) {
+        expect(onIndisponivel).not.toHaveBeenCalled();
+      } else {
+        expect(screen.getByRole('status')).toHaveTextContent('Mapa indisponível no momento');
+        expect(onIndisponivel).toHaveBeenCalledExactlyOnceWith('erro');
+      }
+    } finally {
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    }
+  });
+
 });
