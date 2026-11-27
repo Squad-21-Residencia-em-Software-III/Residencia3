@@ -10,7 +10,7 @@ afterEach(() => { env.fase3 = fase3Original; });
 
 describe('Infraestrutura da Fase 3', () => {
   it('desliga todas por padrão e rejeita um valor inválido sem afetar flags independentes', () => {
-    expect(Object.values(carregarFase3({ NODE_ENV: 'production' }).flags)).toEqual(Array(11).fill(false));
+    expect(Object.values(carregarFase3({ NODE_ENV: 'production' }).flags)).toEqual(Array(Object.keys(VARIAVEIS_FASE3).length).fill(false));
     const { flags, diagnostico } = carregarFase3({
       FASE3_PORTAL_SVO: 'true', FASE3_ACOMPANHAMENTO_EXTERNO: 'true', FASE3_MAPAS_INTERNOS: 'sim',
     });
@@ -32,16 +32,18 @@ describe('Infraestrutura da Fase 3', () => {
     }
   });
 
-  it.each(['GPS', 'EXTERNA'] as const)('exige inventário, simulação e autorização próprios para retenção %s', (categoria) => {
-    const nome = 'FASE3_RETENCAO_' + categoria;
+  it.each(['retencaoGpsCheckpoints', 'retencaoGpsIntermediarios', 'retencaoExterna'] as const)(
+    'exige inventário, simulação e autorização próprios para %s', (recurso) => {
+    const nome = VARIAVEIS_FASE3[recurso];
     const preRequisitos = ['_INVENTARIO_VALIDADO', '_SIMULACAO_VALIDADA', '_AUTORIZADA'].map((sufixo) => nome + sufixo);
     const origem = Object.fromEntries([nome, ...preRequisitos].map((chave) => [chave, 'true']));
-    const recurso = categoria === 'GPS' ? 'retencaoGps' : 'retencaoExterna';
     expect(carregarFase3(origem).flags[recurso]).toBe(true);
     for (const chave of preRequisitos) {
       expect(carregarFase3({ ...origem, [chave]: 'false' }).flags[recurso]).toBe(false);
     }
-    expect(carregarFase3(origem).flags[categoria === 'GPS' ? 'retencaoExterna' : 'retencaoGps']).toBe(false);
+    for (const categoria of ['retencaoGpsCheckpoints', 'retencaoGpsIntermediarios', 'retencaoExterna'] as const) {
+      expect(carregarFase3(origem).flags[categoria]).toBe(categoria === recurso);
+    }
   });
 
   it('bloqueia novas entradas pelo servidor sem bloquear as rotas operacionais', async () => {
@@ -53,15 +55,25 @@ describe('Infraestrutura da Fase 3', () => {
     env.fase3 = config;
     await request(app).get('/mapas').expect(204);
     env.fase3 = carregarFase3({});
-    await request(app).get('/mapas').expect(404);
+    await request(app).get('/mapas').expect(404, { erro: 'Rota não encontrada', codigo: 'RECURSO_DESATIVADO' });
     await request(app).post('/viagens/1/finalizar').expect(204);
+  });
+
+  it('preserva a política legada mesmo quando a nova saída exige GPS', () => {
+    const flags = carregarFase3({ FASE3_GPS_OBRIGATORIO: 'true', FASE3_MAPAS_SVO: 'true' }).flags;
+    expect(politicaViagemFase3(flags, { estado: 'legada' })).toEqual({
+      multiplasParadas: false, mapasSvo: false, gpsObrigatorio: false, capturaPeriodica: false,
+    });
+    expect(politicaViagemFase3(flags, { estado: 'nova' }).gpsObrigatorio).toBe(true);
   });
 
   it('mantém a política de uma viagem admitida e usa as flags atuais para novas viagens', () => {
     const antes = carregarFase3({ FASE3_GPS_OBRIGATORIO: 'true', FASE3_MULTIPLAS_PARADAS: 'true' }).flags;
     const politicaNaSaida = politicaViagemFase3(antes, { estado: 'nova' });
     const depois = carregarFase3({ FASE3_CAPTURA_PERIODICA: 'true' }).flags;
-    expect(politicaViagemFase3(depois, { estado: 'emAndamento', politicaNaSaida })).toMatchObject({
+    const politicaAtual = politicaViagemFase3(depois, { estado: 'emAndamento', politicaNaSaida });
+    expect(Object.isFrozen(politicaAtual)).toBe(true);
+    expect(politicaAtual).toMatchObject({
       gpsObrigatorio: true, multiplasParadas: true, capturaPeriodica: false,
     });
     expect(politicaViagemFase3(depois, { estado: 'nova' })).toMatchObject({
