@@ -795,7 +795,12 @@ async function executarValidacaoCompletaScrum263() {
 }
 
 if (require.main === module) {
-  executarValidacaoCompletaScrum263().catch((erro) => {
+  const { validarScrum263SchemaReal } = require('./validar-schema-real-scrum263.cjs');
+  const validar = async () => {
+    if (!process.argv.includes('--somente-complementar')) await validarScrum263SchemaReal();
+    await executarValidacaoCompletaScrum263();
+  };
+  validar().catch((erro) => {
     console.error('Falha na validacao da migration SCRUM-263:', erro);
     process.exit(1);
   });

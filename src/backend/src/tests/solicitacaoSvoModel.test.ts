@@ -61,6 +61,11 @@ describe('solicitacaoSvoModel.listar - paginacao', () => {
       status: 'EM_TRIAGEM',
     });
 
+    expect(consultaDados.select).toHaveBeenCalledWith([
+      'id', 'registrante_id', 'canal_origem', 'protocolo', 'dados_solicitante',
+      'local_ocorrencia', 'material_sensivel', 'status', 'observacoes',
+      'motivo_recusa', 'criado_em', 'confirmado_por', 'confirmado_em',
+    ]);
     expect(consultaDados.orderBy).toHaveBeenCalledWith('id', 'desc');
     expect(consultaDados.limit).toHaveBeenCalledWith(10);
     expect(consultaDados.offset).toHaveBeenCalledWith(20);

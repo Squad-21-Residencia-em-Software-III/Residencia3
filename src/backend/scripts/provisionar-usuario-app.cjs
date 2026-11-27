@@ -1,6 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
+const { aplicarPrivilegiosScrum263, DADOS } = require('../database/scrum263-privilegios.cjs');
 const knexConfig = require('../knexfile');
 
 /**
@@ -392,14 +393,6 @@ async function provisionarUsuarioAplicacao() {
           IF to_regclass('public.reprogramacoes_viagem_frota') IS NOT NULL THEN
             EXECUTE format('REVOKE UPDATE, DELETE ON TABLE public.reprogramacoes_viagem_frota FROM %I', '${appUser}');
           END IF;
-          IF to_regclass('public.solicitacoes_svo_dados_externos') IS NOT NULL THEN
-            EXECUTE format('REVOKE UPDATE, DELETE ON TABLE public.solicitacoes_svo_dados_externos FROM %I', '${appUser}');
-            EXECUTE format('GRANT UPDATE (telefone_solicitante, email_solicitante, endereco_ocorrencia, numero_imovel, sem_numero_imovel, complemento_ocorrencia, ponto_referencia, latitude_ocorrencia, longitude_ocorrencia, fora_area_cobertura, motivo_recusa_publico, cancelamento_solicitado_em, cancelamento_motivo, cancelamento_status, cancelamento_decidido_por, cancelamento_decidido_em, cancelamento_justificativa_decisao, versao_dados, encerrado_operacional_em, consulta_publica_expira_em, retencao_ate, preservacao_legal, preservacao_motivo, atualizado_em) ON TABLE public.solicitacoes_svo_dados_externos TO %I', '${appUser}');
-          END IF;
-          IF to_regclass('public.solicitacoes_svo_credenciais_externas') IS NOT NULL THEN
-            EXECUTE format('REVOKE UPDATE, DELETE ON TABLE public.solicitacoes_svo_credenciais_externas FROM %I', '${appUser}');
-            EXECUTE format('GRANT UPDATE (envelope_recuperacao, recuperacao_expira_em, valida_ate, revogada_em, revogada_motivo, ultimo_acesso_em, atualizado_em) ON TABLE public.solicitacoes_svo_credenciais_externas TO %I', '${appUser}');
-          END IF;
         END $$;`
       );
 
@@ -424,6 +417,11 @@ async function provisionarUsuarioAplicacao() {
         'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ??',
         [appUser]
       );
+
+      if (await trx.schema.withSchema('public').hasTable(DADOS)) {
+        const corrigida = !(await trx.schema.withSchema('public').hasColumn(DADOS, 'endereco_ocorrencia'));
+        await aplicarPrivilegiosScrum263(trx, 'public', appUser, corrigida);
+      }
 
       // Validacao obrigatoria dos atributos efetivos e privilegios antes de confirmar a transacao
       const estado = await inspecionarEstadoRole(trx, appUser);

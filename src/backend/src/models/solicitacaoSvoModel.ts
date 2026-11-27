@@ -36,6 +36,13 @@ export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
   confirmado_em?: Date | null;
 }
 
+// Projeção operacional da fila interna. Dados protegidos ficam nas tabelas externas.
+const COLUNAS_SOLICITACAO_SVO: Array<keyof SolicitacaoSvo> = [
+  'id', 'registrante_id', 'canal_origem', 'protocolo', 'dados_solicitante',
+  'local_ocorrencia', 'material_sensivel', 'status', 'observacoes',
+  'motivo_recusa', 'criado_em', 'confirmado_por', 'confirmado_em',
+];
+
 export interface OrdemSvo {
   id: number;
   solicitacao_id: number;
@@ -49,7 +56,7 @@ export interface OrdemSvo {
 export const solicitacaoSvoModel = {
   async cadastrar(dados: NovaSolicitacaoSvo, trx?: Knex.Transaction): Promise<SolicitacaoSvo> {
     const conexao = trx || db;
-    const [solicitacao] = await conexao('solicitacoes_svo').insert(dados).returning('*');
+    const [solicitacao] = await conexao('solicitacoes_svo').insert(dados).returning(COLUNAS_SOLICITACAO_SVO);
     return solicitacao;
   },
 
@@ -63,7 +70,7 @@ export const solicitacaoSvoModel = {
     const [dados, contagem] = await Promise.all([
       consulta
         .clone()
-        .select('*')
+        .select(COLUNAS_SOLICITACAO_SVO)
         .orderBy('id', 'desc')
         .limit(filtros.limite)
         .offset((filtros.pagina - 1) * filtros.limite),
@@ -74,11 +81,11 @@ export const solicitacaoSvoModel = {
   },
 
   async buscarPorId(id: number): Promise<SolicitacaoSvo | undefined> {
-    return db('solicitacoes_svo').where({ id }).first();
+    return db<SolicitacaoSvo>('solicitacoes_svo').where({ id }).first(...COLUNAS_SOLICITACAO_SVO);
   },
 
   async buscarParaAtualizar(id: number, trx: Knex.Transaction): Promise<SolicitacaoSvo | undefined> {
-    return trx<SolicitacaoSvo>('solicitacoes_svo').where({ id }).forUpdate().first();
+    return trx<SolicitacaoSvo>('solicitacoes_svo').where({ id }).forUpdate().first(...COLUNAS_SOLICITACAO_SVO);
   },
 
   async buscarOrdemAtiva(solicitacaoId: number, conexao: Knex = db): Promise<OrdemSvo | undefined> {
@@ -92,7 +99,7 @@ export const solicitacaoSvoModel = {
     const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
       .where({ id })
       .update({ status: 'CONFIRMADA', confirmado_por: autorId, confirmado_em: trx.fn.now() })
-      .returning('*');
+      .returning(COLUNAS_SOLICITACAO_SVO);
     return solicitacao!;
   },
 
@@ -100,7 +107,7 @@ export const solicitacaoSvoModel = {
     const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
       .where({ id })
       .update({ status: 'RECUSADA', motivo_recusa: motivoRecusa })
-      .returning('*');
+      .returning(COLUNAS_SOLICITACAO_SVO);
     return solicitacao!;
   },
 
