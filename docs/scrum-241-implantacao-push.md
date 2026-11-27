@@ -98,7 +98,7 @@ Os serviços de push (Google, Mozilla, Microsoft e Apple) não cobram. O custo �
 `src/backend/src/tests/desempenhoNotificacoesPostgres.test.ts`, fora do CI porque gera ~270 mil linhas. Para repetir, num banco novo depois de `npm run migrate`:
 
 ```bash
-SCRUM241_DESEMPENHO=1 SCRUM241_RELATORIO=relatorio.json npx vitest run src/tests/desempenhoNotificacoesPostgres.test.ts
+NOTIFICACOES_TESTE_DESEMPENHO=1 NOTIFICACOES_RELATORIO_DESEMPENHO=relatorio.json npx vitest run src/tests/desempenhoNotificacoesPostgres.test.ts
 ```
 
 - **Massa:** 50 pessoas, 167 mil avisos espalhados por 90 dias (uma pessoa com 20 mil; 3 em 4 lidos), 100 mil itens na fila e 150 aparelhos. Tabelas analisadas (`ANALYZE`) antes de medir.
@@ -191,7 +191,7 @@ Linhas JSON com códigos fixos, sem dado pessoal:
 
 ## Testes
 
-- `metricasNotificacoesPostgres.test.ts`: totais da fila, dos aparelhos e dos avisos pela rota real, janela de 24 h, motivo fora da lista virando `OUTRO` (texto livre e código inventado), nenhum dado pessoal na resposta, `no-store` e acesso só do Administrador. Roda no CI com `SCRUM241_POSTGRES_TESTS=1`.
+- `metricasNotificacoesPostgres.test.ts`: totais da fila, dos aparelhos e dos avisos pela rota real, janela de 24 h, motivo fora da lista virando `OUTRO` (texto livre e código inventado), nenhum dado pessoal na resposta, `no-store` e acesso só do Administrador. Roda no CI com `METRICAS_NOTIFICACOES_POSTGRES_TESTS=1`.
 - `metricasNotificacoes.test.ts`: a lista de motivos aceitos e os valores que viram `OUTRO`.
 - `desempenhoNotificacoesPostgres.test.ts`: a medição acima, fora do CI.
 - `matrizAcesso.test.ts`: a rota para todos os perfis.

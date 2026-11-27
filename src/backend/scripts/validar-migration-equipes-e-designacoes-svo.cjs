@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
 const knexConfig = require('../knexfile');
-const migrationScrum198 = require('../database/migrations/20261118113000_scrum_198_equipes_integrantes_designacoes_svo');
+const migrationEquipesEDesignacoesSvo = require('../database/migrations/20261118113000_scrum_198_equipes_integrantes_designacoes_svo');
 const {
   inspecionarEstadoRole,
   validarEstadoMinimoPrivilegio,
@@ -90,7 +90,7 @@ async function criarBaseIsolada(trx, schema) {
   `);
 }
 
-async function executarValidacaoCompletaScrum198() {
+async function executarValidacaoEquipesEDesignacoesSvo() {
   const configMigration = knexConfig.criarConfigKnex({
     ...process.env,
     DB_ROLE: 'migration',
@@ -108,7 +108,7 @@ async function executarValidacaoCompletaScrum198() {
 
         let bloqueouDuplicado = false;
         try {
-          await migrationScrum198.up(trx);
+          await migrationEquipesEDesignacoesSvo.up(trx);
         } catch (e) {
           bloqueouDuplicado = /nomes de equipe duplicados apos normalizacao/i.test(e.message);
         }
@@ -140,7 +140,7 @@ async function executarValidacaoCompletaScrum198() {
 
         let bloqueouIncompativel = false;
         try {
-          await migrationScrum198.up(trx);
+          await migrationEquipesEDesignacoesSvo.up(trx);
         } catch (e) {
           bloqueouIncompativel = /Estrutura incompativel em equipes_svo_integrantes/i.test(
             e.message
@@ -166,8 +166,8 @@ async function executarValidacaoCompletaScrum198() {
     await db
       .transaction(async (trx) => {
         await criarBaseIsolada(trx, schemaCiclo);
-        await migrationScrum198.up(trx);
-        relatorio.push('2. Aplicacao limpa da migration SCRUM-198 (up) e validacao de catalogo: OK');
+        await migrationEquipesEDesignacoesSvo.up(trx);
+        relatorio.push('2. Aplicacao limpa da migration equipes e designacoes svo (up) e validacao de catalogo: OK');
 
         // 3.1 Testa criacao de INTEGRANTE_SVO e constraints de usuarios / equipes_svo
         const [integrante] = await trx('usuarios')
@@ -365,7 +365,7 @@ async function executarValidacaoCompletaScrum198() {
         // 3.6 Testa protecao contra rollback destrutivo (designacoes -> vinculos -> perfil INTEGRANTE_SVO)
         let bloqueouDownDesignacoes = false;
         try {
-          await migrationScrum198.down(trx);
+          await migrationEquipesEDesignacoesSvo.down(trx);
         } catch (e) {
           bloqueouDownDesignacoes = /existem designacoes registradas em ordens_svo_integrantes/i.test(
             e.message
@@ -375,7 +375,7 @@ async function executarValidacaoCompletaScrum198() {
 
         let bloqueouDownVinculos = false;
         try {
-          await migrationScrum198.down(trx);
+          await migrationEquipesEDesignacoesSvo.down(trx);
         } catch (e) {
           bloqueouDownVinculos = /existem vinculos registrados em equipes_svo_integrantes/i.test(
             e.message
@@ -385,21 +385,21 @@ async function executarValidacaoCompletaScrum198() {
 
         let bloqueouDownPerfil = false;
         try {
-          await migrationScrum198.down(trx);
+          await migrationEquipesEDesignacoesSvo.down(trx);
         } catch (e) {
           bloqueouDownPerfil = /existem usuarios com perfil INTEGRANTE_SVO/i.test(e.message);
         }
         await trx('usuarios').where({ id: integrante.id }).del();
 
         if (!bloqueouDownDesignacoes || !bloqueouDownVinculos || !bloqueouDownPerfil) {
-          throw new Error('Falha na protecao contra rollback destrutivo da SCRUM-198.');
+          throw new Error('Falha na protecao contra rollback destrutivo da equipes e designacoes svo.');
         }
         relatorio.push(
           '6. Protecao contra rollback destrutivo (designacoes, vinculos e usuarios INTEGRANTE_SVO): OK'
         );
 
         // 3.7 Executa rollback limpo (DOWN) e reaplicacao (UP)
-        await migrationScrum198.down(trx);
+        await migrationEquipesEDesignacoesSvo.down(trx);
         const { rows: tabelasRestantes } = await trx.raw(
           `SELECT table_name
            FROM information_schema.tables
@@ -408,10 +408,10 @@ async function executarValidacaoCompletaScrum198() {
           [schemaCiclo]
         );
         if (tabelasRestantes.length !== 0) {
-          throw new Error('Tabelas da SCRUM-198 deveriam ter sido removidas apos down limpo.');
+          throw new Error('Tabelas da equipes e designacoes svo deveriam ter sido removidas apos down limpo.');
         }
 
-        await migrationScrum198.up(trx);
+        await migrationEquipesEDesignacoesSvo.up(trx);
         relatorio.push(
           '7. Ciclo completo de rollback limpo (down) e reaplicacao (up) preservando dados existentes: OK'
         );
@@ -431,7 +431,7 @@ async function executarValidacaoCompletaScrum198() {
       );
     }
 
-    console.log('Validacao da migration SCRUM-198 concluida com sucesso:');
+    console.log('Validacao da migration equipes e designacoes svo concluida com sucesso:');
     for (const item of relatorio) {
       console.log(`  - ${item}`);
     }
@@ -441,10 +441,10 @@ async function executarValidacaoCompletaScrum198() {
 }
 
 if (require.main === module) {
-  executarValidacaoCompletaScrum198().catch((erro) => {
-    console.error('Falha na validacao da migration SCRUM-198:', erro.message);
+  executarValidacaoEquipesEDesignacoesSvo().catch((erro) => {
+    console.error('Falha na validacao da migration equipes e designacoes svo:', erro.message);
     process.exit(1);
   });
 }
 
-module.exports = { executarValidacaoCompletaScrum198 };
+module.exports = { executarValidacaoEquipesEDesignacoesSvo };

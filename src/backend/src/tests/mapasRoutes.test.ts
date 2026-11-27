@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
 import { env } from '../config/env';
-import { carregarFase3 } from '../config/fase3';
+import { carregarRecursosOperacionais } from '../config/recursosOperacionais';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
 import { unidadeModel } from '../models/unidadeModel';
@@ -29,8 +29,8 @@ vi.mock('../services/authService', () => ({ authService: { usuarioDoToken: vi.fn
 vi.mock('../models/unidadeModel', () => ({ unidadeModel: { estaAssociadoPorNome: vi.fn() } }));
 
 const token = 'Bearer identificador-sintetico';
-const faseOriginal = env.fase3;
-const configuracao = { FASE3_MAPAS_INTERNOS: 'true', FASE3_MAPAS_SVO: 'true', FASE3_MULTIPLAS_PARADAS: 'true' };
+const faseOriginal = env.recursosOperacionais;
+const configuracao = { MAPAS_INTERNOS_ATIVOS: 'true', MAPAS_SVO_ATIVOS: 'true', MULTIPLAS_PARADAS_ATIVAS: 'true' };
 const http = vi.fn<typeof fetch>();
 let id = 0;
 
@@ -46,7 +46,7 @@ function urlRota(pontos: string[], operacao = 'ADM') {
 
 beforeEach(() => {
   encaminharErroSvo.mockReset();
-  env.fase3 = carregarFase3(configuracao);
+  env.recursosOperacionais = carregarRecursosOperacionais(configuracao);
   autenticarComo(PERFIS.ADMINISTRADOR);
   vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValue(true);
   http.mockReset().mockImplementation(async () => Response.json({ type: 'FeatureCollection', features: [] }));
@@ -55,7 +55,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  env.fase3 = faseOriginal;
+  env.recursosOperacionais = faseOriginal;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -97,7 +97,7 @@ describe('Rotas de mapa no app real com autenticação e provedores simulados', 
   });
 
   it('aplica gates independentes de mapa e mantém portal manual independente', async () => {
-    env.fase3 = carregarFase3({ FASE3_PORTAL_SVO: 'true', FASE3_MAPAS_SVO: 'true' });
+    env.recursosOperacionais = carregarRecursosOperacionais({ PORTAL_SVO_ATIVO: 'true', MAPAS_SVO_ATIVOS: 'true' });
     await request(app).get('/api/mapas/buscar?q=Via+Teste').set('Authorization', token)
       .expect(404).expect(({ body }) => expect(body.codigo).toBe('RECURSO_DESATIVADO'));
     await request(app).get('/api/mapas/buscar?unidade=LACEN&operacao=SVO').set('Authorization', token).expect(200);
@@ -105,7 +105,7 @@ describe('Rotas de mapa no app real com autenticação e provedores simulados', 
   });
 
   it('exige flag de paradas ADM e não a aplica às paradas SVO', async () => {
-    env.fase3 = carregarFase3({ ...configuracao, FASE3_MULTIPLAS_PARADAS: 'false' });
+    env.recursosOperacionais = carregarRecursosOperacionais({ ...configuracao, MULTIPLAS_PARADAS_ATIVAS: 'false' });
     await request(app).get(urlRota(['0,0', '1,1', '2,2'])).set('Authorization', token).expect(404);
     await request(app).get(urlRota(['0,0', '1,1', '2,2'], 'SVO')).set('Authorization', token).expect(200);
     expect(http).toHaveBeenCalledTimes(1);

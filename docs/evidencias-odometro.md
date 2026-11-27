@@ -110,4 +110,4 @@ O [contrato SCRUM-203](scrum-203-contrato-backend.md#6-exceção-sem-foto) descr
 - `evidenciaOdometroArmazenamento.test.ts`: pasta local, chaves perigosas, assinatura do arquivo e variáveis de ambiente.
 - `evidenciaOdometroPostgres.test.ts`: fluxo completo em PostgreSQL descartável, com as fotos opcionais e obrigatórias, foto inválida e expirada, idempotência, permissões por operação, deslocamento SVO compartilhado e retenção de 12 meses.
 
-  Só roda com `SCRUM208_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`, depois de `npm run migrate`.
+  Só roda com `EVIDENCIAS_ODOMETRO_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`, depois de `npm run migrate`.

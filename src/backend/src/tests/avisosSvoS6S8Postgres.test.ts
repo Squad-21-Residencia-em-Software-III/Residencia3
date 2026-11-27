@@ -16,7 +16,7 @@ import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 // SCRUM-235 de ponta a ponta: transições SVO reais por HTTP autenticado (chegada, finalização, pedido e decisão
 // sem foto), publicação na mesma transação e fila de push real com o enviador simulado.
 // Só roda num banco descartável explicitamente identificado, depois de `npm run migrate`.
-const habilitado = process.env.SCRUM235_POSTGRES_TESTS === '1';
+const habilitado = process.env.AVISOS_SVO_COLETA_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(4).toString('hex');
 
 type Perfil = 'ADMINISTRADOR' | 'GESTOR_FROTA' | 'GESTOR_SVO' | 'MOTORISTA_SVO' | 'INTEGRANTE_SVO';

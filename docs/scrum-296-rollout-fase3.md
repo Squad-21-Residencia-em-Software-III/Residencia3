@@ -1,5 +1,7 @@
 # SCRUM-296 · Implantação gradual da Fase 3
 
+> Registro histórico. Consulte o [guia de configuração dos recursos operacionais](configuracao-recursos-operacionais.md) para os nomes e regras vigentes.
+
 ## Configuração
 
 O backend resolve as flags em `src/backend/src/config/fase3.ts`, ao iniciar. Os valores são `true` e `false`. Ausência ou valor vazio equivale a `false`. Um valor inválido fecha o recurso e gera `FASE3_CONFIG_BLOQUEADA` com o nome da variável. O mesmo evento indica dependências ausentes. Alterar o backend exige reinício. A configuração do Vite exige novo build. Os dois exemplos de ambiente documentam todas as chaves.

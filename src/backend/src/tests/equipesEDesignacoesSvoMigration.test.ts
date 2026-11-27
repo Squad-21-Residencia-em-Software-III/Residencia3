@@ -6,14 +6,14 @@ const provisionarModule = require('../../scripts/provisionar-usuario-app.cjs') a
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migrationScrum198 = require('../../database/migrations/20261118113000_scrum_198_equipes_integrantes_designacoes_svo.js') as {
+const migrationEquipesEDesignacoesSvo = require('../../database/migrations/20261118113000_scrum_198_equipes_integrantes_designacoes_svo.js') as {
   up: (knex: unknown) => Promise<void>;
   down: (knex: unknown) => Promise<void>;
   validarCatalogoScrum198: (knex: unknown) => Promise<void>;
 };
 
-describe('Contrato de banco, migration e privilégios da SCRUM-198', () => {
-  function criarKnexScrum198Mock(opcoes?: {
+describe('Contrato de banco, migration e privilégios de equipes e designações SVO', () => {
+  function criarKnexEquipesEDesignacoesSvoMock(opcoes?: {
     nomesVazios?: number;
     nomesDuplicados?: { nome_norm: string; total: number }[];
     tipoVinculadoEm?: string;
@@ -233,60 +233,60 @@ describe('Contrato de banco, migration e privilégios da SCRUM-198', () => {
   }
 
   it('bloqueia up quando existem equipes com nome vazio ou duplicado após normalização', async () => {
-    const comVazio = criarKnexScrum198Mock({ nomesVazios: 1 });
-    await expect(migrationScrum198.up(comVazio.knexMock)).rejects.toThrow(
+    const comVazio = criarKnexEquipesEDesignacoesSvoMock({ nomesVazios: 1 });
+    await expect(migrationEquipesEDesignacoesSvo.up(comVazio.knexMock)).rejects.toThrow(
       /existem registros em equipes_svo com nome_equipe vazio/
     );
 
-    const comDuplicado = criarKnexScrum198Mock({
+    const comDuplicado = criarKnexEquipesEDesignacoesSvoMock({
       nomesDuplicados: [{ nome_norm: 'equipe alfa', total: 2 }],
     });
-    await expect(migrationScrum198.up(comDuplicado.knexMock)).rejects.toThrow(
+    await expect(migrationEquipesEDesignacoesSvo.up(comDuplicado.knexMock)).rejects.toThrow(
       /existem nomes de equipe duplicados apos normalizacao/
     );
   });
 
   it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum198', async () => {
-    const tipoInvalido = criarKnexScrum198Mock({ tipoVinculadoEm: 'text' });
-    await expect(migrationScrum198.validarCatalogoScrum198(tipoInvalido.knexMock)).rejects.toThrow(
+    const tipoInvalido = criarKnexEquipesEDesignacoesSvoMock({ tipoVinculadoEm: 'text' });
+    await expect(migrationEquipesEDesignacoesSvo.validarCatalogoScrum198(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em equipes_svo_integrantes\.vinculado_em/
     );
 
-    const semConstraint = criarKnexScrum198Mock({
+    const semConstraint = criarKnexEquipesEDesignacoesSvoMock({
       omitirConstraint: 'ordens_svo_integrantes.chk_ordens_svo_integrantes_revogacao',
     });
-    await expect(migrationScrum198.validarCatalogoScrum198(semConstraint.knexMock)).rejects.toThrow(
+    await expect(migrationEquipesEDesignacoesSvo.validarCatalogoScrum198(semConstraint.knexMock)).rejects.toThrow(
       /Constraint obrigatoria ausente ou incompativel: ordens_svo_integrantes\.chk_ordens_svo_integrantes_revogacao/
     );
 
-    const semIndice = criarKnexScrum198Mock({
+    const semIndice = criarKnexEquipesEDesignacoesSvoMock({
       omitirIndice: 'uq_ordens_svo_integrantes_ativo',
     });
-    await expect(migrationScrum198.validarCatalogoScrum198(semIndice.knexMock)).rejects.toThrow(
+    await expect(migrationEquipesEDesignacoesSvo.validarCatalogoScrum198(semIndice.knexMock)).rejects.toThrow(
       /Indice obrigatorio ausente ou incompativel: uq_ordens_svo_integrantes_ativo/
     );
   });
 
   it('bloqueia rollback (down) quando há designações, vínculos ou usuários INTEGRANTE_SVO', async () => {
-    const comDesignacoes = criarKnexScrum198Mock({ totalDesignacoes: 2 });
-    await expect(migrationScrum198.down(comDesignacoes.knexMock)).rejects.toThrow(
+    const comDesignacoes = criarKnexEquipesEDesignacoesSvoMock({ totalDesignacoes: 2 });
+    await expect(migrationEquipesEDesignacoesSvo.down(comDesignacoes.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem designacoes registradas em ordens_svo_integrantes/
     );
 
-    const comVinculos = criarKnexScrum198Mock({ totalVinculos: 1 });
-    await expect(migrationScrum198.down(comVinculos.knexMock)).rejects.toThrow(
+    const comVinculos = criarKnexEquipesEDesignacoesSvoMock({ totalVinculos: 1 });
+    await expect(migrationEquipesEDesignacoesSvo.down(comVinculos.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem vinculos registrados em equipes_svo_integrantes/
     );
 
-    const comIntegrantes = criarKnexScrum198Mock({ totalIntegrantes: 1 });
-    await expect(migrationScrum198.down(comIntegrantes.knexMock)).rejects.toThrow(
+    const comIntegrantes = criarKnexEquipesEDesignacoesSvoMock({ totalIntegrantes: 1 });
+    await expect(migrationEquipesEDesignacoesSvo.down(comIntegrantes.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem usuarios com perfil INTEGRANTE_SVO/
     );
   });
 
   it('executa DROP estrito (sem IF EXISTS) no down quando não há dados operacionais', async () => {
-    const limpo = criarKnexScrum198Mock();
-    await migrationScrum198.down(limpo.knexMock);
+    const limpo = criarKnexEquipesEDesignacoesSvoMock();
+    await migrationEquipesEDesignacoesSvo.down(limpo.knexMock);
 
     const ddlDown = limpo.sqlExecutados.find((sql) => sql.includes('DROP TABLE ordens_svo_integrantes'));
     expect(ddlDown).toBeDefined();

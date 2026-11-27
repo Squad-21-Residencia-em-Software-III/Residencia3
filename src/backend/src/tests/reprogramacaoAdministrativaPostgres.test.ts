@@ -10,7 +10,7 @@ import { tipoUsuarioDoPerfil, type Perfil } from '../constants/perfis';
 import * as publicacao from '../services/publicacaoNotificacoes';
 import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
-const habilitado = process.env.SCRUM231_POSTGRES_TESTS === '1';
+const habilitado = process.env.REPROGRAMACAO_ADMINISTRATIVA_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(4).toString('hex');
 interface Conta { id: number; token: string }
 async function conta(perfil: Perfil, ativo = true): Promise<Conta> {

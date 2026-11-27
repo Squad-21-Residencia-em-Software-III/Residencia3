@@ -30,10 +30,10 @@ async function iniciar() {
     notificacoes_ativas: configNotificacoes.ativas,
   }));
 
-  const { invalidas, bloqueadas } = env.fase3.diagnostico;
-  if (invalidas.length || bloqueadas.length) {
+  const { invalidas, conflitantes, bloqueadas } = env.recursosOperacionais.diagnostico;
+  if (invalidas.length || conflitantes.length || bloqueadas.length) {
     console.warn(JSON.stringify({
-      timestamp: new Date().toISOString(), level: 'WARN', evento: 'FASE3_CONFIG_BLOQUEADA', invalidas, bloqueadas,
+      timestamp: new Date().toISOString(), level: 'WARN', evento: 'RECURSOS_OPERACIONAIS_CONFIG_BLOQUEADA', invalidas, conflitantes, bloqueadas,
     }));
   }
 

@@ -14,7 +14,7 @@ Aplicar migration antes do backend novo; não habilitar reprogramação enquanto
 
 ### Evidência de upgrade e regressão
 
-Em 26/11/2026, a migration de `b312680` foi validada em PostgreSQL 17 descartável, com armazenamento em memória e porta publicada em loopback. O [validador](../src/backend/scripts/validar-migration-scrum231.cjs) aplicou o schema anterior, populou uma solicitação aprovada com registro de auditoria e uma viagem com horários reais, e aplicou a migration alvo. Os registros originais permaneceram idênticos e a viagem legada iniciou com versão zero e período planejado nulo.
+Em 26/11/2026, a migration de `b312680` foi validada em PostgreSQL 17 descartável, com armazenamento em memória e porta publicada em loopback. O [validador](../src/backend/scripts/validar-migration-programacao-administrativa.cjs) aplicou o schema anterior, populou uma solicitação aprovada com registro de auditoria e uma viagem com horários reais, e aplicou a migration alvo. Os registros originais permaneceram idênticos e a viagem legada iniciou com versão zero e período planejado nulo.
 
 Uma gravação pelo contrato anterior continuou funcionando com os valores padrão. A role de aplicação obteve apenas leitura e inserção no histórico. Antes do primeiro uso, a reversão removeu o schema aditivo e preservou os registros originais. Depois do uso, a reversão foi recusada tanto com programação persistida quanto com apenas um comando no histórico.
 
