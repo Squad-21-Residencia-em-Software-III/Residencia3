@@ -69,9 +69,11 @@ describe('Infraestrutura da Fase 3', () => {
 
   it('mantém a política de uma viagem admitida e usa as flags atuais para novas viagens', () => {
     const antes = carregarFase3({ FASE3_GPS_OBRIGATORIO: 'true', FASE3_MULTIPLAS_PARADAS: 'true' }).flags;
-    const politicaNaSaida = politicaViagemFase3(antes, { estado: 'nova' });
+    const politicaNaSaida = { ...politicaViagemFase3(antes, { estado: 'nova' }) };
     const depois = carregarFase3({ FASE3_CAPTURA_PERIODICA: 'true' }).flags;
     const politicaAtual = politicaViagemFase3(depois, { estado: 'emAndamento', politicaNaSaida });
+    politicaNaSaida.gpsObrigatorio = false;
+    politicaNaSaida.capturaPeriodica = true;
     expect(Object.isFrozen(politicaAtual)).toBe(true);
     expect(politicaAtual).toMatchObject({
       gpsObrigatorio: true, multiplasParadas: true, capturaPeriodica: false,
