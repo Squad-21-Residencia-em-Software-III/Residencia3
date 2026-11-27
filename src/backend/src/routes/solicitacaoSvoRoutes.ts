@@ -1,10 +1,16 @@
 import { Router } from 'express';
 import { PERFIS } from '../constants/perfis';
+import { acompanhamentoExternoSvoController } from '../controllers/acompanhamentoExternoSvoController';
 import { solicitacaoSvoController } from '../controllers/solicitacaoSvoController';
 import { autenticar } from '../middlewares/autenticar';
 import { autorizar, exigirAssociacaoSvo } from '../middlewares/autorizar';
+import { acompanhamentoExternoSvoRoutes } from './acompanhamentoExternoSvoRoutes';
 
 export const solicitacaoSvoRoutes = Router();
+
+// Rotas publicas do portal SVO para acompanhamento externo por credencial secreta (SCRUM-266).
+// Montadas antes de autenticar e antes de /:id para nunca colidir com rotas internas nem exigir JWT.
+solicitacaoSvoRoutes.use('/externas', acompanhamentoExternoSvoRoutes);
 
 // Registro e triagem das solicitações da população (RF19/RF20)
 solicitacaoSvoRoutes.use(autenticar);
@@ -17,3 +23,8 @@ solicitacaoSvoRoutes.post('/', solicitacaoSvoController.registrar);
 solicitacaoSvoRoutes.patch('/:id/confirmar', solicitacaoSvoController.confirmar);
 // Recusa da solicitação em triagem com justificativa obrigatória (RF20)
 solicitacaoSvoRoutes.patch('/:id/recusar', solicitacaoSvoController.recusar);
+// Revogação explícita da credencial externa de acompanhamento (SCRUM-266)
+solicitacaoSvoRoutes.post(
+  '/:id/credencial-externa/revogar',
+  acompanhamentoExternoSvoController.revogarCredencial
+);
