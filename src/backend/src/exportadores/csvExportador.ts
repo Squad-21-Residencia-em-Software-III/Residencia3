@@ -22,7 +22,7 @@ export function gerarCsv(tabela: TabelaExportavel): Buffer {
 
   for (const linha of tabela.linhas) {
     const celulas = tabela.colunas.map((coluna) => {
-      const texto = valorComoTexto(linha[coluna.chave], coluna.tipo).replace(CONTROLE_INVALIDO, '');
+      const texto = valorComoTexto(linha[coluna.chave], coluna.tipo, coluna.casasDecimaisCsv).replace(CONTROLE_INVALIDO, '');
       // Só colunas de texto livre recebem a neutralização: números negativos continuam numéricos
       const seguro = coluna.tipo === 'texto' && INICIO_DE_FORMULA.test(texto) ? `'${texto}` : texto;
       return escaparCelula(seguro);
