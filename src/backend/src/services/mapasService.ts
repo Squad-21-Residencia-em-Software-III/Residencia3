@@ -178,29 +178,28 @@ export function criarMapasService(config: ConfiguracaoMapa) {
       });
     }
     return comCache('buscar', [query.cep, query.q?.toLocaleLowerCase('pt-BR')], solicitante, async (sinal) => {
+      let enderecoSemCoordenadas: EnderecoMapa | undefined;
       try {
         if (!query.cep) {
           return { resultados: normalizarPhoton(await provedores.texto(query.q!, sinal)), degradado: false };
         }
         const endereco = await provedores.viaCep(query.cep, sinal);
         if ('erro' in endereco) return { resultados: [], degradado: false };
-        const estruturado = await provedores.estruturado(endereco, sinal);
         const estado = endereco.estado || endereco.uf;
-        const candidatos = estruturado.features.length > 0 ? estruturado : await provedores.texto(
-          [endereco.logradouro, endereco.bairro, endereco.localidade, estado, endereco.cep].filter(Boolean).join(', '), sinal,
-        );
-        const resultados = normalizarPhoton(candidatos);
-        return {
-          resultados: resultados.length > 0 ? resultados : [{
-            fonte: 'viaCEP', logradouro: endereco.logradouro || null, numero: null, bairro: endereco.bairro || null,
-            municipio: endereco.localidade, estado, cep: endereco.cep, coordenadas: null, foraDeSergipe: foraDeSergipe(estado),
-          }],
-          degradado: false,
+        enderecoSemCoordenadas = {
+          fonte: 'viaCEP', logradouro: endereco.logradouro || null, numero: null, bairro: endereco.bairro || null,
+          municipio: endereco.localidade, estado, cep: endereco.cep, coordenadas: null, foraDeSergipe: foraDeSergipe(estado),
         };
+        const estruturado = normalizarPhoton(await provedores.estruturado(endereco, sinal));
+        if (estruturado.length > 0) return { resultados: estruturado, degradado: false };
+        const resultados = normalizarPhoton(await provedores.texto(
+          [endereco.logradouro, endereco.bairro, endereco.localidade, estado, endereco.cep].filter(Boolean).join(', '), sinal,
+        ));
+        if (resultados.length > 0) return { resultados, degradado: false };
       } catch (erro) {
         if (!(erro instanceof FalhaProvedor)) throw erro;
-        return { resultados: [], degradado: true };
       }
+      return { resultados: enderecoSemCoordenadas ? [enderecoSemCoordenadas] : [], degradado: true };
     });
   }
 

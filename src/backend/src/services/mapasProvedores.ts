@@ -120,7 +120,7 @@ export function criarProvedoresMapa(http: typeof fetch, registrar: RegistrarMetr
   const ultimasChamadas: Record<Provedor, number[]> = { osrm: [], photon: [], viacep: [] };
   const consultasPorMinuto = { osrm: 30, photon: 60, viacep: 30 };
   const bloqueadoAte: Partial<Record<Provedor, number>> = {};
-  const vies = { lat: '-10.91', lon: '-37.07', zoom: '10', countrycode: 'BR' };
+  const vies = { lat: '-10.9472', lon: '-37.0731', zoom: '10', countrycode: 'BR' };
   async function consultar<T>(provedor: Provedor, caminho: string, params: Record<string, string>,
     schema: z.ZodType<T>, sinalOperacao: AbortSignal): Promise<T> {
     const inicio = performance.now();

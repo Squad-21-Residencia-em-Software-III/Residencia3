@@ -41,7 +41,8 @@ describe('Proxy cartográfico com upstream simulado', () => {
     expect(estruturado?.pathname).toBe('/structured');
     expect(estruturado?.searchParams.get('street')).toBe('Praça da Sé');
     expect(estruturado?.searchParams.get('countrycode')).toBe('BR');
-    expect(estruturado?.searchParams.get('lat')).toBe('-10.91');
+    expect(estruturado?.searchParams.get('lat')).toBe('-10.9472');
+    expect(estruturado?.searchParams.get('lon')).toBe('-37.0731');
     expect(estruturado?.searchParams.has('bbox')).toBe(false);
   });
 
@@ -51,8 +52,21 @@ describe('Proxy cartográfico com upstream simulado', () => {
       .mockResolvedValueOnce(json(vazio)).mockResolvedValueOnce(json(vazio));
     expect(await service.buscar(buscarMapaSchema.parse({ cep: '99999999' }), agora())).toEqual({ resultados: [], degradado: false });
     const resultado = await service.buscar(buscarMapaSchema.parse({ cep: '01001000' }), agora());
+    expect(resultado.degradado).toBe(true);
     expect(resultado.resultados[0]).toMatchObject({ fonte: 'viaCEP', coordenadas: null, cep: '01001-000' });
     expect((http.mock.calls[3]?.[0] as URL).pathname).toBe('/api');
+  });
+
+  it.each([429, 502, 200])('preserva todos os campos ViaCEP em falha Photon HTTP %i e não guarda a resposta', async (status) => {
+    const { http, service } = configurar();
+    http.mockResolvedValueOnce(json(cep)).mockResolvedValueOnce(json({}, status)).mockResolvedValueOnce(json(cep));
+    const consulta = buscarMapaSchema.parse({ cep: '01001000' });
+    expect(await service.buscar(consulta, agora())).toEqual({ degradado: true, resultados: [{
+      fonte: 'viaCEP', logradouro: 'Praça da Sé', numero: null, bairro: 'Sé', municipio: 'São Paulo',
+      estado: 'São Paulo', cep: '01001-000', coordenadas: null, foraDeSergipe: true,
+    }] });
+    await service.buscar(consulta, agora());
+    expect(http.mock.calls[2]?.[0]).toMatchObject({ hostname: 'viacep.com.br' });
   });
 
   it('resolve atalhos antes de provedores e aguarda coordenadas oficiais da SCRUM-274', async () => {
@@ -241,9 +255,11 @@ describe('Proxy cartográfico com upstream simulado', () => {
 
   it('cancela chamada individual após 3,5 s com orçamento global superior', async () => {
     const { http, service, registrar } = configurar();
-    http.mockImplementation(esperarAbort);
+    http.mockResolvedValueOnce(json(cep)).mockImplementationOnce(esperarAbort);
     const inicio = performance.now();
-    await expect(service.buscar(buscar('Via Teste'), agora())).resolves.toEqual({ degradado: true, resultados: [] });
+    await expect(service.buscar(buscarMapaSchema.parse({ cep: '01001000' }), agora())).resolves.toMatchObject({
+      degradado: true, resultados: [{ fonte: 'viaCEP', coordenadas: null }],
+    });
     expect(performance.now() - inicio).toBeGreaterThanOrEqual(3400);
     expect(registrar).toHaveBeenCalledWith(expect.objectContaining({ provedor: 'photon', resultado: 'timeout' }));
     expect(registrar).not.toHaveBeenCalledWith(expect.objectContaining({ evento: 'mapas_orcamento' }));
@@ -257,7 +273,7 @@ describe('Proxy cartográfico com upstream simulado', () => {
     }).mockImplementationOnce(esperarAbort);
     const inicio = performance.now();
     await expect(service.buscar(buscarMapaSchema.parse({ cep: '01001000' }), agora()))
-      .resolves.toEqual({ degradado: true, resultados: [] });
+      .resolves.toMatchObject({ degradado: true, resultados: [{ fonte: 'viaCEP', coordenadas: null }] });
     expect(performance.now() - inicio).toBeLessThan(1200);
     expect(http).toHaveBeenCalledTimes(2);
     expect(http.mock.calls[1]?.[1]?.signal?.aborted).toBe(true);

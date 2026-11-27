@@ -4,7 +4,7 @@ Base `/api/mapas`. As três operações usam GET, sessão Bearer ativa e `Cache-
 
 ## Parâmetros e permissões
 
-`operacao` é `ADM` (padrão) ou `SVO`. ADM exige `FASE3_MAPAS_INTERNOS`. SVO exige `FASE3_MAPAS_SVO`. Em SVO, administrador e gestor associado à unidade SVO podem usar as três rotas. Em ADM, administrador, gestor de Frota, gestor SVO e solicitante podem buscar e consultar reverso. A rota ADM fica com administrador e gestor de Frota. O proxy recebe pontos e endereços, sem acesso a registros de ocorrências ou autorização para alterá-los.
+`operacao` é `ADM` (padrão) ou `SVO`. ADM exige `FASE3_MAPAS_INTERNOS`. SVO exige `FASE3_MAPAS_SVO`. Em SVO, administrador e gestor associado à unidade SVO podem usar as três rotas. Em ADM, administrador, gestor de Frota, gestor SVO e solicitante podem buscar, consultar reverso e calcular rotas conforme os perfis de criação ADM da matriz de acesso. A associação do gestor à unidade SVO é exigida nas chamadas SVO. O proxy recebe pontos e endereços, sem acesso a registros de ocorrências ou autorização para alterá-los.
 
 | Caminho | Parâmetros | Exemplo sintético |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ Base `/api/mapas`. As três operações usam GET, sessão Bearer ativa e `Cache-
 
 O teto técnico de 50 também protege SVO e limita a carga enviada ao serviço de demonstração. A sequência SVO não herda a regra administrativa de oito paradas. O provedor pode recusar uma sequência antes desse teto. Qualquer necessidade operacional maior exige acordo de capacidade antes da ativação.
 
-A busca textual faz normalização Unicode, remove espaços nas extremidades e unifica espaços consecutivos. Para CEP válido e existente, consulta ViaCEP e envia os campos necessários ao Photon estruturado. Sem candidatos estruturados, tenta texto com os campos do ViaCEP. Sem geocodificação após ambas as tentativas válidas, retorna endereço ViaCEP com coordenadas nulas. Busca por CEP inexistente retorna lista vazia. O viés favorece Aracaju/Sergipe mantendo resultados no restante do Brasil. O frontend deve permitir confirmação consciente quando `foraDeSergipe=true` e pedir confirmação de UF quando desconhecida. A propriedade é informativa e nunca altera a autorização.
+A busca textual faz normalização Unicode, remove espaços nas extremidades e unifica espaços consecutivos. Para CEP válido e existente, consulta ViaCEP e envia os campos necessários ao Photon estruturado. Sem candidatos estruturados, tenta texto com os campos do ViaCEP. Sem geocodificação após ambas as tentativas válidas, retorna endereço ViaCEP com coordenadas nulas. Busca por CEP inexistente retorna lista vazia. O viés usa a referência aproximada de Aracaju (-10.9472, -37.0731) e mantém resultados no restante do Brasil. Coordenadas institucionais verificadas dependem da SCRUM-274. O frontend deve permitir confirmação consciente quando `foraDeSergipe=true` e pedir confirmação de UF quando desconhecida. A propriedade é informativa e nunca altera a autorização.
 
 Os aliases consultam a fonte interna antes dos provedores e retornam uma lista vazia até o adaptador da SCRUM-274 fornecer a localização institucional verificada. O contrato do adaptador aceita apenas a unidade enumerada e um `AbortSignal`. Nenhuma coordenada de unidade foi cadastrada aqui.
 
@@ -39,7 +39,7 @@ As definições TypeScript ficam em `src/backend/src/services/mapasService.ts`.
 }
 ```
 
-`fonte` pode ser `photon`, `viaCEP` ou `unidade`. Campos de texto, coordenadas e indicação de UF podem ser nulos. Um candidato é uma sugestão que o usuário deve conferir. A ausência de resultados normal retorna `200 { "resultados": [], "degradado": false }`. Em falha externa de busca, o contrato é `200 { "resultados": [], "degradado": true }`. Em ambos os casos, o cliente permite endereço manual. Uma falha externa no reverso retorna 503.
+`fonte` pode ser `photon`, `viaCEP` ou `unidade`. Campos de texto, coordenadas e indicação de UF podem ser nulos. Um candidato é uma sugestão que o usuário deve conferir. A ausência de resultados normal retorna `200 { "resultados": [], "degradado": false }`. Após ViaCEP válido, falha do Photon (timeout, 429, 5xx, resposta inválida, falha de rede ou orçamento total) ou ausência de candidatos válidos retorna o endereço ViaCEP com coordenadas nulas e degradado: true. Em falha externa sem endereço válido, o contrato é `200 { "resultados": [], "degradado": true }`. O cliente permite completar manualmente o endereço ou informar um novo. Cancelar a requisição encerra a espera daquele cliente. Uma falha externa no reverso retorna 503.
 
 ```json
 {

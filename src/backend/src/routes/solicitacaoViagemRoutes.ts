@@ -3,7 +3,7 @@ import { solicitacaoViagemController } from '../controllers/solicitacaoViagemCon
 import { disponibilidadeController } from '../controllers/disponibilidadeController';
 import { autenticar } from '../middlewares/autenticar';
 import { autorizar } from '../middlewares/autorizar';
-import { PERFIS } from '../constants/perfis';
+import { PERFIS, PERFIS_SOLICITANTES } from '../constants/perfis';
 
 export const solicitacaoViagemRoutes = Router();
 
@@ -13,10 +13,6 @@ solicitacaoViagemRoutes.use(autenticar);
 // Perfis autorizados a listar e analisar solicitações de viagem administrativas
 // GESTOR_SVO acompanha apenas suas próprias solicitações em /minhas
 const ANALISTAS_ADMINISTRATIVOS = [PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA];
-
-// Registram solicitações (RF11): o Usuário Institucional e os gestores/administrador, que também
-// pedem viagens para a própria unidade. Motoristas executam viagens, não as solicitam.
-const PERFIS_SOLICITANTES = [PERFIS.ADMINISTRADOR, PERFIS.SOLICITANTE, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO];
 
 // Lista as solicitações administrativas encaminhadas para análise
 solicitacaoViagemRoutes.get(

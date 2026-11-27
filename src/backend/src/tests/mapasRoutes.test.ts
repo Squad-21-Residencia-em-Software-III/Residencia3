@@ -10,6 +10,21 @@ import type { Usuario } from '../models/usuarioModel';
 import { LIMITE_MAPAS_POR_USUARIO_POR_MINUTO } from '../routes/mapasRoutes';
 import { authService } from '../services/authService';
 
+const { encaminharErroSvo } = vi.hoisted(() => ({ encaminharErroSvo: vi.fn<() => Error | undefined>() }));
+vi.mock('../middlewares/autorizar', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../middlewares/autorizar')>();
+  return {
+    ...original,
+    exigirAssociacaoSvo: async (...args: Parameters<typeof original.exigirAssociacaoSvo>) => {
+      const erro = encaminharErroSvo();
+      if (erro) {
+        args[2](erro);
+        return;
+      }
+      await original.exigirAssociacaoSvo(...args);
+    },
+  };
+});
 vi.mock('../services/authService', () => ({ authService: { usuarioDoToken: vi.fn() } }));
 vi.mock('../models/unidadeModel', () => ({ unidadeModel: { estaAssociadoPorNome: vi.fn() } }));
 
@@ -30,6 +45,7 @@ function urlRota(pontos: string[], operacao = 'ADM') {
 }
 
 beforeEach(() => {
+  encaminharErroSvo.mockReset();
   env.fase3 = carregarFase3(configuracao);
   autenticarComo(PERFIS.ADMINISTRADOR);
   vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValue(true);
@@ -59,7 +75,27 @@ describe('Rotas de mapa no app real com autenticação e provedores simulados', 
     vi.mocked(unidadeModel.estaAssociadoPorNome).mockResolvedValue(false);
     await request(app).get('/api/mapas/reverso?lat=0&lon=0&operacao=SVO').set('Authorization', token).expect(403);
     autenticarComo(PERFIS.SOLICITANTE);
+    await request(app).get(urlRota(['0,0', '1,1'], 'SVO')).set('Authorization', token).expect(403);
+    autenticarComo(PERFIS.MOTORISTA_SVO);
     await request(app).get(urlRota(['0,0', '1,1'])).set('Authorization', token).expect(403);
+    expect(http).not.toHaveBeenCalled();
+  });
+
+  it.each([PERFIS.ADMINISTRADOR, PERFIS.GESTOR_FROTA, PERFIS.SOLICITANTE, PERFIS.GESTOR_SVO])(
+    'permite calcular rota ADM ao perfil %s sem conceder associação SVO', async (perfil) => {
+      autenticarComo(perfil);
+      vi.mocked(unidadeModel.estaAssociadoPorNome).mockClear().mockResolvedValue(false);
+      await request(app).get(urlRota(['0,0', '1,1', '2,2', '3,3'])).set('Authorization', token).expect(200);
+      expect(unidadeModel.estaAssociadoPorNome).not.toHaveBeenCalled();
+    },
+  );
+
+  it('encaminha next(erro) da associação SVO uma vez e interrompe a rota', async () => {
+    encaminharErroSvo.mockReturnValue(new AppError('Associação indisponível', 503, 'ASSOCIACAO_INDISPONIVEL'));
+    autenticarComo(PERFIS.GESTOR_SVO);
+    await request(app).get(urlRota(['0,0', '1,1'], 'SVO')).set('Authorization', token)
+      .expect(503).expect(({ body }) => expect(body.codigo).toBe('ASSOCIACAO_INDISPONIVEL'));
+    expect(encaminharErroSvo).toHaveBeenCalledTimes(1);
     expect(http).not.toHaveBeenCalled();
   });
 
