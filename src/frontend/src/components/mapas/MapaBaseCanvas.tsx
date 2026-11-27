@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import Map, { Marker, NavigationControl } from 'react-map-gl/maplibre';
+import { setWorkerUrl } from 'maplibre-gl';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   ATRIBUICOES_MAPA,
@@ -10,6 +12,11 @@ import {
   type TemaMapa,
   type VisaoInicialMapa,
 } from '../../config/mapas';
+
+// O Vite publica o worker e suas dependências junto aos chunks do build.
+setWorkerUrl(workerUrl);
+
+export const LIMITE_CARREGAMENTO_MAPA_MS = 12_000;
 
 export interface MarcadorMapaPadrao extends CoordenadaMapa {
   titulo?: string;
@@ -38,6 +45,17 @@ export default function MapaBaseCanvas({
   const longitude = centroInicial?.longitude ?? marcadorPadrao?.longitude ?? CENTRO_PADRAO_SERGIPE.longitude;
   const zoom = centroInicial?.zoom ?? CENTRO_PADRAO_SERGIPE.zoom;
   const estiloMapa = obterEstiloMapa(tema);
+  const carregamento = useRef({ abriu: false, recebeuTile: false });
+  const aoFalhar = useRef(onErroCarregamento);
+
+  useEffect(() => { aoFalhar.current = onErroCarregamento; }, [onErroCarregamento]);
+  useEffect(() => {
+    const prazo = window.setTimeout(() => {
+      const { abriu, recebeuTile } = carregamento.current;
+      if (!abriu || !recebeuTile) aoFalhar.current?.();
+    }, LIMITE_CARREGAMENTO_MAPA_MS);
+    return () => window.clearTimeout(prazo);
+  }, []);
 
   return (
     <div
@@ -51,7 +69,17 @@ export default function MapaBaseCanvas({
         mapStyle={estiloMapa}
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}
-        onError={() => onErroCarregamento?.()}
+        onLoad={() => { carregamento.current.abriu = true; }}
+        onSourceData={(evento) => {
+          if (evento.tile && (evento.source?.type === 'vector' || evento.source?.type === 'raster')) {
+            carregamento.current.recebeuTile = true;
+          }
+        }}
+        onError={(evento) => {
+          // react-map-gl informa target nulo quando a instância não pôde ser criada.
+          // Erros com mapa existente podem ser de um único tile. O prazo verifica a renderização inicial.
+          if (!evento.target) onErroCarregamento?.();
+        }}
       >
         <NavigationControl position="top-right" showCompass={false} />
 
@@ -74,7 +102,7 @@ export default function MapaBaseCanvas({
       </Map>
 
       <div
-        className="pointer-events-auto absolute right-2 bottom-2 z-10 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-white/90 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur-xs"
+        className="pointer-events-auto absolute right-2 bottom-2 z-10 max-w-[calc(100%-1rem)] flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-white/90 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur-xs"
         aria-label="Atribuições cartográficas"
       >
         {ATRIBUICOES_MAPA.map((item, indice) => (

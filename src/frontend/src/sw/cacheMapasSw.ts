@@ -11,9 +11,9 @@ export const ORCAMENTO_CACHE_MAPAS = {
   limparAoExcederCota: true,
 } as const;
 
-const PREFIXOS_ESTILO = ['/styles/', '/planet', '/backup_planet'] as const;
-const PREFIXOS_RECURSO = ['/sprites/', '/fonts/', '/natural_earth/'] as const;
-const EXTENSOES_TILE = ['.pbf', '.mvt', '.png', '.webp'] as const;
+const CAMINHO_TILES = /^\/(?:planet|backup_planet|natural_earth)\/.+\.(?:pbf|mvt|png|webp)$/;
+const CAMINHO_SPRITES = /^\/sprites\/.+\.(?:json|png|webp)$/;
+const CAMINHO_GLYPHS = /^\/fonts\/.+\.pbf$/;
 
 function ehGetNaOrigemAutorizada(url: URL, method = 'GET'): boolean {
   if (method.toUpperCase() !== 'GET') return false;
@@ -38,17 +38,6 @@ export function ehRequisicaoEstiloMapa(url: URL, method = 'GET'): boolean {
  */
 export function ehRequisicaoRecursoMapa(url: URL, method = 'GET'): boolean {
   if (!ehGetNaOrigemAutorizada(url, method)) return false;
-  if (ehRequisicaoEstiloMapa(url, method)) return false;
-
   const { pathname } = url;
-  if (PREFIXOS_RECURSO.some((prefixo) => pathname.startsWith(prefixo))) {
-    return true;
-  }
-
-  const normalizado = pathname.toLowerCase();
-  if (PREFIXOS_ESTILO.some((prefixo) => pathname.startsWith(`${prefixo}/`))) {
-    return EXTENSOES_TILE.some((ext) => normalizado.endsWith(ext));
-  }
-
-  return EXTENSOES_TILE.some((ext) => normalizado.endsWith(ext));
+  return CAMINHO_TILES.test(pathname) || CAMINHO_SPRITES.test(pathname) || CAMINHO_GLYPHS.test(pathname);
 }

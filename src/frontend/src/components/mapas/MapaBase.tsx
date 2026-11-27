@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useMemo, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, Suspense, lazy, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { verificarSuporteWebgl } from '../../utils/suporteWebgl';
 import type { MapaBaseCanvasProps } from './MapaBaseCanvas';
 
@@ -46,13 +46,25 @@ export function MapaBase({
   altura = '320px',
   ...propsCanvas
 }: MapaBaseProps) {
-  const webglDisponivel = useMemo(() => verificarSuporteWebgl(), []);
+  const [webglDisponivel, setWebglDisponivel] = useState<boolean>();
   const [erroMapa, setErroMapa] = useState(false);
+  const suporteVerificado = useRef(false);
+  const motivoComunicado = useRef(false);
+  const motivo = webglDisponivel === false ? 'webgl' : erroMapa ? 'erro' : undefined;
 
-  const acionarErro = () => {
-    setErroMapa(true);
-    onIndisponivel?.('erro');
-  };
+  useEffect(() => {
+    if (suporteVerificado.current) return;
+    suporteVerificado.current = true;
+    setWebglDisponivel(verificarSuporteWebgl());
+  }, []);
+
+  useEffect(() => {
+    if (!motivo || !onIndisponivel || motivoComunicado.current) return;
+    motivoComunicado.current = true;
+    onIndisponivel(motivo);
+  }, [motivo, onIndisponivel]);
+
+  const acionarErro = () => setErroMapa(true);
 
   const conteudoFallback = fallback ?? (
     <div
@@ -66,24 +78,26 @@ export function MapaBase({
     </div>
   );
 
-  if (!webglDisponivel || erroMapa) {
+  if (motivo) {
     return <>{conteudoFallback}</>;
   }
 
+  const carregando = (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-sm text-slate-600"
+      style={{ height: altura }}
+    >
+      Carregando mapa...
+    </div>
+  );
+
+  if (webglDisponivel === undefined) return carregando;
+
   return (
     <LimiteErroMapa onErro={acionarErro} fallback={conteudoFallback}>
-      <Suspense
-        fallback={
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-sm text-slate-600"
-            style={{ height: altura }}
-          >
-            Carregando mapa...
-          </div>
-        }
-      >
+      <Suspense fallback={carregando}>
         <MapaBaseCanvasLazy
           {...propsCanvas}
           altura={altura}

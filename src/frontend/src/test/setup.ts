@@ -21,20 +21,34 @@ vi.mock('react-map-gl/maplibre', async () => {
       children,
       mapStyle,
       onError,
+      onLoad,
+      onSourceData,
     }: {
       children?: React.ReactNode
       mapStyle?: string
       onError?: (e: unknown) => void
+      onLoad?: () => void
+      onSourceData?: (e: unknown) => void
     }) =>
       React.createElement(
         'div',
         {
           'data-testid': 'mock-maplibre',
           'data-map-style': typeof mapStyle === 'string' ? mapStyle : '',
-          onClick: () => undefined,
-          'data-has-error-handler': Boolean(onError),
+          onClick: (evento: React.MouseEvent) => {
+            const acao = (evento.target as HTMLElement).dataset.acao
+            if (acao === 'tile') onError?.({ target: {}, tile: {} })
+            if (acao === 'fatal') onError?.({ target: null })
+            if (acao === 'carregou') {
+              onSourceData?.({ source: { type: 'vector' }, tile: {} })
+              onLoad?.()
+            }
+          },
         },
         children,
+        React.createElement('button', { 'data-acao': 'tile' }, 'Falhar tile'),
+        React.createElement('button', { 'data-acao': 'fatal' }, 'Falhar inicialização'),
+        React.createElement('button', { 'data-acao': 'carregou' }, 'Carregar mapa e tile'),
       ),
     Marker: ({
       children,

@@ -52,6 +52,8 @@ describe('cacheMapasSw', () => {
       { url: 'https://frota.fsph.se.gov.br/api/viagens', method: 'GET' },
       { url: 'https://tile.openstreetmap.org/12/1630/2170.png', method: 'GET' },
       { url: 'https://maps.googleapis.com/maps/api/js', method: 'GET' },
+      { url: ORIGEM_MAPAS_SW + '/qualquer/imagem.png', method: 'GET' },
+      { url: ORIGEM_MAPAS_SW + '/fonts/index.json', method: 'GET' },
       { url: `${ORIGEM_MAPAS_SW}/styles/liberty`, method: 'POST' },
       { url: `${ORIGEM_MAPAS_SW}/api/interno`, method: 'GET' },
     ];

@@ -1,24 +1,16 @@
 /**
- * Detecta de forma segura se o navegador atual suporta criação de contexto WebGL.
- * Libera o contexto imediatamente após o teste para não consumir slots da GPU.
+ * Verifica se o navegador pode criar o contexto WebGL 2 exigido pelo MapLibre.
+ * Libera o contexto de teste após a detecção.
  */
 export function verificarSuporteWebgl(): boolean {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return false;
-  }
+  if (typeof document === 'undefined') return false;
 
   try {
     const canvas = document.createElement('canvas');
-    const contexto =
-      canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: false }) ??
-      canvas.getContext('webgl', { failIfMajorPerformanceCaveat: false }) ??
-      canvas.getContext('experimental-webgl');
-
+    const contexto = canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: false });
     if (!contexto) return false;
 
-    const webgl = contexto as WebGLRenderingContext;
-    const ext = typeof webgl.getExtension === 'function' ? webgl.getExtension('WEBGL_lose_context') : null;
-    ext?.loseContext();
+    contexto.getExtension('WEBGL_lose_context')?.loseContext();
     return true;
   } catch {
     return false;

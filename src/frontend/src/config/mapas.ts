@@ -19,8 +19,9 @@ export const ESTILO_MAPA_LIBERTY_URL = `${ORIGEM_MAPA_AUTORIZADA}/styles/liberty
 export const PIN_FSPH_URL = '/assets/FSPH_PIN.png';
 
 export const CENTRO_PADRAO_SERGIPE: VisaoInicialMapa = {
-  latitude: -10.9111,
-  longitude: -37.0717,
+  // Referência aproximada de Aracaju.
+  latitude: -10.9472,
+  longitude: -37.0731,
   zoom: 12,
 };
 
@@ -33,6 +34,7 @@ export const LIMITES_SERGIPE = {
 
 export const ATRIBUICOES_MAPA: readonly AtribuicaoMapa[] = [
   { nome: 'OpenFreeMap', url: 'https://openfreemap.org/' },
+  { nome: 'OpenMapTiles', url: 'https://openmaptiles.org/' },
   { nome: 'OpenStreetMap', url: 'https://www.openstreetmap.org/copyright' },
   { nome: 'Corrigir mapa', url: 'https://www.openstreetmap.org/fixthemap' },
   { nome: 'FOSSGIS/OSRM', url: 'https://routing.openstreetmap.de/about.html' },
