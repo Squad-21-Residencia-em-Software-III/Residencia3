@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
 const knexConfig = require('../knexfile');
-const migrationScrum210 = require('../database/migrations/20261118121000_scrum_210_evidencias_odometro_e_deslocamentos_svo');
+const migrationEvidenciasOdometroEDeslocamentosSvo = require('../database/migrations/20261118121000_scrum_210_evidencias_odometro_e_deslocamentos_svo');
 const {
   inspecionarEstadoRole,
   validarEstadoMinimoPrivilegio,
@@ -20,7 +20,7 @@ async function esperarErroSql(trx, codigoEsperado, acao) {
   }
 }
 
-async function criarBaseIsoladaScrum210(trx, schema) {
+async function criarBaseIsoladaEvidenciasOdometroEDeslocamentosSvo(trx, schema) {
   await trx.raw('CREATE SCHEMA ??', [schema]);
   await trx.raw('SET LOCAL search_path TO ??', [schema]);
 
@@ -124,7 +124,7 @@ async function criarBaseIsoladaScrum210(trx, schema) {
   `);
 }
 
-async function executarValidacaoCompletaScrum210() {
+async function executarValidacaoEvidenciasOdometroEDeslocamentosSvo() {
   const configMigration = knexConfig.criarConfigKnex({
     ...process.env,
     DB_ROLE: 'migration',
@@ -137,7 +137,7 @@ async function executarValidacaoCompletaScrum210() {
     const schemaIncomp = `val210_inc_${Date.now()}`;
     await db
       .transaction(async (trx) => {
-        await criarBaseIsoladaScrum210(trx, schemaIncomp);
+        await criarBaseIsoladaEvidenciasOdometroEDeslocamentosSvo(trx, schemaIncomp);
         await trx.raw(`
           CREATE TABLE deslocamentos_svo (
             id SERIAL PRIMARY KEY,
@@ -147,7 +147,7 @@ async function executarValidacaoCompletaScrum210() {
 
         let bloqueouIncompativel = false;
         try {
-          await migrationScrum210.up(trx);
+          await migrationEvidenciasOdometroEDeslocamentosSvo.up(trx);
         } catch (e) {
           bloqueouIncompativel = /Estrutura incompativel em deslocamentos_svo/i.test(e.message);
         }
@@ -167,9 +167,9 @@ async function executarValidacaoCompletaScrum210() {
     const schemaCiclo = `val210_ciclo_${Date.now()}`;
     await db
       .transaction(async (trx) => {
-        await criarBaseIsoladaScrum210(trx, schemaCiclo);
-        await migrationScrum210.up(trx);
-        relatorio.push('2. Aplicacao limpa da migration SCRUM-210 (up) e validacao de catalogo: OK');
+        await criarBaseIsoladaEvidenciasOdometroEDeslocamentosSvo(trx, schemaCiclo);
+        await migrationEvidenciasOdometroEDeslocamentosSvo.up(trx);
+        relatorio.push('2. Aplicacao limpa da migration evidencias odometro e deslocamentos svo (up) e validacao de catalogo: OK');
 
         // 2.1 Cria deslocamento fisico compartilhado SVO (id=1) englobando ordens_svo id=1 e id=2
         const [deslocamento] = await trx('deslocamentos_svo')
@@ -543,7 +543,7 @@ async function executarValidacaoCompletaScrum210() {
         // 2.6 Protecao contra rollback destrutivo (evidencias -> vinculos de ordens -> deslocamentos)
         let bloqueouDownEvidencias = false;
         try {
-          await migrationScrum210.down(trx);
+          await migrationEvidenciasOdometroEDeslocamentosSvo.down(trx);
         } catch (e) {
           bloqueouDownEvidencias = /existem registros em evidencias_odometro/i.test(e.message);
         }
@@ -551,7 +551,7 @@ async function executarValidacaoCompletaScrum210() {
 
         let bloqueouDownVinculos = false;
         try {
-          await migrationScrum210.down(trx);
+          await migrationEvidenciasOdometroEDeslocamentosSvo.down(trx);
         } catch (e) {
           bloqueouDownVinculos = /existem vinculos registrados em deslocamentos_svo_ordens/i.test(
             e.message
@@ -561,7 +561,7 @@ async function executarValidacaoCompletaScrum210() {
 
         let bloqueouDownDeslocamentos = false;
         try {
-          await migrationScrum210.down(trx);
+          await migrationEvidenciasOdometroEDeslocamentosSvo.down(trx);
         } catch (e) {
           bloqueouDownDeslocamentos = /existem deslocamentos registrados em deslocamentos_svo/i.test(
             e.message
@@ -570,14 +570,14 @@ async function executarValidacaoCompletaScrum210() {
         await trx('deslocamentos_svo').del();
 
         if (!bloqueouDownEvidencias || !bloqueouDownVinculos || !bloqueouDownDeslocamentos) {
-          throw new Error('Falha na protecao contra rollback destrutivo da SCRUM-210.');
+          throw new Error('Falha na protecao contra rollback destrutivo da evidencias odometro e deslocamentos svo.');
         }
         relatorio.push(
           '7. Protecao contra rollback destrutivo (evidencias_odometro, deslocamentos_svo_ordens e deslocamentos_svo): OK'
         );
 
         // 2.7 Rollback limpo (down) e reaplicacao (up)
-        await migrationScrum210.down(trx);
+        await migrationEvidenciasOdometroEDeslocamentosSvo.down(trx);
         const { rows: restantes } = await trx.raw(
           `SELECT table_name
            FROM information_schema.tables
@@ -586,10 +586,10 @@ async function executarValidacaoCompletaScrum210() {
           [schemaCiclo]
         );
         if (restantes.length !== 0) {
-          throw new Error('Tabelas da SCRUM-210 deveriam ter sido removidas apos down limpo.');
+          throw new Error('Tabelas da evidencias odometro e deslocamentos svo deveriam ter sido removidas apos down limpo.');
         }
 
-        await migrationScrum210.up(trx);
+        await migrationEvidenciasOdometroEDeslocamentosSvo.up(trx);
         relatorio.push(
           '8. Ciclo completo de rollback limpo (down estrito) e reaplicacao (up) preservando viagens e ordens: OK'
         );
@@ -609,7 +609,7 @@ async function executarValidacaoCompletaScrum210() {
       );
     }
 
-    console.log('Validacao da migration SCRUM-210 concluida com sucesso:');
+    console.log('Validacao da migration evidencias odometro e deslocamentos svo concluida com sucesso:');
     for (const linha of relatorio) {
       console.log(`  - ${linha}`);
     }
@@ -619,10 +619,10 @@ async function executarValidacaoCompletaScrum210() {
 }
 
 if (require.main === module) {
-  executarValidacaoCompletaScrum210().catch((erro) => {
-    console.error('Falha na validacao da migration SCRUM-210:', erro.message);
+  executarValidacaoEvidenciasOdometroEDeslocamentosSvo().catch((erro) => {
+    console.error('Falha na validacao da migration evidencias odometro e deslocamentos svo:', erro.message);
     process.exit(1);
   });
 }
 
-module.exports = { executarValidacaoCompletaScrum210 };
+module.exports = { executarValidacaoEvidenciasOdometroEDeslocamentosSvo };

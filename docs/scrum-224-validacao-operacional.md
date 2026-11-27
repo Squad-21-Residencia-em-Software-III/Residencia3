@@ -21,7 +21,7 @@ COMMIT;
 ## Reproduzir
 
 1. Migrar um PostgreSQL descartável identificado como `127.0.0.1/frotas_teste`.
-2. Executar `POSTGRES_STATEMENT_TIMEOUT_MS=120000 SCRUM241_DESEMPENHO=1 SCRUM241_RELATORIO=relatorio.json npx vitest run src/tests/desempenhoNotificacoesPostgres.test.ts` no backend. O relatório contém dados agregados de contas sintéticas.
+2. Executar `POSTGRES_STATEMENT_TIMEOUT_MS=120000 NOTIFICACOES_TESTE_DESEMPENHO=1 NOTIFICACOES_RELATORIO_DESEMPENHO=relatorio.json npx vitest run src/tests/desempenhoNotificacoesPostgres.test.ts` no backend. O relatório contém dados agregados de contas sintéticas.
 3. Para retenção e fila, executar `retencaoNotificacoes.test.ts` e as suítes de outbox, envio e métricas com as mesmas variáveis PostgreSQL do CI, em série.
 4. Em homologação, acompanhar fila pendente, idade do item mais antigo, falhas sanitizadas e taxa de 429/503. Observar uma retomada real após suspensão em ambiente isolado, com as etapas de reversão do guia SCRUM-241. Registrar os tempos observados no Render e Neon separadamente.
 

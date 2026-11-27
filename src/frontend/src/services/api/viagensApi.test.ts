@@ -133,7 +133,7 @@ describe('viagensApi (SCRUM-171/172)', () => {
 
   it('não consulta detalhes em volume acima do limite seguro', async () => {
     req.mockResolvedValueOnce({ dados: [], paginacao: { total: 101, totalPaginas: 2 } } as never);
-    await expect(viagensApi.listarOrdensPendentesSvo()).rejects.toThrow('SCRUM-182');
+    await expect(viagensApi.listarOrdensPendentesSvo()).rejects.toThrow('consulta paginada de ordens pendentes');
     expect(req).toHaveBeenCalledTimes(1);
   });
 

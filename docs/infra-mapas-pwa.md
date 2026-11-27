@@ -15,7 +15,7 @@ Referência: **SCRUM-276** · Baseline `develop`: `361ed10`.
 ## 2. Variável de Ambiente Não-Secreta e Proxy
 
 - `VITE_MAPA_ESTILO_URL` *(opcional, em `src/frontend/.env.example`)*: permite selecionar outro estilo sob `https://tiles.openfreemap.org/styles/*`. Qualquer valor vazio ou fora dessa allowlist retorna automaticamente ao estilo Liberty (`validarUrlEstiloMapa` em `src/frontend/src/config/mapas.ts`).
-- As flags de ativação da Fase 3 (`VITE_FASE3_MAPAS_INTERNOS`, `VITE_FASE3_MAPAS_SVO`, etc.) permanecem centralizadas no contrato da `SCRUM-296` (`recursosBackend.ts`).
+- As flags de visibilidade dos mapas (`VITE_MAPAS_INTERNOS_ATIVOS`, `VITE_MAPAS_SVO_ATIVOS`, etc.) permanecem centralizadas no `recursosBackend.ts`.
 - **Proxy `/api` (Vercel → Render):** mantido inalterado em `src/frontend/vercel.json`, encaminhando `/api/*` para `https://fsph-api.onrender.com` com o cabeçalho `x-proxy-secret` injetado via variável de ambiente `PROXY_SECRET` no Vercel.
 - O preview da branch usa `VITE_API_URL=/api`. O CSP permite a API de mesma origem. Um ambiente autorizado que use URL absoluta exigirá a origem exata em `connect-src` e a configuração correspondente de CORS no backend.
 

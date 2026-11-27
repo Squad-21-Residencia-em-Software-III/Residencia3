@@ -73,7 +73,7 @@ export const viagensApi = {
       query: { pagina: 1, limite: LIMITE_PAGINA, status: 'CONFIRMADA' },
     })
     if (primeira.paginacao.total > LIMITE_PAGINA || primeira.paginacao.totalPaginas > 1) {
-      throw new Error('Há solicitações demais para verificar as ordens com segurança. A listagem depende da SCRUM-182.')
+      throw new Error('Há solicitações demais para verificar as ordens com segurança. A listagem precisa da consulta paginada de ordens pendentes do servidor.')
     }
     const detalhes: SolicitacaoSvoDetalhada[] = []
     for (let i = 0; i < primeira.dados.length; i += 4) {

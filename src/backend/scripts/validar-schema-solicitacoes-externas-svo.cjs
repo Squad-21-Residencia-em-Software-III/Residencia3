@@ -4,7 +4,7 @@ const { randomBytes } = require('node:crypto');
 const path = require('node:path');
 const knex = require('knex');
 const { criarConfigKnex } = require('../knexfile');
-const { DADOS, CREDENCIAIS } = require('../database/scrum263-privilegios.cjs');
+const { DADOS, CREDENCIAIS } = require('../database/privilegiosSolicitacoesExternasSvo.cjs');
 
 const ORIGINAL = '20261127130000_scrum_263_solicitacoes_externas_svo.js';
 const CORRECAO = '20261127140000_scrum_263_integridade_svo_externo.js';
@@ -36,12 +36,12 @@ function executarNpm(env, script) {
 }
 
 async function comBanco(admin, env, rotulo, validar) {
-  const nome = `scrum263_${rotulo}_${randomBytes(6).toString('hex')}`;
+  const nome = `svo_externo_${rotulo}_${randomBytes(6).toString('hex')}`;
   await admin.raw('CREATE DATABASE ??', [nome]);
   const contexto = { ...env, POSTGRES_DB: nome, DB_ROLE: 'migration' };
   const db = knex(criarConfigKnex(contexto));
   try {
-    console.log(`SCRUM-263 / ${rotulo}`);
+    console.log(`solicitacoes externas svo / ${rotulo}`);
     await validar(db, contexto);
   } finally {
     await db.destroy();
@@ -88,7 +88,7 @@ async function inserirLegado(db) {
   await db('notificacoes').insert({
     usuario_id: gestor, tipo: 'S1', titulo: 'Notificação de teste', mensagem: 'Nova solicitação',
     operacao: 'SVO', referencia_tipo: 'solicitacao_svo', referencia_id: solicitacoes[0].id,
-    url_destino: '/triagem-svo', chave_idempotencia: 'fixture-scrum263-s1',
+    url_destino: '/triagem-svo', chave_idempotencia: 'fixture-svo-externo-s1',
   });
 }
 
@@ -186,11 +186,11 @@ async function validarOperacao(db, app) {
   console.log('Integridade e role real: criação atômica, alteração permitida, grants negativos, 30 dias, retenção, revogação e concorrência de protocolo e idempotência OK.');
 }
 
-async function validarScrum263SchemaReal() {
+async function validarSchemaSolicitacoesExternasSvo() {
   const env = process.env;
-  if (env.SCRUM263_DB_DESCARTAVEL !== '1' || !['127.0.0.1', 'localhost', '::1'].includes(env.POSTGRES_HOST) ||
+  if (env.SOLICITACOES_EXTERNAS_SVO_DB_DESCARTAVEL !== '1' || !['127.0.0.1', 'localhost', '::1'].includes(env.POSTGRES_HOST) ||
       !env.POSTGRES_APP_USER || !env.POSTGRES_APP_PASSWORD || !env.npm_execpath) {
-    throw new Error('Use npm run db:validar-scrum263 em PostgreSQL local descartável com SCRUM263_DB_DESCARTAVEL=1 e role de aplicação provisionada.');
+    throw new Error('Use npm run db:validar-solicitacoes-externas-svo em PostgreSQL local descartável com SOLICITACOES_EXTERNAS_SVO_DB_DESCARTAVEL=1 e role de aplicação provisionada.');
   }
   const admin = knex(criarConfigKnex({ ...env, DB_ROLE: 'migration' }));
   try {
@@ -230,7 +230,7 @@ async function validarScrum263SchemaReal() {
 
       const roleAnterior = env.POSTGRES_APP_USER;
       try {
-        env.POSTGRES_APP_USER = 'role_inexistente_scrum263_qa';
+        env.POSTGRES_APP_USER = 'role_inexistente_svo_externo_qa';
         await assert.rejects(() => db.migrate.up({ name: CORRECAO }), /role de login separada/);
       } finally {
         env.POSTGRES_APP_USER = roleAnterior;
@@ -285,4 +285,4 @@ async function validarScrum263SchemaReal() {
   }
 }
 
-module.exports = { validarScrum263SchemaReal };
+module.exports = { validarSchemaSolicitacoesExternasSvo };

@@ -33,5 +33,5 @@ A rotina não tem `JWT_SECRET`. Por isso o interruptor fica em `config/notificac
 ## Testes
 
 - `avisosSolicitacao.test.ts`: interruptor, texto do push e independência da rotina.
-- `avisosSolicitacaoPostgres.test.ts`: A1 a A4 pela API e pela rotina, com destinatários, negativos, concorrência, desfazimento e a role restrita com as permissões acima. Só roda com `SCRUM230_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`. Roda no CI.
+- `avisosSolicitacaoPostgres.test.ts`: A1 a A4 pela API e pela rotina, com destinatários, negativos, concorrência, desfazimento e a role restrita com as permissões acima. Só roda com `AVISOS_SOLICITACAO_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`. Roda no CI.
 - Suítes que mexem no banco inteiro (fila e expiração) usam `usarBancoComExclusividade`, para não interferirem umas nas outras.
