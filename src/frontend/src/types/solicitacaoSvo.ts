@@ -8,9 +8,13 @@ export type StatusSolicitacaoSvo =
 export type StatusOrdemSvo =
   'AGUARDANDO_ALOCACAO' | 'ALOCADA' | 'EM_DESLOCAMENTO' | 'NO_LOCAL' | 'CONCLUIDA' | 'CANCELADA';
 
+export type CanalOrigemSolicitacaoSvo = 'INTERNA' | 'EXTERNA';
+
 export interface SolicitacaoSvo {
   id: number;
-  registrante_id: number;
+  registrante_id: number | null;
+  canal_origem?: CanalOrigemSolicitacaoSvo;
+  protocolo?: string | null;
   dados_solicitante: string;
   local_ocorrencia: string;
   material_sensivel: boolean;
