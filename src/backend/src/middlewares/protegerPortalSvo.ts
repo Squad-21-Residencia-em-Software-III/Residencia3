@@ -6,11 +6,12 @@ import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 
 const TABELA = 'limites_portal_svo';
-const COTAS = {
-  geocodificar: { porIp: 12, porOperacao: 18 },
-  cadastrar: { porIp: 12, porOperacao: 40 },
-} as const;
-type Operacao = keyof typeof COTAS;
+type Operacao = 'geocodificar' | 'cadastrar' | 'acompanhar';
+const COTAS: Record<Operacao, { porIp?: number; porOperacao: number; simultaneas: number }> = {
+  geocodificar: { porIp: 12, porOperacao: 18, simultaneas: 2 },
+  cadastrar: { porIp: 12, porOperacao: 40, simultaneas: 4 },
+  acompanhar: { porOperacao: 40, simultaneas: 4 },
+};
 
 class CotaExcedida extends Error {
   constructor(readonly segundos: number) {
@@ -26,7 +27,6 @@ function excedida(res: Response, segundos: number): void {
 }
 
 async function consumirCota(operacao: Operacao, ip: string): Promise<void> {
-  const chaveIp = createHmac('sha256', env.jwtSecret).update('portal-svo:' + ipKeyGenerator(ip)).digest('hex');
   await db.transaction(async (trx) => {
     // Hora do PostgreSQL para que réplicas usem a mesma janela.
     const { rows: [{ agora }] } = await trx.raw<{ rows: { agora: number }[] }>(
@@ -37,8 +37,11 @@ async function consumirCota(operacao: Operacao, ip: string): Promise<void> {
       { escopo: 'portal:rajada', duracao: 10, limite: 20 },
       { escopo: 'portal:minuto', duracao: 60, limite: 50 },
       { escopo: operacao, duracao: 60, limite: cotas.porOperacao },
-      { escopo: operacao + ':' + chaveIp, duracao: 60, limite: cotas.porIp },
     ];
+    if (cotas.porIp !== undefined) {
+      const chaveIp = createHmac('sha256', env.jwtSecret).update('portal-svo:' + ipKeyGenerator(ip)).digest('hex');
+      janelas.push({ escopo: operacao + ':' + chaveIp, duracao: 60, limite: cotas.porIp });
+    }
     for (const { escopo, duracao, limite } of janelas) {
       const expira = agora - agora % duracao + duracao;
       const { rowCount } = await trx.raw<{ rowCount: number }>(
@@ -58,7 +61,7 @@ export function protegerPortalSvo(operacao: Operacao): RequestHandler {
   let emCurso = 0;
   return async (req, res, next) => {
     res.set('Cache-Control', 'private, no-store');
-    if (emCurso >= (operacao === 'geocodificar' ? 2 : 4)) {
+    if (emCurso >= COTAS[operacao].simultaneas) {
       excedida(res, 1);
       return;
     }

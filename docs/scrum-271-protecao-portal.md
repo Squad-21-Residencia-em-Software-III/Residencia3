@@ -6,7 +6,7 @@ O contador usa o IP identificado pelo caminho Vercel ou Render descrito em [Segu
 
 O portal aceita CEP ou coordenadas para geocodificação. Busca de texto livre, unidades e trajetos seguem no proxy interno autenticado. O mapa público exige as flags de portal e mapa SVO. O fluxo de cadastro exige a flag de portal, corpo JSON de até 100 KB e honeypot vazio ou ausente.
 
-A SCRUM-264 fornece a transação de criação, publicação de S1 e replay persistente. O detalhe de triagem retorna um sinal de possível duplicidade para dois registros externos com o mesmo documento do falecido e a mesma data e hora da ocorrência. A comparação usa dados já armazenados e devolve somente um booleano aos perfis autorizados. As duas ocorrências permanecem na fila. A exibição do sinal no drawer depende da integração com a triagem. A consulta pública de acompanhamento da SCRUM-266 tem contrato e proteção próprios.
+A SCRUM-264 fornece a transação de criação, publicação de S1 e replay persistente. O detalhe de triagem retorna um sinal de possível duplicidade para dois registros externos com o mesmo documento do falecido e a mesma data e hora da ocorrência. A comparação usa dados já armazenados e devolve somente um booleano aos perfis autorizados. As duas ocorrências permanecem na fila. A exibição do sinal no drawer depende da integração com a triagem. O acompanhamento da SCRUM-266 tem flag independente. Suas duas rotas dividem uma cota adicional de 40 requisições por minuto, quatro requisições em andamento por processo e o limite global do portal. O limite por IP de tentativas de credencial permanece com a SCRUM-266, para que consultas válidas de hospitais sob NAT não consumam aquela cota de falhas.
 
 ## Desafio antirrobô
 

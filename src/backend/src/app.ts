@@ -1,5 +1,5 @@
 import cookieParser from 'cookie-parser';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import { z } from 'zod';
 import { env } from './config/env';
 import { cabecalhosDeSeguranca, corsPorAmbiente } from './config/segurancaHttp';
@@ -34,10 +34,18 @@ app.use(limitarConcorrencia);
 app.use((req, res, next) => (ehEnvioDeFotoOdometro(req) ? next() : limitarTempoRequisicao(req, res, next)));
 app.use(cookieParser());
 const criacaoExternaSvo = '/api/solicitacoes-svo/externas';
-app.post(criacaoExternaSvo, (_req, res, next) => {
+const semCachePortalSvo: RequestHandler = (_req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
   next();
-}, exigirRecursoFase3('portalSvo'), protegerPortalSvo('cadastrar'));
+};
+app.post(criacaoExternaSvo, semCachePortalSvo, exigirRecursoFase3('portalSvo'), protegerPortalSvo('cadastrar'));
+// SCRUM-266 mantém a própria validação uniforme e a cota por IP de falhas.
+const acompanharSvo = criacaoExternaSvo + '/acompanhamento';
+const protegerAcompanhamentoSvo = [
+  semCachePortalSvo, exigirRecursoFase3('acompanhamentoExterno'), protegerPortalSvo('acompanhar'),
+];
+app.post(acompanharSvo, ...protegerAcompanhamentoSvo);
+app.get(acompanharSvo + '/:protocolo', ...protegerAcompanhamentoSvo);
 app.use(express.json({ limit: '100kb' }));
 app.post(criacaoExternaSvo, verificarHoneypotPortalSvo);
 

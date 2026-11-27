@@ -98,6 +98,18 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
     expect(http).not.toHaveBeenCalled();
   });
 
+  it('cobre ambos os caminhos de acompanhamento com a mesma cota e flag independente', async () => {
+    const acompanhamento = FORMULARIO + '/acompanhamento';
+    await request(app).post(acompanhamento).send({}).expect(404);
+    env.fase3 = carregarFase3({ FASE3_ACOMPANHAMENTO_EXTERNO: 'true' });
+    await db.raw(`INSERT INTO limites_portal_svo (expira_em, escopo, total)
+      SELECT (floor(extract(epoch FROM clock_timestamp()) / 60) + j) * 60, 'acompanhar', 40
+      FROM generate_series(1, 2) j`);
+    await request(app).post(acompanhamento).send({}).expect(429).expect('Cache-Control', 'private, no-store');
+    await request(app).get(acompanhamento + '/PROTOCOLO-SINTETICO').expect(429)
+      .expect(({ headers }) => expect(Number(headers['retry-after'])).toBeGreaterThan(0));
+  });
+
   it('limita concorrência antes de alocar processamento no provedor', async () => {
     let liberar!: () => void;
     const espera = new Promise<void>((resolve) => { liberar = resolve; });
