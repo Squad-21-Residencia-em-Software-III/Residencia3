@@ -137,8 +137,8 @@ export function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
       </Route>
 
-      {/* Páginas públicas (sem login): só existem com a flag `solicitacaoExterna` (SCRUM-249/250) */}
-      <Route element={<RotaComRecurso recurso="solicitacaoExterna" />}>
+      {/* Páginas públicas (sem login): só existem com a flag `acompanhamentoExterno` (SCRUM-249/250) */}
+      <Route element={<RotaComRecurso recurso="acompanhamentoExterno" />}>
         <Route element={<PublicLayout />}>
           <Route path="/acompanhar" element={<AcompanharSolicitacaoPage />} />
         </Route>

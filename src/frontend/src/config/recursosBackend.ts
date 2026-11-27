@@ -79,14 +79,6 @@ export const RECURSOS_BACKEND = {
    * Serviço: `notificacoesApi`.
    */
   notificacoesInApp: import.meta.env.VITE_NOTIFICACOES_IN_APP_ATIVAS === 'true',
-
-  /**
-   * SCRUM-249/250: solicitação externa pelo portal (formulário público, protocolo e consulta por
-   * credencial, sem login). Depende do banco (SCRUM-263), do back (SCRUM-264/266) e do acesso
-   * anônimo (SCRUM-272). Desligado, as rotas públicas (`/acompanhar`) não existem e vão para 404.
-   * Serviço: `solicitacaoExternaApi`.
-   */
-  solicitacaoExterna: import.meta.env.VITE_SOLICITACAO_EXTERNA_ATIVA === 'true',
 };
 
 export type RecursoBackend = keyof typeof RECURSOS_BACKEND;

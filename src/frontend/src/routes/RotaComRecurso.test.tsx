@@ -13,7 +13,7 @@ function renderizar() {
   return render(
     <MemoryRouter initialEntries={['/acompanhar']}>
       <Routes>
-        <Route element={<RotaComRecurso recurso="solicitacaoExterna" />}>
+        <Route element={<RotaComRecurso recurso="acompanhamentoExterno" />}>
           <Route path="/acompanhar" element={<p>página pública</p>} />
         </Route>
         <Route path="/404" element={<p>não encontrada</p>} />
