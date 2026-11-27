@@ -1,8 +1,31 @@
+const env = import.meta.env;
+
+// Compatibilidade temporária com os nomes documentados em docs/configuracao-recursos-operacionais.md.
+function flagAtiva(atual: string | undefined, legado: string | undefined): boolean {
+  if (atual !== undefined && legado !== undefined && atual !== legado) return false;
+  return (atual ?? legado) === 'true';
+}
+
+const recursosOperacionais = {
+  mapasInternos: flagAtiva(env.VITE_MAPAS_INTERNOS_ATIVOS, env.VITE_FASE3_MAPAS_INTERNOS),
+  multiplasParadas: flagAtiva(env.VITE_MULTIPLAS_PARADAS_ATIVAS, env.VITE_FASE3_MULTIPLAS_PARADAS),
+  mapasSvo: flagAtiva(env.VITE_MAPAS_SVO_ATIVOS, env.VITE_FASE3_MAPAS_SVO),
+  portalSvo: flagAtiva(env.VITE_PORTAL_SVO_ATIVO, env.VITE_FASE3_PORTAL_SVO),
+  acompanhamentoExterno: flagAtiva(env.VITE_ACOMPANHAMENTO_EXTERNO_SVO_ATIVO, env.VITE_FASE3_ACOMPANHAMENTO_EXTERNO),
+  gpsObrigatorio: flagAtiva(env.VITE_GPS_OBRIGATORIO_ATIVO, env.VITE_FASE3_GPS_OBRIGATORIO),
+  capturaPeriodica: flagAtiva(env.VITE_CAPTURA_PERIODICA_GPS_ATIVA, env.VITE_FASE3_CAPTURA_PERIODICA),
+};
+
 /**
  * Contratos da SCRUM-166. A implantação do frontend e do backend deve acompanhar a migration
  * de estado da agenda revisada pela frente DB, conforme docs/scrum-166-contrato-backend.md.
  */
 export const RECURSOS_BACKEND = {
+  ...recursosOperacionais,
+  emergenciaGps: recursosOperacionais.gpsObrigatorio && flagAtiva(env.VITE_EMERGENCIA_GPS_ATIVA, env.VITE_FASE3_EMERGENCIA_GPS),
+  confirmacaoAutomatica: recursosOperacionais.multiplasParadas && recursosOperacionais.capturaPeriodica &&
+    flagAtiva(env.VITE_CONFIRMACAO_AUTOMATICA_PARADAS_ATIVA, env.VITE_FASE3_CONFIRMACAO_AUTOMATICA),
+
   /**
    * SCRUM-178: `PATCH /solicitacoes-svo/:id/recusar` com `{ motivo_recusa }` e status RECUSADA.
    * Serviço: `solicitacoesSvoApi.recusar`.

@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
 const knexConfig = require('../knexfile');
-const migrationScrum183 = require('../database/migrations/20261117172500_scrum_183_fila_alertas_svo_e_material_sensivel');
+const migrationAlertasSvoEMaterialSensivel = require('../database/migrations/20261117172500_scrum_183_fila_alertas_svo_e_material_sensivel');
 const {
   inspecionarEstadoRole,
   validarEstadoMinimoPrivilegio,
@@ -63,7 +63,7 @@ async function executarValidacaoCompleta() {
 
         let falhouComoEsperado = false;
         try {
-          await migrationScrum183.up(trx);
+          await migrationAlertasSvoEMaterialSensivel.up(trx);
         } catch (erro) {
           falhouComoEsperado = /Estrutura incompativel/i.test(erro.message);
         }
@@ -84,7 +84,7 @@ async function executarValidacaoCompleta() {
         await criarBaseIsolada(trx, schemaCiclo);
 
         // 2.1 Aplicacao limpa (UP)
-        await migrationScrum183.up(trx);
+        await migrationAlertasSvoEMaterialSensivel.up(trx);
         relatorio.push('2. Aplicacao limpa da migration (up) e validacao de catalogo: OK');
 
         // 2.2 Teste de constraints e EXPLAIN
@@ -135,7 +135,7 @@ async function executarValidacaoCompleta() {
         // 2.3 Bloqueio de rollback destrutivo enquanto houver alerta registrado
         let bloqueouDownComAlerta = false;
         try {
-          await migrationScrum183.down(trx);
+          await migrationAlertasSvoEMaterialSensivel.down(trx);
         } catch (e) {
           bloqueouDownComAlerta = /Rollback bloqueado: existem registros em alertas_atraso_svo/i.test(
             e.message
@@ -151,7 +151,7 @@ async function executarValidacaoCompleta() {
 
         let bloqueouDownComLiberada = false;
         try {
-          await migrationScrum183.down(trx);
+          await migrationAlertasSvoEMaterialSensivel.down(trx);
         } catch (e) {
           bloqueouDownComLiberada = /Rollback bloqueado: existem ordens em ordens_svo com liberada_em/i.test(
             e.message
@@ -167,7 +167,7 @@ async function executarValidacaoCompleta() {
 
         let bloqueouDownComMaterial = false;
         try {
-          await migrationScrum183.down(trx);
+          await migrationAlertasSvoEMaterialSensivel.down(trx);
         } catch (e) {
           bloqueouDownComMaterial = /Rollback bloqueado: existem solicitacoes em solicitacoes_viagem com material_sensivel/i.test(
             e.message
@@ -184,7 +184,7 @@ async function executarValidacaoCompleta() {
 
         // 2.4 Reconcilia e executa rollback limpo (DOWN) seguido de reaplicacao (UP)
         await trx('solicitacoes_viagem').where({ id: 1 }).update({ material_sensivel: false });
-        await migrationScrum183.down(trx);
+        await migrationAlertasSvoEMaterialSensivel.down(trx);
 
         const { rows: tabelaAposDown } = await trx.raw(
           `SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = 'alertas_atraso_svo'`,
@@ -199,7 +199,7 @@ async function executarValidacaoCompleta() {
           throw new Error('Registros base de ordens_svo nao foram preservados apos o rollback.');
         }
 
-        await migrationScrum183.up(trx);
+        await migrationAlertasSvoEMaterialSensivel.up(trx);
         relatorio.push('5. Ciclo completo de rollback limpo (down) e reaplicacao (up) sem perda de dados: OK');
 
         throw new Error('ROLLBACK_ISOLADO');
@@ -217,7 +217,7 @@ async function executarValidacaoCompleta() {
       );
     }
 
-    console.log('Validacao da migration SCRUM-183 e privilegios concluida com sucesso:');
+    console.log('Validacao da migration alertas svo e material sensivel e privilegios concluida com sucesso:');
     for (const linha of relatorio) {
       console.log(`  - ${linha}`);
     }
@@ -228,7 +228,7 @@ async function executarValidacaoCompleta() {
 
 if (require.main === module) {
   executarValidacaoCompleta().catch((erro) => {
-    console.error('Falha na validacao da migration SCRUM-183:', erro.message);
+    console.error('Falha na validacao da migration alertas svo e material sensivel:', erro.message);
     process.exit(1);
   });
 }

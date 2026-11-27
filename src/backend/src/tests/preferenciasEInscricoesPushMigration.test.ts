@@ -8,14 +8,14 @@ const provisionarModule = require('../../scripts/provisionar-usuario-app.cjs') a
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migrationScrum236 = require('../../database/migrations/20261124203000_scrum_236_push_subscriptions_e_preferencias.js') as {
+const migrationPreferenciasEInscricoesPush = require('../../database/migrations/20261124203000_scrum_236_push_subscriptions_e_preferencias.js') as {
   up: (knex: unknown) => Promise<void>;
   down: (knex: unknown) => Promise<void>;
   validarCatalogoScrum236: (knex: unknown) => Promise<void>;
 };
 
-describe('Contrato de banco, migration e privilÃƒÂ©gios da SCRUM-236 (assinaturas Push e preferÃƒÂªncias)', () => {
-  function criarKnexScrum236Mock(opcoes?: {
+describe('Contrato de banco, migration e privilÃƒÂ©gios de preferências e inscrições Push (assinaturas Push e preferÃƒÂªncias)', () => {
+  function criarKnexPreferenciasEInscricoesPushMock(opcoes?: {
     schemaAtual?: string;
     tabelasBaseCount?: number;
     tipoEndpoint?: string;
@@ -256,7 +256,7 @@ describe('Contrato de banco, migration e privilÃƒÂ©gios da SCRUM-236 (assina
     return { knexMock, sqlExecutados };
   }
 
-  it('nÃƒÂ£o utiliza IF EXISTS nem IF NOT EXISTS cegos no cÃƒÂ³digo-fonte da migration SCRUM-236', () => {
+  it('nÃƒÂ£o utiliza IF EXISTS nem IF NOT EXISTS cegos no cÃƒÂ³digo-fonte da migration de preferências e inscrições Push', () => {
     const caminhoMigration = path.resolve(
       __dirname,
       '../../database/migrations/20261124203000_scrum_236_push_subscriptions_e_preferencias.js'
@@ -268,8 +268,8 @@ describe('Contrato de banco, migration e privilÃƒÂ©gios da SCRUM-236 (assina
   });
 
   it('define contrato com ON DELETE CASCADE, renovaÃƒÂ§ÃƒÂ£o idempotente no limite de 5 dispositivos, proteÃƒÂ§ÃƒÂ£o Base64 de chaves e padrÃƒÂ£o conservador DEFAULT false', async () => {
-    const { knexMock, sqlExecutados } = criarKnexScrum236Mock();
-    await migrationScrum236.up(knexMock);
+    const { knexMock, sqlExecutados } = criarKnexPreferenciasEInscricoesPushMock();
+    await migrationPreferenciasEInscricoesPush.up(knexMock);
 
     const ddlPush = sqlExecutados.find((item) => item.sql.includes('CREATE TABLE push_subscriptions'));
     expect(ddlPush).toBeDefined();
@@ -290,46 +290,46 @@ describe('Contrato de banco, migration e privilÃƒÂ©gios da SCRUM-236 (assina
   });
 
   it('bloqueia up quando a tabela base usuarios nÃƒÂ£o estÃƒÂ¡ presente no schema alvo', async () => {
-    const semBase = criarKnexScrum236Mock({ tabelasBaseCount: 0 });
-    await expect(migrationScrum236.up(semBase.knexMock)).rejects.toThrow(
+    const semBase = criarKnexPreferenciasEInscricoesPushMock({ tabelasBaseCount: 0 });
+    await expect(migrationPreferenciasEInscricoesPush.up(semBase.knexMock)).rejects.toThrow(
       /tabela base usuarios ausente no schema alvo/
     );
   });
 
   it('rejeita estruturas preexistentes incompatÃƒÂ­veis em validarCatalogoScrum236 (tipo, limite, default nÃƒÂ£o conservador, constraint, ÃƒÂ­ndice e trigger)', async () => {
-    const tipoInvalido = criarKnexScrum236Mock({ tipoEndpoint: 'character varying' });
-    await expect(migrationScrum236.validarCatalogoScrum236(tipoInvalido.knexMock)).rejects.toThrow(
+    const tipoInvalido = criarKnexPreferenciasEInscricoesPushMock({ tipoEndpoint: 'character varying' });
+    await expect(migrationPreferenciasEInscricoesPush.validarCatalogoScrum236(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em push_subscriptions\.endpoint/
     );
 
-    const tamanhoInvalido = criarKnexScrum236Mock({ tamanhoUserAgent: 100 });
+    const tamanhoInvalido = criarKnexPreferenciasEInscricoesPushMock({ tamanhoUserAgent: 100 });
     await expect(
-      migrationScrum236.validarCatalogoScrum236(tamanhoInvalido.knexMock)
+      migrationPreferenciasEInscricoesPush.validarCatalogoScrum236(tamanhoInvalido.knexMock)
     ).rejects.toThrow(/Estrutura incompativel em push_subscriptions\.user_agent/);
 
-    const defaultNaoConservador = criarKnexScrum236Mock({ defaultHabilitado: 'true' });
+    const defaultNaoConservador = criarKnexPreferenciasEInscricoesPushMock({ defaultHabilitado: 'true' });
     await expect(
-      migrationScrum236.validarCatalogoScrum236(defaultNaoConservador.knexMock)
+      migrationPreferenciasEInscricoesPush.validarCatalogoScrum236(defaultNaoConservador.knexMock)
     ).rejects.toThrow(/padrao conservador exige column_default=false/);
 
-    const semConstraint = criarKnexScrum236Mock({
+    const semConstraint = criarKnexPreferenciasEInscricoesPushMock({
       omitirConstraint: 'push_subscriptions.uq_push_subscriptions_endpoint',
     });
     await expect(
-      migrationScrum236.validarCatalogoScrum236(semConstraint.knexMock)
+      migrationPreferenciasEInscricoesPush.validarCatalogoScrum236(semConstraint.knexMock)
     ).rejects.toThrow(
       /Constraint obrigatoria ausente ou incompativel: push_subscriptions\.uq_push_subscriptions_endpoint/
     );
 
-    const semIndice = criarKnexScrum236Mock({
+    const semIndice = criarKnexPreferenciasEInscricoesPushMock({
       omitirIndice: 'idx_push_subscriptions_usuario_id',
     });
-    await expect(migrationScrum236.validarCatalogoScrum236(semIndice.knexMock)).rejects.toThrow(
+    await expect(migrationPreferenciasEInscricoesPush.validarCatalogoScrum236(semIndice.knexMock)).rejects.toThrow(
       /Indice obrigatorio ausente ou incompativel: idx_push_subscriptions_usuario_id/
     );
 
-    const semTrigger = criarKnexScrum236Mock({ omitirTrigger: true });
-    await expect(migrationScrum236.validarCatalogoScrum236(semTrigger.knexMock)).rejects.toThrow(
+    const semTrigger = criarKnexPreferenciasEInscricoesPushMock({ omitirTrigger: true });
+    await expect(migrationPreferenciasEInscricoesPush.validarCatalogoScrum236(semTrigger.knexMock)).rejects.toThrow(
       /Trigger obrigatoria ausente em push_subscriptions: trg_validar_regras_push_subscriptions/
     );
   });
@@ -338,12 +338,12 @@ describe('Contrato de banco, migration e privilÃƒÂ©gios da SCRUM-236 (assina
     const appUserAnterior = process.env.POSTGRES_APP_USER;
     process.env.POSTGRES_APP_USER = 'frotas_app';
     try {
-      const { knexMock, sqlExecutados } = criarKnexScrum236Mock({
+      const { knexMock, sqlExecutados } = criarKnexPreferenciasEInscricoesPushMock({
         schemaAtual: 'schema_isolado_236',
         roleAppPresente: true,
       });
 
-      await migrationScrum236.up(knexMock);
+      await migrationPreferenciasEInscricoesPush.up(knexMock);
 
       const cmdRevoke = sqlExecutados.find((item) =>
         item.sql.includes(
@@ -372,20 +372,20 @@ describe('Contrato de banco, migration e privilÃƒÂ©gios da SCRUM-236 (assina
   });
 
   it('bloqueia rollback (down) quando hÃƒÂ¡ registros em push_subscriptions ou preferencias_notificacao', async () => {
-    const comPush = criarKnexScrum236Mock({ totalPush: 1 });
-    await expect(migrationScrum236.down(comPush.knexMock)).rejects.toThrow(
+    const comPush = criarKnexPreferenciasEInscricoesPushMock({ totalPush: 1 });
+    await expect(migrationPreferenciasEInscricoesPush.down(comPush.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem registros em push_subscriptions/
     );
 
-    const comPref = criarKnexScrum236Mock({ totalPreferencias: 1 });
-    await expect(migrationScrum236.down(comPref.knexMock)).rejects.toThrow(
+    const comPref = criarKnexPreferenciasEInscricoesPushMock({ totalPreferencias: 1 });
+    await expect(migrationPreferenciasEInscricoesPush.down(comPref.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem registros em preferencias_notificacao/
     );
   });
 
   it('executa DROP estrito (sem IF EXISTS) no down quando nÃƒÂ£o hÃƒÂ¡ dados operacionais', async () => {
-    const limpo = criarKnexScrum236Mock({ totalPush: 0, totalPreferencias: 0 });
-    await migrationScrum236.down(limpo.knexMock);
+    const limpo = criarKnexPreferenciasEInscricoesPushMock({ totalPush: 0, totalPreferencias: 0 });
+    await migrationPreferenciasEInscricoesPush.down(limpo.knexMock);
 
     const ddlDown = limpo.sqlExecutados.find((item) =>
       item.sql.includes('DROP TABLE push_subscriptions')

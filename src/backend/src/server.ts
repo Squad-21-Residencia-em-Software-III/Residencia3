@@ -30,6 +30,13 @@ async function iniciar() {
     notificacoes_ativas: configNotificacoes.ativas,
   }));
 
+  const { invalidas, conflitantes, bloqueadas } = env.recursosOperacionais.diagnostico;
+  if (invalidas.length || conflitantes.length || bloqueadas.length) {
+    console.warn(JSON.stringify({
+      timestamp: new Date().toISOString(), level: 'WARN', evento: 'RECURSOS_OPERACIONAIS_CONFIG_BLOQUEADA', invalidas, conflitantes, bloqueadas,
+    }));
+  }
+
   const servidor = app.listen(env.port, () => {
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'INFO', evento: 'SERVIDOR_INICIADO', port: env.port }));
   });

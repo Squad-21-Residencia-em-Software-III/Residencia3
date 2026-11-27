@@ -74,12 +74,12 @@ No script `src/backend/scripts/provisionar-usuario-app.cjs` e na propria migrati
 
 ## 4. Evidencias Reproduziveis de Validacao em PostgreSQL Isolado
 
-### 4.1. Validacao Automatizada da Migration, Constraints, EXPLAIN e Rollback (`npm run db:validar-scrum198`)
+### 4.1. Validacao Automatizada da Migration, Constraints, EXPLAIN e Rollback (`npm run db:validar-equipes-e-designacoes-svo`)
 
 Comando reproduzivel:
 ```bash
 cd src/backend
-npm run db:validar-scrum198
+npm run db:validar-equipes-e-designacoes-svo
 ```
 
 Resultado obtido:
@@ -94,7 +94,7 @@ Resultado obtido:
 
 ### 4.2. Execucao Real dos 17 Cenarios de Integracao e Concorrencia PostgreSQL (`agendaSvoPostgres.test.ts` — `SCRUM-166` + `SCRUM-183` + `SCRUM-196` + `SCRUM-198` + `BL31`)
 
-Em banco PostgreSQL 16 descartavel isolado (`127.0.0.1:55432` / `fsph_scrum166_teste`), aplicando todas as migrations na sequencia (`#157` + `#164 BL31` + `SCRUM-198`), provisionando `frotas_app` e habilitando `SCRUM166_POSTGRES_TESTS=1` e `SCRUM196_BL31_POSTGRES_TESTS=1`:
+Em banco PostgreSQL 16 descartavel isolado (`127.0.0.1:55432` / `fsph_agenda_svo_teste`), aplicando todas as migrations na sequencia (`#157` + `#164 BL31` + `SCRUM-198`), provisionando `frotas_app` e habilitando `AGENDA_SVO_POSTGRES_TESTS=1` e `CHEGADA_AGENDA_SVO_POSTGRES_TESTS=1`:
 
 Todos os **17 cenarios** de `src/backend/src/tests/agendaSvoPostgres.test.ts` passaram (`17 passed / 17 total`):
 1. `serializa reservas concorrentes do mesmo recurso e mantem uma ordem pendente` (`200` vs `409 CONFLITO_AGENDA`)

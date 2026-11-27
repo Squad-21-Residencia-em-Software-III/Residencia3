@@ -6,14 +6,14 @@ const provisionarModule = require('../../scripts/provisionar-usuario-app.cjs') a
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migrationScrum210 = require('../../database/migrations/20261118121000_scrum_210_evidencias_odometro_e_deslocamentos_svo.js') as {
+const migrationEvidenciasOdometroEDeslocamentosSvo = require('../../database/migrations/20261118121000_scrum_210_evidencias_odometro_e_deslocamentos_svo.js') as {
   up: (knex: unknown) => Promise<void>;
   down: (knex: unknown) => Promise<void>;
   validarCatalogoScrum210: (knex: unknown) => Promise<void>;
 };
 
-describe('Contrato de banco, migration e privilégios da SCRUM-210 (evidências de odômetro)', () => {
-  function criarKnexScrum210Mock(opcoes?: {
+describe('Contrato de banco, migration e privilégios de evidências de odômetro e deslocamentos SVO (evidências de odômetro)', () => {
+  function criarKnexEvidenciasOdometroEDeslocamentosSvoMock(opcoes?: {
     tabelasOrigemCount?: number;
     tipoSha256?: string;
     omitirConstraint?: string;
@@ -692,53 +692,53 @@ describe('Contrato de banco, migration e privilégios da SCRUM-210 (evidências 
   }
 
   it('bloqueia up quando tabelas base obrigatórias não estão presentes no schema', async () => {
-    const semBase = criarKnexScrum210Mock({ tabelasOrigemCount: 4 });
-    await expect(migrationScrum210.up(semBase.knexMock)).rejects.toThrow(
+    const semBase = criarKnexEvidenciasOdometroEDeslocamentosSvoMock({ tabelasOrigemCount: 4 });
+    await expect(migrationEvidenciasOdometroEDeslocamentosSvo.up(semBase.knexMock)).rejects.toThrow(
       /tabelas base .* ausentes no schema alvo/
     );
   });
 
   it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum210', async () => {
-    const tipoInvalido = criarKnexScrum210Mock({ tipoSha256: 'text' });
-    await expect(migrationScrum210.validarCatalogoScrum210(tipoInvalido.knexMock)).rejects.toThrow(
+    const tipoInvalido = criarKnexEvidenciasOdometroEDeslocamentosSvoMock({ tipoSha256: 'text' });
+    await expect(migrationEvidenciasOdometroEDeslocamentosSvo.validarCatalogoScrum210(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em evidencias_odometro\.sha256/
     );
 
-    const semConstraint = criarKnexScrum210Mock({
+    const semConstraint = criarKnexEvidenciasOdometroEDeslocamentosSvoMock({
       omitirConstraint: 'evidencias_odometro.chk_evidencias_odometro_retencao',
     });
-    await expect(migrationScrum210.validarCatalogoScrum210(semConstraint.knexMock)).rejects.toThrow(
+    await expect(migrationEvidenciasOdometroEDeslocamentosSvo.validarCatalogoScrum210(semConstraint.knexMock)).rejects.toThrow(
       /Constraint obrigatoria ausente ou incompativel: evidencias_odometro\.chk_evidencias_odometro_retencao/
     );
 
-    const semIndice = criarKnexScrum210Mock({
+    const semIndice = criarKnexEvidenciasOdometroEDeslocamentosSvoMock({
       omitirIndice: 'uq_evidencias_odometro_deslocamento_svo_fase_ativa',
     });
-    await expect(migrationScrum210.validarCatalogoScrum210(semIndice.knexMock)).rejects.toThrow(
+    await expect(migrationEvidenciasOdometroEDeslocamentosSvo.validarCatalogoScrum210(semIndice.knexMock)).rejects.toThrow(
       /Indice obrigatorio ausente ou incompativel: uq_evidencias_odometro_deslocamento_svo_fase_ativa/
     );
   });
 
   it('bloqueia rollback (down) quando há evidências, vínculos de ordens ou deslocamentos SVO', async () => {
-    const comEvidencias = criarKnexScrum210Mock({ totalEvidencias: 1 });
-    await expect(migrationScrum210.down(comEvidencias.knexMock)).rejects.toThrow(
+    const comEvidencias = criarKnexEvidenciasOdometroEDeslocamentosSvoMock({ totalEvidencias: 1 });
+    await expect(migrationEvidenciasOdometroEDeslocamentosSvo.down(comEvidencias.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem registros em evidencias_odometro/
     );
 
-    const comVinculos = criarKnexScrum210Mock({ totalVinculosOrdens: 1 });
-    await expect(migrationScrum210.down(comVinculos.knexMock)).rejects.toThrow(
+    const comVinculos = criarKnexEvidenciasOdometroEDeslocamentosSvoMock({ totalVinculosOrdens: 1 });
+    await expect(migrationEvidenciasOdometroEDeslocamentosSvo.down(comVinculos.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem vinculos registrados em deslocamentos_svo_ordens/
     );
 
-    const comDeslocamentos = criarKnexScrum210Mock({ totalDeslocamentos: 1 });
-    await expect(migrationScrum210.down(comDeslocamentos.knexMock)).rejects.toThrow(
+    const comDeslocamentos = criarKnexEvidenciasOdometroEDeslocamentosSvoMock({ totalDeslocamentos: 1 });
+    await expect(migrationEvidenciasOdometroEDeslocamentosSvo.down(comDeslocamentos.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem deslocamentos registrados em deslocamentos_svo/
     );
   });
 
   it('executa DROP estrito (sem IF EXISTS) no down quando não há dados operacionais', async () => {
-    const limpo = criarKnexScrum210Mock();
-    await migrationScrum210.down(limpo.knexMock);
+    const limpo = criarKnexEvidenciasOdometroEDeslocamentosSvoMock();
+    await migrationEvidenciasOdometroEDeslocamentosSvo.down(limpo.knexMock);
 
     const ddlDown = limpo.sqlExecutados.find((sql) => sql.includes('DROP TABLE evidencias_odometro'));
     expect(ddlDown).toBeDefined();

@@ -51,7 +51,7 @@ O filtro `ate_id` foi substituído porque a ordem de reserva de IDs pode divergi
 
 - `notificacaoRoutes.test.ts`: sessão, perfis, validações e contrato.
 - `notificacaoAcessoPostgres.test.ts`: acesso ao registro por perfil, revogação e histórico. Mesmas condições da suíte abaixo.
-- `notificacaoPostgres.test.ts`: acesso cruzado, paginação, idempotência e concorrência em PostgreSQL descartável. Só roda com `SCRUM226_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`, depois de `npm run migrate`. Roda no CI.
+- `notificacaoPostgres.test.ts`: acesso cruzado, paginação, idempotência e concorrência em PostgreSQL descartável. Só roda com `NOTIFICACOES_IN_APP_POSTGRES_TESTS=1`, `POSTGRES_HOST=127.0.0.1` e `POSTGRES_DB=frotas_teste`, depois de `npm run migrate`. Roda no CI.
 
 ## Atenção
 

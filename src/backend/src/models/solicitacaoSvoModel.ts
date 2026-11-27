@@ -7,11 +7,18 @@ export const STATUS_SOLICITACAO_SVO = ['EM_TRIAGEM', 'CONFIRMADA', 'EM_ANDAMENTO
 
 export type StatusSolicitacaoSvo = (typeof STATUS_SOLICITACAO_SVO)[number];
 
+// Espelha a constraint chk_solicitacoes_svo_canal_origem (SCRUM-263)
+export const CANAIS_ORIGEM_SOLICITACAO_SVO = ['INTERNA', 'EXTERNA'] as const;
+
+export type CanalOrigemSolicitacaoSvo = (typeof CANAIS_ORIGEM_SOLICITACAO_SVO)[number];
+
 // Ordens de coleta que ainda ocupam a solicitação (BL27)
 export const ORDENS_SVO_ATIVAS = ['AGUARDANDO_ALOCACAO', 'ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'] as const;
 
 export interface NovaSolicitacaoSvo {
-  registrante_id: number;
+  registrante_id: number | null;
+  canal_origem?: CanalOrigemSolicitacaoSvo;
+  protocolo?: string | null;
   dados_solicitante: string;
   local_ocorrencia: string;
   material_sensivel: boolean;
@@ -20,12 +27,21 @@ export interface NovaSolicitacaoSvo {
 
 export interface SolicitacaoSvo extends NovaSolicitacaoSvo {
   id: number;
+  canal_origem?: CanalOrigemSolicitacaoSvo;
+  protocolo?: string | null;
   observacoes?: string | null;
   motivo_recusa?: string | null;
   criado_em?: Date | string;
   confirmado_por?: number | null;
   confirmado_em?: Date | null;
 }
+
+// Projeção operacional da fila interna. Dados protegidos ficam nas tabelas externas.
+const COLUNAS_SOLICITACAO_SVO: Array<keyof SolicitacaoSvo> = [
+  'id', 'registrante_id', 'canal_origem', 'protocolo', 'dados_solicitante',
+  'local_ocorrencia', 'material_sensivel', 'status', 'observacoes',
+  'motivo_recusa', 'criado_em', 'confirmado_por', 'confirmado_em',
+];
 
 export interface OrdemSvo {
   id: number;
@@ -40,7 +56,7 @@ export interface OrdemSvo {
 export const solicitacaoSvoModel = {
   async cadastrar(dados: NovaSolicitacaoSvo, trx?: Knex.Transaction): Promise<SolicitacaoSvo> {
     const conexao = trx || db;
-    const [solicitacao] = await conexao('solicitacoes_svo').insert(dados).returning('*');
+    const [solicitacao] = await conexao('solicitacoes_svo').insert(dados).returning(COLUNAS_SOLICITACAO_SVO);
     return solicitacao;
   },
 
@@ -54,7 +70,7 @@ export const solicitacaoSvoModel = {
     const [dados, contagem] = await Promise.all([
       consulta
         .clone()
-        .select('*')
+        .select(COLUNAS_SOLICITACAO_SVO)
         .orderBy('id', 'desc')
         .limit(filtros.limite)
         .offset((filtros.pagina - 1) * filtros.limite),
@@ -65,11 +81,11 @@ export const solicitacaoSvoModel = {
   },
 
   async buscarPorId(id: number): Promise<SolicitacaoSvo | undefined> {
-    return db('solicitacoes_svo').where({ id }).first();
+    return db<SolicitacaoSvo>('solicitacoes_svo').where({ id }).first(...COLUNAS_SOLICITACAO_SVO);
   },
 
   async buscarParaAtualizar(id: number, trx: Knex.Transaction): Promise<SolicitacaoSvo | undefined> {
-    return trx<SolicitacaoSvo>('solicitacoes_svo').where({ id }).forUpdate().first();
+    return trx<SolicitacaoSvo>('solicitacoes_svo').where({ id }).forUpdate().first(...COLUNAS_SOLICITACAO_SVO);
   },
 
   async buscarOrdemAtiva(solicitacaoId: number, conexao: Knex = db): Promise<OrdemSvo | undefined> {
@@ -83,7 +99,7 @@ export const solicitacaoSvoModel = {
     const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
       .where({ id })
       .update({ status: 'CONFIRMADA', confirmado_por: autorId, confirmado_em: trx.fn.now() })
-      .returning('*');
+      .returning(COLUNAS_SOLICITACAO_SVO);
     return solicitacao!;
   },
 
@@ -91,7 +107,7 @@ export const solicitacaoSvoModel = {
     const [solicitacao] = await trx<SolicitacaoSvo>('solicitacoes_svo')
       .where({ id })
       .update({ status: 'RECUSADA', motivo_recusa: motivoRecusa })
-      .returning('*');
+      .returning(COLUNAS_SOLICITACAO_SVO);
     return solicitacao!;
   },
 

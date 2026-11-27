@@ -2,6 +2,7 @@ import { createECDH } from 'node:crypto';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import { carregarRecursosOperacionais } from './recursosOperacionais';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env'), quiet: true });
 
@@ -301,6 +302,9 @@ export function carregarEnv(origem: Origem = process.env) {
     throw new Error('JWT_REFRESH_EXPIRES_IN deve ser maior que JWT_EXPIRES_IN');
   }
 
+  const requestTimeoutMs = inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000);
+  const maximoMapasMs = Math.min(12000, requestTimeoutMs - 500);
+
   return {
     nodeEnv,
     producao,
@@ -322,9 +326,16 @@ export function carregarEnv(origem: Origem = process.env) {
     rateLimitEscritaPorMin: inteiroNaFaixa('RATE_LIMIT_ESCRITA_POR_MIN', origem.RATE_LIMIT_ESCRITA_POR_MIN, 60, 5, 5000),
     rateLimitPesadasPorMin: inteiroNaFaixa('RATE_LIMIT_PESADAS_POR_MIN', origem.RATE_LIMIT_PESADAS_POR_MIN, 30, 1, 1000),
     maxRequisicoesSimultaneas: inteiroNaFaixa('MAX_REQUISICOES_SIMULTANEAS', origem.MAX_REQUISICOES_SIMULTANEAS, 50, 1, 1000),
-    requestTimeoutMs: inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000),
+    requestTimeoutMs,
+    mapas: {
+      entradas: inteiroNaFaixa('MAPAS_CACHE_ENTRADAS', origem.MAPAS_CACHE_ENTRADAS, 750, 500, 1000),
+      orcamentoMs: inteiroNaFaixa(
+        'MAPAS_ORCAMENTO_MS', origem.MAPAS_ORCAMENTO_MS, Math.min(10500, maximoMapasMs), 200, maximoMapasMs,
+      ),
+    },
     ...configuracaoEvidenciasOdometro(origem, nodeEnv),
     ...configuracaoWebPush(origem),
+    recursosOperacionais: carregarRecursosOperacionais(origem),
   };
 }
 

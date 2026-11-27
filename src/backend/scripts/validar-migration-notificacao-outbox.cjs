@@ -2,8 +2,8 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
 const knexConfig = require('../knexfile');
-const migrationScrum225 = require('../database/migrations/20261124193000_scrum_225_notificacoes_in_app');
-const migrationScrum228 = require('../database/migrations/20261124200000_scrum_228_notificacao_outbox');
+const migrationNotificacoesInApp = require('../database/migrations/20261124193000_scrum_225_notificacoes_in_app');
+const migrationNotificacaoOutbox = require('../database/migrations/20261124200000_scrum_228_notificacao_outbox');
 const {
   inspecionarEstadoRole,
   validarEstadoMinimoPrivilegio,
@@ -45,11 +45,11 @@ async function criarBaseIsolada(trx, schema) {
     SELECT setval(pg_get_serial_sequence('usuarios', 'id'), 3, true);
   `);
 
-  // Utiliza a migration real da SCRUM-225 para garantir estrutura e constraints efetivas de notificacoes
-  await migrationScrum225.up(trx);
+  // Utiliza a migration real da notificacoes in app para garantir estrutura e constraints efetivas de notificacoes
+  await migrationNotificacoesInApp.up(trx);
 }
 
-async function executarValidacaoCompletaScrum228() {
+async function executarValidacaoNotificacaoOutbox() {
   const configMigration = knexConfig.criarConfigKnex({
     ...process.env,
     DB_ROLE: 'migration',
@@ -67,7 +67,7 @@ async function executarValidacaoCompletaScrum228() {
 
         let bloqueouSemBase = false;
         try {
-          await migrationScrum228.up(trx);
+          await migrationNotificacaoOutbox.up(trx);
         } catch (e) {
           bloqueouSemBase = /tabela base usuarios ausente/i.test(e.message);
         }
@@ -95,7 +95,7 @@ async function executarValidacaoCompletaScrum228() {
 
         let bloqueouIncompativel = false;
         try {
-          await migrationScrum228.up(trx);
+          await migrationNotificacaoOutbox.up(trx);
         } catch (e) {
           bloqueouIncompativel = /Estrutura incompativel em notificacao_outbox/i.test(e.message);
         }
@@ -114,15 +114,15 @@ async function executarValidacaoCompletaScrum228() {
       '1. Bloqueio de ausencia de tabela base e estruturas preexistentes incompativeis no up: OK'
     );
 
-    // 3. Ciclo completo em schema isolado com migration real da SCRUM-225, concorrencia real e teste real da role frotas_app
+    // 3. Ciclo completo em schema isolado com migration real da notificacoes in app, concorrencia real e teste real da role frotas_app
     const schemaCiclo = `val228_ciclo_${Date.now()}`;
     try {
       await db.transaction(async (trx) => {
         await criarBaseIsolada(trx, schemaCiclo);
-        await migrationScrum228.up(trx);
+        await migrationNotificacaoOutbox.up(trx);
       });
       relatorio.push(
-        '2. Aplicacao limpa da migration SCRUM-228 sobre a migration real da SCRUM-225 e validacao de catalogo: OK'
+        '2. Aplicacao limpa da migration notificacao outbox sobre a migration real da notificacoes in app e validacao de catalogo: OK'
       );
 
       // 3.1 Atomicidade transacional (NF-06), FK ON DELETE CASCADE e independencia de retencao de notificacao_id
@@ -693,7 +693,7 @@ async function executarValidacaoCompletaScrum228() {
 
         let bloqueouDownComDados = false;
         try {
-          await migrationScrum228.down(trx);
+          await migrationNotificacaoOutbox.down(trx);
         } catch (e) {
           bloqueouDownComDados =
             /Rollback bloqueado: existem registros em notificacao_outbox/i.test(e.message);
@@ -705,8 +705,8 @@ async function executarValidacaoCompletaScrum228() {
         }
 
         await trx('notificacao_outbox').del();
-        await migrationScrum228.down(trx);
-        await migrationScrum228.up(trx);
+        await migrationNotificacaoOutbox.down(trx);
+        await migrationNotificacaoOutbox.up(trx);
 
         relatorio.push(
           '7. Protecao contra rollback destrutivo e ciclo completo down -> up idempotente: OK'
@@ -716,7 +716,7 @@ async function executarValidacaoCompletaScrum228() {
       await db.raw('DROP SCHEMA ?? CASCADE', [schemaCiclo]);
     }
 
-    console.log('=== VALIDACAO MIGRATION SCRUM-228 CONCLUIDA COM SUCESSO ===');
+    console.log('=== VALIDACAO MIGRATION notificacao outbox CONCLUIDA COM SUCESSO ===');
     for (const item of relatorio) {
       console.log(` - ${item}`);
     }
@@ -726,12 +726,12 @@ async function executarValidacaoCompletaScrum228() {
 }
 
 module.exports = {
-  executarValidacaoCompletaScrum228,
+  executarValidacaoNotificacaoOutbox,
 };
 
 if (require.main === module) {
-  executarValidacaoCompletaScrum228().catch((erro) => {
-    console.error('Falha na validacao da migration SCRUM-228:', erro.message);
+  executarValidacaoNotificacaoOutbox().catch((erro) => {
+    console.error('Falha na validacao da migration notificacao outbox:', erro.message);
     process.exit(1);
   });
 }

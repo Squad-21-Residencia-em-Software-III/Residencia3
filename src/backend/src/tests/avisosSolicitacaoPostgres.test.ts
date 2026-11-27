@@ -14,7 +14,7 @@ import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 // Avisos A1 a A4 (SCRUM-230) pela API e pela rotina de expiração. Só executa num banco descartável
 // explicitamente identificado, depois de `npm run migrate`.
-const habilitado = process.env.SCRUM230_POSTGRES_TESTS === '1';
+const habilitado = process.env.AVISOS_SOLICITACAO_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(8).toString('hex');
 
 interface Conta { id: number; token: string }

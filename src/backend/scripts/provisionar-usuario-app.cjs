@@ -1,6 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
+const { aplicarPrivilegiosSolicitacoesExternasSvo, DADOS } = require('../database/privilegiosSolicitacoesExternasSvo.cjs');
 const knexConfig = require('../knexfile');
 
 /**
@@ -85,6 +86,12 @@ function validarEstadoMinimoPrivilegio(estado, opcoes = {}) {
   if (estado.podeDeletarPreferenciasNotificacao) {
     violacoes.push(
       'role nao pode ter privilegio DELETE sobre a tabela preferencias_notificacao'
+    );
+  }
+
+  if (estado.podeDeletarDadosExternosSvo) {
+    violacoes.push(
+      'role nao pode ter privilegio DELETE sobre as tabelas protegidas de solicitacoes externas SVO (solicitacoes_svo_dados_externos, solicitacoes_svo_credenciais_externas)'
     );
   }
 
@@ -198,8 +205,21 @@ async function inspecionarEstadoRole(conexao, appUser) {
          WHEN to_regclass('public.preferencias_notificacao') IS NOT NULL THEN
            has_table_privilege(?, 'public.preferencias_notificacao', 'DELETE')
          ELSE false
-       END AS pode_deletar_preferencias_notificacao`,
+       END AS pode_deletar_preferencias_notificacao,
+       CASE
+         WHEN to_regclass('public.solicitacoes_svo_dados_externos') IS NOT NULL THEN
+           has_table_privilege(?, 'public.solicitacoes_svo_dados_externos', 'DELETE')
+         ELSE false
+       END
+       OR
+       CASE
+         WHEN to_regclass('public.solicitacoes_svo_credenciais_externas') IS NOT NULL THEN
+           has_table_privilege(?, 'public.solicitacoes_svo_credenciais_externas', 'DELETE')
+         ELSE false
+       END AS pode_deletar_dados_externos_svo`,
     [
+      appUser,
+      appUser,
       appUser,
       appUser,
       appUser,
@@ -236,6 +256,7 @@ async function inspecionarEstadoRole(conexao, appUser) {
     podeDeletarNotificacoes: Boolean(privRows[0]?.pode_deletar_notificacoes),
     podeDeletarNotificacaoOutbox: Boolean(privRows[0]?.pode_deletar_notificacao_outbox),
     podeDeletarPreferenciasNotificacao: Boolean(privRows[0]?.pode_deletar_preferencias_notificacao),
+    podeDeletarDadosExternosSvo: Boolean(privRows[0]?.pode_deletar_dados_externos_svo),
     privilegiosExcessivosTabelas: excessivosRows.map(
       (r) => `${r.table_name}:${r.privilege_type}`
     ),
@@ -369,6 +390,9 @@ async function provisionarUsuarioAplicacao() {
           IF to_regclass('public.preferencias_notificacao') IS NOT NULL THEN
             EXECUTE format('REVOKE DELETE ON TABLE public.preferencias_notificacao FROM %I', '${appUser}');
           END IF;
+          IF to_regclass('public.reprogramacoes_viagem_frota') IS NOT NULL THEN
+            EXECUTE format('REVOKE UPDATE, DELETE ON TABLE public.reprogramacoes_viagem_frota FROM %I', '${appUser}');
+          END IF;
         END $$;`
       );
 
@@ -393,6 +417,11 @@ async function provisionarUsuarioAplicacao() {
         'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ??',
         [appUser]
       );
+
+      if (await trx.schema.withSchema('public').hasTable(DADOS)) {
+        const corrigida = !(await trx.schema.withSchema('public').hasColumn(DADOS, 'endereco_ocorrencia'));
+        await aplicarPrivilegiosSolicitacoesExternasSvo(trx, 'public', appUser, corrigida);
+      }
 
       // Validacao obrigatoria dos atributos efetivos e privilegios antes de confirmar a transacao
       const estado = await inspecionarEstadoRole(trx, appUser);
