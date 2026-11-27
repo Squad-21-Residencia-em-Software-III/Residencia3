@@ -104,7 +104,7 @@ describe('Rotas de mapa no app real com autenticação e provedores simulados', 
   it('mantém 414 e 422 separados e nunca calcula rota parcial', async () => {
     await request(app).get('/api/mapas/buscar?q=' + 'a'.repeat(4096)).set('Authorization', token).expect(414);
     await request(app).get(urlRota(['0,0', '', '1,1'])).set('Authorization', token)
-      .expect(422).expect(({ body }) => expect(body).toMatchObject({ codigo: 'ROTA_SEM_COORDENADAS', contexto: { pontos: [1] } }));
+      .expect(422).expect(({ body }) => expect(body).toMatchObject({ codigo: 'ROTA_SEM_COORDENADAS', contexto: { metodo: 'INDISPONIVEL', pontos: [1] } }));
     await request(app).get(urlRota(Array(11).fill('0,0'))).set('Authorization', token).expect(400);
     expect(http).not.toHaveBeenCalled();
   });

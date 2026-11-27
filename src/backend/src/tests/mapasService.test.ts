@@ -109,7 +109,7 @@ describe('Proxy cartográfico com upstream simulado', () => {
     const { http, service } = configurar();
     http.mockResolvedValueOnce(json(osrm));
     const resultado = await service.rota(rota(['1,2', '3,4', '5,6', '7,8'], { retornarOrigem: 'true' }), agora());
-    expect(resultado).toEqual({ metodo: 'osrm', aproximada: false, distanciaMetros: 2510, formatoGeometria: 'polyline5', geometria: geometry });
+    expect(resultado).toEqual({ metodo: 'OSRM', aproximada: false, distanciaMetros: 2510, formatoGeometria: 'polyline5', geometria: geometry });
     const url = http.mock.calls[0]?.[0] as URL;
     expect(url.pathname).toBe('/routed-car/route/v1/driving/2,1;4,3;6,5;8,7;2,1');
     expect(url.searchParams.get('geometries')).toBe('polyline');
@@ -127,7 +127,7 @@ describe('Proxy cartográfico com upstream simulado', () => {
   it('recusa rota inteira com ponto vazio e evita distância parcial', async () => {
     const { http, service } = configurar();
     await expect(service.rota(rota(['0,0', '', '1,1']), agora())).rejects.toMatchObject({
-      statusCode: 422, codigo: 'ROTA_SEM_COORDENADAS', contexto: { pontos: [1] },
+      statusCode: 422, codigo: 'ROTA_SEM_COORDENADAS', contexto: { metodo: 'INDISPONIVEL', pontos: [1] },
     });
     expect(http).not.toHaveBeenCalled();
   });
@@ -137,7 +137,7 @@ describe('Proxy cartográfico com upstream simulado', () => {
     http.mockResolvedValueOnce(json({}, status));
     const resultado = await service.rota(rota(['0,0', '0,2', '0,1'], { retornarOrigem: 'true' }), agora());
     expect(resultado).toEqual({
-      metodo: 'haversine_1_3', aproximada: true, distanciaMetros: 578214, geometria: null, formatoGeometria: null,
+      metodo: 'HAVERSINE_APROXIMADO', aproximada: true, distanciaMetros: 578214, geometria: null, formatoGeometria: null,
     });
     expect(registrar).toHaveBeenCalledWith(expect.objectContaining({ provedor: 'osrm', resultado: status === 429 ? '429' : 'http' }));
   });
@@ -147,14 +147,15 @@ describe('Proxy cartográfico com upstream simulado', () => {
     http.mockResolvedValueOnce(json({ code }, 400));
     await expect(service.rota(rota(['0,0', '0,1']), agora())).rejects.toMatchObject({
       statusCode: 422, codigo: code === 'TooBig' ? 'ROTA_LIMITE_PROVEDOR' : 'ROTA_INDISPONIVEL',
+      contexto: { metodo: 'INDISPONIVEL' },
     });
   });
 
   it('limita novas chamadas OSRM por processo e entrega estimativa quando necessário', async () => {
     const { http, service } = configurar();
     http.mockResolvedValueOnce(json(osrm));
-    expect((await service.rota(rota(['0,0', '0,1']), agora())).metodo).toBe('osrm');
-    expect((await service.rota(rota(['0,0', '0,2']), agora())).metodo).toBe('haversine_1_3');
+    expect((await service.rota(rota(['0,0', '0,1']), agora())).metodo).toBe('OSRM');
+    expect((await service.rota(rota(['0,0', '0,2']), agora())).metodo).toBe('HAVERSINE_APROXIMADO');
     expect(http).toHaveBeenCalledTimes(1);
   });
 

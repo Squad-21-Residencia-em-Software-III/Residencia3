@@ -29,8 +29,8 @@ export interface BuscaMapa {
 }
 
 export type RotaMapa =
-  | { aproximada: false; metodo: 'osrm'; distanciaMetros: number; geometria: string; formatoGeometria: 'polyline5' }
-  | { aproximada: true; metodo: 'haversine_1_3'; distanciaMetros: number; geometria: null; formatoGeometria: null };
+  | { aproximada: false; metodo: 'OSRM'; distanciaMetros: number; geometria: string; formatoGeometria: 'polyline5' }
+  | { aproximada: true; metodo: 'HAVERSINE_APROXIMADO'; distanciaMetros: number; geometria: null; formatoGeometria: null };
 
 type Resposta = BuscaMapa | RotaMapa;
 type Solicitante = { sinal: AbortSignal; prazoMs: number };
@@ -220,7 +220,7 @@ export function criarMapasService(config: ConfiguracaoMapa) {
   async function rota(query: z.infer<typeof rotaMapaSchema>, solicitante: Solicitante): Promise<RotaMapa> {
     const faltantes = query.pontos.flatMap((ponto, indice) => ponto === null ? [indice] : []);
     if (faltantes.length > 0) {
-      throw new AppError('A rota completa exige coordenadas de todos os pontos.', 422, 'ROTA_SEM_COORDENADAS', { pontos: faltantes });
+      throw new AppError('A rota completa exige coordenadas de todos os pontos.', 422, 'ROTA_SEM_COORDENADAS', { metodo: 'INDISPONIVEL', pontos: faltantes });
     }
     const pontos = query.pontos.filter((ponto) => ponto !== null);
     if (query.retornarOrigem) pontos.push(pontos[0]!);
@@ -230,18 +230,18 @@ export function criarMapasService(config: ConfiguracaoMapa) {
         resposta = await provedores.rota(pontos, sinal);
       } catch (erro) {
         if (!(erro instanceof FalhaProvedor)) throw erro;
-        return { aproximada: true, metodo: 'haversine_1_3', distanciaMetros: distanciaAproximada(pontos), geometria: null, formatoGeometria: null };
+        return { aproximada: true, metodo: 'HAVERSINE_APROXIMADO', distanciaMetros: distanciaAproximada(pontos), geometria: null, formatoGeometria: null };
       }
 
       if (resposta.code === 'TooBig') {
-        throw new AppError('O provedor não comporta a sequência pedida.', 422, 'ROTA_LIMITE_PROVEDOR');
+        throw new AppError('O provedor não comporta a sequência pedida.', 422, 'ROTA_LIMITE_PROVEDOR', { metodo: 'INDISPONIVEL' });
       }
       if (resposta.code !== 'Ok') {
-        throw new AppError('Não foi encontrada rota rodoviária para os pontos informados.', 422, 'ROTA_INDISPONIVEL');
+        throw new AppError('Não foi encontrada rota rodoviária para os pontos informados.', 422, 'ROTA_INDISPONIVEL', { metodo: 'INDISPONIVEL' });
       }
       const rota = resposta.routes[0]!;
       return {
-        aproximada: false, metodo: 'osrm', distanciaMetros: Math.round(rota.distance),
+        aproximada: false, metodo: 'OSRM', distanciaMetros: Math.round(rota.distance),
         geometria: rota.geometry, formatoGeometria: 'polyline5',
       };
     });

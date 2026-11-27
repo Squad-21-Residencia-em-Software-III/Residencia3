@@ -44,14 +44,14 @@ As definições TypeScript ficam em `src/backend/src/services/mapasService.ts`.
 ```json
 {
   "aproximada": false,
-  "metodo": "osrm",
+  "metodo": "OSRM",
   "distanciaMetros": 2510,
   "geometria": "_p~iF~ps|U_ulLnnqC_mqNvxq`@",
   "formatoGeometria": "polyline5"
 }
 ```
 
-O OSRM recebe os pontos na ordem manual do cliente. Em falha técnica externa ou cota de saída local atingida, estima a distância dos trechos consecutivos com Haversine × 1,3, inclusive o retorno solicitado. A resposta traz `aproximada: true`, `metodo: "haversine_1_3"` e geometria e formato nulos. O cliente mostra o rótulo de estimativa. Um resultado definitivo do OSRM indicando ausência de rota ou ponto rodoviário, ou excedendo o limite do provedor, retorna 422.
+O OSRM recebe os pontos na ordem manual do cliente. Em falha técnica externa ou cota de saída local atingida, estima a distância dos trechos consecutivos com Haversine × 1,3, inclusive o retorno solicitado. A resposta traz `aproximada: true`, `metodo: "HAVERSINE_APROXIMADO"` e geometria e formato nulos. O cliente mostra o rótulo de estimativa. Um resultado definitivo do OSRM indicando ausência de rota ou ponto rodoviário, ou excedendo o limite do provedor, retorna 422. Os valores de método seguem o contrato geográfico da SCRUM-274. Resultados indisponíveis indicam `contexto.metodo: "INDISPONIVEL"` no erro 422.
 
 | HTTP | Condição |
 | --- | --- |
