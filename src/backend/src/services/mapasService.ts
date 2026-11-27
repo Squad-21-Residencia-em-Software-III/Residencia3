@@ -29,7 +29,7 @@ export interface BuscaMapa {
 }
 
 export type RotaMapa =
-  | { aproximada: false; metodo: 'OSRM'; distanciaMetros: number; geometria: string; formatoGeometria: 'polyline5' }
+  | { aproximada: false; metodo: 'OSRM'; distanciaMetros: number; duracaoSegundos?: number; geometria: string; formatoGeometria: 'polyline5' }
   | { aproximada: true; metodo: 'HAVERSINE_APROXIMADO'; distanciaMetros: number; geometria: null; formatoGeometria: null };
 
 type Resposta = BuscaMapa | RotaMapa;
@@ -241,6 +241,7 @@ export function criarMapasService(config: ConfiguracaoMapa) {
       const rota = resposta.routes[0]!;
       return {
         aproximada: false, metodo: 'OSRM', distanciaMetros: Math.round(rota.distance),
+        ...(rota.duration === undefined ? {} : { duracaoSegundos: Math.round(rota.duration) }),
         geometria: rota.geometry, formatoGeometria: 'polyline5',
       };
     });
