@@ -1,6 +1,4 @@
 import {
-  createCipheriv,
-  createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
@@ -27,9 +25,6 @@ import {
 export const JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_DIAS = 30;
 export const JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS =
   JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_DIAS * 24 * 60 * 60 * 1000;
-
-// Janela curta do envelope cifrado para recuperar resposta perdida em falha de rede (15 minutos)
-export const JANELA_RECUPERACAO_TENTATIVA_MS = 15 * 60 * 1000;
 
 export const MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA =
   'Não foi possível consultar a solicitação com os dados informados. Verifique o protocolo e a credencial secreta.';
@@ -84,8 +79,8 @@ export interface DtoAcompanhamentoExternoSvo {
 export interface EmissaoCredencialExternaInput {
   solicitacaoId: number;
   protocolo?: string;
-  chaveIdempotencia?: string | null;
-  payloadNormalizado?: unknown;
+  chaveIdempotencia: string;
+  payloadNormalizado: unknown;
   provaTentativa?: string | null;
   agora?: Date;
 }
@@ -95,14 +90,6 @@ export interface EmissaoCredencialExternaResultado {
   protocolo: string;
   credencial: string;
   emitidaEm: string;
-  recuperacaoExpiraEm: string | null;
-}
-
-export interface RecuperacaoTentativaInput {
-  chaveIdempotencia: string;
-  provaTentativa: string;
-  payloadNormalizado?: unknown;
-  agora?: Date;
 }
 
 function normalizarObjetoCanonico(valor: unknown): unknown {
@@ -166,93 +153,6 @@ export function compararDigestsTempoConstante(
   );
   if (bufA.length !== bufB.length) return false;
   return timingSafeEqual(bufA, bufB) && validoA && validoB;
-}
-
-function derivarChaveEnvelope(
-  chaveIdempotencia: string,
-  provaTentativa: string,
-  payloadDigest: string
-): Buffer {
-  return createHmac('sha256', `${env.jwtSecret}:svo-envelope-tentativa-v1`)
-    .update(`${chaveIdempotencia}:${provaTentativa}:${payloadDigest}`, 'utf8')
-    .digest();
-}
-
-export function cifrarEnvelopeRecuperacao(params: {
-  credencial: string;
-  protocolo: string;
-  chaveIdempotencia: string;
-  provaTentativa: string;
-  payloadDigest: string;
-}): string {
-  const chave = derivarChaveEnvelope(
-    params.chaveIdempotencia,
-    params.provaTentativa,
-    params.payloadDigest
-  );
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', chave, iv);
-  cipher.setAAD(Buffer.from(params.protocolo, 'utf8'));
-  const textoClaro = JSON.stringify({
-    protocolo: params.protocolo,
-    credencial: params.credencial,
-  });
-  const cifrado = Buffer.concat([
-    cipher.update(textoClaro, 'utf8'),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-  return [
-    'v1',
-    iv.toString('base64url'),
-    tag.toString('base64url'),
-    cifrado.toString('base64url'),
-  ].join('.');
-}
-
-export function decifrarEnvelopeRecuperacao(params: {
-  envelope: string;
-  protocolo: string;
-  chaveIdempotencia: string;
-  provaTentativa: string;
-  payloadDigest: string;
-}): { protocolo: string; credencial: string } | null {
-  const partes = params.envelope.split('.');
-  if (partes.length !== 4 || partes[0] !== 'v1') return null;
-  try {
-    const iv = Buffer.from(partes[1]!, 'base64url');
-    const tag = Buffer.from(partes[2]!, 'base64url');
-    const cifrado = Buffer.from(partes[3]!, 'base64url');
-    if (iv.length !== 12 || tag.length !== 16 || cifrado.length === 0) {
-      return null;
-    }
-    const chave = derivarChaveEnvelope(
-      params.chaveIdempotencia,
-      params.provaTentativa,
-      params.payloadDigest
-    );
-    const decipher = createDecipheriv('aes-256-gcm', chave, iv);
-    decipher.setAAD(Buffer.from(params.protocolo, 'utf8'));
-    decipher.setAuthTag(tag);
-    const decifrado = Buffer.concat([
-      decipher.update(cifrado),
-      decipher.final(),
-    ]).toString('utf8');
-    const obj = JSON.parse(decifrado) as {
-      protocolo?: string;
-      credencial?: string;
-    };
-    if (
-      typeof obj.protocolo !== 'string' ||
-      typeof obj.credencial !== 'string' ||
-      obj.protocolo !== params.protocolo
-    ) {
-      return null;
-    }
-    return { protocolo: obj.protocolo, credencial: obj.credencial };
-  } catch {
-    return null;
-  }
 }
 
 export function gerarProtocoloExternoSvo(agora = new Date()): string {
@@ -379,10 +279,7 @@ function resolverLimiteConsultaPublica(
   registro: RegistroAcompanhamentoExternoRow,
   encerradoEm: Date | null
 ): Date | null {
-  if (registro.valida_ate) {
-    const d = new Date(registro.valida_ate);
-    if (Number.isFinite(d.getTime())) return d;
-  }
+  // consulta_publica_expira_em e coluna GENERATED (encerramento + 30 dias em UTC) na SCRUM-263
   if (registro.consulta_publica_expira_em) {
     const d = new Date(registro.consulta_publica_expira_em);
     if (Number.isFinite(d.getTime())) return d;
@@ -417,23 +314,21 @@ export const acompanhamentoExternoSvoService = {
     }
 
     const agora = input.agora ?? new Date();
-    const chaveIdempotencia = input.chaveIdempotencia?.trim() || null;
+    const chaveIdempotencia = input.chaveIdempotencia.trim();
     const provaTentativa = input.provaTentativa?.trim() || null;
 
-    if (chaveIdempotencia && input.payloadNormalizado === undefined) {
+    // Schema SCRUM-263 corrigido: chave de idempotencia e digest do payload sao obrigatorios
+    if (!chaveIdempotencia || input.payloadNormalizado === undefined) {
       throw new AppError(
-        'A chave de idempotência exige o payload normalizado da solicitação',
+        'A chave de idempotência e o payload normalizado da solicitação são obrigatórios',
         400
       );
     }
 
-    const payloadDigest = chaveIdempotencia
-      ? calcularDigestPayloadCriacao(input.payloadNormalizado)
+    const payloadDigest = calcularDigestPayloadCriacao(input.payloadNormalizado);
+    const provaDigest = provaTentativa
+      ? calcularDigestProvaTentativa(chaveIdempotencia, provaTentativa)
       : null;
-    const provaDigest =
-      chaveIdempotencia && provaTentativa
-        ? calcularDigestProvaTentativa(chaveIdempotencia, provaTentativa)
-        : null;
 
     let protocolo = input.protocolo?.trim().toUpperCase();
     if (!protocolo) {
@@ -454,22 +349,6 @@ export const acompanhamentoExternoSvoService = {
       'HMAC-SHA-256'
     );
 
-    const recuperacaoExpiraEm =
-      chaveIdempotencia && provaTentativa && payloadDigest
-        ? new Date(agora.getTime() + JANELA_RECUPERACAO_TENTATIVA_MS)
-        : null;
-
-    const envelopeRecuperacao =
-      chaveIdempotencia && provaTentativa && payloadDigest
-        ? cifrarEnvelopeRecuperacao({
-            credencial,
-            protocolo,
-            chaveIdempotencia,
-            provaTentativa,
-            payloadDigest,
-          })
-        : null;
-
     await acompanhamentoExternoSvoModel.inserirCredencial(
       {
         solicitacao_id: input.solicitacaoId,
@@ -479,10 +358,7 @@ export const acompanhamentoExternoSvoService = {
         chave_idempotencia_criacao: chaveIdempotencia,
         payload_criacao_digest: payloadDigest,
         prova_tentativa_digest: provaDigest,
-        envelope_recuperacao: envelopeRecuperacao,
-        recuperacao_expira_em: recuperacaoExpiraEm,
         emitida_em: agora,
-        valida_ate: null,
       },
       trx
     );
@@ -492,112 +368,6 @@ export const acompanhamentoExternoSvoService = {
       protocolo,
       credencial,
       emitidaEm: agora.toISOString(),
-      recuperacaoExpiraEm: recuperacaoExpiraEm
-        ? recuperacaoExpiraEm.toISOString()
-        : null,
-    };
-  },
-
-  /**
-   * Recupera o protocolo e a credencial secreta de uma tentativa de criacao cuja resposta
-   * HTTP foi interrompida apos o commit (SCRUM-264 / SCRUM-266).
-   * - Exige a mesma chave_idempotencia + prova_tentativa de alta entropia + mesmo payload (quando enviado).
-   * - Se a chave foi reutilizada com payload diferente -> 409 CONFLITO_IDEMPOTENCIA.
-   * - Se a prova de posse nao confere ou o envelope expirou -> 401 uniforme sem revelar o segredo.
-   */
-  async recuperarComprovanteTentativa(
-    input: RecuperacaoTentativaInput,
-    conexao: Knex = db
-  ): Promise<EmissaoCredencialExternaResultado> {
-    const agora = input.agora ?? new Date();
-    const chave = input.chaveIdempotencia.trim();
-    const prova = input.provaTentativa.trim();
-
-    const tentativa =
-      await acompanhamentoExternoSvoModel.buscarTentativaPorChaveIdempotencia(
-        chave,
-        conexao
-      );
-
-    const provaDigestCalculado = calcularDigestProvaTentativa(chave, prova);
-
-    if (!tentativa || !tentativa.protocolo) {
-      // Executa comparacao constante mesmo quando nao existe para evitar side-channel
-      compararDigestsTempoConstante(
-        provaDigestCalculado,
-        DIGEST_FICTICIO_ANTI_ENUMERACAO
-      );
-      throw erroCredencialInvalida();
-    }
-
-    if (input.payloadNormalizado !== undefined) {
-      const payloadDigestAtual = calcularDigestPayloadCriacao(
-        input.payloadNormalizado
-      );
-      if (
-        !tentativa.payload_criacao_digest ||
-        !compararDigestsTempoConstante(
-          payloadDigestAtual,
-          tentativa.payload_criacao_digest
-        )
-      ) {
-        throw new AppError(
-          'Esta chave de tentativa já foi utilizada com dados diferentes.',
-          409,
-          'CONFLITO_IDEMPOTENCIA'
-        );
-      }
-    }
-
-    const provaConfere =
-      tentativa.prova_tentativa_digest !== null &&
-      compararDigestsTempoConstante(
-        provaDigestCalculado,
-        tentativa.prova_tentativa_digest
-      );
-
-    if (
-      !provaConfere ||
-      tentativa.revogada_em !== null ||
-      !tentativa.envelope_recuperacao ||
-      !tentativa.recuperacao_expira_em ||
-      !tentativa.payload_criacao_digest
-    ) {
-      throw erroCredencialInvalida();
-    }
-
-    const expiraEm = new Date(tentativa.recuperacao_expira_em);
-    if (!Number.isFinite(expiraEm.getTime()) || agora.getTime() > expiraEm.getTime()) {
-      throw erroCredencialInvalida();
-    }
-
-    const decifrado = decifrarEnvelopeRecuperacao({
-      envelope: tentativa.envelope_recuperacao,
-      protocolo: tentativa.protocolo,
-      chaveIdempotencia: chave,
-      provaTentativa: prova,
-      payloadDigest: tentativa.payload_criacao_digest,
-    });
-
-    if (!decifrado) {
-      throw erroCredencialInvalida();
-    }
-
-    // Confirma que a credencial decifrada corresponde exatamente ao digest persistido
-    const digestCalculado = calcularDigestCredencialExterna(
-      decifrado.credencial,
-      tentativa.algoritmo_digest
-    );
-    if (!compararDigestsTempoConstante(digestCalculado, tentativa.segredo_digest)) {
-      throw erroCredencialInvalida();
-    }
-
-    return {
-      solicitacaoId: tentativa.solicitacao_id,
-      protocolo: decifrado.protocolo,
-      credencial: decifrado.credencial,
-      emitidaEm: new Date(tentativa.emitida_em).toISOString(),
-      recuperacaoExpiraEm: expiraEm.toISOString(),
     };
   },
 

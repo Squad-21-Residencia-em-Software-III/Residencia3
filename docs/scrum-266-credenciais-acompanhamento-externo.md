@@ -15,14 +15,10 @@ Esta entrega implementa a emissão transacional de credenciais secretas de alta 
    - O segredo em texto claro **nunca é persistido** em `solicitacoes_svo_credenciais_externas.segredo_digest`.
    - O banco armazena apenas o digest hexadecimal de 64 caracteres calculado com **`HMAC-SHA-256`** derivado do segredo do servidor (`calcularDigestCredencialExterna`).
    - A verificação utiliza `crypto.timingSafeEqual` (`compararDigestsTempoConstante`), executando um cálculo completo contra um digest constante mesmo quando o protocolo não existe para eliminar canais laterais de tempo e impedir enumeração de protocolos.
-3. **Recuperação Segura de Resposta Interrompida (`SCRUM-264` / `SCRUM-266`):**
-   - Durante `emitirCredencialNaTransacao(trx, input)`, quando o cliente envia `Idempotency-Key` (`chave_idempotencia_criacao`) e `X-Prova-Tentativa` (segredo efêmero de alta entropia gerado pelo cliente para a tentativa), o serviço grava:
-     - `payload_criacao_digest`: SHA-256 canônico do payload normalizado.
-     - `prova_tentativa_digest`: HMAC-SHA-256 vinculando a chave de idempotência à prova de posse da tentativa.
-     - `envelope_recuperacao`: Envelope cifrado autenticado com **`AES-256-GCM`** (chave derivada do segredo do servidor + `chaveIdempotencia` + `provaTentativa` + `payloadDigest`, com `protocolo` em `AAD`) e expiração curta de **15 minutos** (`recuperacao_expira_em`).
-   - Se a conexão cair após o commit antes de o navegador receber o `201 Created`, o cliente chama `POST /api/solicitacoes-svo/externas/recuperar-comprovante` apresentando a mesma `Idempotency-Key`, a mesma `X-Prova-Tentativa` e o payload:
-     - Se o payload divergir para a mesma chave $\to$ `409 Conflict` (`CONFLITO_IDEMPOTENCIA`).
-     - Se apenas a chave ou protocolo/CPF for enviado sem a `X-Prova-Tentativa` correta, ou após a janela de 15 minutos $\to$ `401 Unauthorized` uniforme (`CREDENCIAL_EXTERNA_INVALIDA`).
+3. **Idempotência da Criação (alinhado à correção da SCRUM-263, commit 263165a):**
+   - `chave_idempotencia_criacao` e `payload_criacao_digest` são obrigatórios (NOT NULL no banco); `prova_tentativa_digest` é opcional.
+   - O envelope cifrado de recuperação (`envelope_recuperacao` / `recuperacao_expira_em`) e `valida_ate` foram removidos do schema. Por isso o endpoint `POST /recuperar-comprovante` foi retirado desta entrega. A retomada de resposta perdida após o commit fica com a SCRUM-264, dependendo de migration revisada e decisão institucional.
+   - A única expiração pública é `solicitacoes_svo_dados_externos.consulta_publica_expira_em`, coluna GENERATED (encerramento operacional + 30 dias em UTC). A aplicação grava apenas `encerrado_operacional_em`, uma única vez.
 
 ---
 
@@ -33,13 +29,11 @@ Esta entrega implementa a emissão transacional de credenciais secretas de alta 
   - Recebe `{ protocolo, credencial }` no corpo JSON (ou `protocolo` no corpo e credencial no cabeçalho `X-Credencial-Acompanhamento`).
 - **`GET /api/solicitacoes-svo/externas/acompanhamento/:protocolo`**
   - Recebe `:protocolo` no path e a credencial exclusivamente no cabeçalho `X-Credencial-Acompanhamento`.
-- **`POST /api/solicitacoes-svo/externas/recuperar-comprovante`**
-  - Recebe `Idempotency-Key` e `X-Prova-Tentativa` (nos headers ou no corpo JSON) mais `payload` opcional para recuperar o comprovante da tentativa.
 
 ### 3.2. Endpoint Interno de Revogação
 - **`POST /api/solicitacoes-svo/:id/credencial-externa/revogar`**
   - Restrito a `ADMINISTRADOR` e `GESTOR_SVO` associado à unidade SVO (`autenticar` + `autorizar` + `exigirAssociacaoSvo`).
-  - Preenche `revogada_em` e `revogada_motivo`, limpa qualquer `envelope_recuperacao` remanescente e grava trilha em `auditorias` (`REVOGOU_CREDENCIAL_EXTERNA_SVO solicitacao_id=...`).
+  - Preenche `revogada_em` e `revogada_motivo` e grava trilha em `auditorias` (`REVOGOU_CREDENCIAL_EXTERNA_SVO solicitacao_id=...`).
 
 ### 3.3. Proibição de Credencial na URL, Cache e Logs
 - Qualquer requisição de acompanhamento que contenha parâmetros na query string (`?credencial=...`, `?protocolo=...`) é imediatamente recusada com `400 Bad Request` (`CREDENCIAIS_NA_URL_PROIBIDAS`).

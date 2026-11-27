@@ -7,13 +7,10 @@ export interface CredencialExternaSvoRow {
   segredo_digest: string;
   algoritmo_digest: 'SHA-256' | 'HMAC-SHA-256';
   versao_credencial: number;
-  chave_idempotencia_criacao: string | null;
-  payload_criacao_digest: string | null;
+  chave_idempotencia_criacao: string;
+  payload_criacao_digest: string;
   prova_tentativa_digest: string | null;
-  envelope_recuperacao: string | null;
-  recuperacao_expira_em: Date | string | null;
   emitida_em: Date | string;
-  valida_ate: Date | string | null;
   revogada_em: Date | string | null;
   revogada_motivo: string | null;
   ultimo_acesso_em: Date | string | null;
@@ -25,13 +22,10 @@ export interface NovaCredencialExternaSvo {
   segredo_digest: string;
   algoritmo_digest?: 'SHA-256' | 'HMAC-SHA-256';
   versao_credencial?: number;
-  chave_idempotencia_criacao?: string | null;
-  payload_criacao_digest?: string | null;
+  chave_idempotencia_criacao: string;
+  payload_criacao_digest: string;
   prova_tentativa_digest?: string | null;
-  envelope_recuperacao?: string | null;
-  recuperacao_expira_em?: Date | null;
   emitida_em?: Date;
-  valida_ate?: Date | null;
 }
 
 export interface RegistroAcompanhamentoExternoRow {
@@ -54,7 +48,6 @@ export interface RegistroAcompanhamentoExternoRow {
   algoritmo_digest: 'SHA-256' | 'HMAC-SHA-256';
   versao_credencial: number;
   emitida_em: Date | string;
-  valida_ate: Date | string | null;
   revogada_em: Date | string | null;
   ordem_status:
     | 'AGUARDANDO_ALOCACAO'
@@ -97,7 +90,6 @@ const COLUNAS_ACOMPANHAMENTO_SEGURO = [
   'c.algoritmo_digest',
   'c.versao_credencial',
   'c.emitida_em',
-  'c.valida_ate',
   'c.revogada_em',
   'ordem.status as ordem_status',
   'ordem.data_hora_saida as ordem_saida_em',
@@ -183,8 +175,6 @@ export const acompanhamentoExternoSvoModel = {
   async registrarEncerramentoOperacional(
     solicitacaoId: number,
     encerradoEm: Date,
-    expiraConsultaPublicaEm: Date,
-    retencaoAte: Date,
     conexao: Knex = db
   ): Promise<void> {
     await conexao('solicitacoes_svo_dados_externos')
@@ -192,16 +182,6 @@ export const acompanhamentoExternoSvoModel = {
       .whereNull('encerrado_operacional_em')
       .update({
         encerrado_operacional_em: encerradoEm,
-        consulta_publica_expira_em: expiraConsultaPublicaEm,
-        retencao_ate: retencaoAte,
-        atualizado_em: encerradoEm,
-      });
-
-    await conexao('solicitacoes_svo_credenciais_externas')
-      .where({ solicitacao_id: solicitacaoId })
-      .whereNull('valida_ate')
-      .update({
-        valida_ate: expiraConsultaPublicaEm,
         atualizado_em: encerradoEm,
       });
   },
@@ -219,8 +199,6 @@ export const acompanhamentoExternoSvoModel = {
       .update({
         revogada_em: agora,
         revogada_motivo: motivo,
-        envelope_recuperacao: null,
-        recuperacao_expira_em: null,
         atualizado_em: agora,
       })
       .returning('*');

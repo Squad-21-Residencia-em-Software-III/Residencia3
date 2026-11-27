@@ -3,6 +3,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet
 const knex = require('knex');
 const knexConfig = require('../knexfile');
 const migrationScrum263 = require('../database/migrations/20261127130000_scrum_263_solicitacoes_externas_svo');
+const correcaoScrum263 = require('../database/migrations/20261127140000_scrum_263_integridade_svo_externo');
 
 async function criarSchemaIsoladoScrum266(trx, schema) {
   await trx.raw('CREATE SCHEMA ??', [schema]);
@@ -62,6 +63,7 @@ async function criarSchemaIsoladoScrum266(trx, schema) {
   `);
 
   await migrationScrum263.up(trx);
+  await correcaoScrum263.up(trx);
 }
 
 async function executarValidacaoPostgresScrum266() {
@@ -121,7 +123,6 @@ async function executarValidacaoPostgresScrum266() {
         cpf_solicitante: payloadA.cpf_solicitante,
         tipo_solicitante: 'PESSOA_FISICA',
         nome_falecido: 'Falecido Sintetico A',
-        endereco_ocorrencia: 'Rua Sintetica A',
         numero_imovel: '100',
         sem_numero_imovel: false,
         descricao_ocorrencia: 'Obito domiciliar natural relatado para triagem.',
@@ -164,7 +165,6 @@ async function executarValidacaoPostgresScrum266() {
         cpf_solicitante: '12345678909',
         tipo_solicitante: 'PESSOA_FISICA',
         nome_falecido: 'Falecido Sintetico B',
-        endereco_ocorrencia: 'Rua Sintetica B',
         numero_imovel: '200',
         sem_numero_imovel: false,
         descricao_ocorrencia: 'Segunda ocorrencia sintetica para teste cruzado.',
@@ -179,69 +179,13 @@ async function executarValidacaoPostgresScrum266() {
         await acompanhamentoExternoSvoService.emitirCredencialNaTransacao(trx, {
           solicitacaoId: solB.id,
           protocolo: protocoloB,
+          chaveIdempotencia: 'idem-266-pg-chamado-b',
+          payloadNormalizado: { local_ocorrencia: 'Rua Sintetica B, 200 - Aracaju/SE' },
           agora: agoraBase,
         });
 
       relatorio.push(
-        '1. Emissao atomica em PostgreSQL real (digest HMAC-SHA-256 + envelope cifrado AES-256-GCM sem segredo em claro): OK'
-      );
-
-      // 2. Recuperacao de comprovante apos perda da resposta inicial + rejeicao de outra pessoa e payload divergente
-      const recuperado =
-        await acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
-          {
-            chaveIdempotencia: chaveIdemA,
-            provaTentativa: provaTentativaA,
-            payloadNormalizado: payloadA,
-            agora: new Date('2026-11-27T12:05:00.000Z'),
-          },
-          trx
-        );
-
-      if (
-        recuperado.protocolo !== protocoloA ||
-        recuperado.credencial !== emissaoA.credencial
-      ) {
-        throw new Error('Recuperacao de comprovante nao devolveu o protocolo/credencial originais.');
-      }
-
-      let bloqueouOutraPessoa = false;
-      try {
-        await acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
-          {
-            chaveIdempotencia: chaveIdemA,
-            provaTentativa: gerarSegredoCredencialExterna(),
-            payloadNormalizado: payloadA,
-            agora: new Date('2026-11-27T12:05:00.000Z'),
-          },
-          trx
-        );
-      } catch (e) {
-        bloqueouOutraPessoa = e.statusCode === 401;
-      }
-
-      let bloqueouPayloadDivergente = false;
-      try {
-        await acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
-          {
-            chaveIdempotencia: chaveIdemA,
-            provaTentativa: provaTentativaA,
-            payloadNormalizado: { ...payloadA, local_ocorrencia: 'Adulterado' },
-            agora: new Date('2026-11-27T12:05:00.000Z'),
-          },
-          trx
-        );
-      } catch (e) {
-        bloqueouPayloadDivergente =
-          e.statusCode === 409 && e.codigo === 'CONFLITO_IDEMPOTENCIA';
-      }
-
-      if (!bloqueouOutraPessoa || !bloqueouPayloadDivergente) {
-        throw new Error('Falha na validacao de replay de outra pessoa ou payload divergente.');
-      }
-
-      relatorio.push(
-        '2. Replay autenticado da tentativa apos commit, bloqueio de outra pessoa (401) e bloqueio de payload divergente (409): OK'
+        '1. Emissao atomica em PostgreSQL real (digest HMAC-SHA-256, chave de idempotencia e digest do payload obrigatorios, sem segredo em claro): OK'
       );
 
       // 3. Isolamento cruzado: credencial A nao le protocolo B e vice-versa
@@ -341,13 +285,14 @@ async function executarValidacaoPostgresScrum266() {
         .update({ status: 'CONCLUIDA', data_hora_conclusao: encerradoEm });
       await trx('solicitacoes_svo_dados_externos')
         .where({ solicitacao_id: solA.id })
-        .update({
-          encerrado_operacional_em: encerradoEm,
-          consulta_publica_expira_em: limite30Dias,
-        });
-      await trx('solicitacoes_svo_credenciais_externas')
+        .update({ encerrado_operacional_em: encerradoEm });
+      // consulta_publica_expira_em e GENERATED na SCRUM-263: confere o calculo do banco (encerramento + 30 dias UTC)
+      const gerado = await trx('solicitacoes_svo_dados_externos')
         .where({ solicitacao_id: solA.id })
-        .update({ valida_ate: limite30Dias });
+        .first('consulta_publica_expira_em');
+      if (new Date(gerado.consulta_publica_expira_em).getTime() !== limite30Dias.getTime()) {
+        throw new Error('consulta_publica_expira_em gerada divergente de 30 dias.');
+      }
 
       const dtoConcluidaNoLimite =
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(

@@ -54,9 +54,6 @@ import {
   MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA,
   acompanhamentoExternoSvoService,
   calcularDigestCredencialExterna,
-  calcularDigestPayloadCriacao,
-  calcularDigestProvaTentativa,
-  cifrarEnvelopeRecuperacao,
   gerarProtocoloExternoSvo,
   gerarSegredoCredencialExterna,
   mapearStatusPublicoAcompanhamentoSvo,
@@ -91,7 +88,6 @@ function criarRegistroBase(
     algoritmo_digest: 'HMAC-SHA-256',
     versao_credencial: 1,
     emitida_em: new Date('2026-11-27T10:00:00.000Z'),
-    valida_ate: null,
     revogada_em: null,
     ordem_status: null,
     ordem_saida_em: null,
@@ -162,103 +158,28 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         .mock.calls[0]?.[0];
       expect(gravado?.solicitacao_id).toBe(101);
       expect(gravado?.segredo_digest).toMatch(/^[0-9a-f]{64}$/);
-      // O segredo em claro jamais e persistido em segredo_digest nem no envelope sem cifragem
+      // O segredo em claro jamais e persistido; nenhum envelope e gravado (removido na SCRUM-263)
       expect(gravado?.segredo_digest).not.toContain(emitido.credencial);
-      expect(gravado?.envelope_recuperacao).not.toContain(emitido.credencial);
+      expect(gravado).not.toHaveProperty('envelope_recuperacao');
+      expect(gravado?.payload_criacao_digest).toMatch(/^[0-9a-f]{64}$/);
     });
 
-    it('recupera protocolo e credencial em retry autenticado após perda da resposta inicial e rejeita prova de outra pessoa ou payload divergente', async () => {
-      const chaveIdempotencia = 'tentativa-svo-20261127-replay-01';
-      const provaCorreta = gerarSegredoCredencialExterna();
-      const provaImpostor = gerarSegredoCredencialExterna();
-      const payloadOriginal = {
-        nome_solicitante: 'Hospital Sintético',
-        local_ocorrencia: 'Av. Beira Mar, 1500',
-      };
-      const payloadAdulterado = {
-        nome_solicitante: 'Outro Solicitante',
-        local_ocorrencia: 'Rua Diferente, 999',
-      };
+    it('exige chave de idempotência e payload (NOT NULL na SCRUM-263) e não expõe endpoint de recuperação por envelope', async () => {
+      await expect(
+        acompanhamentoExternoSvoService.emitirCredencialNaTransacao(trx as never, {
+          solicitacaoId: 101,
+          protocolo: PROTOCOLO_VALIDO_A,
+          chaveIdempotencia: '',
+          payloadNormalizado: undefined,
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(acompanhamentoExternoSvoModel.inserirCredencial).not.toHaveBeenCalled();
 
-      const payloadDigest = calcularDigestPayloadCriacao(payloadOriginal);
-      const provaDigest = calcularDigestProvaTentativa(
-        chaveIdempotencia,
-        provaCorreta
-      );
-      const envelope = cifrarEnvelopeRecuperacao({
-        credencial: CREDENCIAL_A,
-        protocolo: PROTOCOLO_VALIDO_A,
-        chaveIdempotencia,
-        provaTentativa: provaCorreta,
-        payloadDigest,
-      });
-
-      vi.mocked(
-        acompanhamentoExternoSvoModel.buscarTentativaPorChaveIdempotencia
-      ).mockResolvedValue({
-        solicitacao_id: 101,
-        protocolo: PROTOCOLO_VALIDO_A,
-        canal_origem: 'EXTERNA',
-        status_solicitacao: 'EM_TRIAGEM',
-        criado_em: new Date('2026-11-27T12:00:00.000Z'),
-        segredo_digest: calcularDigestCredencialExterna(
-          CREDENCIAL_A,
-          'HMAC-SHA-256'
-        ),
-        algoritmo_digest: 'HMAC-SHA-256',
-        versao_credencial: 1,
-        chave_idempotencia_criacao: chaveIdempotencia,
-        payload_criacao_digest: payloadDigest,
-        prova_tentativa_digest: provaDigest,
-        envelope_recuperacao: envelope,
-        recuperacao_expira_em: new Date(Date.now() + 10 * 60 * 1000),
-        emitida_em: new Date('2026-11-27T12:00:00.000Z'),
-        valida_ate: null,
-        revogada_em: null,
-        revogada_motivo: null,
-        ultimo_acesso_em: null,
-        atualizado_em: new Date('2026-11-27T12:00:00.000Z'),
-      });
-
-      // 1. Replay autenticado pelo dono da tentativa recupera exatamente o mesmo protocolo e segredo
-      const respostaSucesso = await request(app)
+      const resposta = await request(app)
         .post('/api/solicitacoes-svo/externas/recuperar-comprovante')
-        .set('Idempotency-Key', chaveIdempotencia)
-        .set('X-Prova-Tentativa', provaCorreta)
-        .send({ payload: payloadOriginal });
-
-      expect(respostaSucesso.status).toBe(200);
-      expect(respostaSucesso.headers['cache-control']).toContain('no-store');
-      expect(respostaSucesso.body).toEqual({
-        protocolo: PROTOCOLO_VALIDO_A,
-        credencial: CREDENCIAL_A,
-        emitida_em: '2026-11-27T12:00:00.000Z',
-        recuperacao_expira_em: expect.any(String),
-      });
-
-      // 2. Mesma chave com payload divergente -> 409 CONFLITO_IDEMPOTENCIA sem revelar o segredo
-      const respostaConflito = await request(app)
-        .post('/api/solicitacoes-svo/externas/recuperar-comprovante')
-        .set('Idempotency-Key', chaveIdempotencia)
-        .set('X-Prova-Tentativa', provaCorreta)
-        .send({ payload: payloadAdulterado });
-
-      expect(respostaConflito.status).toBe(409);
-      expect(respostaConflito.body.codigo).toBe('CONFLITO_IDEMPOTENCIA');
-      expect(respostaConflito.body.credencial).toBeUndefined();
-
-      // 3. Tentativa de outra pessoa (apenas a chave de idempotencia sem a prova de posse correta) -> 401 uniforme
-      const respostaImpostor = await request(app)
-        .post('/api/solicitacoes-svo/externas/recuperar-comprovante')
-        .set('Idempotency-Key', chaveIdempotencia)
-        .set('X-Prova-Tentativa', provaImpostor)
-        .send({ payload: payloadOriginal });
-
-      expect(respostaImpostor.status).toBe(401);
-      expect(respostaImpostor.body.erro).toBe(
-        MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA
-      );
-      expect(respostaImpostor.body.credencial).toBeUndefined();
+        .send({});
+      expect(resposta.status).not.toBe(200);
+      expect(resposta.body.credencial).toBeUndefined();
     });
   });
 
@@ -516,7 +437,6 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         ordem_status: 'CONCLUIDA',
         encerrado_operacional_em: encerradoEm,
         consulta_publica_expira_em: limiteExato30Dias,
-        valida_ate: limiteExato30Dias,
       });
 
       // No limite exato de 30 dias -> permitido
@@ -594,11 +514,9 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         acompanhamentoExternoSvoModel.revogarCredencial
       ).mockResolvedValueOnce({
         ...criarRegistroBase(),
-        chave_idempotencia_criacao: null,
-        payload_criacao_digest: null,
+        chave_idempotencia_criacao: 'tentativa-revogada-01',
+        payload_criacao_digest: 'b'.repeat(64),
         prova_tentativa_digest: null,
-        envelope_recuperacao: null,
-        recuperacao_expira_em: null,
         revogada_em: new Date('2026-11-27T14:00:00.000Z'),
         revogada_motivo: 'Solicitação de bloqueio por exposição acidental',
         ultimo_acesso_em: null,

@@ -47,9 +47,3 @@ acompanhamentoExternoSvoRoutes.get(
   '/acompanhamento/:protocolo',
   acompanhamentoExternoSvoController.consultarPorProtocoloNoPath
 );
-
-// 3. Recuperacao autenticada de comprovante (protocolo + credencial) quando a resposta do POST de criacao se perdeu apos o commit
-acompanhamentoExternoSvoRoutes.post(
-  '/recuperar-comprovante',
-  acompanhamentoExternoSvoController.recuperarComprovanteTentativa
-);

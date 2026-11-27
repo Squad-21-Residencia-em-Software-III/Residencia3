@@ -13,7 +13,6 @@ import {
   type CriarSolicitacaoSvoInput,
   type ListarSolicitacoesSvoInput,
 } from '../validators/solicitacaoSvoSchemas';
-import { JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS } from './acompanhamentoExternoSvoService';
 import { notificacaoSvoService } from './notificacaoSvoService';
 import type { ListaPaginada } from './usuarioService';
 
@@ -173,16 +172,9 @@ export const solicitacaoSvoService = {
       const recusada = await solicitacaoSvoModel.recusar(id, motivoSanitizado, trx);
       if (recusada.canal_origem === 'EXTERNA') {
         const agora = new Date();
-        const expiraConsultaEm = new Date(
-          agora.getTime() + JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS
-        );
-        const retencaoAte = new Date(agora);
-        retencaoAte.setUTCMonth(retencaoAte.getUTCMonth() + 12);
         await acompanhamentoExternoSvoModel.registrarEncerramentoOperacional(
           id,
           agora,
-          expiraConsultaEm,
-          retencaoAte,
           trx
         );
       }
