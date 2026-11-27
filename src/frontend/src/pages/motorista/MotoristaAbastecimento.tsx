@@ -153,7 +153,7 @@ export default function MotoristaAbastecimento() {
           <Fuel size={20} className="shrink-0 text-primary" aria-hidden="true" />
           <span className="min-w-0">
             <span className="block text-sm text-neutral">Último abastecimento</span>
-            <span className="block truncate font-display text-[15px] font-semibold text-text">
+            <span className="block truncate font-display text-[0.9375rem] font-semibold text-text">
               {resumoAbastecimento(historico[0])}
             </span>
           </span>
@@ -178,7 +178,7 @@ export default function MotoristaAbastecimento() {
                     )}
                   >
                     <PlacaMercosul placa={v.placa} size="sm" />
-                    <span className="truncate text-[15px] font-semibold text-text">{v.modelo}</span>
+                    <span className="truncate text-[0.9375rem] font-semibold text-text">{v.modelo}</span>
                   </button>
                 ))}
               </div>
@@ -186,7 +186,7 @@ export default function MotoristaAbastecimento() {
           ) : (
             <div className="mb-3 flex items-center gap-3">
               <PlacaMercosul placa={veiculos[0].placa} size="sm" />
-              <strong className="truncate text-[15px] text-text">{veiculos[0].modelo}</strong>
+              <strong className="truncate text-[0.9375rem] text-text">{veiculos[0].modelo}</strong>
             </div>
           )}
 
@@ -288,7 +288,7 @@ export default function MotoristaAbastecimento() {
             {historico.slice(0, MAXIMO_HISTORICO).map((a) => (
               <li key={a.id} className="flex min-h-14 items-center justify-between gap-3 py-2">
                 <span className="min-w-0">
-                  <span className="block truncate text-[15px] font-semibold text-text">
+                  <span className="block truncate text-[0.9375rem] font-semibold text-text">
                     {a.posto_combustivel ?? 'Posto não informado'}
                   </span>
                   <span className="block text-sm text-neutral">
@@ -296,7 +296,7 @@ export default function MotoristaAbastecimento() {
                     {emLitros(a.litros)}
                   </span>
                 </span>
-                <strong className="shrink-0 text-[15px] text-text">{reais(Number(a.valor_total))}</strong>
+                <strong className="shrink-0 text-[0.9375rem] text-text">{reais(Number(a.valor_total))}</strong>
               </li>
             ))}
           </ul>

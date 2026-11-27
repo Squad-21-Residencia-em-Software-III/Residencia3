@@ -156,7 +156,7 @@ export function GestoresUnidadesSecao({ onFeedback }: Props) {
                 </div>
 
                 {unidade.gestores.length === 0 ? (
-                  <div className="text-[13px] font-semibold text-amber-700">
+                  <div className="text-[0.8125rem] font-semibold text-amber-700">
                     Nenhum gestor associado a esta unidade.
                   </div>
                 ) : (

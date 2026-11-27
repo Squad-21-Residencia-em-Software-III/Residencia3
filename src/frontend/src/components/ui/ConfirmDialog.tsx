@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { AlertTriangle, Info } from 'lucide-react';
@@ -43,19 +44,27 @@ export function ConfirmDialog({
   cancelLabel = 'Cancelar',
   variant = 'danger',
   isLoading = false,
-  gerenciarFoco = false,
+  gerenciarFoco = true,
 }: ConfirmDialogProps) {
+  const idDescricao = useId();
   const resolvedVariant = variant ?? 'danger';
   const isDanger = resolvedVariant === 'danger';
 
   return (
-    <Modal gerenciarFoco={gerenciarFoco} isOpen={isOpen} onClose={onClose} title={title}>
+    <Modal
+      gerenciarFoco={gerenciarFoco}
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      papel={isDanger ? 'alertdialog' : 'dialog'}
+      descricaoId={idDescricao}
+    >
       <div className="space-y-4">
         <div className="flex items-start gap-3">
-          <div className={cn(confirmIconVariants({ variant: resolvedVariant }))}>
+          <div className={cn(confirmIconVariants({ variant: resolvedVariant }))} aria-hidden="true">
             {isDanger ? <AlertTriangle size={20} /> : <Info size={20} />}
           </div>
-          <div className="pt-1 text-sm leading-relaxed text-slate-600">
+          <div id={idDescricao} className="pt-1 text-sm leading-relaxed text-slate-600">
             {description}
           </div>
         </div>
@@ -67,6 +76,8 @@ export function ConfirmDialog({
             onClick={onClose}
             disabled={isLoading}
             className="w-full sm:w-auto"
+            // Em ações perigosas, o foco começa na opção que não destrói nada
+            data-foco-inicial={isDanger ? true : undefined}
           >
             {cancelLabel}
           </Button>

@@ -80,7 +80,7 @@ export function CartaoViagem({ viagem: v, painel, completo = false }: CartaoViag
           <span className="mt-2.5 flex items-start gap-2">
             <MapPin size={19} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
             <span className="min-w-0 flex-1">
-              <span className="line-clamp-2 text-[17px] leading-snug font-bold wrap-anywhere text-text">
+              <span className="line-clamp-2 text-[1.0625rem] leading-snug font-bold wrap-anywhere text-text">
                 {destino}
               </span>
               {v.origem && (

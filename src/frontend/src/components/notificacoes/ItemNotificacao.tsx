@@ -98,10 +98,10 @@ export function ItemNotificacao({ notificacao, onSelecionar }: ItemNotificacaoPr
         </p>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {refLabel && <IdBadge id={refLabel} className="px-1.5 py-0.5 text-[10px]" />}
+          {refLabel && <IdBadge id={refLabel} className="px-1.5 py-0.5 text-[0.625rem]" />}
           <Badge
             tone={notificacao.operacao === 'SVO' ? 'purple' : 'info'}
-            className="px-2 py-0.5 text-[10px]"
+            className="px-2 py-0.5 text-[0.625rem]"
           >
             {notificacao.operacao}
           </Badge>
@@ -109,13 +109,13 @@ export function ItemNotificacao({ notificacao, onSelecionar }: ItemNotificacaoPr
             <button
               type="button"
               onClick={() => onSelecionar(notificacao)}
-              className="cursor-pointer font-display text-[11px] font-semibold text-primary hover:underline"
+              className="cursor-pointer font-display text-[0.6875rem] font-semibold text-primary hover:underline"
             >
               Marcar como lida
             </button>
           )}
           {tempo && (
-            <span className="ml-auto text-[11px] whitespace-nowrap text-text-muted">{tempo}</span>
+            <span className="ml-auto text-[0.6875rem] whitespace-nowrap text-text-muted">{tempo}</span>
           )}
         </div>
       </div>

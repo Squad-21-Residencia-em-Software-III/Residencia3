@@ -33,7 +33,7 @@ export function ProximaEDepois({
       className={cn('flex flex-col gap-2.5', sozinho && 'flex-1 justify-center')}
       aria-label={titulo}
     >
-      <h2 className="px-1 text-[15px] font-bold">{titulo}</h2>
+      <h2 className="px-1 text-[0.9375rem] font-bold">{titulo}</h2>
       {destaque.map((v) => (
         <CartaoViagem key={chaveViagem(v)} viagem={v} painel={painel} completo={sozinho} />
       ))}

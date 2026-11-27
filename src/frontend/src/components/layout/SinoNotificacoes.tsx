@@ -195,7 +195,7 @@ export function SinoNotificacoes({
             data-testid="badge-notificacoes"
             aria-hidden="true"
             className={cn(
-              'absolute -top-1 -right-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-danger-strong px-1 text-[10px] leading-none font-bold text-white ring-2',
+              'absolute -top-1 -right-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-danger-strong px-1 text-[0.625rem] leading-none font-bold text-white ring-2',
               variante === 'escuro' ? 'ring-navy-900' : 'ring-surface',
             )}
           >
@@ -220,7 +220,7 @@ export function SinoNotificacoes({
               <div className="flex items-center gap-2">
                 <p className="font-display text-sm font-semibold text-text">Notificações</p>
                 {naoLidas > 0 && (
-                  <span className="rounded-full bg-primary-soft px-2 py-0.5 font-display text-[11px] font-bold text-primary">
+                  <span className="rounded-full bg-primary-soft px-2 py-0.5 font-display text-[0.6875rem] font-bold text-primary">
                     {rotuloBadge(naoLidas)}
                   </span>
                 )}
@@ -231,7 +231,7 @@ export function SinoNotificacoes({
                   type="button"
                   disabled={!online || !ctx.itens.some((item) => item.lida_em === null)}
                   onClick={() => void ctx.marcarTodasLidas()}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-display text-[11px] font-semibold text-primary transition-colors hover:bg-primary-soft disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-display text-[0.6875rem] font-semibold text-primary transition-colors hover:bg-primary-soft disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <CheckCheck size={14} aria-hidden="true" />
                   Marcar avisos exibidos como lidos
@@ -371,7 +371,7 @@ export function SinoNotificacoes({
                     </button>
                   </div>
                 ) : (
-                  <p className="border-t border-divider px-3.5 py-2 text-center text-[11px] text-text-muted">
+                  <p className="border-t border-divider px-3.5 py-2 text-center text-[0.6875rem] text-text-muted">
                     Fim das notificações. Lidas ficam disponíveis por 30 dias e não lidas por 90 dias.
                   </p>
                 )}

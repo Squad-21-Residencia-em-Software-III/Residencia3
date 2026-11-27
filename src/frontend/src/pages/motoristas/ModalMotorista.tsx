@@ -100,7 +100,7 @@ export function ModalMotorista({ cnhsExistentes, onClose, onSalvar }: ModalMotor
         />
 
         <div className="mb-4">
-          <label className="mb-2 block text-[13px] font-semibold text-slate-900">
+          <label className="mb-2 block text-[0.8125rem] font-semibold text-slate-900">
             Categoria da CNH *
           </label>
           <div className="flex flex-wrap gap-2.5 rounded-md border border-slate-200 bg-white p-2">
@@ -110,7 +110,7 @@ export function ModalMotorista({ cnhsExistentes, onClose, onSalvar }: ModalMotor
                 <label
                   key={cat}
                   className={cn(
-                    'flex cursor-pointer items-center gap-1 rounded border px-2 py-1 text-[13px] transition-all duration-200',
+                    'flex cursor-pointer items-center gap-1 rounded border px-2 py-1 text-[0.8125rem] transition-all duration-200',
                     selecionada
                       ? 'border-primary bg-primary-soft font-semibold text-primary'
                       : 'border-transparent bg-transparent text-slate-700 hover:bg-slate-50',

@@ -80,7 +80,7 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar, compacto = false
           </Alert>
         )}
 
-        <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-[13px]">
+        <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-[0.8125rem]">
           <div className="font-bold text-slate-900">
             {compacto && !viagem.origem ? '' : `${viagem.origem ?? '—'} → `}{viagem.destino ?? '—'}
           </div>

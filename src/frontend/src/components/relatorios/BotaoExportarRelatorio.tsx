@@ -251,7 +251,7 @@ export function BotaoExportarRelatorio({ tipo }: BotaoExportarRelatorioProps) {
                         )}
                         <span>{opcao.titulo}</span>
                       </div>
-                      <span className="text-[11px] leading-snug text-text-muted">
+                      <span className="text-[0.6875rem] leading-snug text-text-muted">
                         {opcao.detalhe}
                       </span>
                     </button>

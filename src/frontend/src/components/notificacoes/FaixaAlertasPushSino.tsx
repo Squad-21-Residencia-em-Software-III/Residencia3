@@ -72,7 +72,7 @@ export function FaixaAlertasPushSino({ online }: FaixaAlertasPushSinoProps) {
               type="button"
               disabled={!online || push.ocupado}
               onClick={() => void push.ligar()}
-              className="cursor-pointer rounded-md bg-primary px-2 py-1 font-display text-[11px] font-semibold text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="cursor-pointer rounded-md bg-primary px-2 py-1 font-display text-[0.6875rem] font-semibold text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {push.ocupado ? 'Ativando...' : 'Ativar'}
             </button>
@@ -80,14 +80,14 @@ export function FaixaAlertasPushSino({ online }: FaixaAlertasPushSinoProps) {
               type="button"
               onClick={() => setDispensada(true)}
               aria-label="Dispensar aviso de alertas"
-              className="cursor-pointer rounded-md px-1.5 py-1 text-[11px] text-text-muted hover:text-text"
+              className="cursor-pointer rounded-md px-1.5 py-1 text-[0.6875rem] text-text-muted hover:text-text"
             >
               Agora não
             </button>
           </div>
         </div>
         {push.erro && (
-          <p role="alert" className="mt-1.5 text-[11px] text-danger-strong">
+          <p role="alert" className="mt-1.5 text-[0.6875rem] text-danger-strong">
             {push.erro}
           </p>
         )}

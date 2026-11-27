@@ -188,7 +188,7 @@ export function ModalManutencoesVeiculo({
                 </span>
                 <span
                   className={cn(
-                    'rounded px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase',
+                    'rounded px-2 py-0.5 text-[0.625rem] font-bold tracking-wide uppercase',
                     veiculoAtual.tipo_frota === 'SVO'
                       ? 'bg-purple-bg text-purple'
                       : 'bg-blue-50 text-blue-700',
@@ -325,7 +325,7 @@ export function ModalManutencoesVeiculo({
                               <Badge tone={tipoInfo.tone}>{tipoInfo.label}</Badge>
                             </td>
                             <td className="max-w-[200px]" title={m.descricao}>
-                              <div className="truncate text-[13px]">{m.descricao}</div>
+                              <div className="truncate text-[0.8125rem]">{m.descricao}</div>
                             </td>
                             <td className="font-semibold whitespace-nowrap">
                               {Number(m.custo).toLocaleString('pt-BR', {

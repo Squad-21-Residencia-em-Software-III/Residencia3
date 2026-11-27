@@ -364,18 +364,18 @@ export default function AbastecimentoPage() {
                       <IdBadge id={`ABS-${String(a.id).padStart(4, '0')}`} />
                     </td>
                     <td>
-                      <span className="text-[13px] text-slate-500">
+                      <span className="text-[0.8125rem] text-slate-500">
                         {new Date(a.data_abastecimento).toLocaleDateString('pt-BR')}
                       </span>
                     </td>
                     <td>
                       <div>
                         <div className="font-semibold text-slate-900">{a.veiculo_placa ?? 'N/D'}</div>
-                        <div className="text-[11px] text-slate-500">{a.veiculo_modelo ?? ''}</div>
+                        <div className="text-[0.6875rem] text-slate-500">{a.veiculo_modelo ?? ''}</div>
                       </div>
                     </td>
                     <td>
-                      <span className="text-[13px] text-slate-700">{a.motorista_nome ?? 'N/D'}</span>
+                      <span className="text-[0.8125rem] text-slate-700">{a.motorista_nome ?? 'N/D'}</span>
                     </td>
                     <td>
                       <span className="font-medium text-slate-800">

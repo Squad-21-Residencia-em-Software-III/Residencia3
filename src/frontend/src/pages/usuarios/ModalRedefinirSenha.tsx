@@ -63,7 +63,7 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
         )}
 
         <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="text-[13px] font-semibold text-slate-900">{usuario.nome}</div>
+          <div className="text-[0.8125rem] font-semibold text-slate-900">{usuario.nome}</div>
           <div className="mt-0.5 text-xs text-slate-500">
             {usuario.email} • Perfil: {usuario.perfil}
           </div>
@@ -77,7 +77,7 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
           onChange={(e: ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)}
           required
         />
-        <div className="-mt-2 mb-3.5 text-[11px] text-slate-500">
+        <div className="-mt-2 mb-3.5 text-[0.6875rem] text-slate-500">
           Requisitos: mínimo de 8 caracteres contendo maiúsculas, minúsculas, números e símbolos
           especiais.
         </div>

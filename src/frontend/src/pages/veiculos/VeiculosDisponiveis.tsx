@@ -69,7 +69,7 @@ export function VeiculosDisponiveis() {
 
       <Card>
         <div className="border-b border-divider px-3.5 py-3 md:px-6">
-          <h2 className="text-[15px] font-bold text-text md:text-base">Veículos disponíveis</h2>
+          <h2 className="text-[0.9375rem] font-bold text-text md:text-base">Veículos disponíveis</h2>
           <p className="mt-0.5 text-xs text-text-muted">
             Veículos da frota disponíveis para atender às solicitações de viagem.
           </p>
@@ -105,7 +105,7 @@ export function VeiculosDisponiveis() {
                     <td>
                       <span
                         className={cn(
-                          'rounded px-2 py-0.5 text-[11px] font-bold',
+                          'rounded px-2 py-0.5 text-[0.6875rem] font-bold',
                           v.tipo_frota === 'SVO'
                             ? 'bg-purple-bg text-purple'
                             : 'bg-neutral-bg text-slate-900',

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { CloseIcon } from './icons';
 import { cn } from '../../utils/cn';
 import { createPortal } from 'react-dom';
+import { useDialogoAcessivel } from '../../hooks/useDialogoAcessivel';
 
 export interface DrawerProps {
   isOpen: boolean;
@@ -29,6 +30,9 @@ export function Drawer({
 }: DrawerProps) {
   const [mounted, setMounted] = useState(isOpen);
   const [visible, setVisible] = useState(false);
+  const painel = useRef<HTMLDivElement>(null);
+  const idTitulo = useId();
+  const idSubtitulo = useId();
 
   useEffect(() => {
     if (isOpen) {
@@ -48,15 +52,9 @@ export function Drawer({
     }
   }, [isOpen]);
 
-  // Tecla Escape para fechar
-  useEffect(() => {
-    if (!mounted) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [mounted, onClose]);
+  // Foco dentro do painel, Escape só no de cima e foco de volta para quem abriu (SCRUM-306). Solto já no
+  // início da animação de fechar
+  useDialogoAcessivel({ aberto: mounted && isOpen, dialogo: painel, aoFechar: onClose });
 
   // Previne rolagem do fundo quando aberto
   useEffect(() => {
@@ -86,9 +84,13 @@ export function Drawer({
       />
 
       {/* Painel Lateral com transição slide-in / slide-out suave premium */}
-      <aside
+      <div
+        ref={painel}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={idTitulo}
+        aria-describedby={subtitle ? idSubtitulo : undefined}
+        tabIndex={-1}
         className={cn(
           'relative z-10 flex h-full w-full flex-col bg-surface sm:w-auto',
           'border-l border-divider shadow-[-16px_0_48px_rgba(0,0,0,0.16)]',
@@ -102,12 +104,12 @@ export function Drawer({
         <div className="flex shrink-0 items-start justify-between border-b border-divider px-6 py-5">
           <div className="min-w-0 pr-4">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h2 className="font-display text-xl font-bold tracking-tight text-slate-900">
+              <h2 id={idTitulo} className="font-display text-xl font-bold tracking-tight text-slate-900">
                 {title}
               </h2>
             </div>
             {subtitle && (
-              <p className="mt-1 text-xs text-slate-500 font-sans">
+              <p id={idSubtitulo} className="mt-1 text-xs text-slate-500 font-sans">
                 {subtitle}
               </p>
             )}
@@ -116,6 +118,7 @@ export function Drawer({
             type="button"
             onClick={onClose}
             aria-label="Fechar painel"
+            data-fechar-dialogo
             className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border bg-surface text-slate-400 transition-colors hover:bg-surface-hover hover:text-slate-700 [[data-layout=motorista]_&]:size-11"
           >
             <CloseIcon size={16} />
@@ -133,7 +136,7 @@ export function Drawer({
             {footer}
           </div>
         )}
-      </aside>
+      </div>
     </div>
   );
   return telaInteira ? createPortal(conteudo, document.body) : conteudo;

@@ -204,7 +204,7 @@ export function ErrorLayout({
         </div>
 
         {/* Rodapé Corporativo Sutil */}
-        <div className="mt-9 text-[11px] leading-snug text-slate-500">
+        <div className="mt-9 text-[0.6875rem] leading-snug text-slate-500">
           Sistema Integrado de Gestão de Frotas • FSPH
         </div>
       </div>

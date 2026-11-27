@@ -5,6 +5,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { ApiError } from '../services/api/http';
 import { Alert } from '../components/ui';
+import { BotaoAcessibilidade } from '../components/acessibilidade/BotaoAcessibilidade';
 
 interface FloatingInputProps {
   id: string;
@@ -40,11 +41,11 @@ function FloatingInput({
         autoComplete={autoComplete}
         autoFocus={autoFocus}
         disabled={disabled}
-        className="peer w-full appearance-none rounded-[14px] border border-white/15 bg-black/40 pt-6 pr-11 pb-2.5 pl-4 font-sans text-[15px] text-white transition-all duration-250 outline-none hover:border-[#314569]/45 focus:border-primary focus:bg-black/55 focus:shadow-[0_0_0_1px_#1554b8,0_0_16px_rgba(21,84,184,0.25)] disabled:cursor-not-allowed disabled:opacity-60"
+        className="peer w-full appearance-none rounded-[14px] border border-white/15 bg-black/40 pt-6 pr-11 pb-2.5 pl-4 font-sans text-[0.9375rem] text-white transition-all duration-250 outline-none hover:border-[#314569]/45 focus:border-primary focus:bg-black/55 focus:shadow-[0_0_0_1px_#1554b8,0_0_16px_rgba(21,84,184,0.25)] disabled:cursor-not-allowed disabled:opacity-60"
       />
       <label
         htmlFor={id}
-        className="pointer-events-none absolute top-[18px] left-4 font-sans text-[15px] font-normal tracking-normal text-[#9ca3af] transition-all duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)] peer-focus:top-2 peer-focus:text-[11px] peer-focus:font-semibold peer-focus:tracking-[0.4px] peer-focus:text-primary peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:text-[11px] peer-[:not(:placeholder-shown)]:font-semibold peer-[:not(:placeholder-shown)]:tracking-[0.4px] peer-[:not(:placeholder-shown)]:text-primary"
+        className="pointer-events-none absolute top-[18px] left-4 font-sans text-[0.9375rem] font-normal tracking-normal text-[#9ca3af] transition-all duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)] peer-focus:top-2 peer-focus:text-[0.6875rem] peer-focus:font-semibold peer-focus:tracking-[0.4px] peer-focus:text-primary peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:text-[0.6875rem] peer-[:not(:placeholder-shown)]:font-semibold peer-[:not(:placeholder-shown)]:tracking-[0.4px] peer-[:not(:placeholder-shown)]:text-primary"
       >
         {label}
       </label>
@@ -125,8 +126,12 @@ export default function LoginPage() {
   return (
     <div
       ref={bgRef}
+      role="main"
       className="relative flex min-h-full w-full overflow-hidden bg-[#0b1228] font-sans [--mx:50%] [--my:50%]"
     >
+      {/* Preferências de acessibilidade antes do login (SCRUM-305) */}
+      <BotaoAcessibilidade className="absolute top-4 right-4 z-20" />
+
       {/* Brilho interativo que acompanha o cursor */}
       <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(600px_circle_at_var(--mx)_var(--my),rgba(21,84,184,0.22)_0%,rgba(21,84,184,0.06)_45%,transparent_70%)]" />
 
@@ -156,10 +161,10 @@ export default function LoginPage() {
               />
             </div>
 
-            <h1 className="mb-2 animate-login-cascade font-display text-[24px] font-semibold tracking-[-0.5px] text-[#ebeeff] [animation-delay:300ms]">
+            <h1 className="mb-2 animate-login-cascade font-display text-[1.5rem] font-semibold tracking-[-0.5px] text-[#ebeeff] [animation-delay:300ms]">
               Bem-Vindo De Volta
             </h1>
-            <h2 className="mb-9 animate-login-cascade font-sans text-[15px] font-medium tracking-[0.3px] text-[#9ca3af] [animation-delay:400ms]">
+            <h2 className="mb-9 animate-login-cascade font-sans text-[0.9375rem] font-medium tracking-[0.3px] text-[#9ca3af] [animation-delay:400ms]">
               Faça login para continuar
             </h2>
 
@@ -196,7 +201,8 @@ export default function LoginPage() {
                       onClick={() => setMostrarSenha((v) => !v)}
                       aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
                       aria-pressed={mostrarSenha}
-                      className="flex cursor-pointer items-center justify-center border-none bg-transparent text-[#9ca3af] transition-colors duration-200 hover:text-white"
+                      // Alvo de toque de pelo menos 24 px (WCAG 2.5.8, SCRUM-306)
+                      className="flex size-8 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-[#9ca3af] transition-colors duration-200 hover:text-white"
                     >
                       {mostrarSenha ? (
                         <EyeOff size={20} strokeWidth={1.8} />
@@ -212,7 +218,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={enviando}
-                  className="relative mt-2.5 mb-6 w-full cursor-pointer rounded-[14px] border-none bg-primary px-5 py-4 font-display text-[15px] font-semibold text-white transition-all duration-250 hover:not-disabled:-translate-y-px hover:not-disabled:bg-[#1040a0] active:not-disabled:translate-y-px disabled:cursor-not-allowed disabled:opacity-70"
+                  className="relative mt-2.5 mb-6 w-full cursor-pointer rounded-[14px] border-none bg-primary px-5 py-4 font-display text-[0.9375rem] font-semibold text-white transition-all duration-250 hover:not-disabled:-translate-y-px hover:not-disabled:bg-[#1040a0] active:not-disabled:translate-y-px disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {enviando ? (
                     <span className="flex items-center justify-center gap-2">
@@ -248,7 +254,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setAjudaAberta(true)}
-                  className="cursor-pointer border-none bg-transparent font-sans text-[13px] font-medium text-[#9ca3af] transition-colors duration-200 hover:text-white"
+                  className="cursor-pointer border-none bg-transparent font-sans text-[0.8125rem] font-medium text-[#9ca3af] transition-colors duration-200 hover:text-white"
                 >
                   Problemas para acessar a conta?
                 </button>
@@ -273,11 +279,11 @@ export default function LoginPage() {
           >
             <h2
               id="login-ajuda-titulo"
-              className="mt-1 mb-3 font-display text-[22px] font-semibold tracking-[-0.5px] text-text"
+              className="mt-1 mb-3 font-display text-[1.375rem] font-semibold tracking-[-0.5px] text-text"
             >
               Aviso
             </h2>
-            <p className="mb-7 font-sans text-[15px] leading-relaxed text-neutral">
+            <p className="mb-7 font-sans text-[0.9375rem] leading-relaxed text-neutral">
               Confira as informações de acesso e tente novamente com atenção. O acesso é criado e
               liberado pelo administrador do sistema; caso o erro persista ou você tenha esquecido
               sua senha, procure o administrador para redefini-la.

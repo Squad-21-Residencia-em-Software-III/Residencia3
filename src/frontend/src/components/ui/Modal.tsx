@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Button } from './Button';
 import { CloseIcon } from './icons';
 import { createPortal } from 'react-dom';
 import { cn } from '../../utils/cn';
+import { useDialogoAcessivel } from '../../hooks/useDialogoAcessivel';
 
 type ModalProps = {
   isOpen?: boolean;
@@ -15,11 +16,16 @@ type ModalProps = {
   maxWidth?: string | number;
   children: ReactNode;
   telaInteira?: boolean;
+  /** Foco entra no diálogo, fica preso nele e volta para quem abriu (padrão). false só para casos antigos. */
   gerenciarFoco?: boolean;
   ajustarAoTeclado?: boolean;
   bloquearFechamento?: boolean;
   /** Abre presa à parte de baixo da tela, ao alcance do polegar. */
   folhaInferior?: boolean;
+  /** `alertdialog` para confirmações que interrompem (ex.: excluir). */
+  papel?: 'dialog' | 'alertdialog';
+  /** Id do texto que explica o diálogo, lido junto com o título. */
+  descricaoId?: string;
 };
 
 export function Modal({
@@ -32,11 +38,14 @@ export function Modal({
   maxWidth,
   children,
   telaInteira = false,
-  gerenciarFoco = false,
+  gerenciarFoco = true,
   ajustarAoTeclado = false,
   bloquearFechamento = false,
   folhaInferior = false,
+  papel = 'dialog',
+  descricaoId,
 }: ModalProps) {
+  const idTitulo = useId();
   const fundo = useRef<HTMLDivElement>(null);
   const dialogo = useRef<HTMLDivElement>(null);
 
@@ -60,36 +69,13 @@ export function Modal({
     };
   }, [ajustarAoTeclado, isOpen]);
 
-  useEffect(() => {
-    if (!gerenciarFoco || isOpen === false || !dialogo.current) return;
-    const modal = dialogo.current;
-    const acionador = document.activeElement;
-    const controles = () => [...modal.querySelectorAll<HTMLElement>(
-      'button, input, select, textarea, a[href], [tabindex]',
-    )].filter((el) => el.tabIndex >= 0 && !el.matches(':disabled') && !el.hidden && el.getClientRects().length);
-    const aoPressionarTab = (evento: KeyboardEvent) => {
-      if (evento.key !== 'Tab') return;
-      const itens = controles();
-      const atual = itens.indexOf(document.activeElement as HTMLElement);
-      if (!itens.length || atual === -1 || (evento.shiftKey ? atual === 0 : atual === itens.length - 1)) {
-        evento.preventDefault();
-        (itens[evento.shiftKey ? itens.length - 1 : 0] ?? modal).focus();
-      }
-    };
-    (controles()[0] ?? modal).focus();
-    document.addEventListener('keydown', aoPressionarTab);
-    return () => {
-      document.removeEventListener('keydown', aoPressionarTab);
-      if (acionador instanceof HTMLElement && acionador.isConnected) acionador.focus();
-    };
-  }, [isOpen, gerenciarFoco]);
-
-  useEffect(() => {
-    if (isOpen === false || bloquearFechamento) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose, bloquearFechamento]);
+  useDialogoAcessivel({
+    aberto: isOpen !== false,
+    dialogo,
+    aoFechar: onClose,
+    fecharComEscape: !bloquearFechamento,
+    gerenciarFoco,
+  });
 
   if (isOpen === false) return null;
 
@@ -115,10 +101,11 @@ export function Modal({
             'mx-auto w-full max-w-[560px] rounded-t-modal rounded-b-none md:mx-auto md:w-full md:max-w-[560px] md:rounded-b-none md:px-4 md:py-5',
         )}
         ref={dialogo}
-        tabIndex={gerenciarFoco ? -1 : undefined}
-        role="dialog"
+        tabIndex={-1}
+        role={papel}
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={idTitulo}
+        aria-describedby={descricaoId}
         style={maxWidth ? { maxWidth } : undefined}
       >
         <button
@@ -129,11 +116,12 @@ export function Modal({
           )}
           onClick={onClose}
           aria-label="Fechar"
+          data-fechar-dialogo
           disabled={bloquearFechamento}
         >
           <CloseIcon />
         </button>
-        <h2 className="mb-4 pr-8 text-[17px] font-bold tracking-[-0.01em] text-text md:mb-6 md:text-xl">
+        <h2 id={idTitulo} className="mb-4 pr-8 text-[1.0625rem] font-bold tracking-[-0.01em] text-text md:mb-6 md:text-xl">
           {title}
         </h2>
         {children}

@@ -1,4 +1,5 @@
 import { BrowserRouter } from 'react-router-dom'
+import { AcessibilidadeProvider } from './contexts/AcessibilidadeContext'
 import { AuthProvider } from './contexts/AuthContext'
 import { NotificacoesProvider } from './contexts/NotificacoesContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -13,13 +14,15 @@ export default function App() {
     <BrowserRouter>
       <ErrorBoundary>
         <AuthProvider>
-          <NotificacoesProvider>
-            <BannerOffline />
-            <AppRoutes />
-            <BridgeNotificacoesSw />
-            <ToastNotificacao />
-            <PromptAtualizacaoPwa />
-          </NotificacoesProvider>
+          <AcessibilidadeProvider>
+            <NotificacoesProvider>
+              <BannerOffline />
+              <AppRoutes />
+              <BridgeNotificacoesSw />
+              <ToastNotificacao />
+              <PromptAtualizacaoPwa />
+            </NotificacoesProvider>
+          </AcessibilidadeProvider>
         </AuthProvider>
       </ErrorBoundary>
     </BrowserRouter>

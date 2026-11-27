@@ -103,7 +103,7 @@ export default function AuditoriaPage() {
       <Card>
         <div className="flex flex-col gap-3 border-b border-divider px-3.5 py-3 md:flex-row md:items-center md:justify-between md:px-6">
           <div>
-            <h2 className="text-[15px] font-bold text-text md:text-base">Registros de Auditoria</h2>
+            <h2 className="text-[0.9375rem] font-bold text-text md:text-base">Registros de Auditoria</h2>
             <p className="mt-0.5 text-xs text-text-muted">
               Ações registradas no sistema, das mais recentes para as mais antigas.
             </p>

@@ -33,7 +33,7 @@ export function SearchInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className={cn(
-          'h-9 w-full rounded-md border border-slate-200 bg-white pl-8 pr-8 text-[13px] text-slate-900 placeholder:text-slate-400',
+          'h-9 w-full rounded-md border border-slate-200 bg-white pl-8 pr-8 text-[0.8125rem] text-slate-900 placeholder:text-slate-400',
           'transition-colors duration-150 outline-none focus:border-primary focus:ring-1 focus:ring-primary',
           className,
         )}
@@ -84,7 +84,7 @@ export function FilterSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          'h-9 w-full cursor-pointer appearance-none rounded-md border border-slate-200 bg-white pl-3 pr-8 text-[13px] font-medium text-slate-900',
+          'h-9 w-full cursor-pointer appearance-none rounded-md border border-slate-200 bg-white pl-3 pr-8 text-[0.8125rem] font-medium text-slate-900',
           'transition-colors duration-150 outline-none focus:border-primary focus:ring-1 focus:ring-primary',
           className,
         )}

@@ -106,7 +106,7 @@ export default function MotoristaVeiculo() {
               />
               <h2
                 className={cn(
-                  'min-w-0 flex-1 truncate text-[17px] font-bold',
+                  'min-w-0 flex-1 truncate text-[1.0625rem] font-bold',
                   sozinho &&
                     '[@media(min-height:600px)]:mt-2 [@media(min-height:600px)]:max-w-full [@media(min-height:600px)]:flex-none [@media(min-height:600px)]:text-xl',
                 )}
@@ -151,7 +151,7 @@ export default function MotoristaVeiculo() {
                           .filter(Boolean)
                           .join(' · ')}
                       </span>
-                      <span className="block truncate text-[15px] font-semibold text-text">
+                      <span className="block truncate text-[0.9375rem] font-semibold text-text">
                         {viagem.destino ?? 'Destino não informado'}
                       </span>
                     </span>
@@ -163,7 +163,7 @@ export default function MotoristaVeiculo() {
                     <Fuel size={20} className="shrink-0 text-primary" aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm text-neutral">Último abastecimento</span>
-                      <span className="block truncate font-display text-[15px] font-semibold text-text">
+                      <span className="block truncate font-display text-[0.9375rem] font-semibold text-text">
                         {resumoAbastecimento(ultimo)}
                       </span>
                     </span>

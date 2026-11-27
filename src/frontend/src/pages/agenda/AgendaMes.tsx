@@ -21,7 +21,7 @@ export function AgendaMes({
         {DIAS_SEMANA_NOMES.map((d) => (
           <div
             key={d}
-            className="border-r border-border px-0.5 py-1.5 text-center font-display text-[10px] font-bold tracking-[0.05em] text-text-muted uppercase last:border-r-0 md:p-2.5 md:text-[11px]"
+            className="border-r border-border px-0.5 py-1.5 text-center font-display text-[0.625rem] font-bold tracking-[0.05em] text-text-muted uppercase last:border-r-0 md:p-2.5 md:text-[0.6875rem]"
           >
             {d}
           </div>
@@ -52,7 +52,7 @@ export function AgendaMes({
               <div className="mb-1 flex items-center justify-between">
                 <span
                   className={cn(
-                    'flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px] font-bold transition-colors duration-150 md:h-[22px] md:w-[22px] md:text-xs',
+                    'flex h-[18px] w-[18px] items-center justify-center rounded-full text-[0.625rem] font-bold transition-colors duration-150 md:h-[22px] md:w-[22px] md:text-xs',
                     ehHoje
                       ? 'bg-primary text-white'
                       : ehPassado
@@ -62,11 +62,11 @@ export function AgendaMes({
                 >
                   {dia}
                 </span>
-                {ehHoje && <span className="text-[10px] font-bold text-primary">Hoje</span>}
+                {ehHoje && <span className="text-[0.625rem] font-bold text-primary">Hoje</span>}
               </div>
 
               {totalViagens > 0 && (
-                <div className="mt-1 inline-flex w-fit items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary md:text-[11px]">
+                <div className="mt-1 inline-flex w-fit items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-primary md:text-[0.6875rem]">
                   {totalViagens} {totalViagens === 1 ? 'viagem' : 'viagens'}
                 </div>
               )}
@@ -77,7 +77,7 @@ export function AgendaMes({
 
       {/* ── Rodapé ── */}
       <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface-alt px-3 py-2.5 md:px-5">
-        <span className="text-[11px] text-text-muted md:text-xs">
+        <span className="text-[0.6875rem] text-text-muted md:text-xs">
           Clique em qualquer dia para abrir a grade horária detalhada
         </span>
       </div>

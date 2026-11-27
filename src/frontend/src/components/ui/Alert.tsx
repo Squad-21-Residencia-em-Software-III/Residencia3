@@ -45,10 +45,12 @@ export function Alert({
 }: AlertProps) {
   const resolvedTone: AlertTone = tone ?? 'info';
   const IconComponent = ALERT_ICONS[resolvedTone];
+  // Erro interrompe o leitor de tela; aviso, informação e sucesso esperam a fala atual terminar (SCRUM-306)
+  const papel = resolvedTone === 'danger' ? 'alert' : 'status';
 
   return (
-    <div role="alert" className={cn(alertVariants({ tone: resolvedTone }), className)}>
-      <IconComponent className="mt-0.5 h-5 w-5 shrink-0" />
+    <div role={papel} className={cn(alertVariants({ tone: resolvedTone }), className)}>
+      <IconComponent className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         {title && <div className="mb-0.5 font-bold">{title}</div>}
         <div className="leading-relaxed font-medium">{children}</div>
@@ -60,7 +62,7 @@ export function Alert({
           aria-label="Fechar alerta"
           className="-mt-1 -mr-1 shrink-0 rounded p-1 text-current opacity-70 transition-opacity hover:bg-black/5 hover:opacity-100"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
       )}
     </div>
