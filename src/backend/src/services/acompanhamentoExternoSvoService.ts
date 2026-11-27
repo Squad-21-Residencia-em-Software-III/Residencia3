@@ -1,4 +1,6 @@
 import {
+  createCipheriv,
+  createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
@@ -16,8 +18,10 @@ import {
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import {
   LABELS_STATUS_PUBLICO_ACOMPANHAMENTO_SVO,
+  chaveIdempotenciaCriacaoSchema,
   credencialExternaSvoSchema,
   protocoloExternoSvoSchema,
+  provaTentativaCriacaoSchema,
   type StatusPublicoAcompanhamentoSvo,
 } from '../validators/acompanhamentoExternoSvoSchemas';
 
@@ -25,6 +29,9 @@ import {
 export const JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_DIAS = 30;
 export const JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS =
   JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_DIAS * 24 * 60 * 60 * 1000;
+
+// Janela curta do envelope cifrado para recuperar resposta perdida em falha de rede (15 minutos)
+export const JANELA_RECUPERACAO_TENTATIVA_MS = 15 * 60 * 1000;
 
 export const MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA =
   'Não foi possível consultar a solicitação com os dados informados. Verifique o protocolo e a credencial secreta.';
@@ -50,7 +57,7 @@ const MENSAGENS_PUBLICAS_PADRAO: Record<StatusPublicoAcompanhamentoSvo, string> 
     'A solicitação foi cancelada.',
 };
 
-// Digest falso fixo para comparacao em tempo constante quando o protocolo nao existe
+// Digest falso fixo para comparacao em tempo constante quando o protocolo ou chave nao existe
 const DIGEST_FICTICIO_ANTI_ENUMERACAO = createHash('sha256')
   .update('fsph-svo-anti-enumeracao-digest-constante')
   .digest('hex');
@@ -82,6 +89,7 @@ export interface EmissaoCredencialExternaInput {
   chaveIdempotencia: string;
   payloadNormalizado: unknown;
   provaTentativa?: string | null;
+  habilitarRecuperacao?: boolean;
   agora?: Date;
 }
 
@@ -90,6 +98,22 @@ export interface EmissaoCredencialExternaResultado {
   protocolo: string;
   credencial: string;
   emitidaEm: string;
+  recuperacaoExpiraEm: string | null;
+}
+
+export interface RecuperacaoTentativaInput {
+  chaveIdempotencia: string;
+  provaTentativa: string;
+  payloadNormalizado: unknown;
+  agora?: Date;
+}
+
+function obterSegredoCredencialPorVersao(versao: number): string | null {
+  const config = env.credencialExternaSvo;
+  if (versao === config.versaoAtual) {
+    return config.segredoAtual;
+  }
+  return config.segredosAnteriores[versao] ?? null;
 }
 
 function normalizarObjetoCanonico(valor: unknown): unknown {
@@ -117,22 +141,32 @@ export function calcularDigestPayloadCriacao(payload: unknown): string {
 
 export function calcularDigestCredencialExterna(
   credencial: string,
-  algoritmo: 'SHA-256' | 'HMAC-SHA-256' = 'HMAC-SHA-256'
+  algoritmo: 'SHA-256' | 'HMAC-SHA-256' = 'HMAC-SHA-256',
+  versao: number = env.credencialExternaSvo.versaoAtual
 ): string {
   const limpa = credencial.trim();
   if (algoritmo === 'SHA-256') {
     return createHash('sha256').update(limpa, 'utf8').digest('hex');
   }
-  return createHmac('sha256', `${env.jwtSecret}:svo-credencial-externa-v1`)
+  const segredo = obterSegredoCredencialPorVersao(versao);
+  if (!segredo) {
+    return DIGEST_FICTICIO_ANTI_ENUMERACAO;
+  }
+  return createHmac('sha256', `${segredo}:svo-credencial-externa-v${versao}`)
     .update(limpa, 'utf8')
     .digest('hex');
 }
 
 export function calcularDigestProvaTentativa(
   chaveIdempotencia: string,
-  provaTentativa: string
+  provaTentativa: string,
+  versao: number = env.credencialExternaSvo.versaoAtual
 ): string {
-  return createHmac('sha256', `${env.jwtSecret}:svo-prova-tentativa-v1`)
+  const segredo = obterSegredoCredencialPorVersao(versao);
+  if (!segredo) {
+    return DIGEST_FICTICIO_ANTI_ENUMERACAO;
+  }
+  return createHmac('sha256', `${segredo}:svo-prova-tentativa-v${versao}`)
     .update(`${chaveIdempotencia.trim()}:${provaTentativa.trim()}`, 'utf8')
     .digest('hex');
 }
@@ -153,6 +187,108 @@ export function compararDigestsTempoConstante(
   );
   if (bufA.length !== bufB.length) return false;
   return timingSafeEqual(bufA, bufB) && validoA && validoB;
+}
+
+function derivarChaveEnvelope(
+  chaveIdempotencia: string,
+  provaTentativa: string,
+  payloadDigest: string,
+  versao: number
+): Buffer | null {
+  const segredo = obterSegredoCredencialPorVersao(versao);
+  if (!segredo) return null;
+  return createHmac('sha256', `${segredo}:svo-envelope-tentativa-v${versao}`)
+    .update(`${chaveIdempotencia}:${provaTentativa}:${payloadDigest}`, 'utf8')
+    .digest();
+}
+
+export function cifrarEnvelopeRecuperacao(params: {
+  credencial: string;
+  protocolo: string;
+  chaveIdempotencia: string;
+  provaTentativa: string;
+  payloadDigest: string;
+  versaoChave?: number;
+}): string {
+  const versao = params.versaoChave ?? env.credencialExternaSvo.versaoAtual;
+  const chave = derivarChaveEnvelope(
+    params.chaveIdempotencia,
+    params.provaTentativa,
+    params.payloadDigest,
+    versao
+  );
+  if (!chave) {
+    throw new AppError(
+      'Configuração de chave indisponível para emitir envelope de recuperação',
+      500
+    );
+  }
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', chave, iv);
+  cipher.setAAD(Buffer.from(`${params.protocolo}:v${versao}`, 'utf8'));
+  const textoClaro = JSON.stringify({
+    protocolo: params.protocolo,
+    credencial: params.credencial,
+  });
+  const cifrado = Buffer.concat([
+    cipher.update(textoClaro, 'utf8'),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return [
+    `v${versao}`,
+    iv.toString('base64url'),
+    tag.toString('base64url'),
+    cifrado.toString('base64url'),
+  ].join('.');
+}
+
+export function decifrarEnvelopeRecuperacao(params: {
+  envelope: string;
+  protocolo: string;
+  chaveIdempotencia: string;
+  provaTentativa: string;
+  payloadDigest: string;
+  versaoChave: number;
+}): { protocolo: string; credencial: string } | null {
+  const partes = params.envelope.split('.');
+  if (partes.length !== 4 || partes[0] !== `v${params.versaoChave}`) return null;
+  try {
+    const iv = Buffer.from(partes[1]!, 'base64url');
+    const tag = Buffer.from(partes[2]!, 'base64url');
+    const cifrado = Buffer.from(partes[3]!, 'base64url');
+    if (iv.length !== 12 || tag.length !== 16 || cifrado.length === 0) {
+      return null;
+    }
+    const chave = derivarChaveEnvelope(
+      params.chaveIdempotencia,
+      params.provaTentativa,
+      params.payloadDigest,
+      params.versaoChave
+    );
+    if (!chave) return null;
+    const decipher = createDecipheriv('aes-256-gcm', chave, iv);
+    decipher.setAAD(Buffer.from(`${params.protocolo}:v${params.versaoChave}`, 'utf8'));
+    decipher.setAuthTag(tag);
+    const decifrado = Buffer.concat([
+      decipher.update(cifrado),
+      decipher.final(),
+    ]).toString('utf8');
+    const obj = JSON.parse(decifrado) as {
+      protocolo?: string;
+      credencial?: string;
+    };
+    if (
+      typeof obj.protocolo !== 'string' ||
+      typeof obj.credencial !== 'string' ||
+      obj.protocolo !== params.protocolo
+    ) {
+      return null;
+    }
+    return { protocolo: obj.protocolo, credencial: obj.credencial };
+  } catch {
+    return null;
+  }
 }
 
 export function gerarProtocoloExternoSvo(agora = new Date()): string {
@@ -176,10 +312,10 @@ export function mapearStatusPublicoAcompanhamentoSvo(
     RegistroAcompanhamentoExternoRow,
     | 'status_solicitacao'
     | 'ordem_status'
-    | 'versao_dados'
+    | 'analise_iniciada_em'
     | 'motivo_recusa_publico'
     | 'cancelamento_status'
-    | 'cancelamento_justificativa_decisao'
+    | 'cancelamento_mensagem_publica'
   >
 ): {
   status: StatusPublicoAcompanhamentoSvo;
@@ -190,17 +326,16 @@ export function mapearStatusPublicoAcompanhamentoSvo(
 
   switch (registro.status_solicitacao) {
     case 'EM_TRIAGEM':
-      // Recebida: estado inicial logo apos o envio externo (versao_dados === 1 e sem pedido/decisao de cancelamento).
-      // Em analise: quando em revisao/atualizacao durante a triagem (versao_dados > 1 ou pedido de cancelamento).
-      status =
-        registro.versao_dados > 1 || registro.cancelamento_status !== null
-          ? 'EM_ANALISE'
-          : 'RECEBIDA';
+      // Recebida: ainda nao houve inicio verificavel de analise pela triagem.
+      // Em analise: somente quando analise_iniciada_em foi registrada pelo atendimento.
+      status = registro.analise_iniciada_em ? 'EM_ANALISE' : 'RECEBIDA';
       break;
     case 'CONFIRMADA':
+      // Programacao/alocacao de recursos nao inicia efetivamente o atendimento externo.
+      // Apenas saida efetiva / deslocamento ou chegada ao local caracteriza EM_ANDAMENTO.
       status =
         registro.ordem_status &&
-        ['ALOCADA', 'EM_DESLOCAMENTO', 'NO_LOCAL'].includes(registro.ordem_status)
+        ['EM_DESLOCAMENTO', 'NO_LOCAL'].includes(registro.ordem_status)
           ? 'EM_ANDAMENTO'
           : 'CONFIRMADA';
       break;
@@ -228,17 +363,17 @@ export function mapearStatusPublicoAcompanhamentoSvo(
       mensagemPublica = `A solicitação foi analisada e não pôde ser acolhida pelo SVO. Orientação: ${motivoPublico}`;
     }
   } else if (status === 'CANCELADA') {
-    const justCancelamento = registro.cancelamento_justificativa_decisao?.trim();
-    if (justCancelamento) {
-      mensagemPublica = `A solicitação foi cancelada. Observação: ${justCancelamento}`;
+    const msgCancelamento = registro.cancelamento_mensagem_publica?.trim();
+    if (msgCancelamento) {
+      mensagemPublica = `A solicitação foi cancelada. Observação: ${msgCancelamento}`;
     }
   } else if (registro.cancelamento_status === 'PENDENTE') {
     mensagemPublica = `${mensagemPublica} Há um pedido de cancelamento registrado aguardando decisão do gestor do SVO.`;
   } else if (registro.cancelamento_status === 'NEGADO') {
-    const justNegada = registro.cancelamento_justificativa_decisao?.trim();
-    mensagemPublica = justNegada
-      ? `${mensagemPublica} O pedido de cancelamento anterior não foi aprovado: ${justNegada}`
-      : `${mensagemPublica} O pedido de cancelamento anterior não pôde ser aprovado porque o atendimento já avançou.`;
+    const msgNegada = registro.cancelamento_mensagem_publica?.trim();
+    mensagemPublica = msgNegada
+      ? `${mensagemPublica} O pedido de cancelamento anterior não foi aprovado: ${msgNegada}`
+      : `${mensagemPublica} O pedido de cancelamento anterior não pôde ser aprovado conforme análise operacional.`;
   }
 
   return {
@@ -248,46 +383,50 @@ export function mapearStatusPublicoAcompanhamentoSvo(
   };
 }
 
-function paraIso(data: Date | string | null | undefined): string | null {
+function paraDataValida(data: Date | string | null | undefined): Date | null {
   if (!data) return null;
   const d = data instanceof Date ? data : new Date(data);
-  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function paraIso(data: Date | string | null | undefined): string | null {
+  return paraDataValida(data)?.toISOString() ?? null;
+}
+
+function resolverUltimaAtualizacaoPublica(
+  registro: RegistroAcompanhamentoExternoRow
+): Date {
+  const candidatas = [
+    registro.criado_em,
+    registro.analise_iniciada_em,
+    registro.confirmado_em,
+    registro.ordem_saida_em,
+    registro.ordem_conclusao_em,
+    registro.cancelamento_solicitado_em,
+    registro.cancelamento_decidido_em,
+    registro.encerrado_operacional_em,
+    registro.atualizado_em_dados,
+  ]
+    .map(paraDataValida)
+    .filter((d): d is Date => d !== null);
+
+  if (candidatas.length === 0) {
+    return new Date(0);
+  }
+  const maiorMs = Math.max(...candidatas.map((d) => d.getTime()));
+  return new Date(maiorMs);
 }
 
 function resolverMomentoEncerramento(
   registro: RegistroAcompanhamentoExternoRow
 ): Date | null {
-  if (registro.encerrado_operacional_em) {
-    const d = new Date(registro.encerrado_operacional_em);
-    if (Number.isFinite(d.getTime())) return d;
-  }
-  const encerrada = ['CONCLUIDA', 'RECUSADA', 'CANCELADA'].includes(
-    registro.status_solicitacao
-  );
-  if (!encerrada) return null;
-
-  const candidato =
-    registro.ordem_conclusao_em ??
-    registro.cancelamento_decidido_em ??
-    registro.atualizado_em_dados ??
-    registro.criado_em;
-  const d = new Date(candidato);
-  return Number.isFinite(d.getTime()) ? d : null;
+  return paraDataValida(registro.encerrado_operacional_em);
 }
 
 function resolverLimiteConsultaPublica(
-  registro: RegistroAcompanhamentoExternoRow,
-  encerradoEm: Date | null
+  registro: RegistroAcompanhamentoExternoRow
 ): Date | null {
-  // consulta_publica_expira_em e coluna GENERATED (encerramento + 30 dias em UTC) na SCRUM-263
-  if (registro.consulta_publica_expira_em) {
-    const d = new Date(registro.consulta_publica_expira_em);
-    if (Number.isFinite(d.getTime())) return d;
-  }
-  if (!encerradoEm) return null;
-  return new Date(
-    encerradoEm.getTime() + JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS
-  );
+  return paraDataValida(registro.consulta_publica_expira_em);
 }
 
 function erroCredencialInvalida(): AppError {
@@ -298,10 +437,21 @@ function erroCredencialInvalida(): AppError {
   );
 }
 
+function codigoErroBanco(erro: unknown): string | undefined {
+  if (erro && typeof erro === 'object' && 'code' in erro) {
+    const code = (erro as { code?: unknown }).code;
+    return typeof code === 'string' ? code : undefined;
+  }
+  return undefined;
+}
+
 export const acompanhamentoExternoSvoService = {
   /**
-   * Emite atomicamente o protocolo opaco (se ainda nao definido) e persiste o digest
-   * protegido da credencial secreta dentro da mesma transacao da criacao da solicitacao externa (SCRUM-264 / SCRUM-266).
+   * Emite atomicamente a credencial secreta de acompanhamento externo dentro da mesma
+   * transacao da criacao da solicitacao externa (SCRUM-264 / SCRUM-266).
+   * - Exige solicitacao existente com canal_origem = 'EXTERNA' (bloqueada FOR UPDATE).
+   * - Confere consistencia estrita com o protocolo ja persistido.
+   * - Armazena envelope AES-256-GCM em solicitacoes_svo_recuperacoes_tentativa quando provaTentativa for fornecida.
    */
   async emitirCredencialNaTransacao(
     trx: Knex.Transaction,
@@ -314,68 +464,284 @@ export const acompanhamentoExternoSvoService = {
     }
 
     const agora = input.agora ?? new Date();
-    const chaveIdempotencia = input.chaveIdempotencia.trim();
-    const provaTentativa = input.provaTentativa?.trim() || null;
-
-    // Schema SCRUM-263 corrigido: chave de idempotencia e digest do payload sao obrigatorios
-    if (!chaveIdempotencia || input.payloadNormalizado === undefined) {
+    const chaveValidada = chaveIdempotenciaCriacaoSchema.safeParse(
+      input.chaveIdempotencia ?? ''
+    );
+    if (!chaveValidada.success || input.payloadNormalizado === undefined) {
       throw new AppError(
-        'A chave de idempotência e o payload normalizado da solicitação são obrigatórios',
+        'A chave de idempotência válida e o payload normalizado da solicitação são obrigatórios',
         400
       );
     }
+    const chaveIdempotencia = chaveValidada.data;
 
+    const provaBruta = input.provaTentativa?.trim() || null;
+    if (input.habilitarRecuperacao && !provaBruta) {
+      throw new AppError(
+        'A recuperação autenticada da tentativa exige prova de posse de alta entropia',
+        400
+      );
+    }
+    let provaTentativa: string | null = null;
+    if (provaBruta !== null) {
+      const provaValidada = provaTentativaCriacaoSchema.safeParse(provaBruta);
+      if (!provaValidada.success) {
+        throw new AppError(
+          'A prova de posse da tentativa não atende ao formato mínimo de entropia',
+          400
+        );
+      }
+      provaTentativa = provaValidada.data;
+    }
+
+    const solicitacao = await trx('solicitacoes_svo')
+      .where({ id: input.solicitacaoId })
+      .forUpdate()
+      .first<{
+        id: number;
+        canal_origem: 'INTERNA' | 'EXTERNA';
+        protocolo: string | null;
+      }>('id', 'canal_origem', 'protocolo');
+
+    if (!solicitacao) {
+      throw new AppError('Solicitação SVO não encontrada para emissão de credencial', 404);
+    }
+    if (solicitacao.canal_origem !== 'EXTERNA') {
+      throw new AppError(
+        'Somente solicitações externas SVO podem receber credencial pública',
+        409,
+        'CANAL_INCOMPATIVEL'
+      );
+    }
+
+    let protocoloInformado: string | undefined;
+    if (input.protocolo !== undefined) {
+      const protocoloValidado = protocoloExternoSvoSchema.safeParse(input.protocolo);
+      if (!protocoloValidado.success) {
+        throw new AppError('Protocolo externo inválido para emissão de credencial', 400);
+      }
+      protocoloInformado = protocoloValidado.data;
+    }
+
+    let protocolo: string;
+    if (solicitacao.protocolo) {
+      if (protocoloInformado && solicitacao.protocolo !== protocoloInformado) {
+        throw new AppError(
+          'O protocolo informado diverge do protocolo registrado para esta solicitação externa',
+          409,
+          'PROTOCOLO_DIVERGENTE'
+        );
+      }
+      protocolo = solicitacao.protocolo;
+    } else {
+      protocolo = protocoloInformado ?? gerarProtocoloExternoSvo(agora);
+      await trx('solicitacoes_svo')
+        .where({ id: input.solicitacaoId })
+        .update({ protocolo });
+    }
+
+    const versaoAtual = env.credencialExternaSvo.versaoAtual;
     const payloadDigest = calcularDigestPayloadCriacao(input.payloadNormalizado);
     const provaDigest = provaTentativa
-      ? calcularDigestProvaTentativa(chaveIdempotencia, provaTentativa)
+      ? calcularDigestProvaTentativa(chaveIdempotencia, provaTentativa, versaoAtual)
       : null;
-
-    let protocolo = input.protocolo?.trim().toUpperCase();
-    if (!protocolo) {
-      const atual = await trx('solicitacoes_svo')
-        .where({ id: input.solicitacaoId })
-        .first<{ protocolo: string | null }>('protocolo');
-      protocolo = atual?.protocolo ?? gerarProtocoloExternoSvo(agora);
-      if (!atual?.protocolo) {
-        await trx('solicitacoes_svo')
-          .where({ id: input.solicitacaoId })
-          .update({ protocolo });
-      }
-    }
 
     const credencial = gerarSegredoCredencialExterna();
     const segredoDigest = calcularDigestCredencialExterna(
       credencial,
-      'HMAC-SHA-256'
+      'HMAC-SHA-256',
+      versaoAtual
     );
 
-    await acompanhamentoExternoSvoModel.inserirCredencial(
-      {
-        solicitacao_id: input.solicitacaoId,
-        segredo_digest: segredoDigest,
-        algoritmo_digest: 'HMAC-SHA-256',
-        versao_credencial: 1,
-        chave_idempotencia_criacao: chaveIdempotencia,
-        payload_criacao_digest: payloadDigest,
-        prova_tentativa_digest: provaDigest,
-        emitida_em: agora,
-      },
-      trx
-    );
+    try {
+      await acompanhamentoExternoSvoModel.inserirCredencial(
+        {
+          solicitacao_id: input.solicitacaoId,
+          segredo_digest: segredoDigest,
+          algoritmo_digest: 'HMAC-SHA-256',
+          versao_credencial: versaoAtual,
+          chave_idempotencia_criacao: chaveIdempotencia,
+          payload_criacao_digest: payloadDigest,
+          prova_tentativa_digest: provaDigest,
+          emitida_em: agora,
+        },
+        trx
+      );
+    } catch (erro) {
+      if (codigoErroBanco(erro) === '23505') {
+        throw new AppError(
+          'Chave de idempotência ou credencial já registrada para outra solicitação',
+          409,
+          'CONFLITO_IDEMPOTENCIA'
+        );
+      }
+      throw erro;
+    }
+
+    let recuperacaoExpiraEm: Date | null = null;
+    if (provaTentativa) {
+      recuperacaoExpiraEm = new Date(
+        agora.getTime() + JANELA_RECUPERACAO_TENTATIVA_MS
+      );
+      const envelopeCifrado = cifrarEnvelopeRecuperacao({
+        credencial,
+        protocolo,
+        chaveIdempotencia,
+        provaTentativa,
+        payloadDigest,
+        versaoChave: versaoAtual,
+      });
+
+      await acompanhamentoExternoSvoModel.inserirRecuperacaoTentativa(
+        {
+          solicitacao_id: input.solicitacaoId,
+          envelope_cifrado: envelopeCifrado,
+          versao_chave: versaoAtual,
+          criado_em: agora,
+          expira_em: recuperacaoExpiraEm,
+        },
+        trx
+      );
+    }
 
     return {
       solicitacaoId: input.solicitacaoId,
       protocolo,
       credencial,
       emitidaEm: agora.toISOString(),
+      recuperacaoExpiraEm: recuperacaoExpiraEm
+        ? recuperacaoExpiraEm.toISOString()
+        : null,
     };
   },
 
   /**
-   * Valida o par (protocolo, credencial secreta) em tempo constante, respeitando
-   * revogacao e validade de ate 30 dias apos encerramento operacional.
-   * Qualquer falha (protocolo inexistente, credencial incorreta, cruzada, revogada ou expirada)
-   * retorna a mesma resposta uniforme 401 para impedir enumeracao de protocolos.
+   * Recupera o protocolo e a credencial secreta de uma tentativa de criacao cuja resposta
+   * HTTP foi interrompida apos o commit (SCRUM-264 / SCRUM-266).
+   * - Exige chave_idempotencia + prova_tentativa de alta entropia + payload normalizado.
+   * - Se a chave foi reutilizada com payload divergente -> 409 CONFLITO_IDEMPOTENCIA.
+   * - Se a prova nao confere, a credencial foi revogada ou a janela expirou -> 401 uniforme.
+   */
+  async recuperarComprovanteTentativa(
+    input: RecuperacaoTentativaInput,
+    conexao: Knex = db
+  ): Promise<EmissaoCredencialExternaResultado> {
+    const agora = input.agora ?? new Date();
+    const chaveValidada = chaveIdempotenciaCriacaoSchema.safeParse(
+      input.chaveIdempotencia
+    );
+    const provaValidada = provaTentativaCriacaoSchema.safeParse(
+      input.provaTentativa
+    );
+
+    if (input.payloadNormalizado === undefined) {
+      throw new AppError(
+        'O payload normalizado é obrigatório para recuperação autenticada da tentativa',
+        400
+      );
+    }
+
+    if (!chaveValidada.success || !provaValidada.success) {
+      compararDigestsTempoConstante(
+        DIGEST_FICTICIO_ANTI_ENUMERACAO,
+        DIGEST_FICTICIO_ANTI_ENUMERACAO
+      );
+      throw erroCredencialInvalida();
+    }
+
+    const chave = chaveValidada.data;
+    const prova = provaValidada.data;
+
+    const tentativa =
+      await acompanhamentoExternoSvoModel.buscarTentativaPorChaveIdempotencia(
+        chave,
+        conexao
+      );
+
+    const versao = tentativa?.versao_credencial ?? env.credencialExternaSvo.versaoAtual;
+    const provaDigestCalculado = calcularDigestProvaTentativa(chave, prova, versao);
+
+    if (!tentativa || !tentativa.protocolo || tentativa.canal_origem !== 'EXTERNA') {
+      compararDigestsTempoConstante(
+        provaDigestCalculado,
+        DIGEST_FICTICIO_ANTI_ENUMERACAO
+      );
+      throw erroCredencialInvalida();
+    }
+
+    const payloadDigestAtual = calcularDigestPayloadCriacao(
+      input.payloadNormalizado
+    );
+    if (
+      !compararDigestsTempoConstante(
+        payloadDigestAtual,
+        tentativa.payload_criacao_digest
+      )
+    ) {
+      throw new AppError(
+        'Esta chave de tentativa já foi utilizada com dados diferentes.',
+        409,
+        'CONFLITO_IDEMPOTENCIA'
+      );
+    }
+
+    const provaConfere =
+      tentativa.prova_tentativa_digest !== null &&
+      compararDigestsTempoConstante(
+        provaDigestCalculado,
+        tentativa.prova_tentativa_digest
+      );
+
+    if (
+      !provaConfere ||
+      tentativa.revogada_em !== null ||
+      tentativa.recuperacao_descartada_em !== null ||
+      !tentativa.envelope_cifrado ||
+      !tentativa.recuperacao_expira_em
+    ) {
+      throw erroCredencialInvalida();
+    }
+
+    const expiraEm = paraDataValida(tentativa.recuperacao_expira_em);
+    if (!expiraEm || agora.getTime() > expiraEm.getTime()) {
+      throw erroCredencialInvalida();
+    }
+
+    const versaoChaveEnvelope = tentativa.versao_chave ?? tentativa.versao_credencial;
+    const decifrado = decifrarEnvelopeRecuperacao({
+      envelope: tentativa.envelope_cifrado,
+      protocolo: tentativa.protocolo,
+      chaveIdempotencia: chave,
+      provaTentativa: prova,
+      payloadDigest: tentativa.payload_criacao_digest,
+      versaoChave: versaoChaveEnvelope,
+    });
+
+    if (!decifrado) {
+      throw erroCredencialInvalida();
+    }
+
+    const digestCalculado = calcularDigestCredencialExterna(
+      decifrado.credencial,
+      tentativa.algoritmo_digest,
+      tentativa.versao_credencial
+    );
+    if (!compararDigestsTempoConstante(digestCalculado, tentativa.segredo_digest)) {
+      throw erroCredencialInvalida();
+    }
+
+    return {
+      solicitacaoId: tentativa.solicitacao_id,
+      protocolo: decifrado.protocolo,
+      credencial: decifrado.credencial,
+      emitidaEm: new Date(tentativa.emitida_em).toISOString(),
+      recuperacaoExpiraEm: expiraEm.toISOString(),
+    };
+  },
+
+  /**
+   * Valida o par (protocolo, credencial secreta) em tempo constante e confirma atomicamente
+   * no banco que nao houve revogacao ou expiracao concorrente antes de registrar o acesso.
    */
   async autenticarEObterRegistro(
     protocoloBruto: string,
@@ -393,7 +759,6 @@ export const acompanhamentoExternoSvoService = {
     const validacaoCredencial = credencialExternaSvoSchema.safeParse(credencialBruta);
 
     if (!validacaoProtocolo.success || !validacaoCredencial.success) {
-      // Mantem custo criptografico constante mesmo para formato invalido
       const digestDummy = calcularDigestCredencialExterna(
         credencialBruta || 'credencial-invalida',
         'HMAC-SHA-256'
@@ -411,7 +776,12 @@ export const acompanhamentoExternoSvoService = {
     );
 
     const algoritmo = registro?.algoritmo_digest ?? 'HMAC-SHA-256';
-    const digestInformado = calcularDigestCredencialExterna(credencial, algoritmo);
+    const versao = registro?.versao_credencial ?? env.credencialExternaSvo.versaoAtual;
+    const digestInformado = calcularDigestCredencialExterna(
+      credencial,
+      algoritmo,
+      versao
+    );
     const digestEsperado =
       registro?.segredo_digest ?? DIGEST_FICTICIO_ANTI_ENUMERACAO;
 
@@ -425,10 +795,7 @@ export const acompanhamentoExternoSvoService = {
     }
 
     const encerradoEm = resolverMomentoEncerramento(registro);
-    const consultaDisponivelAte = resolverLimiteConsultaPublica(
-      registro,
-      encerradoEm
-    );
+    const consultaDisponivelAte = resolverLimiteConsultaPublica(registro);
 
     if (
       consultaDisponivelAte &&
@@ -438,11 +805,15 @@ export const acompanhamentoExternoSvoService = {
     }
 
     if (opcoes?.registrarAcesso !== false) {
-      await acompanhamentoExternoSvoModel.registrarAcessoValido(
-        registro.solicitacao_id,
-        agora,
-        conexao
-      );
+      const acessoAutorizado =
+        await acompanhamentoExternoSvoModel.registrarAcessoValidoSeAutorizado(
+          registro.solicitacao_id,
+          agora,
+          conexao
+        );
+      if (!acessoAutorizado) {
+        throw erroCredencialInvalida();
+      }
     }
 
     return { registro, encerradoEm, consultaDisponivelAte };
@@ -472,13 +843,7 @@ export const acompanhamentoExternoSvoService = {
       status_label: mapeado.status_label,
       mensagem_publica: mapeado.mensagem_publica,
       registrada_em: paraIso(registro.criado_em)!,
-      atualizada_em: paraIso(
-        registro.ordem_conclusao_em ??
-          registro.ordem_saida_em ??
-          registro.confirmado_em ??
-          registro.atualizado_em_dados ??
-          registro.criado_em
-      )!,
+      atualizada_em: resolverUltimaAtualizacaoPublica(registro).toISOString(),
       encerrada_em: paraIso(encerradoEm),
       consulta_disponivel_ate: paraIso(consultaDisponivelAte),
       versao_dados: registro.versao_dados,
@@ -491,7 +856,7 @@ export const acompanhamentoExternoSvoService = {
         status: registro.cancelamento_status,
         solicitado_em: paraIso(registro.cancelamento_solicitado_em),
         decidido_em: paraIso(registro.cancelamento_decidido_em),
-        mensagem_decisao: registro.cancelamento_justificativa_decisao ?? null,
+        mensagem_decisao: registro.cancelamento_mensagem_publica?.trim() || null,
       },
     };
   },

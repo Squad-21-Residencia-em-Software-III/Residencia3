@@ -10,7 +10,7 @@ if (!Number.isInteger(port) || port < 1024 || port > 65535) {
 
 const migration = '20261126180000_scrum_231_programacao_administrativa.js';
 const directory = path.join(__dirname, '../database/migrations');
-const role = 'scrum231_app_teste';
+const role = 'programacao_adm_app_teste';
 const db = knex({
   client: 'pg',
   connection: { host: '127.0.0.1', port, database: 'frotas_teste', user: 'postgres', ssl: false },
@@ -82,7 +82,7 @@ async function validar() {
   assert.equal(await db('reprogramacoes_viagem_frota').where({ chave: comando.chave }).first('viagem_id')
     .then(row => row.viagem_id), viagem.id);
   await validarPreservacao();
-  console.log('SCRUM-231: upgrade populado, privilégios, rollout e rollback validados em PostgreSQL 17.');
+  console.log('programacao administrativa: upgrade populado, privilégios, rollout e rollback validados em PostgreSQL 17.');
 }
 
 validar().finally(() => db.destroy()).catch(error => {

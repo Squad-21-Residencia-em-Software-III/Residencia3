@@ -14,7 +14,7 @@ import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 // SCRUM-234 de ponta a ponta: alocação, reprogramação e cancelamento SVO reais por HTTP autenticado,
 // publicação na mesma transação, central (SCRUM-226) e fila de push (SCRUM-229) com o enviador simulado.
 // Só roda num banco descartável explicitamente identificado, depois de `npm run migrate`.
-const habilitado = process.env.SCRUM234_POSTGRES_TESTS === '1';
+const habilitado = process.env.AVISOS_SVO_TRIAGEM_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(4).toString('hex');
 const instante = (minutos: number) => new Date(Date.now() + minutos * 60_000);
 

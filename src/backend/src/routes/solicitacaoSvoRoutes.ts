@@ -19,6 +19,8 @@ solicitacaoSvoRoutes.use(autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO), exi
 solicitacaoSvoRoutes.get('/', solicitacaoSvoController.listar);
 solicitacaoSvoRoutes.get('/:id', solicitacaoSvoController.buscarPorId);
 solicitacaoSvoRoutes.post('/', solicitacaoSvoController.registrar);
+// Início verificável de análise na triagem de solicitação externa (SCRUM-266 / SCRUM-270)
+solicitacaoSvoRoutes.patch('/:id/iniciar-analise', solicitacaoSvoController.iniciarAnalise);
 // Confirmação e geração da ordem de coleta (BL27 / RF20, RF21)
 solicitacaoSvoRoutes.patch('/:id/confirmar', solicitacaoSvoController.confirmar);
 // Recusa da solicitação em triagem com justificativa obrigatória (RF20)

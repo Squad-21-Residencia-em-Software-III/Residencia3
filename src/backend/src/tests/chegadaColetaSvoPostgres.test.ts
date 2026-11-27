@@ -11,12 +11,12 @@ import { travarAgendaSvo } from '../services/agendaSvoService';
 import { reavaliarFilaSvo } from '../services/filaSvoService';
 import { manutencaoService, recalcularStatusVeiculo } from '../services/manutencaoService';
 
-const habilitado = process.env.BL31_POSTGRES_TESTS === '1';
+const habilitado = process.env.CHEGADA_COLETA_SVO_POSTGRES_TESTS === '1';
 const chave = () => randomBytes(5).toString('hex');
 const instante = (minutos: number) => new Date(Date.now() + minutos * 60_000);
 
 async function usuario(perfil = 'MOTORISTA_SVO') {
-  const [u] = await db('usuarios').insert({ nome: 'Teste BL31', email: `${chave()}@testes.invalid`,
+  const [u] = await db('usuarios').insert({ nome: 'Teste Chegada SVO', email: `${chave()}@testes.invalid`,
     senha: 'hash-local', perfil, tipo_usuario: perfil.startsWith('MOTORISTA') ? 'MOTORISTA' : perfil }).returning('*');
   if (perfil === 'GESTOR_SVO') {
     const unidade = await db('unidades').where({ nome: 'SVO' }).first();
@@ -30,18 +30,18 @@ async function usuario(perfil = 'MOTORISTA_SVO') {
 
 async function recursos() {
   const condutor = await usuario();
-  const [veiculo] = await db('veiculos').insert({ placa: chave().slice(0, 7), modelo: 'BL31', tipo_frota: 'SVO',
+  const [veiculo] = await db('veiculos').insert({ placa: chave().slice(0, 7), modelo: 'Chegada SVO', tipo_frota: 'SVO',
     capacidade_maxima: 4, lotacao_cabine: 3, km_atual: 1000, status: 'DISPONIVEL' }).returning('*');
   const [motorista] = await db('motoristas').insert({ usuario_id: condutor.id, numero_cnh: chave(),
     categoria_cnh: 'B', validade_cnh: '2099-12-31', tipo_motorista: 'SVO', status: 'DISPONIVEL' }).returning('*');
-  const [equipe] = await db('equipes_svo').insert({ nome_equipe: `BL31 ${chave()}` }).returning('*');
+  const [equipe] = await db('equipes_svo').insert({ nome_equipe: `Chegada SVO ${chave()}` }).returning('*');
   return { condutor, veiculo, motorista, equipe };
 }
 type Recursos = Awaited<ReturnType<typeof recursos>>;
 
 async function ordem(r: Recursos, status = 'EM_DESLOCAMENTO', inicio = -120, fim = -60) {
   const [s] = await db('solicitacoes_svo').insert({ registrante_id: r.condutor.id, dados_solicitante: 'Teste',
-    local_ocorrencia: 'Local BL31', status: 'EM_ANDAMENTO', confirmado_por: r.condutor.id, confirmado_em: new Date() }).returning('*');
+    local_ocorrencia: 'Local Chegada SVO', status: 'EM_ANDAMENTO', confirmado_por: r.condutor.id, confirmado_em: new Date() }).returning('*');
   const [o] = await db('ordens_svo').insert({ solicitacao_id: s.id, status, veiculo_id: r.veiculo.id,
     motorista_id: r.motorista.id, equipe_id: r.equipe.id, capacidade_utilizada: 1,
     inicio_previsto: instante(inicio), fim_previsto: instante(fim),
@@ -53,15 +53,15 @@ const finalizar = (id: number, token: string) => request(app).patch(`/api/viagen
   .set('Authorization', token).send({ tipo_operacao: 'SVO', km_final: 1010 });
 const fila = (id: number) => db.transaction(async (trx) => { await travarAgendaSvo(trx); await reavaliarFilaSvo(trx, id); });
 
-describe.skipIf(!habilitado)('BL31 com PostgreSQL descartável e autenticação real', () => {
+describe.skipIf(!habilitado)('Chegada SVO com PostgreSQL descartável e autenticação real', () => {
   beforeAll(async () => {
     const porta = process.env.POSTGRES_SVO_TEST_PORT ?? '55432';
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_PORT !== porta ||
-        process.env.POSTGRES_DB !== 'fsph_scrum166_teste') throw new Error('Banco BL31 não autorizado');
+        process.env.POSTGRES_DB !== 'fsph_agenda_svo_teste') throw new Error('Banco Chegada SVO não autorizado');
     const { rows } = await db.raw('SELECT current_database() AS db, inet_server_addr()::text AS host, inet_server_port() AS port');
     const ip = process.env.POSTGRES_TEST_CONTAINER_IP ?? '127.0.0.1';
     if (!/^(127\.|172\.(1[6-9]|2\d|3[01])\.|10\.|192\.168\.)/.test(ip)) throw new Error('IP de teste não privado');
-    expect(rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', host: `${ip}/32`, port: Number(porta) });
+    expect(rows[0]).toMatchObject({ db: 'fsph_agenda_svo_teste', host: `${ip}/32`, port: Number(porta) });
   });
   afterAll(async () => { await db.destroy(); });
 
@@ -196,7 +196,7 @@ describe.skipIf(!habilitado)('BL31 com PostgreSQL descartável e autenticação 
   it('valida migrations sobre legado, constraints, índices e rollback protegido em schema isolado', async () => {
     const trx = await db.transaction();
     try {
-      const schema = `bl31_${chave()}`;
+      const schema = `chegada_svo_${chave()}`;
       await trx.raw('CREATE SCHEMA ??', [schema]);
       await trx.raw('SET LOCAL search_path TO ??', [schema]);
       const pasta = path.resolve(__dirname, '../../database/migrations');

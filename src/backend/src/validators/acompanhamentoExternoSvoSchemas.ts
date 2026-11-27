@@ -83,6 +83,18 @@ export const consultarAcompanhamentoBodySchema = z.strictObject(
   { error: 'Campo não permitido na consulta de acompanhamento externo' }
 );
 
+// Corpo para POST /api/solicitacoes-svo/externas/recuperar-comprovante
+export const recuperarComprovanteTentativaSchema = z.strictObject(
+  {
+    chave_idempotencia: chaveIdempotenciaCriacaoSchema.optional(),
+    prova_tentativa: provaTentativaCriacaoSchema.optional(),
+    payload: z.record(z.string(), z.unknown(), {
+      error: 'O payload normalizado é obrigatório para recuperação autenticada da tentativa',
+    }),
+  },
+  { error: 'Campo não permitido na recuperação de comprovante externo' }
+);
+
 // Corpo para POST /api/solicitacoes-svo/:id/credencial-externa/revogar (uso interno autorizado)
 export const revogarCredencialExternaSchema = z.strictObject(
   {
@@ -97,6 +109,9 @@ export const revogarCredencialExternaSchema = z.strictObject(
 
 export type ConsultarAcompanhamentoBodyInput = z.infer<
   typeof consultarAcompanhamentoBodySchema
+>;
+export type RecuperarComprovanteTentativaInput = z.infer<
+  typeof recuperarComprovanteTentativaSchema
 >;
 export type RevogarCredencialExternaInput = z.infer<
   typeof revogarCredencialExternaSchema

@@ -43,7 +43,7 @@ async function iniciar() {
   assertLocalDocker();
   // Variável exportada somente ao subprocesso Docker; senha aleatória e descartável.
   container = docker(['run', '--detach', '--rm', '--pull=missing', '--name', name,
-    '--label', `fsph.scrum239.disposable=${id}`, '--publish', '127.0.0.1::5432',
+    '--label', `fsph.geracao-push.disposable=${id}`, '--publish', '127.0.0.1::5432',
     '--env', 'POSTGRES_PASSWORD', '--env', `POSTGRES_DB=${DB}`, 'postgres:17'],
     { env: { ...process.env, POSTGRES_PASSWORD: password }, timeout: 240000 });
   assert.match(container, /^[0-9a-f]{64}$/i);
@@ -86,7 +86,7 @@ async function validar() {
   for (const migration of anteriores) await db.migrate.up({ name: migration });
   assert.deepEqual((await db('knex_migrations').orderBy('id').pluck('name')), anteriores);
   assert.equal(await db.schema.hasColumn('push_subscriptions', 'geracao_vinculo'), false);
-  const [u] = await db('usuarios').insert({ nome: 'Fixture SCRUM-239', email: `${id}@testes.invalid`,
+  const [u] = await db('usuarios').insert({ nome: 'Fixture geracao push', email: `${id}@testes.invalid`,
     senha: 'hash-de-teste', perfil: 'SOLICITANTE', tipo_usuario: 'SOLICITANTE', ativo: true }).returning('id');
   const pessoa = u.id;
   const endpoints = ['ativo', 'revogado', 'expirado'].map((v) => `https://fcm.googleapis.com/fcm/send/${id}-${v}`);
@@ -157,7 +157,7 @@ async function validar() {
   console.log('Geração, idempotência, reativação, troca de chaves, recriação, compatibilidade e role restrita: OK.');
   // Reutiliza o PostgreSQL sintético para a suíte HTTP real de Push e Badge S6/S7.
   delete process.env.POSTGRES_APP_USER;
-  process.env.SCRUM237_POSTGRES_TESTS = '1';
+  process.env.WEB_PUSH_POSTGRES_TESTS = '1';
   const teste = spawnSync(process.execPath, [path.join(ROOT, 'node_modules/vitest/vitest.mjs'), 'run',
     'src/tests/pushPostgres.test.ts'], { cwd: ROOT, stdio: 'inherit', env: process.env, timeout: 300000 });
   assert.equal(teste.status, 0, teste.error?.message || 'Falha nos testes HTTP/PostgreSQL de Push.');
@@ -167,9 +167,9 @@ async function validar() {
   try {
     await iniciar();
     await validar();
-    console.log('SCRUM-239: validação de migration e HTTP/PostgreSQL concluída.');
+    console.log('geracao push: validação de migration e HTTP/PostgreSQL concluída.');
   } catch (error) {
-    console.error('SCRUM-239: falha na validação:', error.message);
+    console.error('geracao push: falha na validação:', error.message);
     process.exitCode = 1;
   } finally {
     if (db) await db.destroy().catch(() => { process.exitCode = 1; });

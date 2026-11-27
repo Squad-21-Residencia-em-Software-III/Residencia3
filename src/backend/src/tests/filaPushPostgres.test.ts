@@ -9,7 +9,7 @@ import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 // Publicação e fila (SCRUM-229) contra as tabelas das SCRUM-225/228/236. Só executa num banco descartável
 // explicitamente identificado, depois de `npm run migrate`.
-const habilitado = process.env.SCRUM229_POSTGRES_TESTS === '1';
+const habilitado = process.env.FILA_PUSH_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(8).toString('hex');
 
 async function usuario(dados: Record<string, unknown> = {}): Promise<number> {

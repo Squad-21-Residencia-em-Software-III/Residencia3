@@ -1,6 +1,9 @@
-import { Router, type RequestHandler } from 'express';
-import { acompanharExternoAtivo } from '../config/acompanhamentoExternoSvo';
-import { acompanhamentoExternoSvoController, aplicarCabecalhosSemCachePublico } from '../controllers/acompanhamentoExternoSvoController';
+import { Router } from 'express';
+import {
+  acompanhamentoExternoSvoController,
+  aplicarCabecalhosSemCachePublicoMiddleware,
+} from '../controllers/acompanhamentoExternoSvoController';
+import { exigirRecursoAtivo } from '../middlewares/exigirRecursoAtivo';
 import { criarLimitador } from '../middlewares/limitarTentativasLogin';
 
 const QUINZE_MINUTOS_MS = 15 * 60 * 1000;
@@ -15,35 +18,34 @@ export const limitarTentativasAcompanhamentoExterno = criarLimitador({
     'Muitas tentativas de consulta com credencial inválida. Aguarde alguns minutos antes de tentar novamente.',
 });
 
-export const exigirAcompanhamentoExternoAtivo: RequestHandler = (
-  _req,
-  res,
-  next
-) => {
-  aplicarCabecalhosSemCachePublico(res);
-  if (!acompanharExternoAtivo()) {
-    res.status(404).json({
-      erro: 'Rota não encontrada',
-      codigo: 'RECURSO_DESATIVADO',
-    });
-    return;
-  }
-  next();
-};
-
 export const acompanhamentoExternoSvoRoutes = Router();
 
-acompanhamentoExternoSvoRoutes.use(exigirAcompanhamentoExternoAtivo);
-acompanhamentoExternoSvoRoutes.use(limitarTentativasAcompanhamentoExterno);
+// Middlewares aplicados por endpoint (sem .use global) para manter independencia entre flags
+// de portal de cadastro (portalSvo) e consulta publica (acompanhamentoExterno) no prefixo /externas.
 
 // 1. Consulta por POST com protocolo e credencial no body ou no header X-Credencial-Acompanhamento
 acompanhamentoExternoSvoRoutes.post(
   '/acompanhamento',
+  aplicarCabecalhosSemCachePublicoMiddleware,
+  exigirRecursoAtivo('acompanhamentoExterno'),
+  limitarTentativasAcompanhamentoExterno,
   acompanhamentoExternoSvoController.consultarPorPost
 );
 
 // 2. Consulta por GET com protocolo no path e credencial exclusivamente no header X-Credencial-Acompanhamento
 acompanhamentoExternoSvoRoutes.get(
   '/acompanhamento/:protocolo',
+  aplicarCabecalhosSemCachePublicoMiddleware,
+  exigirRecursoAtivo('acompanhamentoExterno'),
+  limitarTentativasAcompanhamentoExterno,
   acompanhamentoExternoSvoController.consultarPorProtocoloNoPath
+);
+
+// 3. Recuperacao autenticada de comprovante (protocolo + credencial) apos perda da resposta no POST de criacao
+acompanhamentoExternoSvoRoutes.post(
+  '/recuperar-comprovante',
+  aplicarCabecalhosSemCachePublicoMiddleware,
+  exigirRecursoAtivo('portalSvo', 'acompanhamentoExterno'),
+  limitarTentativasAcompanhamentoExterno,
+  acompanhamentoExternoSvoController.recuperarComprovanteTentativa
 );

@@ -8,14 +8,14 @@ const provisionarModule = require('../../scripts/provisionar-usuario-app.cjs') a
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migrationScrum225 = require('../../database/migrations/20261124193000_scrum_225_notificacoes_in_app.js') as {
+const migrationNotificacoesInApp = require('../../database/migrations/20261124193000_scrum_225_notificacoes_in_app.js') as {
   up: (knex: unknown) => Promise<void>;
   down: (knex: unknown) => Promise<void>;
   validarCatalogoScrum225: (knex: unknown) => Promise<void>;
 };
 
-describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificações In-App)', () => {
-  function criarKnexScrum225Mock(opcoes?: {
+describe('Contrato de banco, migration e privilégios de notificações In-App (notificações In-App)', () => {
+  function criarKnexNotificacoesInAppMock(opcoes?: {
     schemaAtual?: string;
     tabelasBaseCount?: number;
     tabelaNotificacoesPreexistente?: boolean;
@@ -253,7 +253,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
     return { knexMock, sqlExecutados };
   }
 
-  it('não utiliza IF EXISTS nem IF NOT EXISTS cegos no código-fonte da migration SCRUM-225', () => {
+  it('não utiliza IF EXISTS nem IF NOT EXISTS cegos no código-fonte da migration de notificações In-App', () => {
     const caminhoMigration = path.resolve(
       __dirname,
       '../../database/migrations/20261124193000_scrum_225_notificacoes_in_app.js'
@@ -265,8 +265,8 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
   });
 
   it('define contrato fiel à Seção 6.1 do Plano (ON DELETE CASCADE, VARCHAR(280) em mensagem, severidade e operação)', async () => {
-    const { knexMock, sqlExecutados } = criarKnexScrum225Mock();
-    await migrationScrum225.up(knexMock);
+    const { knexMock, sqlExecutados } = criarKnexNotificacoesInAppMock();
+    await migrationNotificacoesInApp.up(knexMock);
 
     const ddlCreate = sqlExecutados.find((item) => item.sql.includes('CREATE TABLE notificacoes'));
     expect(ddlCreate).toBeDefined();
@@ -280,36 +280,36 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
   });
 
   it('bloqueia up quando a tabela base usuarios não está presente no schema alvo', async () => {
-    const semBase = criarKnexScrum225Mock({ tabelasBaseCount: 0 });
-    await expect(migrationScrum225.up(semBase.knexMock)).rejects.toThrow(
+    const semBase = criarKnexNotificacoesInAppMock({ tabelasBaseCount: 0 });
+    await expect(migrationNotificacoesInApp.up(semBase.knexMock)).rejects.toThrow(
       /tabela base usuarios ausente no schema alvo/
     );
   });
 
   it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum225 (tipo, limite de tamanho, constraint e índice)', async () => {
-    const tipoInvalido = criarKnexScrum225Mock({ tipoCriadoEm: 'text' });
-    await expect(migrationScrum225.validarCatalogoScrum225(tipoInvalido.knexMock)).rejects.toThrow(
+    const tipoInvalido = criarKnexNotificacoesInAppMock({ tipoCriadoEm: 'text' });
+    await expect(migrationNotificacoesInApp.validarCatalogoScrum225(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em notificacoes\.criado_em/
     );
 
-    const tamanhoMensagemInvalido = criarKnexScrum225Mock({ tamanhoMensagem: 500 });
+    const tamanhoMensagemInvalido = criarKnexNotificacoesInAppMock({ tamanhoMensagem: 500 });
     await expect(
-      migrationScrum225.validarCatalogoScrum225(tamanhoMensagemInvalido.knexMock)
+      migrationNotificacoesInApp.validarCatalogoScrum225(tamanhoMensagemInvalido.knexMock)
     ).rejects.toThrow(/Estrutura incompativel em notificacoes\.mensagem/);
 
-    const semConstraint = criarKnexScrum225Mock({
+    const semConstraint = criarKnexNotificacoesInAppMock({
       omitirConstraint: 'notificacoes.uq_notificacoes_usuario_chave_idempotencia',
     });
     await expect(
-      migrationScrum225.validarCatalogoScrum225(semConstraint.knexMock)
+      migrationNotificacoesInApp.validarCatalogoScrum225(semConstraint.knexMock)
     ).rejects.toThrow(
       /Constraint obrigatoria ausente ou incompativel: notificacoes\.uq_notificacoes_usuario_chave_idempotencia/
     );
 
-    const semIndice = criarKnexScrum225Mock({
+    const semIndice = criarKnexNotificacoesInAppMock({
       omitirIndice: 'idx_notificacoes_usuario_cursor',
     });
-    await expect(migrationScrum225.validarCatalogoScrum225(semIndice.knexMock)).rejects.toThrow(
+    await expect(migrationNotificacoesInApp.validarCatalogoScrum225(semIndice.knexMock)).rejects.toThrow(
       /Indice obrigatorio ausente ou incompativel: idx_notificacoes_usuario_cursor/
     );
   });
@@ -318,12 +318,12 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
     const appUserAnterior = process.env.POSTGRES_APP_USER;
     process.env.POSTGRES_APP_USER = 'frotas_app';
     try {
-      const { knexMock, sqlExecutados } = criarKnexScrum225Mock({
+      const { knexMock, sqlExecutados } = criarKnexNotificacoesInAppMock({
         schemaAtual: 'schema_isolado_225',
         roleAppPresente: true,
       });
 
-      await migrationScrum225.up(knexMock);
+      await migrationNotificacoesInApp.up(knexMock);
 
       const cmdRevoke = sqlExecutados.find((item) =>
         item.sql.includes('REVOKE ALL PRIVILEGES ON TABLE ??.notificacoes FROM ??')
@@ -346,15 +346,15 @@ describe('Contrato de banco, migration e privilégios da SCRUM-225 (notificaçõ
   });
 
   it('bloqueia rollback (down) quando há notificações persistidas em notificacoes', async () => {
-    const comDados = criarKnexScrum225Mock({ totalNotificacoes: 3 });
-    await expect(migrationScrum225.down(comDados.knexMock)).rejects.toThrow(
+    const comDados = criarKnexNotificacoesInAppMock({ totalNotificacoes: 3 });
+    await expect(migrationNotificacoesInApp.down(comDados.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem registros em notificacoes/
     );
   });
 
   it('executa DROP estrito (sem IF EXISTS) no down quando não há dados operacionais', async () => {
-    const limpo = criarKnexScrum225Mock({ totalNotificacoes: 0 });
-    await migrationScrum225.down(limpo.knexMock);
+    const limpo = criarKnexNotificacoesInAppMock({ totalNotificacoes: 0 });
+    await migrationNotificacoesInApp.down(limpo.knexMock);
 
     const ddlDown = limpo.sqlExecutados.find((item) =>
       item.sql.includes('DROP TABLE notificacoes')

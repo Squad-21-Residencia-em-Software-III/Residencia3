@@ -1,4 +1,4 @@
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../errors/AppError';
 import { usuarioAutenticado } from '../middlewares/autenticar';
 import {
@@ -6,8 +6,13 @@ import {
   acompanhamentoExternoSvoService,
 } from '../services/acompanhamentoExternoSvoService';
 import {
+  CABECALHO_CHAVE_IDEMPOTENCIA,
   CABECALHO_CREDENCIAL_EXTERNA,
+  CABECALHO_PROVA_TENTATIVA,
+  chaveIdempotenciaCriacaoSchema,
   consultarAcompanhamentoBodySchema,
+  provaTentativaCriacaoSchema,
+  recuperarComprovanteTentativaSchema,
   revogarCredencialExternaSchema,
 } from '../validators/acompanhamentoExternoSvoSchemas';
 import { idParamSchema } from '../validators/comuns';
@@ -19,6 +24,15 @@ export function aplicarCabecalhosSemCachePublico(res: Response): void {
   );
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+}
+
+export function aplicarCabecalhosSemCachePublicoMiddleware(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  aplicarCabecalhosSemCachePublico(res);
+  next();
 }
 
 function garantirSemCredencialNaQueryString(req: Request): void {
@@ -84,6 +98,46 @@ export const acompanhamentoExternoSvoController = {
       );
 
     res.status(200).json(resultado);
+  },
+
+  async recuperarComprovanteTentativa(req: Request, res: Response): Promise<void> {
+    aplicarCabecalhosSemCachePublico(res);
+    garantirSemCredencialNaQueryString(req);
+
+    const body = recuperarComprovanteTentativaSchema.parse(req.body ?? {});
+    const chaveBruta =
+      body.chave_idempotencia ??
+      lerCabecalhoUnico(req, CABECALHO_CHAVE_IDEMPOTENCIA) ??
+      '';
+    const provaBruta =
+      body.prova_tentativa ??
+      lerCabecalhoUnico(req, CABECALHO_PROVA_TENTATIVA) ??
+      '';
+
+    const chaveValidada = chaveIdempotenciaCriacaoSchema.safeParse(chaveBruta);
+    const provaValidada = provaTentativaCriacaoSchema.safeParse(provaBruta);
+
+    if (!chaveValidada.success || !provaValidada.success) {
+      throw new AppError(
+        MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA,
+        401,
+        'CREDENCIAL_EXTERNA_INVALIDA'
+      );
+    }
+
+    const comprovante =
+      await acompanhamentoExternoSvoService.recuperarComprovanteTentativa({
+        chaveIdempotencia: chaveValidada.data,
+        provaTentativa: provaValidada.data,
+        payloadNormalizado: body.payload,
+      });
+
+    res.status(200).json({
+      protocolo: comprovante.protocolo,
+      credencial: comprovante.credencial,
+      emitida_em: comprovante.emitidaEm,
+      recuperacao_expira_em: comprovante.recuperacaoExpiraEm,
+    });
   },
 
   async revogarCredencial(req: Request, res: Response): Promise<void> {

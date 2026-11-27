@@ -1,9 +1,11 @@
-const path = require('path');
+const assert = require('node:assert/strict');
+const path = require('node:path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
 const knexConfig = require('../knexfile');
 const migrationScrum263 = require('../database/migrations/20261127130000_scrum_263_solicitacoes_externas_svo');
 const correcaoScrum263 = require('../database/migrations/20261127140000_scrum_263_integridade_svo_externo');
+const migrationScrum266 = require('../database/migrations/20261128100000_scrum_266_acompanhamento_e_recuperacao_svo');
 
 async function criarSchemaIsoladoScrum266(trx, schema) {
   await trx.raw('CREATE SCHEMA ??', [schema]);
@@ -64,6 +66,7 @@ async function criarSchemaIsoladoScrum266(trx, schema) {
 
   await migrationScrum263.up(trx);
   await correcaoScrum263.up(trx);
+  await migrationScrum266.up(trx);
 }
 
 async function executarValidacaoPostgresScrum266() {
@@ -73,6 +76,7 @@ async function executarValidacaoPostgresScrum266() {
     gerarProtocoloExternoSvo,
     gerarSegredoCredencialExterna,
   } = require('../src/services/acompanhamentoExternoSvoService');
+  const { acompanhamentoExternoSvoModel } = require('../src/models/acompanhamentoExternoSvoModel');
 
   const configMigration = knexConfig.criarConfigKnex({
     ...process.env,
@@ -101,13 +105,13 @@ async function executarValidacaoPostgresScrum266() {
         local_ocorrencia: 'Rua Sintetica A, 100 - Aracaju/SE',
       };
 
-      // 1. Emissao atomica de solicitacao externa A + dados externos + credencial secreta
+      // 1. Emissao atomica + envelope separado cifrado AES-256-GCM
       const [solA] = await trx('solicitacoes_svo')
         .insert({
           registrante_id: null,
           canal_origem: 'EXTERNA',
           protocolo: protocoloA,
-          dados_solicitante: `Solicitacao externa (${protocoloA})`,
+          dados_solicitante: 'Solicitacao externa',
           local_ocorrencia: payloadA.local_ocorrencia,
           material_sensivel: false,
           status: 'EM_TRIAGEM',
@@ -139,17 +143,17 @@ async function executarValidacaoPostgresScrum266() {
           protocolo: protocoloA,
           chaveIdempotencia: chaveIdemA,
           provaTentativa: provaTentativaA,
+          habilitarRecuperacao: true,
           payloadNormalizado: payloadA,
           agora: agoraBase,
         });
 
-      // Solicitação B para testar combinacao cruzada
       const [solB] = await trx('solicitacoes_svo')
         .insert({
           registrante_id: null,
           canal_origem: 'EXTERNA',
           protocolo: protocoloB,
-          dados_solicitante: `Solicitacao externa (${protocoloB})`,
+          dados_solicitante: 'Solicitacao externa',
           local_ocorrencia: 'Rua Sintetica B, 200 - Aracaju/SE',
           material_sensivel: false,
           status: 'EM_TRIAGEM',
@@ -185,63 +189,99 @@ async function executarValidacaoPostgresScrum266() {
         });
 
       relatorio.push(
-        '1. Emissao atomica em PostgreSQL real (digest HMAC-SHA-256, chave de idempotencia e digest do payload obrigatorios, sem segredo em claro): OK'
+        '1. Emissao atomica e envelope cifrado em tabela separada (SCRUM-263 + SCRUM-266): OK'
       );
 
-      // 3. Isolamento cruzado: credencial A nao le protocolo B e vice-versa
-      let bloqueouCruzadoAB = false;
-      try {
-        await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
-          protocoloA,
-          emissaoB.credencial,
-          { conexao: trx, agora: agoraBase }
+      // 2. Recuperacao autenticada apos commit
+      const recuperado =
+        await acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
+          {
+            chaveIdempotencia: chaveIdemA,
+            provaTentativa: provaTentativaA,
+            payloadNormalizado: payloadA,
+            agora: new Date('2026-11-27T12:05:00.000Z'),
+          },
+          trx
         );
-      } catch (e) {
-        bloqueouCruzadoAB = e.statusCode === 401;
-      }
+      assert.equal(recuperado.protocolo, protocoloA);
+      assert.equal(recuperado.credencial, emissaoA.credencial);
 
-      if (!bloqueouCruzadoAB) {
-        throw new Error('Combinacao cruzada (protocolo A + credencial B) deveria falhar com 401.');
-      }
+      await assert.rejects(
+        () =>
+          acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
+            {
+              chaveIdempotencia: chaveIdemA,
+              provaTentativa: gerarSegredoCredencialExterna(),
+              payloadNormalizado: payloadA,
+              agora: new Date('2026-11-27T12:05:00.000Z'),
+            },
+            trx
+          ),
+        { statusCode: 401 }
+      );
+
+      await assert.rejects(
+        () =>
+          acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
+            {
+              chaveIdempotencia: chaveIdemA,
+              provaTentativa: provaTentativaA,
+              payloadNormalizado: { ...payloadA, local_ocorrencia: 'Adulterado' },
+              agora: new Date('2026-11-27T12:05:00.000Z'),
+            },
+            trx
+          ),
+        { statusCode: 409, codigo: 'CONFLITO_IDEMPOTENCIA' }
+      );
 
       relatorio.push(
-        '3. Isolamento estrito entre registros (combinacao cruzada e protocolo isolado rejeitados com 401 uniforme): OK'
+        '2. Recuperacao autenticada com prova de posse e bloqueio de payload divergente (409) / impostor (401): OK'
       );
 
-      // 4. Exercicio dos 7 estados publicos no PostgreSQL real
-      // Estado 1: RECEBIDA
+      // 3. Isolamento cruzado
+      await assert.rejects(
+        () =>
+          acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
+            protocoloA,
+            emissaoB.credencial,
+            { conexao: trx, agora: agoraBase }
+          ),
+        { statusCode: 401 }
+      );
+
+      // 4. Os 7 estados publicos e marcos reais
       const dtoRecebida =
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           protocoloA,
           emissaoA.credencial,
           { conexao: trx, agora: agoraBase }
         );
-      if (dtoRecebida.status !== 'RECEBIDA') {
-        throw new Error(`Esperado RECEBIDA, obtido ${dtoRecebida.status}`);
-      }
+      assert.equal(dtoRecebida.status, 'RECEBIDA');
 
-      // Estado 2: EM_ANALISE (apos revisao / versao_dados = 2)
-      await trx('solicitacoes_svo_dados_externos')
-        .where({ solicitacao_id: solA.id })
-        .update({ versao_dados: 2 });
+      // Inicia analise na triagem (RECEBIDA -> EM_ANALISE)
+      const inicioAnalise = new Date('2026-11-27T12:10:00.000Z');
+      await acompanhamentoExternoSvoModel.registrarInicioAnalise(
+        solA.id,
+        2,
+        inicioAnalise,
+        trx
+      );
       const dtoEmAnalise =
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           protocoloA,
           emissaoA.credencial,
-          { conexao: trx, agora: agoraBase }
+          { conexao: trx, agora: inicioAnalise }
         );
-      if (dtoEmAnalise.status !== 'EM_ANALISE') {
-        throw new Error(`Esperado EM_ANALISE, obtido ${dtoEmAnalise.status}`);
-      }
+      assert.equal(dtoEmAnalise.status, 'EM_ANALISE');
 
-      // Estado 3: CONFIRMADA (confirmada na triagem + ordem AGUARDANDO_ALOCACAO)
+      // CONFIRMADA + ordem ALOCADA permanece CONFIRMADA (nao antecipa EM_ANDAMENTO)
       await trx('solicitacoes_svo')
         .where({ id: solA.id })
         .update({ status: 'CONFIRMADA', confirmado_por: 2, confirmado_em: agoraBase });
       const [ordemA] = await trx('ordens_svo')
         .insert({
           solicitacao_id: solA.id,
-          status: 'AGUARDANDO_ALOCACAO',
+          status: 'ALOCADA',
           capacidade_utilizada: 1,
         })
         .returning('*');
@@ -249,50 +289,46 @@ async function executarValidacaoPostgresScrum266() {
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           protocoloA,
           emissaoA.credencial,
-          { conexao: trx, agora: agoraBase }
+          { conexao: trx, agora: inicioAnalise }
         );
-      if (dtoConfirmada.status !== 'CONFIRMADA') {
-        throw new Error(`Esperado CONFIRMADA, obtido ${dtoConfirmada.status}`);
-      }
+      assert.equal(dtoConfirmada.status, 'CONFIRMADA');
 
-      // Estado 4: EM_ANDAMENTO
-      await trx('solicitacoes_svo')
-        .where({ id: solA.id })
-        .update({ status: 'EM_ANDAMENTO' });
+      // EM_ANDAMENTO apos saida efetiva
+      const saidaEm = new Date('2026-11-27T12:30:00.000Z');
+      await trx('solicitacoes_svo').where({ id: solA.id }).update({ status: 'EM_ANDAMENTO' });
       await trx('ordens_svo')
         .where({ id: ordemA.id })
-        .update({ status: 'EM_DESLOCAMENTO', data_hora_saida: agoraBase });
+        .update({ status: 'EM_DESLOCAMENTO', data_hora_saida: saidaEm });
       const dtoEmAndamento =
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           protocoloA,
           emissaoA.credencial,
-          { conexao: trx, agora: agoraBase }
+          { conexao: trx, agora: saidaEm }
         );
-      if (dtoEmAndamento.status !== 'EM_ANDAMENTO') {
-        throw new Error(`Esperado EM_ANDAMENTO, obtido ${dtoEmAndamento.status}`);
-      }
+      assert.equal(dtoEmAndamento.status, 'EM_ANDAMENTO');
 
-      // Estado 5: CONCLUIDA + teste de fronteira de 30 dias
+      // CONCLUIDA + fronteira de 30 dias via coluna GENERATED consulta_publica_expira_em
       const encerradoEm = new Date('2026-11-27T15:00:00.000Z');
       const limite30Dias = new Date(
         encerradoEm.getTime() + JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS
       );
-      await trx('solicitacoes_svo')
-        .where({ id: solA.id })
-        .update({ status: 'CONCLUIDA' });
+      await trx('solicitacoes_svo').where({ id: solA.id }).update({ status: 'CONCLUIDA' });
       await trx('ordens_svo')
         .where({ id: ordemA.id })
         .update({ status: 'CONCLUIDA', data_hora_conclusao: encerradoEm });
-      await trx('solicitacoes_svo_dados_externos')
-        .where({ solicitacao_id: solA.id })
-        .update({ encerrado_operacional_em: encerradoEm });
-      // consulta_publica_expira_em e GENERATED na SCRUM-263: confere o calculo do banco (encerramento + 30 dias UTC)
+      await acompanhamentoExternoSvoModel.registrarEncerramentoOperacional(
+        solA.id,
+        encerradoEm,
+        trx
+      );
+
       const gerado = await trx('solicitacoes_svo_dados_externos')
         .where({ solicitacao_id: solA.id })
         .first('consulta_publica_expira_em');
-      if (new Date(gerado.consulta_publica_expira_em).getTime() !== limite30Dias.getTime()) {
-        throw new Error('consulta_publica_expira_em gerada divergente de 30 dias.');
-      }
+      assert.equal(
+        new Date(gerado.consulta_publica_expira_em).getTime(),
+        limite30Dias.getTime()
+      );
 
       const dtoConcluidaNoLimite =
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
@@ -300,25 +336,19 @@ async function executarValidacaoPostgresScrum266() {
           emissaoA.credencial,
           { conexao: trx, agora: limite30Dias }
         );
-      if (dtoConcluidaNoLimite.status !== 'CONCLUIDA') {
-        throw new Error(`Esperado CONCLUIDA, obtido ${dtoConcluidaNoLimite.status}`);
-      }
+      assert.equal(dtoConcluidaNoLimite.status, 'CONCLUIDA');
 
-      let expirouApos30Dias = false;
-      try {
-        await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
-          protocoloA,
-          emissaoA.credencial,
-          { conexao: trx, agora: new Date(limite30Dias.getTime() + 1) }
-        );
-      } catch (e) {
-        expirouApos30Dias = e.statusCode === 401;
-      }
-      if (!expirouApos30Dias) {
-        throw new Error('Credencial deveria expirar imediatamente apos 30 dias do encerramento.');
-      }
+      await assert.rejects(
+        () =>
+          acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
+            protocoloA,
+            emissaoA.credencial,
+            { conexao: trx, agora: new Date(limite30Dias.getTime() + 1) }
+          ),
+        { statusCode: 401 }
+      );
 
-      // Estado 6: NAO_ACOLHIDA (em solB, garantido que motivo_recusa interno NUNCA vaza no DTO publico)
+      // NAO_ACOLHIDA sem vazamento de motivo_recusa interno
       await trx('solicitacoes_svo')
         .where({ id: solB.id })
         .update({
@@ -330,65 +360,79 @@ async function executarValidacaoPostgresScrum266() {
         .update({
           motivo_recusa_publico: 'Encaminhado ao orgao pericial competente.',
         });
-
       const dtoNaoAcolhida =
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           protocoloB,
           emissaoB.credencial,
           { conexao: trx, agora: agoraBase }
         );
-      if (
-        dtoNaoAcolhida.status !== 'NAO_ACOLHIDA' ||
+      assert.equal(dtoNaoAcolhida.status, 'NAO_ACOLHIDA');
+      assert.equal(
         dtoNaoAcolhida.mensagem_publica.includes(
           'MOTIVO_INTERNO_CONFIDENCIAL_PLANTAO_SVO_IML'
-        ) ||
-        !dtoNaoAcolhida.mensagem_publica.includes(
-          'Encaminhado ao orgao pericial competente.'
-        )
-      ) {
-        throw new Error(
-          `Falha no estado NAO_ACOLHIDA ou vazamento de motivo interno: ${JSON.stringify(dtoNaoAcolhida)}`
-        );
-      }
+        ),
+        false
+      );
 
-      // Estado 7: CANCELADA + Revogacao
-      await trx('solicitacoes_svo')
-        .where({ id: solB.id })
-        .update({ status: 'CANCELADA' });
+      // CANCELADA sem vazamento de cancelamento_justificativa_decisao interna
+      await trx('solicitacoes_svo').where({ id: solB.id }).update({ status: 'CANCELADA' });
+      await trx('solicitacoes_svo_dados_externos')
+        .where({ solicitacao_id: solB.id })
+        .update({
+          cancelamento_status: 'ACEITO',
+          cancelamento_solicitado_em: agoraBase,
+          cancelamento_motivo: 'Solicitado pelo requerente em validacao.',
+          cancelamento_decidido_por: 2,
+          cancelamento_decidido_em: agoraBase,
+          cancelamento_justificativa_decisao: 'JUSTIFICATIVA_INTERNA_SIGILOSA_SVO',
+          cancelamento_mensagem_publica: 'Cancelamento confirmado.',
+        });
       const dtoCancelada =
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           protocoloB,
           emissaoB.credencial,
           { conexao: trx, agora: agoraBase }
         );
-      if (dtoCancelada.status !== 'CANCELADA') {
-        throw new Error(`Esperado CANCELADA, obtido ${dtoCancelada.status}`);
-      }
-
-      // Revogacao imediata
-      await trx('solicitacoes_svo_credenciais_externas')
-        .where({ solicitacao_id: solB.id })
-        .update({
-          revogada_em: agoraBase,
-          revogada_motivo: 'Revogada em teste de integracao PG',
-        });
-
-      let bloqueouRevogada = false;
-      try {
-        await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
-          protocoloB,
-          emissaoB.credencial,
-          { conexao: trx, agora: agoraBase }
-        );
-      } catch (e) {
-        bloqueouRevogada = e.statusCode === 401;
-      }
-      if (!bloqueouRevogada) {
-        throw new Error('Credencial revogada deveria ser rejeitada com 401.');
-      }
+      assert.equal(dtoCancelada.status, 'CANCELADA');
+      assert.equal(
+        JSON.stringify(dtoCancelada).includes('JUSTIFICATIVA_INTERNA_SIGILOSA_SVO'),
+        false
+      );
 
       relatorio.push(
-        '4. Os 7 estados publicos (RECEBIDA, EM_ANALISE, CONFIRMADA, EM_ANDAMENTO, CONCLUIDA, NAO_ACOLHIDA, CANCELADA), fronteira de 30 dias, revogacao e ausencia de motivo interno no DTO: OK'
+        '3. Sete estados publicos, transicao RECEBIDA->EM_ANALISE, ALOCADA em CONFIRMADA, fronteira de 30 dias e zero vazamento interno: OK'
+      );
+
+      // Commit para testar concorrencia real entre conexoes separadas do PostgreSQL
+      await trx('solicitacoes_svo_credenciais_externas')
+        .where({ solicitacao_id: solB.id })
+        .update({ ultimo_acesso_em: null });
+
+      // Revogacao descarta recuperacao e bloqueia consultas concorrentes
+      await acompanhamentoExternoSvoModel.revogarCredencial(
+        solB.id,
+        'Revogada em validacao PG',
+        agoraBase,
+        trx
+      );
+      await assert.rejects(
+        () =>
+          acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
+            protocoloB,
+            emissaoB.credencial,
+            { conexao: trx, agora: agoraBase }
+          ),
+        { statusCode: 401 }
+      );
+      const acessoAposRevogacao =
+        await acompanhamentoExternoSvoModel.registrarAcessoValidoSeAutorizado(
+          solB.id,
+          agoraBase,
+          trx
+        );
+      assert.equal(acessoAposRevogacao, false);
+      relatorio.push(
+        '4. Revogacao atomica e bloqueio concorrente em registrarAcessoValidoSeAutorizado: OK'
       );
     });
 

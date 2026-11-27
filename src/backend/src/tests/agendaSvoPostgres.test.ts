@@ -8,8 +8,8 @@ import { env } from '../config/env';
 import { auditoriaModel } from '../models/auditoriaModel';
 
 // Este arquivo só executa no banco descartável explicitamente identificado abaixo.
-const habilitado = process.env.SCRUM166_POSTGRES_TESTS === '1';
-const bl31Habilitada = process.env.SCRUM196_BL31_POSTGRES_TESTS === '1';
+const habilitado = process.env.AGENDA_SVO_POSTGRES_TESTS === '1';
+const chegadaHabilitada = process.env.CHEGADA_AGENDA_SVO_POSTGRES_TESTS === '1';
 const instante = (minutos: number) => new Date(Date.now() + minutos * 60_000);
 const nonce = () => randomBytes(4).toString('hex');
 
@@ -67,15 +67,15 @@ async function pendente(autorId: number) {
   return { solicitacao, ordem };
 }
 
-describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticado', () => {
+describe.skipIf(!habilitado)('Agenda SVO com PostgreSQL isolado e HTTP autenticado', () => {
   beforeAll(async () => {
     const porta = process.env.POSTGRES_SVO_TEST_PORT ?? '55432';
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_PORT !== porta ||
-        process.env.POSTGRES_DB !== 'fsph_scrum166_teste') throw new Error('Banco de teste não autorizado');
+        process.env.POSTGRES_DB !== 'fsph_agenda_svo_teste') throw new Error('Banco de teste não autorizado');
     const resultado = await db.raw('SELECT current_database() AS db, inet_server_addr()::text AS endereco, inet_server_port() AS porta');
     const ip = process.env.POSTGRES_TEST_CONTAINER_IP ?? '127.0.0.1';
     if (!/^(127\.|172\.(1[6-9]|2\d|3[01])\.|10\.|192\.168\.)/.test(ip)) throw new Error('IP de teste não privado');
-    expect(resultado.rows[0]).toMatchObject({ db: 'fsph_scrum166_teste', endereco: `${ip}/32`, porta: Number(porta) });
+    expect(resultado.rows[0]).toMatchObject({ db: 'fsph_agenda_svo_teste', endereco: `${ip}/32`, porta: Number(porta) });
   });
   afterAll(async () => { await db.destroy(); });
 
@@ -472,7 +472,7 @@ describe.skipIf(!habilitado)('SCRUM-166 com PostgreSQL isolado e HTTP autenticad
     expect(minhas.body.dados).not.toContainEqual(expect.objectContaining({ id: a.ordem.id }));
   });
 
-  it.skipIf(!bl31Habilitada)('mantém a coleta visível e Maria ocupada entre equipes após chegada e até conclusão real', async () => {
+  it.skipIf(!chegadaHabilitada)('mantém a coleta visível e Maria ocupada entre equipes após chegada e até conclusão real', async () => {
     const alfa = await recursos();
     const beta = await recursos();
     const maria = alfa.integrante;

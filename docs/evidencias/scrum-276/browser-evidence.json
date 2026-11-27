@@ -1,0 +1,81 @@
+{
+  "chrome": "158.0.8127.88",
+  "date": "2026-11-27T16:25:13.382Z",
+  "map": [
+    {
+      "name": "chrome-desktop",
+      "viewport": {
+        "width": 1000,
+        "height": 540
+      },
+      "workers": 1,
+      "liberty": true,
+      "tileJson": true,
+      "tiles": 6,
+      "fonts": 2,
+      "violations": []
+    },
+    {
+      "name": "chrome-android-emulado",
+      "viewport": {
+        "width": 412,
+        "height": 839
+      },
+      "workers": 1,
+      "liberty": true,
+      "tileJson": true,
+      "tiles": 4,
+      "fonts": 2,
+      "violations": []
+    },
+    {
+      "name": "chrome-ios-emulado",
+      "viewport": {
+        "width": 390,
+        "height": 664
+      },
+      "workers": 3,
+      "liberty": true,
+      "tileJson": true,
+      "tiles": 4,
+      "fonts": 2,
+      "violations": []
+    }
+  ],
+  "checks": {
+    "webglFallback": "webgl",
+    "styleFallback": "erro",
+    "realCache": {
+      "styles": 2,
+      "assets": 10,
+      "tiles": true,
+      "sprites": true,
+      "glyphs": true
+    },
+    "strategies": [
+      "SWR style",
+      "SWR TileJSON",
+      "CacheFirst tile",
+      "stale rejected at eight days"
+    ],
+    "budget": [
+      10,
+      240
+    ],
+    "cacheExclusions": [
+      "authenticated /api",
+      "same-origin unrelated",
+      "provider non-map path"
+    ],
+    "quota": "simulated QuotaExceededError purged both caches",
+    "swUpdate": "waiting before SKIP_WAITING, activated after confirmation",
+    "manifest": "standalone",
+    "login": "synthetic frontend login and authenticated notification counter",
+    "syntheticPush": {
+      "via": "Chromium DevTools Protocol, without external Push delivery",
+      "notificationDisplayed": true,
+      "badgeCalls": 1,
+      "nativeBadge": true
+    }
+  }
+}

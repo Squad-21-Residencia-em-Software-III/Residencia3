@@ -45,7 +45,7 @@ Publicados por `services/notificacaoSvoService.ts` **na transação da transiç�
 ## Testes
 
 - `avisosSvoS6S8.test.ts`: formato, sem push no S6 e no S7, limite de ordens citadas, motorista inativo e interruptor desligado.
-- `avisosSvoS6S8Postgres.test.ts`: de ponta a ponta, com HTTP autenticado, transições reais e fila real com o enviador simulado. Roda com `SCRUM235_POSTGRES_TESTS=1` em `127.0.0.1/frotas_teste`, depois de `npm run migrate`, e está ligado no CI. Cobre:
+- `avisosSvoS6S8Postgres.test.ts`: de ponta a ponta, com HTTP autenticado, transições reais e fila real com o enviador simulado. Roda com `AVISOS_SVO_COLETA_POSTGRES_TESTS=1` em `127.0.0.1/frotas_teste`, depois de `npm run migrate`, e está ligado no CI. Cobre:
   - S6 e S7 sem push, nem na fila;
   - um S7 por deslocamento com duas ordens;
   - quem recebe e quem não recebe (autor, sem unidade, inativo, Gestor de Frota);

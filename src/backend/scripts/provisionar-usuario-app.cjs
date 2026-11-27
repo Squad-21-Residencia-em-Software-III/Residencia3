@@ -1,7 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
-const { aplicarPrivilegiosScrum263, DADOS } = require('../database/scrum263-privilegios.cjs');
+const { aplicarPrivilegiosSolicitacoesExternasSvo, DADOS } = require('../database/privilegiosSolicitacoesExternasSvo.cjs');
 const knexConfig = require('../knexfile');
 
 /**
@@ -91,7 +91,7 @@ function validarEstadoMinimoPrivilegio(estado, opcoes = {}) {
 
   if (estado.podeDeletarDadosExternosSvo) {
     violacoes.push(
-      'role nao pode ter privilegio DELETE sobre as tabelas protegidas de solicitacoes externas SVO (solicitacoes_svo_dados_externos, solicitacoes_svo_credenciais_externas)'
+      'role nao pode ter privilegio DELETE sobre as tabelas protegidas de solicitacoes externas SVO (solicitacoes_svo_dados_externos, solicitacoes_svo_credenciais_externas, solicitacoes_svo_recuperacoes_tentativa)'
     );
   }
 
@@ -216,8 +216,15 @@ async function inspecionarEstadoRole(conexao, appUser) {
          WHEN to_regclass('public.solicitacoes_svo_credenciais_externas') IS NOT NULL THEN
            has_table_privilege(?, 'public.solicitacoes_svo_credenciais_externas', 'DELETE')
          ELSE false
+       END
+       OR
+       CASE
+         WHEN to_regclass('public.solicitacoes_svo_recuperacoes_tentativa') IS NOT NULL THEN
+           has_table_privilege(?, 'public.solicitacoes_svo_recuperacoes_tentativa', 'DELETE')
+         ELSE false
        END AS pode_deletar_dados_externos_svo`,
     [
+      appUser,
       appUser,
       appUser,
       appUser,
@@ -420,7 +427,7 @@ async function provisionarUsuarioAplicacao() {
 
       if (await trx.schema.withSchema('public').hasTable(DADOS)) {
         const corrigida = !(await trx.schema.withSchema('public').hasColumn(DADOS, 'endereco_ocorrencia'));
-        await aplicarPrivilegiosScrum263(trx, 'public', appUser, corrigida);
+        await aplicarPrivilegiosSolicitacoesExternasSvo(trx, 'public', appUser, corrigida);
       }
 
       // Validacao obrigatoria dos atributos efetivos e privilegios antes de confirmar a transacao

@@ -15,11 +15,13 @@ export function criarLimitadorTempo(tempoMs: () => number = () => env.requestTim
     res.json = descartarSeEsgotado(res.json.bind(res));
     res.send = descartarSeEsgotado(res.send.bind(res));
 
+    const limiteMs = tempoMs();
+    res.locals.prazoRequisicaoMs = Date.now() + limiteMs;
     const timer = setTimeout(() => {
       if (res.headersSent) return;
       res.locals.tempoEsgotado = true;
       res.set('Retry-After', '5').status(503).json({ erro: MENSAGEM_TEMPO_ESGOTADO });
-    }, tempoMs());
+    }, limiteMs);
     timer.unref();
 
     const limpar = () => clearTimeout(timer);
