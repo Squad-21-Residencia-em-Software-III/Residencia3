@@ -9,7 +9,7 @@ import { solicitacaoExternaApi } from '../../services/api/solicitacaoExternaApi'
 import type { ConsultaPublica, EstadoPublico } from '../../services/api/solicitacaoExternaApi'
 
 /**
- * Acompanhamento público por protocolo + segredo (SCRUM-250 / SCRUM-267), sem login.
+ * Acompanhamento público por protocolo + segredo (credencial do backend) (SCRUM-250 / SCRUM-267), sem login.
  *
  * Regras desta tela:
  * - o segredo só existe na memória desta tela: nada de URL, localStorage, sessionStorage ou cache;
@@ -18,34 +18,30 @@ import type { ConsultaPublica, EstadoPublico } from '../../services/api/solicita
  * - resposta de uma consulta antiga nunca aparece depois que o protocolo ou o segredo mudaram.
  */
 
-/** PROVISÓRIO: textos e cores dos sete estados; a lista final vem do SCRUM-266. */
+/** Textos e cores dos sete estados públicos definidos pelo backend (SCRUM-266). */
 const APRESENTACAO: Record<EstadoPublico, { rotulo: string; tom: BadgeTone; explicacao: string }> = {
   RECEBIDA: { rotulo: 'Recebida', tom: 'info', explicacao: 'Recebemos o seu chamado e ele aguarda análise.' },
   EM_ANALISE: { rotulo: 'Em análise', tom: 'warning', explicacao: 'A equipe está analisando as informações enviadas.' },
-  ACEITA: { rotulo: 'Aceita', tom: 'success', explicacao: 'O chamado foi aceito e será encaminhado para atendimento.' },
+  CONFIRMADA: { rotulo: 'Confirmada', tom: 'success', explicacao: 'O chamado foi confirmado e será encaminhado para atendimento.' },
   EM_ANDAMENTO: { rotulo: 'Em andamento', tom: 'info', explicacao: 'O atendimento está em andamento.' },
   CONCLUIDA: { rotulo: 'Concluída', tom: 'success', explicacao: 'O atendimento foi concluído.' },
-  RECUSADA: { rotulo: 'Não atendida', tom: 'danger', explicacao: 'O chamado não pôde ser atendido.' },
+  NAO_ACOLHIDA: { rotulo: 'Não acolhida', tom: 'danger', explicacao: 'O chamado não pôde ser acolhido.' },
   CANCELADA: { rotulo: 'Cancelada', tom: 'neutral', explicacao: 'O chamado foi cancelado.' },
 }
 
-const MENSAGEM_CREDENCIAL = 'Protocolo ou segredo inválidos. Confira os dados e tente novamente.'
+// Mensagem única: o backend não diz se o protocolo não existe, se a credencial está errada, expirou ou foi revogada.
+const MENSAGEM_CREDENCIAL =
+  'Não foi possível consultar com os dados informados. Confira o protocolo e o segredo e tente novamente. Se o prazo de consulta tiver terminado, procure a FSPH informando o número do protocolo.'
 const ESPERA_PADRAO_SEGUNDOS = 30
 
 interface Falha {
-  tipo: 'preenchimento' | 'credencial' | 'expirada' | 'limite' | 'indisponivel'
+  tipo: 'preenchimento' | 'credencial' | 'limite' | 'indisponivel'
   mensagem: string
   esperaSegundos?: number
 }
 
 function classificarFalha(erro: unknown): Falha {
   if (erro instanceof ApiError) {
-    if (erro.status === 410) {
-      return {
-        tipo: 'expirada',
-        mensagem: 'A consulta por esta credencial expirou. Em caso de dúvida, procure a FSPH informando o número do protocolo.',
-      }
-    }
     if (erro.status === 429) {
       return {
         tipo: 'limite',
@@ -53,7 +49,7 @@ function classificarFalha(erro: unknown): Falha {
         esperaSegundos: erro.retryAfterSegundos ?? ESPERA_PADRAO_SEGUNDOS,
       }
     }
-    if ([400, 401, 403, 404].includes(erro.status)) return { tipo: 'credencial', mensagem: MENSAGEM_CREDENCIAL }
+    if ([400, 401, 403, 404, 410].includes(erro.status)) return { tipo: 'credencial', mensagem: MENSAGEM_CREDENCIAL }
     if (erro.status === 0) {
       return { tipo: 'indisponivel', mensagem: 'Não foi possível conectar. Verifique sua conexão e tente novamente.' }
     }

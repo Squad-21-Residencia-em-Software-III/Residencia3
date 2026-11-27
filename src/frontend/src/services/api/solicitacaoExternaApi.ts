@@ -1,26 +1,25 @@
 import { ApiError, request } from './http'
 
 /**
- * Consulta pública de solicitação externa (SCRUM-250 / SCRUM-267).
+ * Consulta pública de solicitação externa (SCRUM-250 / SCRUM-267), contrato da SCRUM-266:
+ * `POST /solicitacoes-svo/externas/acompanhamento` com `{ protocolo, credencial }`.
  *
- * CONTRATO PROVISÓRIO: o definitivo vem do SCRUM-266 (credencial) e do SCRUM-264 (endpoint
- * público), ainda não implementados. Quando fecharem, ajuste só este arquivo (caminho, nomes dos
- * campos e lista de estados).
- *
- * O que NÃO muda com o contrato:
- * - o segredo vai no corpo da requisição, nunca na URL;
+ * O que vale sempre:
+ * - a credencial vai no corpo da requisição, nunca na URL;
  * - a chamada é pública (sem token, sem cookies, sem renovar sessão, sem cache);
- * - só os campos públicos conhecidos chegam à tela; qualquer campo extra da API é descartado.
+ * - só os campos públicos conhecidos chegam à tela; qualquer campo extra da API é descartado;
+ * - o backend responde 401 igual para protocolo inexistente e credencial incorreta, cruzada,
+ *   expirada ou revogada: o cliente nunca tenta adivinhar o motivo.
  */
 
-/** PROVISÓRIO: estados simplificados mostrados ao público (o card pede sete, definidos no SCRUM-266). */
+/** Os sete estados públicos definidos pelo backend (SCRUM-266). */
 export const ESTADOS_PUBLICOS = [
   'RECEBIDA',
   'EM_ANALISE',
-  'ACEITA',
+  'CONFIRMADA',
   'EM_ANDAMENTO',
   'CONCLUIDA',
-  'RECUSADA',
+  'NAO_ACOLHIDA',
   'CANCELADA',
 ] as const
 
@@ -36,39 +35,59 @@ export interface ConsultaPublica {
   expiraEm: string | null
 }
 
-/** PROVISÓRIO: caminho do endpoint público de consulta. */
-const CAMINHO_CONSULTA = '/solicitacoes-svo/externas/consulta'
+const CAMINHO_CONSULTA = '/solicitacoes-svo/externas/acompanhamento'
 
-/** Mock só em desenvolvimento e só com `VITE_SOLICITACAO_EXTERNA_MOCK=true` (nunca vai para produção). */
-const usarMock = (): boolean => import.meta.env.DEV && import.meta.env.VITE_SOLICITACAO_EXTERNA_MOCK === 'true'
+const respostaInesperada = () => new ApiError('Resposta inesperada do servidor.', 502)
 
-function texto(valor: unknown): string | null {
-  return typeof valor === 'string' && valor.trim() !== '' ? valor : null
+/** Texto obrigatório: ausente, vazio ou de outro tipo é resposta inesperada. */
+function textoObrigatorio(valor: unknown): string {
+  if (typeof valor !== 'string' || valor.trim() === '') throw respostaInesperada()
+  return valor
 }
 
-/** Valida a resposta e devolve só os campos públicos. Resposta fora do contrato vira erro de servidor. */
+/** Texto opcional: ausente ou nulo vira `null`; de outro tipo é resposta inesperada. */
+function textoOpcional(valor: unknown): string | null {
+  if (valor === undefined || valor === null) return null
+  if (typeof valor !== 'string') throw respostaInesperada()
+  return valor.trim() === '' ? null : valor
+}
+
+/** Data opcional em texto: ausente ou nula vira `null`; texto que não é data válida é resposta inesperada. */
+function dataOpcional(valor: unknown): string | null {
+  const texto = textoOpcional(valor)
+  if (texto === null) return null
+  if (Number.isNaN(new Date(texto).getTime())) throw respostaInesperada()
+  return texto
+}
+
+/**
+ * Valida a resposta do backend (nomes em snake_case) e converte para os nomes usados na tela,
+ * devolvendo só os campos públicos. Resposta fora do contrato vira erro de servidor (502).
+ */
 export function normalizarConsulta(dados: unknown): ConsultaPublica {
-  const bruto = (dados ?? {}) as Record<string, unknown>
-  const protocolo = texto(bruto.protocolo)
-  const estado = ESTADOS_PUBLICOS.find((candidato) => candidato === bruto.estado)
-  if (!protocolo || !estado) throw new ApiError('Resposta inesperada do servidor.', 502)
+  if (typeof dados !== 'object' || dados === null || Array.isArray(dados)) throw respostaInesperada()
+  const bruto = dados as Record<string, unknown>
+  const estado = ESTADOS_PUBLICOS.find((candidato) => candidato === bruto.status)
+  if (!estado) throw respostaInesperada()
   return {
-    protocolo,
+    protocolo: textoObrigatorio(bruto.protocolo),
     estado,
-    mensagemPublica: texto(bruto.mensagemPublica) ?? '',
-    atualizadoEm: texto(bruto.atualizadoEm),
-    expiraEm: texto(bruto.expiraEm),
+    mensagemPublica: textoOpcional(bruto.mensagem_publica) ?? '',
+    atualizadoEm: dataOpcional(bruto.atualizada_em),
+    expiraEm: dataOpcional(bruto.consulta_disponivel_ate),
   }
 }
 
 export const solicitacaoExternaApi = {
-  consultar: async (protocolo: string, segredo: string, signal?: AbortSignal): Promise<ConsultaPublica> => {
-    if (usarMock()) {
+  consultar: async (protocolo: string, credencial: string, signal?: AbortSignal): Promise<ConsultaPublica> => {
+    // Mock só em desenvolvimento e só com `VITE_SOLICITACAO_EXTERNA_MOCK=true`. A condição fica escrita aqui,
+    // sem função no meio, para o build de produção descartar este trecho e não incluir o mock no pacote.
+    if (import.meta.env.DEV && import.meta.env.VITE_SOLICITACAO_EXTERNA_MOCK === 'true') {
       const { consultarMock } = await import('./solicitacaoExternaMock')
-      return consultarMock(protocolo, segredo, signal)
+      return consultarMock(protocolo, credencial, signal)
     }
     const dados = await request<unknown>('POST', CAMINHO_CONSULTA, {
-      body: { protocolo, segredo },
+      body: { protocolo, credencial },
       publico: true,
       signal,
     })

@@ -8,8 +8,8 @@ import type { ConsultaPublica } from './solicitacaoExternaApi'
  *
  * Como testar na tela (segredo `segredo-demo`):
  *   DEMO-0001 a DEMO-0007 mostram cada um dos sete estados.
- * Segredos de simulação, com qualquer protocolo: `expirado` (410), `limite` (429, 5 s),
- * `indisponivel` (503). Qualquer outra combinação responde como credencial inválida (404).
+ * Credenciais de simulação, com qualquer protocolo: `limite` (429, 5 s) e `indisponivel` (503).
+ * Qualquer outra combinação responde como o backend real: 401 uniforme, sem dizer o motivo.
  */
 
 const SEGREDO_DEMO = 'segredo-demo'
@@ -18,10 +18,10 @@ const ATRASO_MS = 400
 const MENSAGENS: Record<(typeof ESTADOS_PUBLICOS)[number], string> = {
   RECEBIDA: 'Recebemos o seu chamado (dado fictício).',
   EM_ANALISE: 'Estamos analisando as informações enviadas (dado fictício).',
-  ACEITA: 'Chamado aceito e encaminhado (dado fictício).',
+  CONFIRMADA: 'Chamado confirmado e encaminhado (dado fictício).',
   EM_ANDAMENTO: 'Atendimento em andamento (dado fictício).',
   CONCLUIDA: 'Atendimento concluído (dado fictício).',
-  RECUSADA: 'Não foi possível atender este chamado (dado fictício).',
+  NAO_ACOLHIDA: 'Não foi possível acolher este chamado (dado fictício).',
   CANCELADA: 'Chamado cancelado (dado fictício).',
 }
 
@@ -53,11 +53,10 @@ export async function consultarMock(
 
   if (segredo === 'limite') throw new ApiError('Muitas tentativas.', 429, [], undefined, undefined, 5)
   if (segredo === 'indisponivel') throw new ApiError('Servidor indisponível.', 503)
-  if (segredo === 'expirado') throw new ApiError('Credencial expirada.', 410)
 
   const normalizado = protocolo.trim().toUpperCase()
   const indice = ESTADOS_PUBLICOS.findIndex((_, i) => normalizado === `DEMO-000${i + 1}`)
-  if (indice < 0 || segredo !== SEGREDO_DEMO) throw new ApiError('Protocolo ou segredo inválidos.', 404)
+  if (indice < 0 || segredo !== SEGREDO_DEMO) throw new ApiError('Protocolo ou credencial inválidos.', 401)
 
   const estado = ESTADOS_PUBLICOS[indice]
   return {

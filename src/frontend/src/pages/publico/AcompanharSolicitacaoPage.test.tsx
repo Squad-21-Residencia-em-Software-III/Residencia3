@@ -23,14 +23,14 @@ const andamento: ConsultaPublica = {
   expiraEm: null,
 }
 
-/** Os sete estados públicos e o selo que cada um mostra na tela (lista provisória do SCRUM-266). */
+/** Os sete estados públicos do backend (SCRUM-266) e o selo que cada um mostra na tela. */
 const CASOS_ESTADOS: [EstadoPublico, string][] = [
   ['RECEBIDA', 'Recebida'],
   ['EM_ANALISE', 'Em análise'],
-  ['ACEITA', 'Aceita'],
+  ['CONFIRMADA', 'Confirmada'],
   ['EM_ANDAMENTO', 'Em andamento'],
   ['CONCLUIDA', 'Concluída'],
-  ['RECUSADA', 'Não atendida'],
+  ['NAO_ACOLHIDA', 'Não acolhida'],
   ['CANCELADA', 'Cancelada'],
 ]
 
@@ -87,26 +87,28 @@ describe('AcompanharSolicitacaoPage (SCRUM-267)', () => {
   })
 
   it('credencial inválida mostra erro genérico e nenhum resultado', async () => {
-    consultar.mockRejectedValueOnce(new ApiError('Não encontrado', 404))
+    consultar.mockRejectedValueOnce(new ApiError('Não encontrado', 401))
     const user = userEvent.setup()
     render(<AcompanharSolicitacaoPage />)
 
     await preencher(user)
     await user.click(screen.getByRole('button', { name: 'Consultar' }))
 
-    expect(await screen.findByText(/Protocolo ou segredo inválidos/)).toBeInTheDocument()
+    expect(await screen.findByText(/Não foi possível consultar com os dados informados/)).toBeInTheDocument()
     expect(screen.queryByText('Em andamento')).not.toBeInTheDocument()
   })
 
-  it('credencial expirada (410) tem mensagem própria', async () => {
-    consultar.mockRejectedValueOnce(new ApiError('Expirada', 410))
+  it('credencial expirada ou revogada (401) usa a mesma mensagem genérica, sem revelar o motivo', async () => {
+    consultar.mockRejectedValueOnce(new ApiError('Credencial expirada', 401))
     const user = userEvent.setup()
     render(<AcompanharSolicitacaoPage />)
 
     await preencher(user)
     await user.click(screen.getByRole('button', { name: 'Consultar' }))
 
-    expect(await screen.findByText(/expirou/)).toBeInTheDocument()
+    expect(await screen.findByText(/Não foi possível consultar com os dados informados/)).toBeInTheDocument()
+    expect(screen.queryByText(/expirou/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/revogad/)).not.toBeInTheDocument()
   })
 
   it('429 bloqueia o botão pelo tempo pedido pelo servidor', async () => {
