@@ -25,3 +25,6 @@ export const DESCRICAO_PERFIS: Record<Perfil, string> = {
 export function tipoUsuarioDoPerfil(perfil: Perfil): string {
   return perfil === PERFIS.MOTORISTA_FROTA || perfil === PERFIS.MOTORISTA_SVO ? 'MOTORISTA' : perfil;
 }
+
+// Perfis que podem registrar solicitações administrativas (RF11).
+export const PERFIS_SOLICITANTES = [PERFIS.ADMINISTRADOR, PERFIS.SOLICITANTE, PERFIS.GESTOR_FROTA, PERFIS.GESTOR_SVO] as const;

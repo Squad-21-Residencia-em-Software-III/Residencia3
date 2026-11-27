@@ -6,6 +6,8 @@ on:
     branches:
       - develop
       - main
+      # Base temporária do PR da SCRUM-275 até o merge da SCRUM-296.
+      - feature/scrum-296-flags-rollout
 
   push:
     branches:
