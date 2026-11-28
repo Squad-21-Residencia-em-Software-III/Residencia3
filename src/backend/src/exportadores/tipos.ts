@@ -4,6 +4,7 @@ export interface ColunaTabela {
   chave: string;
   titulo: string;
   tipo: TipoColuna;
+  casasDecimaisCsv?: 2 | 6;
 }
 
 // Dados tabulares independentes do formato de saída (CSV, XLSX e PDF)

@@ -63,7 +63,7 @@ export function numeroDoValor(valor: unknown): number | null {
 }
 
 // Texto exibido nas colunas de formato brasileiro (dd/mm/aaaa, vírgula decimal)
-export function valorComoTexto(valor: unknown, tipo: TipoColuna): string {
+export function valorComoTexto(valor: unknown, tipo: TipoColuna, casasDecimais = 2): string {
   if (valor === null || valor === undefined) return '';
 
   if (tipo === 'data' || tipo === 'data_hora') {
@@ -80,7 +80,7 @@ export function valorComoTexto(valor: unknown, tipo: TipoColuna): string {
 
   if (tipo === 'decimal') {
     const numero = numeroDoValor(valor);
-    return numero === null ? '' : numero.toFixed(2).replace('.', ',');
+    return numero === null ? '' : numero.toFixed(casasDecimais).replace('.', ',');
   }
 
   return String(valor);
