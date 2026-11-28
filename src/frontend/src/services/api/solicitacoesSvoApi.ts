@@ -1,5 +1,6 @@
 import type {
   ConfirmacaoSvo,
+  InicioAnaliseSvo,
   ListaSolicitacoesSvo,
   SolicitacaoSvo,
   SolicitacaoSvoDetalhada,
@@ -56,6 +57,13 @@ export const solicitacoesSvoApi = {
    * Repetir a confirmação devolve a ordem já gerada, sem duplicar.
    */
   confirmar: (id: number) => request<ConfirmacaoSvo>('PATCH', `/solicitacoes-svo/${id}/confirmar`),
+
+  /**
+   * Marca o início verificável da análise de uma solicitação externa em triagem (SCRUM-266 / 270).
+   * Repetir a chamada devolve o marco já gravado. Solicitação interna responde 409.
+   */
+  iniciarAnalise: (id: number) =>
+    request<InicioAnaliseSvo>('PATCH', `/solicitacoes-svo/${id}/iniciar-analise`),
 
   /**
    * Recusa a solicitação em triagem com justificativa obrigatória (SCRUM-178). Só é chamado

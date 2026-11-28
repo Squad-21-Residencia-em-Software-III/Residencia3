@@ -13,10 +13,14 @@ import {
 import { solicitacoesSvoApi } from '../services/api/solicitacoesSvoApi';
 import { ApiError, mensagemDeErro } from '../services/api/http';
 import type { SolicitacaoSvo, StatusSolicitacaoSvo } from '../types/solicitacaoSvo';
-import { LABELS_STATUS_SOLICITACAO_SVO } from '../types/solicitacaoSvo';
+import {
+  canalDaSolicitacaoSvo,
+  LABELS_CANAL_ORIGEM_SVO,
+  LABELS_STATUS_SOLICITACAO_SVO,
+} from '../types/solicitacaoSvo';
 import { cn } from '../utils/cn';
 import { DrawerTriagemSvo } from './triagemSvo/DrawerTriagemSvo';
-import { formatarDataHora, toneStatusSolicitacao } from './triagemSvo/formatacao';
+import { formatarDataHora, toneCanalOrigem, toneStatusSolicitacao } from './triagemSvo/formatacao';
 import { ModalNovaSolicitacaoSvo } from './triagemSvo/ModalNovaSolicitacaoSvo';
 import { useMarcarReferenciaLida } from '../contexts/NotificacoesContext';
 
@@ -158,6 +162,7 @@ export default function TriagemSvoPage() {
             <thead>
               <tr>
                 <th>Nº</th>
+                <th>Canal</th>
                 <th>Registrada em</th>
                 <th>Local da ocorrência</th>
                 <th>Status</th>
@@ -167,7 +172,7 @@ export default function TriagemSvoPage() {
             <tbody>
               {solicitacoes.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-9 text-center text-slate-500">
+                  <td colSpan={6} className="p-9 text-center text-slate-500">
                     {mensagemVazia}
                   </td>
                 </tr>
@@ -176,6 +181,11 @@ export default function TriagemSvoPage() {
                   <tr key={s.id}>
                     <td>
                       <IdBadge id={`#${s.id}`} />
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <Badge tone={toneCanalOrigem(canalDaSolicitacaoSvo(s))}>
+                        {LABELS_CANAL_ORIGEM_SVO[canalDaSolicitacaoSvo(s)]}
+                      </Badge>
                     </td>
                     <td className="whitespace-nowrap">{formatarDataHora(s.criado_em)}</td>
                     <td>

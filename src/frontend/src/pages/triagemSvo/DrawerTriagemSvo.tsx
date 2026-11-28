@@ -7,10 +7,20 @@ import { recursoAtivo } from '../../config/recursosBackend';
 import { solicitacoesSvoApi } from '../../services/api/solicitacoesSvoApi';
 import { ApiError, mensagemDeErro } from '../../services/api/http';
 import type { SolicitacaoSvoDetalhada } from '../../types/solicitacaoSvo';
-import { LABELS_STATUS_ORDEM_SVO, LABELS_STATUS_SOLICITACAO_SVO } from '../../types/solicitacaoSvo';
+import {
+  canalDaSolicitacaoSvo,
+  LABELS_CANAL_ORIGEM_SVO,
+  LABELS_STATUS_ORDEM_SVO,
+  LABELS_STATUS_SOLICITACAO_SVO,
+} from '../../types/solicitacaoSvo';
 import { erroDaJustificativa, MAX_JUSTIFICATIVA_RECUSA_SVO } from '../../utils/justificativaRecusa';
 import { usePermissao } from '../../utils/permissoes';
-import { formatarDataHora, toneStatusOrdem, toneStatusSolicitacao } from './formatacao';
+import {
+  formatarDataHora,
+  toneCanalOrigem,
+  toneStatusOrdem,
+  toneStatusSolicitacao,
+} from './formatacao';
 
 interface DrawerTriagemSvoProps {
   /** Solicitação a analisar; `null` fecha o painel. */
@@ -50,10 +60,14 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
   const [erroMotivo, setErroMotivo] = useState<string | null>(null);
   const [erroRecusa, setErroRecusa] = useState<string | null>(null);
   const [recusadaAgora, setRecusadaAgora] = useState(false);
+  const [iniciandoAnalise, setIniciandoAnalise] = useState(false);
+  const [analiseIniciadaEm, setAnaliseIniciadaEm] = useState<string | null>(null);
+  const [erroAnalise, setErroAnalise] = useState<string | null>(null);
 
   // Só a resposta da solicitação aberta por último é aplicada
   const ultimaConsulta = useRef(0);
   const ultimaConfirmacao = useRef(0);
+  const ultimaAnalise = useRef(0);
 
   const carregar = useCallback(async (id: number) => {
     const consulta = ++ultimaConsulta.current;
@@ -74,6 +88,10 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
   useEffect(() => {
     ++ultimaConsulta.current;
     ++ultimaConfirmacao.current;
+    ++ultimaAnalise.current;
+    setIniciandoAnalise(false);
+    setAnaliseIniciadaEm(null);
+    setErroAnalise(null);
     setDetalhe(null);
     setErroCarga(null);
     setErroConfirmacao(null);
@@ -119,6 +137,28 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
     }
   }
 
+  // Marco verificável de início da análise de chamado externo (SCRUM-266); repetir é seguro
+  async function iniciarAnalise() {
+    if (!detalhe || iniciandoAnalise) return;
+
+    const id = detalhe.id;
+    const acao = ++ultimaAnalise.current;
+    setIniciandoAnalise(true);
+    setErroAnalise(null);
+
+    try {
+      const resposta = await solicitacoesSvoApi.iniciarAnalise(id);
+      if (acao !== ultimaAnalise.current) return;
+      setAnaliseIniciadaEm(resposta.analise_iniciada_em);
+    } catch (error) {
+      if (acao !== ultimaAnalise.current) return;
+      setErroAnalise(mensagemDeErro(error));
+      if (error instanceof ApiError && error.status === 409) void carregar(id);
+    } finally {
+      if (acao === ultimaAnalise.current) setIniciandoAnalise(false);
+    }
+  }
+
   async function recusar() {
     if (!detalhe || enviando) return;
     const erroJustificativa = erroDaJustificativa(motivo, MAX_JUSTIFICATIVA_RECUSA_SVO);
@@ -153,6 +193,7 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
 
   const podeConfirmar = detalhe?.status === 'EM_TRIAGEM' && !carregando && podeAnalisar;
   const aguardandoAlocacao = detalhe?.ordem?.status === 'AGUARDANDO_ALOCACAO';
+  const chamadoExterno = detalhe ? canalDaSolicitacaoSvo(detalhe) === 'EXTERNA' : false;
 
   return (
     <>
@@ -228,6 +269,12 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
               </Alert>
             )}
 
+            {erroAnalise && (
+              <Alert tone="danger" title="Não foi possível iniciar a análise">
+                {erroAnalise}
+              </Alert>
+            )}
+
             {erroConfirmacao && (
               <Alert tone="danger" title="Não foi possível confirmar">
                 {erroConfirmacao}
@@ -240,6 +287,12 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                   {LABELS_STATUS_SOLICITACAO_SVO[detalhe.status] ?? detalhe.status}
                 </Badge>
               </Campo>
+              <Campo rotulo="Canal">
+                <Badge tone={toneCanalOrigem(canalDaSolicitacaoSvo(detalhe))}>
+                  {LABELS_CANAL_ORIGEM_SVO[canalDaSolicitacaoSvo(detalhe)]}
+                </Badge>
+              </Campo>
+              {detalhe.protocolo && <Campo rotulo="Protocolo">{detalhe.protocolo}</Campo>}
               <Campo rotulo="Registrada em">{formatarDataHora(detalhe.criado_em)}</Campo>
               <div className="sm:col-span-2">
                 <Campo rotulo="Solicitante">{detalhe.dados_solicitante}</Campo>
@@ -265,6 +318,37 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                 </>
               )}
             </dl>
+
+            {chamadoExterno && detalhe.status === 'EM_TRIAGEM' && podeAnalisar && (
+              <section
+                aria-labelledby="analise-externa"
+                className="rounded-lg border border-divider p-4"
+              >
+                <h3 id="analise-externa" className="text-sm font-bold text-slate-900">
+                  Chamado externo
+                </h3>
+                {analiseIniciadaEm ? (
+                  <p className="mt-2 text-sm text-slate-700">
+                    Análise iniciada em {formatarDataHora(analiseIniciadaEm)}.
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-2 text-sm text-slate-500">
+                      Registre o início da análise para o solicitante acompanhar o andamento.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => void iniciarAnalise()}
+                      disabled={iniciandoAnalise || enviando}
+                    >
+                      {iniciandoAnalise ? 'Iniciando...' : 'Iniciar análise'}
+                    </Button>
+                  </>
+                )}
+              </section>
+            )}
 
             <section
               aria-labelledby="ordem-coleta"
