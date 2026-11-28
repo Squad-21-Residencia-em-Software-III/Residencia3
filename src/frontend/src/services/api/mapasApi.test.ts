@@ -92,6 +92,18 @@ describe('utilitários de localização de mapa', () => {
 });
 
 describe('mapasApi', () => {
+  it('bloqueia coordenadas não finitas e busca textual com dados sensíveis antes da rede', async () => {
+    await expect(mapasApi.reverso({ lat: Number.NaN, lon: 0 })).rejects.toMatchObject({ status: 400 });
+    await expect(mapasApi.buscar({ q: 'CPF 52998224725' })).rejects.toMatchObject({ status: 400 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejeita DTO com campos obrigatórios ausentes', async () => {
+    fetchMock.mockResolvedValueOnce(respostaJson({ resultados: [{ fonte: 'photon' }], degradado: false }));
+    await expect(mapasApi.buscar({ cep: '49015110', modoPublico: true }))
+      .rejects.toMatchObject({ status: 502, codigo: 'MAPAS_RESPOSTA_INVALIDA' });
+  });
+
   it('chama GET /api/mapas/buscar com query textual e operacao', async () => {
     fetchMock.mockResolvedValueOnce(respostaJson({ resultados: [], degradado: false }));
 

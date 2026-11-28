@@ -1,3 +1,4 @@
+import * as recursos from '../../config/recursosBackend';
 import { useState } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -79,6 +80,7 @@ function Harness(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(recursos, 'recursoAtivo').mockReturnValue(true);
   vi.spyOn(suporteWebgl, 'verificarSuporteWebgl').mockReturnValue(true);
 });
 
@@ -88,6 +90,58 @@ afterEach(() => {
 });
 
 describe('SeletorLocalMapa', () => {
+  it('cancela imediatamente a busca iniciada quando o texto muda durante o debounce', async () => {
+    vi.useFakeTimers();
+    let resolver!: (resposta: RespostaBuscaMapa) => void;
+    const antiga = new Promise<RespostaBuscaMapa>((resolve) => { resolver = resolve; });
+    vi.mocked(mapasApi.buscar).mockReturnValueOnce(antiga);
+    render(<Harness />);
+    const entrada = screen.getByRole('combobox');
+    fireEvent.change(entrada, { target: { value: 'Avenida Augusto Franco' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    const sinal = vi.mocked(mapasApi.buscar).mock.calls[0]?.[0].signal;
+    fireEvent.change(entrada, { target: { value: 'Avenida Beira Mar' } });
+    expect(sinal?.aborted).toBe(true);
+    await act(async () => { resolver({ resultados: [ENDERECO_ARACAJU], degradado: false }); });
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+  });
+
+  it('ignora um GPS pendente depois de alteração externa ou desabilitação', async () => {
+    let gps!: PositionCallback;
+    const anterior = Object.getOwnPropertyDescriptor(navigator, 'geolocation');
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition: (callback: PositionCallback) => { gps = callback; } },
+    });
+    try {
+      const onChange = vi.fn();
+      const { rerender } = render(<SeletorLocalMapa valor="" coordenadas={null} onChange={onChange} />);
+      fireEvent.click(screen.getByRole('button', { name: /usar minha localização/i }));
+      rerender(<SeletorLocalMapa valor="Outro registro" coordenadas={null} onChange={onChange} desabilitado />);
+      await act(async () => { gps({ coords: { latitude: 1, longitude: 1 } } as GeolocationPosition); });
+      expect(mapasApi.reverso).not.toHaveBeenCalled();
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      if (anterior) Object.defineProperty(navigator, 'geolocation', anterior);
+      else Reflect.deleteProperty(navigator, 'geolocation');
+    }
+  });
+
+  it('modo público prevalece sobre a opção de exibir atalhos institucionais', () => {
+    render(<Harness modoPublico exibirAtalhosUnidades />);
+    expect(screen.queryByRole('button', { name: /hemose/i })).not.toBeInTheDocument();
+  });
+
+  it('mantém o preenchimento manual sem consultar mapas com a flag desligada', async () => {
+    vi.useFakeTimers();
+    vi.mocked(recursos.recursoAtivo).mockReturnValue(false);
+    render(<Harness />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '49015110' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.queryByRole('button', { name: /abrir mapa/i })).not.toBeInTheDocument();
+    expect(mapasApi.buscar).not.toHaveBeenCalled();
+  });
+
   it('inicia recolhido no modo expansivel e abre o mapa sob demanda', async () => {
     render(<Harness exibicaoMapa="expansivel" />);
 

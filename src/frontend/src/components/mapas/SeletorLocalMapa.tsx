@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { recursoAtivo } from '../../config/recursosBackend';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   AlertTriangle,
   Building2,
@@ -39,6 +40,8 @@ export type ExibicaoMapa = 'expansivel' | 'aberto';
 
 export interface SeletorLocalMapaProps {
   id?: string;
+  /** Identifica o registro quando o mesmo seletor é reutilizado pelo formulário. */
+  chaveRegistro?: string | number;
   label?: string;
   placeholder?: string;
   /** Endereço textual controlado pelo formulário pai. */
@@ -123,6 +126,7 @@ function mensagemErroGps(codigo: number): string {
 
 export function SeletorLocalMapa({
   id,
+  chaveRegistro,
   label = 'Endereço / Localização',
   placeholder,
   valor,
@@ -144,13 +148,17 @@ export function SeletorLocalMapa({
   const autoId = useId();
   const inputId = id ?? `seletor-local-${autoId}`;
   const listaId = `${inputId}-sugestoes`;
-  const mostrarAtalhos = exibirAtalhosUnidades ?? !modoPublico;
+  const mapasAtivos = modoPublico
+    ? recursoAtivo('portalSvo') && recursoAtivo('mapasSvo')
+    : recursoAtivo(operacao === 'SVO' ? 'mapasSvo' : 'mapasInternos');
+  const mostrarAtalhos = mapasAtivos && !modoPublico && (exibirAtalhosUnidades ?? true);
   const placeholderEfetivo =
     placeholder ??
     (modoPublico
       ? 'Digite o CEP (ex.: 49015-110) ou informe o endereço manualmente'
       : 'Digite um endereço ou CEP (ex.: Av. Tancredo Neves ou 49015-110)');
 
+  const [mapaIndisponivel, setMapaIndisponivel] = useState(false);
   const [mapaExpandido, setMapaExpandido] = useState(exibicaoMapa === 'aberto');
   const [buscando, setBuscando] = useState(false);
   const [buscandoUnidade, setBuscandoUnidade] = useState<UnidadeInstitucional | null>(null);
@@ -172,47 +180,57 @@ export function SeletorLocalMapa({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
-  const abortBuscaRef = useRef<AbortController | null>(null);
-  const abortReversoRef = useRef<AbortController | null>(null);
-  const sequenciaBuscaRef = useRef(0);
-  const sequenciaReversoRef = useRef(0);
-  const valorAtualRef = useRef(valor);
-  valorAtualRef.current = valor;
+  const abortRef = useRef<AbortController | null>(null);
+  const intencaoRef = useRef(0);
+  const ultimaEmissao = useRef<{ valor: string; coordenadas: CoordenadaMapa | null } | null>(null);
+  const latitude = coordenadas?.latitude;
+  const longitude = coordenadas?.longitude;
+
+  const invalidarIntencao = useCallback(() => {
+    intencaoRef.current += 1;
+    window.clearTimeout(debounceRef.current);
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
+
+  const iniciarIntencao = useCallback(() => {
+    invalidarIntencao();
+    setBuscando(false);
+    setBuscandoUnidade(null);
+    setBuscandoGps(false);
+    setBuscandoReverso(false);
+    setSugestoes([]);
+    setDropdownAberto(false);
+    setIndiceAtivo(-1);
+    setAviso(null);
+    return intencaoRef.current;
+  }, [invalidarIntencao]);
+
+  const publicarMudanca = useCallback((texto: string, coords: CoordenadaMapa | null) => {
+    ultimaEmissao.current = { valor: texto, coordenadas: coords };
+    onChange(texto, coords);
+  }, [onChange]);
 
   useEffect(() => {
-    if (exibicaoMapa === 'aberto') {
-      setMapaExpandido(true);
-    }
+    if (exibicaoMapa === 'aberto') setMapaExpandido(true);
   }, [exibicaoMapa]);
 
-  useEffect(() => {
-    if (!coordenadas) {
-      setForaDeSergipe(false);
-      setConfirmouForaDeSergipe(false);
-    } else {
-      setCentroControlado((anterior) => {
-        if (
-          anterior?.latitude === coordenadas.latitude &&
-          anterior?.longitude === coordenadas.longitude
-        ) {
-          return anterior;
-        }
-        return {
-          latitude: coordenadas.latitude,
-          longitude: coordenadas.longitude,
-          zoom: ZOOM_SELECAO,
-        };
-      });
-    }
-  }, [coordenadas]);
+  useLayoutEffect(() => {
+    const emissao = ultimaEmissao.current;
+    ultimaEmissao.current = null;
+    if (emissao?.valor === valor && emissao.coordenadas?.latitude === latitude &&
+        emissao.coordenadas?.longitude === longitude) return;
+    iniciarIntencao();
+    const ponto = latitude !== undefined && longitude !== undefined ? { latitude, longitude } : null;
+    setCentroControlado(ponto ? { ...ponto, zoom: ZOOM_SELECAO } : null);
+    setForaDeSergipe(ponto ? coordenadaForaDeSergipe(ponto) : false);
+    setConfirmouForaDeSergipe(false);
+  }, [valor, latitude, longitude, chaveRegistro, iniciarIntencao]);
 
-  useEffect(() => {
-    return () => {
-      window.clearTimeout(debounceRef.current);
-      abortBuscaRef.current?.abort();
-      abortReversoRef.current?.abort();
-    };
-  }, []);
+  useLayoutEffect(() => {
+    iniciarIntencao();
+    return invalidarIntencao;
+  }, [desabilitado, mapasAtivos, modoPublico, operacao, iniciarIntencao, invalidarIntencao]);
 
   useEffect(() => {
     const aoClicarFora = (evento: MouseEvent) => {
@@ -225,18 +243,9 @@ export function SeletorLocalMapa({
     return () => document.removeEventListener('mousedown', aoClicarFora);
   }, []);
 
-  const cancelarBuscaAtiva = useCallback(() => {
-    window.clearTimeout(debounceRef.current);
-    debounceRef.current = undefined;
-    abortBuscaRef.current?.abort();
-    abortBuscaRef.current = null;
-    sequenciaBuscaRef.current += 1;
-    setBuscando(false);
-  }, []);
-
   const confirmarSelecao = useCallback(
     (endereco: EnderecoMapa, origem: OrigemLocalSelecionado) => {
-      const textoFormatado = formatarEnderecoMapa(endereco) || valorAtualRef.current;
+      const textoFormatado = formatarEnderecoMapa(endereco) || (endereco.coordenadas ? [endereco.coordenadas.latitude, endereco.coordenadas.longitude].join(', ') : '');
       const coords = endereco.coordenadas
         ? {
             latitude: arredondarCoordenada(endereco.coordenadas.latitude),
@@ -251,15 +260,9 @@ export function SeletorLocalMapa({
       setForaDeSergipe(fora === true);
       setConfirmouForaDeSergipe(false);
 
-      if (coords) {
-        setCentroControlado({
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          zoom: ZOOM_SELECAO,
-        });
-      }
+      setCentroControlado(coords ? { ...coords, zoom: ZOOM_SELECAO } : null);
 
-      onChange(textoFormatado, coords);
+      publicarMudanca(textoFormatado, coords);
       onSelecaoConfirmada?.({
         endereco: textoFormatado,
         coordenadas: coords,
@@ -277,11 +280,12 @@ export function SeletorLocalMapa({
         origem,
       });
     },
-    [onChange, onSelecaoConfirmada],
+    [publicarMudanca, onSelecaoConfirmada],
   );
 
   const executarBusca = useCallback(
-    async (entrada: string) => {
+    async (entrada: string, sequencia: number) => {
+      if (sequencia !== intencaoRef.current) return;
       const cep = extrairCepValido(entrada);
       if (!cep && (modoPublico || !consultaTextoValidaParaBusca(entrada))) {
         setSugestoes([]);
@@ -290,10 +294,8 @@ export function SeletorLocalMapa({
         return;
       }
 
-      abortBuscaRef.current?.abort();
       const controller = new AbortController();
-      abortBuscaRef.current = controller;
-      const sequencia = ++sequenciaBuscaRef.current;
+      abortRef.current = controller;
 
       setBuscando(true);
       setAviso(null);
@@ -306,7 +308,7 @@ export function SeletorLocalMapa({
           signal: controller.signal,
         });
 
-        if (sequencia !== sequenciaBuscaRef.current) return;
+        if (sequencia !== intencaoRef.current) return;
 
         setSugestoes(resposta.resultados);
         setDropdownAberto(resposta.resultados.length > 0);
@@ -327,13 +329,13 @@ export function SeletorLocalMapa({
           });
         }
       } catch (erroCapturado) {
-        if (sequencia !== sequenciaBuscaRef.current) return;
+        if (sequencia !== intencaoRef.current) return;
         const avisoErro = mensagemErroBusca(erroCapturado);
         if (avisoErro) setAviso(avisoErro);
         setSugestoes([]);
         setDropdownAberto(false);
       } finally {
-        if (sequencia === sequenciaBuscaRef.current) {
+        if (sequencia === intencaoRef.current) {
           setBuscando(false);
         }
       }
@@ -342,27 +344,18 @@ export function SeletorLocalMapa({
   );
 
   const handleTextoChange = (textoBruto: string) => {
+    const sequencia = iniciarIntencao();
     const novoTexto = aplicarMascaraCepSeAplicavel(textoBruto);
-    setAviso(null);
+    setCentroControlado(null);
     setForaDeSergipe(false);
     setConfirmouForaDeSergipe(false);
-    // Edição manual invalida imediatamente coordenadas obsoletas
-    onChange(novoTexto, null);
+    publicarMudanca(novoTexto, null);
 
-    window.clearTimeout(debounceRef.current);
+    if (!mapasAtivos || desabilitado) return;
     const cep = extrairCepValido(novoTexto);
-    const textoBuscavel = !modoPublico && consultaTextoValidaParaBusca(novoTexto);
-
-    if (!cep && !textoBuscavel) {
-      cancelarBuscaAtiva();
-      setSugestoes([]);
-      setDropdownAberto(false);
-      setIndiceAtivo(-1);
-      return;
-    }
-
+    if (!cep && (modoPublico || !consultaTextoValidaParaBusca(novoTexto))) return;
     debounceRef.current = window.setTimeout(() => {
-      void executarBusca(novoTexto);
+      void executarBusca(novoTexto, sequencia);
     }, DEBOUNCE_BUSCA_MS);
   };
 
@@ -383,7 +376,8 @@ export function SeletorLocalMapa({
     } else if (evento.key === 'Enter' && indiceAtivo >= 0) {
       evento.preventDefault();
       const escolhido = sugestoes[indiceAtivo];
-      if (escolhido) {
+      if (escolhido && !desabilitado) {
+        iniciarIntencao();
         confirmarSelecao(escolhido, extrairCepValido(valor) ? 'cep' : 'busca');
       }
     } else if (evento.key === 'Escape') {
@@ -395,15 +389,15 @@ export function SeletorLocalMapa({
 
   const consultarPontoNoMapa = useCallback(
     async (pontoBruto: CoordenadaMapa, origem: 'mapa' | 'gps') => {
+      if (desabilitado || !mapasAtivos) return;
+      const sequencia = iniciarIntencao();
       const ponto: CoordenadaMapa = {
         latitude: arredondarCoordenada(pontoBruto.latitude),
         longitude: arredondarCoordenada(pontoBruto.longitude),
       };
 
-      abortReversoRef.current?.abort();
       const controller = new AbortController();
-      abortReversoRef.current = controller;
-      const sequencia = ++sequenciaReversoRef.current;
+      abortRef.current = controller;
 
       setCentroControlado({
         latitude: ponto.latitude,
@@ -422,7 +416,7 @@ export function SeletorLocalMapa({
           signal: controller.signal,
         });
 
-        if (sequencia !== sequenciaReversoRef.current) return;
+        if (sequencia !== intencaoRef.current) return;
 
         const primeiro = resposta.resultados[0];
         if (primeiro) {
@@ -432,10 +426,10 @@ export function SeletorLocalMapa({
 
         const fora = coordenadaForaDeSergipe(ponto);
         const textoMantido =
-          valorAtualRef.current.trim() || `${ponto.latitude}, ${ponto.longitude}`;
+          [ponto.latitude, ponto.longitude].join(', ');
         setForaDeSergipe(fora);
         setConfirmouForaDeSergipe(false);
-        onChange(textoMantido, ponto);
+        publicarMudanca(textoMantido, ponto);
         onSelecaoConfirmada?.({
           endereco: textoMantido,
           coordenadas: ponto,
@@ -447,16 +441,16 @@ export function SeletorLocalMapa({
           texto: 'Ponto marcado no mapa. Complete ou ajuste o endereço manualmente se necessário.',
         });
       } catch (erroCapturado) {
-        if (sequencia !== sequenciaReversoRef.current) return;
+        if (sequencia !== intencaoRef.current) return;
         const avisoErro = mensagemErroBusca(erroCapturado);
         if (!avisoErro) return;
 
         const fora = coordenadaForaDeSergipe(ponto);
         const textoMantido =
-          valorAtualRef.current.trim() || `${ponto.latitude}, ${ponto.longitude}`;
+          [ponto.latitude, ponto.longitude].join(', ');
         setForaDeSergipe(fora);
         setConfirmouForaDeSergipe(false);
-        onChange(textoMantido, ponto);
+        publicarMudanca(textoMantido, ponto);
         onSelecaoConfirmada?.({
           endereco: textoMantido,
           coordenadas: ponto,
@@ -469,21 +463,20 @@ export function SeletorLocalMapa({
             'Ponto marcado no mapa, mas não foi possível traduzir o endereço automaticamente. Informe o endereço manualmente.',
         });
       } finally {
-        if (sequencia === sequenciaReversoRef.current) {
+        if (sequencia === intencaoRef.current) {
           setBuscandoReverso(false);
         }
       }
     },
-    [confirmarSelecao, modoPublico, onChange, onSelecaoConfirmada, operacao],
+    [confirmarSelecao, desabilitado, iniciarIntencao, mapasAtivos, modoPublico, onSelecaoConfirmada, operacao, publicarMudanca],
   );
 
   const handleSelecionarUnidade = async (unidade: UnidadeInstitucional) => {
-    if (desabilitado) return;
-    cancelarBuscaAtiva();
+    if (desabilitado || !mostrarAtalhos) return;
+    const sequencia = iniciarIntencao();
     const definicao = UNIDADES_INSTITUCIONAIS.find((item) => item.codigo === unidade);
     const controller = new AbortController();
-    abortBuscaRef.current = controller;
-    const sequencia = ++sequenciaBuscaRef.current;
+    abortRef.current = controller;
 
     setBuscandoUnidade(unidade);
     setAviso(null);
@@ -496,41 +489,42 @@ export function SeletorLocalMapa({
         signal: controller.signal,
       });
 
-      if (sequencia !== sequenciaBuscaRef.current) return;
+      if (sequencia !== intencaoRef.current) return;
 
       const encontrado = resposta.resultados[0];
-      if (encontrado && encontrado.coordenadas) {
+      if (encontrado) {
         confirmarSelecao(encontrado, 'unidade');
       } else {
         const textoUnidade = definicao?.nomeCompleto ?? unidade;
         setForaDeSergipe(false);
         setConfirmouForaDeSergipe(false);
-        onChange(textoUnidade, null);
+        publicarMudanca(textoUnidade, null);
         setAviso({
           tom: 'info',
           texto: `Coordenadas oficiais de ${unidade} ainda não cadastradas. Nome preenchido em modo manual; você pode ajustar o ponto no mapa.`,
         });
       }
     } catch (erroCapturado) {
-      if (sequencia !== sequenciaBuscaRef.current) return;
+      if (sequencia !== intencaoRef.current) return;
       if (erroCapturado instanceof ApiError && erroCapturado.codigo === CODIGO_CANCELADO) return;
       const textoUnidade = definicao?.nomeCompleto ?? unidade;
       setForaDeSergipe(false);
       setConfirmouForaDeSergipe(false);
-      onChange(textoUnidade, null);
+      publicarMudanca(textoUnidade, null);
       setAviso({
         tom: 'info',
         texto: `Não foi possível consultar as coordenadas de ${unidade}. Nome preenchido em modo manual.`,
       });
     } finally {
-      if (sequencia === sequenciaBuscaRef.current) {
+      if (sequencia === intencaoRef.current) {
         setBuscandoUnidade(null);
       }
     }
   };
 
   const handleUsarGps = () => {
-    if (desabilitado || buscandoGps) return;
+    if (desabilitado || !mapasAtivos || buscandoGps) return;
+    const sequencia = iniciarIntencao();
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setAviso({
         tom: 'alerta',
@@ -544,6 +538,7 @@ export function SeletorLocalMapa({
 
     navigator.geolocation.getCurrentPosition(
       (posicao) => {
+        if (sequencia !== intencaoRef.current) return;
         setBuscandoGps(false);
         const ponto: CoordenadaMapa = {
           latitude: posicao.coords.latitude,
@@ -552,6 +547,7 @@ export function SeletorLocalMapa({
         void consultarPontoNoMapa(ponto, 'gps');
       },
       (erroGeo) => {
+        if (sequencia !== intencaoRef.current) return;
         setBuscandoGps(false);
         setAviso({ tom: 'alerta', texto: mensagemErroGps(erroGeo.code) });
       },
@@ -560,12 +556,12 @@ export function SeletorLocalMapa({
   };
 
   const handleLimparCoordenadas = () => {
-    abortReversoRef.current?.abort();
-    sequenciaReversoRef.current += 1;
-    setBuscandoReverso(false);
+    if (desabilitado) return;
+    iniciarIntencao();
+    setCentroControlado(null);
     setForaDeSergipe(false);
     setConfirmouForaDeSergipe(false);
-    onChange(valor, null);
+    publicarMudanca(valor, null);
   };
 
   const ativoDescendantId =
@@ -608,7 +604,8 @@ export function SeletorLocalMapa({
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={dropdownAberto}
-            aria-controls={listaId}
+            aria-controls={dropdownAberto && sugestoes.length > 0 ? listaId : undefined}
+            aria-describedby={erro ? inputId + '-erro' : dica ? inputId + '-dica' : undefined}
             aria-activedescendant={ativoDescendantId}
             aria-invalid={erro ? true : undefined}
             aria-required={obrigatorio || undefined}
@@ -652,8 +649,10 @@ export function SeletorLocalMapa({
                     id={`${listaId}-opcao-${indice}`}
                     role="option"
                     aria-selected={selecionado}
-                    onMouseDown={(evento) => {
-                      evento.preventDefault();
+                    onMouseDown={(evento) => evento.preventDefault()}
+                    onClick={() => {
+                      if (desabilitado) return;
+                      iniciarIntencao();
                       confirmarSelecao(item, extrairCepValido(valor) ? 'cep' : 'busca');
                     }}
                     onMouseEnter={() => setIndiceAtivo(indice)}
@@ -686,7 +685,7 @@ export function SeletorLocalMapa({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {exibirBotaoGps && (
+          {mapasAtivos && exibirBotaoGps && (
             <button
               type="button"
               onClick={handleUsarGps}
@@ -694,7 +693,7 @@ export function SeletorLocalMapa({
               className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-2 text-xs font-semibold text-text-strong transition-colors hover:border-primary/50 hover:bg-primary-soft/60 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none md:min-h-0"
             >
               {buscandoGps ? (
-                <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                <Loader2 size={14} className="motion-safe:animate-spin" aria-hidden="true" />
               ) : (
                 <Crosshair size={14} aria-hidden="true" />
               )}
@@ -702,10 +701,13 @@ export function SeletorLocalMapa({
             </button>
           )}
 
-          {exibicaoMapa === 'expansivel' && (
+          {mapasAtivos && exibicaoMapa === 'expansivel' && (
             <button
               type="button"
-              onClick={() => setMapaExpandido((aberto) => !aberto)}
+              onClick={() => {
+                setMapaIndisponivel(false);
+                setMapaExpandido((aberto) => !aberto);
+              }}
               disabled={desabilitado}
               aria-expanded={mapaExpandido}
               className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-2 text-xs font-semibold text-text-strong transition-colors hover:border-primary/50 hover:bg-primary-soft/60 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none md:min-h-0"
@@ -738,12 +740,12 @@ export function SeletorLocalMapa({
               <button
                 key={unidade.codigo}
                 type="button"
-                disabled={desabilitado || buscandoUnidade !== null}
+                disabled={desabilitado || carregandoEste}
                 onClick={() => void handleSelecionarUnidade(unidade.codigo)}
                 className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-alt px-2.5 py-1 text-xs font-semibold text-text-secondary transition-colors hover:border-primary hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {carregandoEste && (
-                  <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                  <Loader2 size={12} className="motion-safe:animate-spin" aria-hidden="true" />
                 )}
                 {unidade.rotulo}
               </button>
@@ -772,6 +774,7 @@ export function SeletorLocalMapa({
           <label className="inline-flex cursor-pointer items-center gap-2 font-medium text-amber-950">
             <input
               type="checkbox"
+              disabled={desabilitado}
               checked={confirmouForaDeSergipe}
               onChange={(evento) => setConfirmouForaDeSergipe(evento.target.checked)}
               className="h-4 w-4 rounded border-amber-400 text-amber-700 focus:ring-amber-500"
@@ -782,6 +785,9 @@ export function SeletorLocalMapa({
       )}
 
       {/* Avisos de status (fallback, degradado, GPS, 429, unidade sem coordenadas) */}
+      <p className="sr-only" role="status">
+        {buscando || buscandoUnidade || buscandoGps || buscandoReverso ? 'Consultando localização…' : ''}
+      </p>
       {aviso && (
         <p
           role="status"
@@ -797,17 +803,18 @@ export function SeletorLocalMapa({
         </p>
       )}
 
-      {dica && !erro && <p className="text-xs text-slate-500">{dica}</p>}
+      {dica && !erro && <p id={inputId + '-dica'} className="text-xs text-slate-500">{dica}</p>}
       {erro && (
-        <p role="alert" className="text-xs font-medium text-danger">
+        <p id={inputId + '-erro'} role="alert" className="text-xs font-medium text-danger">
           {erro}
         </p>
       )}
 
       {/* Mapa interativo */}
-      {mapaExpandido && (
+      {mapasAtivos && mapaExpandido && (
         <div className="flex flex-col gap-1.5">
           <MapaBase
+            onIndisponivel={() => setMapaIndisponivel(true)}
             altura={alturaMapa}
             centroInicial={
               coordenadas
@@ -848,7 +855,7 @@ export function SeletorLocalMapa({
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
             <span>
-              {coordenadas
+              {mapaIndisponivel ? 'Informe o endereço no campo de texto.' : coordenadas
                 ? `Coordenadas: ${arredondarCoordenada(coordenadas.latitude)}, ${arredondarCoordenada(coordenadas.longitude)} — clique no mapa ou arraste o pin para ajustar.`
                 : 'Clique em qualquer ponto do mapa para marcar as coordenadas manualmente.'}
             </span>
