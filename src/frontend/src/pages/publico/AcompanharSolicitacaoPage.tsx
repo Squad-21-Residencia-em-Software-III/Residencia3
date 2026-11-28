@@ -72,6 +72,7 @@ export default function AcompanharSolicitacaoPage() {
   const idTitulo = useId()
   const idProtocolo = useId()
   const idSegredo = useId()
+  const idFalha = useId()
   const online = useOnlineStatus()
 
   const [protocolo, setProtocolo] = useState('')
@@ -81,6 +82,14 @@ export default function AcompanharSolicitacaoPage() {
   const [resultado, setResultado] = useState<ConsultaPublica | null>(null)
   const [falha, setFalha] = useState<Falha | null>(null)
   const [esperaSegundos, setEsperaSegundos] = useState(0)
+  const faltaProtocolo = falha?.tipo === 'preenchimento' && !protocolo.trim()
+  const faltaSegredo = falha?.tipo === 'preenchimento' && !segredo
+
+  useEffect(() => {
+    if (falha?.tipo === 'preenchimento') {
+      document.getElementById(faltaProtocolo ? idProtocolo : idSegredo)?.focus()
+    }
+  }, [falha, faltaProtocolo, idProtocolo, idSegredo])
 
   /** Número da consulta "valida" no momento; respostas de números antigos são ignoradas. */
   const numeroAtualRef = useRef(0)
@@ -203,6 +212,9 @@ export default function AcompanharSolicitacaoPage() {
             <Field label="Protocolo" htmlFor={idProtocolo}>
               <Input
                 id={idProtocolo}
+                required
+                aria-invalid={faltaProtocolo || undefined}
+                aria-describedby={faltaProtocolo ? idFalha : undefined}
                 value={protocolo}
                 onChange={(e) => aoAlterarProtocolo(e.target.value)}
                 autoComplete="off"
@@ -216,6 +228,9 @@ export default function AcompanharSolicitacaoPage() {
               <div className="relative">
                 <Input
                   id={idSegredo}
+                  required
+                  aria-invalid={faltaSegredo || undefined}
+                  aria-describedby={faltaSegredo ? idFalha : undefined}
                   type={mostrarSegredo ? 'text' : 'password'}
                   value={segredo}
                   onChange={(e) => aoAlterarSegredo(e.target.value)}
@@ -251,22 +266,21 @@ export default function AcompanharSolicitacaoPage() {
           </form>
         </Card>
 
-        <div aria-live="polite" aria-atomic="true" className="flex flex-col gap-3">
-          {falha && (
-            <Alert
-              tone={falha.tipo === 'credencial' || falha.tipo === 'indisponivel' ? 'danger' : 'warning'}
-            >
-              <span>{falha.mensagem}</span>
-              {falha.tipo === 'indisponivel' && (
-                <div className="mt-3">
-                  <Button variant="outline" size="sm" onClick={() => void consultar()} disabled={botaoDesativado}>
-                    Tentar novamente
-                  </Button>
-                </div>
-              )}
-            </Alert>
-          )}
+        <p role="status" className="sr-only">{consultando ? 'Consultando solicitação…' : ''}</p>
+        {falha && (
+          <Alert tone={falha.tipo === 'credencial' || falha.tipo === 'indisponivel' ? 'danger' : 'warning'}>
+            <span id={idFalha}>{falha.mensagem}</span>
+            {falha.tipo === 'indisponivel' && (
+              <div className="mt-3">
+                <Button variant="outline" size="sm" onClick={() => void consultar()} disabled={botaoDesativado}>
+                  Tentar novamente
+                </Button>
+              </div>
+            )}
+          </Alert>
+        )}
 
+        <div aria-live="polite" aria-atomic="true">
           {resultado && apresentacao && (
             <Card className="p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -279,7 +293,7 @@ export default function AcompanharSolicitacaoPage() {
 
               <p className="mt-4 text-sm leading-relaxed text-slate-700">{apresentacao.explicacao}</p>
               {resultado.mensagemPublica && (
-                <p className="mt-2 text-sm leading-relaxed font-medium text-slate-800">{resultado.mensagemPublica}</p>
+                <p className="mt-2 text-sm leading-relaxed font-medium break-words text-slate-800">{resultado.mensagemPublica}</p>
               )}
               {atualizadoEm && <p className="mt-4 text-xs text-slate-500">Atualizado em {atualizadoEm}</p>}
               {expiraEm && <p className="mt-1 text-xs text-slate-500">Consulta disponível até {expiraEm}</p>}
