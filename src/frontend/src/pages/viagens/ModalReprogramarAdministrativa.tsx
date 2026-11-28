@@ -70,7 +70,7 @@ export function ModalReprogramarAdministrativa({ viagem, onClose, onSalva }: Pro
   }
 
   return (
-    <Modal title={`Reprogramar viagem #${viagem.id}`} onClose={() => { if (!emCurso.current) onClose(); }} telaInteira>
+    <Modal title={`Reprogramar viagem #${viagem.id}`} onClose={() => { if (!emCurso.current) onClose(); }}>
       <form onSubmit={enviar} className="space-y-4">
         <div className="rounded-lg border border-slate-200 p-3 text-sm break-words">
           <p className="font-semibold">Solicitação #{viagem.solicitacao_id}</p>

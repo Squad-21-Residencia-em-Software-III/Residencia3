@@ -53,8 +53,6 @@ export function ModalPreferenciasPwa({ isOpen, onClose, folhaInferior = false }:
       title="Preferências do Aplicativo"
       hideFooter
       maxWidth={folhaInferior ? undefined : 520}
-      telaInteira={folhaInferior}
-      ajustarAoTeclado={folhaInferior}
       folhaInferior={folhaInferior}
     >
       <div className="space-y-4 text-sm text-text">

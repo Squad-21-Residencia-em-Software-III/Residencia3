@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Alert, Button, Input, Modal, Textarea } from '../../components/ui';
+import { Alert, Button, Input, Modal, ModalFooter, Textarea } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { solicitacoesSvoApi } from '../../services/api/solicitacoesSvoApi';
 import { mensagemDeErro } from '../../services/api/http';
-import { createPortal } from 'react-dom';
 
 export function ModalNovaSolicitacaoSvo({
   onClose,
@@ -56,8 +55,8 @@ export function ModalNovaSolicitacaoSvo({
     }
   }
 
-  return createPortal(
-    <Modal title="Nova solicitação SVO" maxWidth="560px" onClose={enviando ? () => {} : onClose} hideFooter>
+  return (
+    <Modal title="Nova solicitação SVO" maxWidth="560px" onClose={onClose} bloquearFechamento={enviando}>
       <form onSubmit={enviar} className="grid gap-4">
         {erro && <Alert tone="danger">{erro}</Alert>}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -94,15 +93,15 @@ export function ModalNovaSolicitacaoSvo({
           <Input type="datetime-local" label="Retorno Previsto (Opcional)" value={retorno} onChange={(e) => setRetorno(e.target.value)} disabled={enviando} />
         </div>
         <Textarea label="Finalidade Institucional *" placeholder="Descreva a finalidade da viagem" value={finalidade} onChange={(e) => setFinalidade(e.target.value)} required rows={3} maxLength={1500} disabled={enviando} />
-        <div className="mt-2 flex justify-end gap-2 border-t border-slate-100 pt-3">
+        <ModalFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={enviando}>
             Cancelar
           </Button>
           <Button type="submit" disabled={enviando}>
             {enviando ? 'Enviando...' : 'Registrar solicitação'}
           </Button>
-        </div>
+        </ModalFooter>
       </form>
-    </Modal>, document.body
+    </Modal>
   );
 }

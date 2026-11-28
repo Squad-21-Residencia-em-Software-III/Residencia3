@@ -98,7 +98,7 @@ export function ModalNovaSolicitacao({ onClose, onSalvar }: ModalNovaSolicitacao
   };
 
   return (
-    <Modal onClose={onClose} title="Nova Solicitação de Viagem" maxWidth="560px" telaInteira>
+    <Modal onClose={onClose} title="Nova Solicitação de Viagem" maxWidth="560px">
       <form onSubmit={handleSubmit} className="grid gap-4">
         {erro && <Alert tone="danger">{erro}</Alert>}
 

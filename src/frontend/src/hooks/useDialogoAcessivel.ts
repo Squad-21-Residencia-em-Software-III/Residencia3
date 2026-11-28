@@ -1,16 +1,41 @@
-import { useLayoutEffect, useRef } from 'react';
+import { createContext, useContext, useId, useLayoutEffect, useMemo, useRef } from 'react';
 import type { RefObject } from 'react';
 import { ID_CONTEUDO } from '../components/layout/AcoesPublicasContext';
 
 interface DialogoAtivo {
+  id: string;
+  ancestrais: readonly string[];
   elemento: HTMLElement;
+  camada: HTMLElement | null;
   acionador: HTMLElement | null;
 }
 
+export const ContextoDialogo = createContext<readonly string[]>([]);
 const pilha: DialogoAtivo[] = [];
 const isolados = new Map<HTMLElement, { inert: boolean; ariaHidden: string | null }>();
-let overflowAnterior = '';
+let desbloquearRolagem: (() => void) | undefined;
 let observador: MutationObserver | undefined;
+
+function bloquearRolagem() {
+  const estilos = [document.documentElement.style, document.body.style];
+  const anteriores = estilos.flatMap((estilo) => ['overflow-x', 'overflow-y'].map((propriedade) => ({
+    estilo, propriedade, valor: estilo.getPropertyValue(propriedade), prioridade: estilo.getPropertyPriority(propriedade),
+  })));
+  estilos.forEach((estilo) => estilo.setProperty('overflow', 'hidden', 'important'));
+  return () => {
+    estilos.forEach((estilo) => estilo.removeProperty('overflow'));
+    for (const { estilo, propriedade, valor, prioridade } of anteriores) {
+      if (valor) estilo.setProperty(propriedade, valor, prioridade);
+    }
+  };
+}
+
+function atualizarCamadas() {
+  // Menu móvel (100) e aviso de atualização da PWA (110) ficam abaixo dos diálogos.
+  pilha.forEach(({ camada }, indice) => {
+    camada?.style.setProperty('z-index', String(120 + indice));
+  });
+}
 
 const FOCAVEIS = [
   'a[href]', 'area[href]', 'button', 'input', 'select', 'textarea', 'iframe',
@@ -70,13 +95,16 @@ function atualizarIsolamento(moverFoco?: () => void) {
 interface Opcoes {
   aberto: boolean;
   dialogo: RefObject<HTMLElement | null>;
+  camada?: RefObject<HTMLElement | null>;
   aoFechar: () => void;
   fecharComEscape?: boolean;
   /** false preserva um foco inicial já posicionado pelo consumidor. */
   gerenciarFoco?: boolean;
 }
 
-export function useDialogoAcessivel({ aberto, dialogo, aoFechar, fecharComEscape = true, gerenciarFoco = true }: Opcoes) {
+export function useDialogoAcessivel({ aberto, dialogo, camada, aoFechar, fecharComEscape = true, gerenciarFoco = true }: Opcoes) {
+  const id = useId();
+  const ancestrais = useContext(ContextoDialogo);
   const opcoes = useRef({ aoFechar, fecharComEscape, gerenciarFoco });
   useLayoutEffect(() => {
     opcoes.current = { aoFechar, fecharComEscape, gerenciarFoco };
@@ -85,19 +113,24 @@ export function useDialogoAcessivel({ aberto, dialogo, aoFechar, fecharComEscape
   useLayoutEffect(() => {
     const elemento = dialogo.current;
     if (!aberto || !elemento) return;
+    const filhoAberto = pilha.findIndex((outro) => outro.ancestrais.includes(id) || elemento.contains(outro.elemento));
     const ativo: DialogoAtivo = {
+      id,
+      ancestrais,
       elemento,
-      acionador: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+      camada: camada?.current ?? null,
+      acionador: filhoAberto >= 0
+        ? pilha[filhoAberto].acionador
+        : document.activeElement instanceof HTMLElement ? document.activeElement : null,
     };
     if (!pilha.length) {
-      overflowAnterior = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
+      desbloquearRolagem = bloquearRolagem();
       observador = new MutationObserver(() => atualizarIsolamento());
       observador.observe(document.body, { childList: true, subtree: true });
     }
-    const filhoAberto = pilha.findIndex((outro) => elemento.contains(outro.elemento));
     if (filhoAberto < 0) pilha.push(ativo);
     else pilha.splice(filhoAberto, 0, ativo);
+    atualizarCamadas();
     const noTopo = () => pilha.at(-1) === ativo;
 
     atualizarIsolamento(() => {
@@ -132,10 +165,12 @@ export function useDialogoAcessivel({ aberto, dialogo, aoFechar, fecharComEscape
       document.removeEventListener('keydown', aoPressionar);
       const estavaNoTopo = noTopo();
       pilha.splice(pilha.indexOf(ativo), 1);
+      if (estavaNoTopo) ativo.camada?.style.removeProperty('z-index');
       if (!pilha.length) {
         observador?.disconnect();
         observador = undefined;
-        document.body.style.overflow = overflowAnterior;
+        desbloquearRolagem?.();
+        desbloquearRolagem = undefined;
       }
       atualizarIsolamento(() => {
         if (!estavaNoTopo) return;
@@ -144,13 +179,13 @@ export function useDialogoAcessivel({ aberto, dialogo, aoFechar, fecharComEscape
         const restaurar = () => {
           if (acionador && acionador !== document.body && acionador !== document.documentElement &&
               (!superior || superior.contains(acionador)) && podeReceberFoco(acionador)) {
-            acionador.focus();
+            acionador.focus({ preventScroll: true });
             if (document.activeElement === acionador) return;
           }
           if (superior && !superior.contains(document.activeElement)) {
             focarDentro(superior, false);
           } else if (!superior) {
-            document.getElementById(ID_CONTEUDO)?.focus();
+            document.getElementById(ID_CONTEUDO)?.focus({ preventScroll: true });
           }
         };
         restaurar();
@@ -163,5 +198,7 @@ export function useDialogoAcessivel({ aberto, dialogo, aoFechar, fecharComEscape
         });
       });
     };
-  }, [aberto, dialogo]);
+  }, [aberto, ancestrais, camada, dialogo, id]);
+
+  return useMemo(() => [...ancestrais, id], [ancestrais, id]);
 }

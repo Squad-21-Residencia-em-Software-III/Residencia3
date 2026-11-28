@@ -60,7 +60,7 @@ export function ModalFooter({
   return (
     <div
       className={cn(
-        'mt-2 flex flex-col-reverse justify-end gap-2.5 border-t border-border pt-4 sm:flex-row sm:items-center sm:gap-3',
+        'mt-4 flex flex-col justify-end gap-2.5 border-t border-divider pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3',
         className,
       )}
     >

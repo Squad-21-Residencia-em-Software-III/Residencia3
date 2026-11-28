@@ -4,6 +4,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { AlertTriangle, Info } from 'lucide-react';
 import { Modal } from './Modal';
 import { Button } from './Button';
+import { ModalFooter } from './ModalForm';
 import { cn } from '../../utils/cn';
 
 const confirmIconVariants = cva(
@@ -58,24 +59,25 @@ export function ConfirmDialog({
       title={title}
       papel={isDanger ? 'alertdialog' : 'dialog'}
       descricaoId={idDescricao}
+      bloquearFechamento={isLoading}
+      maxWidth="26rem"
     >
       <div className="space-y-4">
         <div className="flex items-start gap-3">
           <div className={cn(confirmIconVariants({ variant: resolvedVariant }))} aria-hidden="true">
             {isDanger ? <AlertTriangle size={20} /> : <Info size={20} />}
           </div>
-          <div id={idDescricao} className="pt-1 text-sm leading-relaxed text-slate-600">
+          <div id={idDescricao} className="min-w-0 pt-1 text-sm leading-relaxed text-text-secondary">
             {description}
           </div>
         </div>
 
-        <div className="flex flex-col-reverse gap-2.5 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+        <ModalFooter>
           <Button
             type="button"
             variant="outline"
             onClick={onClose}
             disabled={isLoading}
-            className="w-full sm:w-auto"
             // Em ações perigosas, o foco começa na opção que não destrói nada
             data-foco-inicial={isDanger ? true : undefined}
           >
@@ -86,11 +88,10 @@ export function ConfirmDialog({
             variant={isDanger ? 'danger' : 'primary'}
             onClick={() => void onConfirm()}
             disabled={isLoading}
-            className="w-full sm:w-auto"
           >
             {isLoading ? 'Processando...' : confirmLabel}
           </Button>
-        </div>
+        </ModalFooter>
       </div>
     </Modal>
   );

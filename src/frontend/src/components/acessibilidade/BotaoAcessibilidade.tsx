@@ -30,7 +30,7 @@ export function BotaoAcessibilidade({ className, superficie = 'escura' }: {
         <Accessibility size={18} aria-hidden="true" />
         Acessibilidade
       </button>
-      <Modal isOpen={aberto} title="Acessibilidade" onClose={() => setAberto(false)} maxWidth={560} telaInteira>
+      <Modal isOpen={aberto} title="Acessibilidade" onClose={() => setAberto(false)} maxWidth={560}>
         <SecaoAcessibilidade sozinha />
       </Modal>
     </>

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { CloseIcon } from './icons';
 import { cn } from '../../utils/cn';
 import { createPortal } from 'react-dom';
-import { useDialogoAcessivel } from '../../hooks/useDialogoAcessivel';
+import { ContextoDialogo, useDialogoAcessivel } from '../../hooks/useDialogoAcessivel';
 
 export interface DrawerProps {
   isOpen: boolean;
@@ -31,6 +31,7 @@ export function Drawer({
   const [mounted, setMounted] = useState(isOpen);
   const [visible, setVisible] = useState(false);
   const painel = useRef<HTMLDivElement>(null);
+  const camada = useRef<HTMLDivElement>(null);
   const idTitulo = useId();
   const idSubtitulo = useId();
 
@@ -58,18 +59,19 @@ export function Drawer({
 
   // Foco dentro do painel, Escape só no de cima e foco de volta para quem abriu (SCRUM-306). Solto já no
   // início da animação de fechar
-  useDialogoAcessivel({ aberto: mounted && isOpen, dialogo: painel, aoFechar: onClose });
+  const contexto = useDialogoAcessivel({ aberto: mounted && isOpen, dialogo: painel, camada, aoFechar: onClose });
 
   if (!mounted) return null;
 
-  const conteudo = (
-    <div className="pointer-events-none fixed inset-0 z-50 flex justify-end overflow-hidden" inert={!isOpen} aria-hidden={isOpen ? undefined : true}>
+  return createPortal(
+    <div ref={camada} className="pointer-events-none fixed inset-0 z-120 flex justify-end overflow-hidden">
       {/* Backdrop com transição fade-in / fade-out suave */}
       <div
         className={cn(
           'fixed inset-0 transition-opacity duration-300',
           telaInteira ? 'bg-[#0d1b35]/45 backdrop-blur-[3px]' : 'bg-slate-950/40 backdrop-blur-[2px]',
-          visible ? 'pointer-events-auto opacity-100 ease-out' : 'opacity-0 ease-in pointer-events-none'
+          visible ? 'opacity-100 ease-out' : 'opacity-0 ease-in',
+          visible && isOpen && 'pointer-events-auto'
         )}
         onClick={onClose}
         aria-hidden="true"
@@ -81,6 +83,8 @@ export function Drawer({
         ref={painel}
         role="dialog"
         aria-modal="true"
+        inert={!isOpen}
+        aria-hidden={isOpen ? undefined : true}
         aria-labelledby={idTitulo}
         aria-describedby={subtitle ? idSubtitulo : undefined}
         tabIndex={-1}
@@ -88,7 +92,8 @@ export function Drawer({
           'relative z-10 flex h-full w-full flex-col bg-surface sm:w-auto',
           'border-l border-divider shadow-[-16px_0_48px_rgba(0,0,0,0.16)]',
           'transform-gpu transition-transform duration-350 ease-[cubic-bezier(0.16,1,0.3,1)]',
-          visible ? 'pointer-events-auto translate-x-0' : 'translate-x-full pointer-events-none',
+          visible ? 'translate-x-0' : 'translate-x-full',
+          visible && isOpen && 'pointer-events-auto',
           width,
           className
         )}
@@ -119,19 +124,21 @@ export function Drawer({
         </div>
 
         {/* Corpo com rolagem própria */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
-          {children}
-        </div>
-
-        {/* Rodapé fixo (opcional) */}
-        {footer && (
-          <div className="shrink-0 border-t border-divider bg-surface px-6 py-4">
-            {footer}
+        <ContextoDialogo value={contexto}>
+          <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-6">
+            {children}
           </div>
-        )}
+
+          {/* Rodapé fixo (opcional) */}
+          {footer && (
+            <div className="shrink-0 border-t border-divider bg-surface px-6 py-4">
+              {footer}
+            </div>
+          )}
+        </ContextoDialogo>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
-  return telaInteira ? createPortal(conteudo, document.body) : conteudo;
 }
 

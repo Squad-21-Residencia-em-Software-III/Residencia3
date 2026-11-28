@@ -112,7 +112,6 @@ export function MotoristaLayout({ navItems, title, user, onLogout, children }: M
           isOpen={contaAberta}
           title="Minha conta"
           onClose={() => setContaAberta(false)}
-          telaInteira
           gerenciarFoco
           ajustarAoTeclado
           folhaInferior

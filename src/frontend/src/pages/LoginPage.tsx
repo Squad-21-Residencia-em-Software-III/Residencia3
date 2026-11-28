@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { ApiError } from '../services/api/http';
-import { Alert } from '../components/ui';
+import { Alert, Button, Modal, ModalFooter } from '../components/ui';
 import { BotaoAcessibilidade } from '../components/acessibilidade/BotaoAcessibilidade';
 
 interface FloatingInputProps {
@@ -264,42 +264,16 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Modal de aviso para suporte de acesso */}
-      {ajudaAberta && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="login-ajuda-titulo"
-          onClick={() => setAjudaAberta(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[400px] rounded-[20px] bg-white p-8 text-left shadow-[0_40px_100px_rgba(0,0,0,0.9)]"
-          >
-            <h2
-              id="login-ajuda-titulo"
-              className="mt-1 mb-3 font-display text-[1.375rem] font-semibold tracking-[-0.5px] text-text"
-            >
-              Aviso
-            </h2>
-            <p className="mb-7 font-sans text-[0.9375rem] leading-relaxed text-neutral">
-              Confira as informações de acesso e tente novamente com atenção. O acesso é criado e
-              liberado pelo administrador do sistema; caso o erro persista ou você tenha esquecido
-              sua senha, procure o administrador para redefini-la.
-            </p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setAjudaAberta(false)}
-                className="cursor-pointer rounded-xl border-none bg-primary px-6 py-3 font-display text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-px hover:bg-[#1040a0] hover:shadow-[0_4px_12px_rgba(21,84,184,0.25)]"
-              >
-                Entendi
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal isOpen={ajudaAberta} title="Aviso" maxWidth="25rem" onClose={() => setAjudaAberta(false)}>
+        <p className="text-sm leading-relaxed text-text-secondary">
+          Confira as informações de acesso e tente novamente com atenção. O acesso é criado e
+          liberado pelo administrador do sistema; caso o erro persista ou você tenha esquecido
+          sua senha, procure o administrador para redefini-la.
+        </p>
+        <ModalFooter>
+          <Button type="button" onClick={() => setAjudaAberta(false)}>Entendi</Button>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 }
