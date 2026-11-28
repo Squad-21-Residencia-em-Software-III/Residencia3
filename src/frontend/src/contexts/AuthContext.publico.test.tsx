@@ -48,6 +48,17 @@ describe('AuthContext em páginas públicas (visitante anônimo)', () => {
     expect(authApi.refresh).not.toHaveBeenCalled()
   })
 
+  it('restaura a sessão ao sair de uma página pública por navegação interna', async () => {
+    const { rerender } = render(<AuthProvider pathname="/acompanhar"><Consumidor /></AuthProvider>)
+    expect(authApi.refresh).not.toHaveBeenCalled()
+    rerender(<AuthProvider pathname="/inicio"><Consumidor /></AuthProvider>)
+    expect(screen.getByText('Carregando...')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Deslogado')).toBeInTheDocument())
+    expect(authApi.refresh).toHaveBeenCalledTimes(1)
+    rerender(<AuthProvider pathname="/acompanhar"><Consumidor /></AuthProvider>)
+    expect(authApi.refresh).toHaveBeenCalledTimes(1)
+  })
+
   it('em página comum continua tentando restaurar a sessão', async () => {
     window.history.pushState({}, '', '/inicio')
 

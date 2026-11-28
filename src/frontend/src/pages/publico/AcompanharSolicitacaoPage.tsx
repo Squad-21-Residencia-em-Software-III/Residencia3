@@ -33,6 +33,7 @@ const APRESENTACAO: Record<EstadoPublico, { rotulo: string; tom: BadgeTone; expl
 const MENSAGEM_CREDENCIAL =
   'Não foi possível consultar com os dados informados. Confira o protocolo e o segredo e tente novamente. Se o prazo de consulta tiver terminado, procure a FSPH informando o número do protocolo.'
 const ESPERA_PADRAO_SEGUNDOS = 30
+const PRAZO_CONSULTA_MS = 20_000
 
 interface Falha {
   tipo: 'preenchimento' | 'credencial' | 'limite' | 'indisponivel'
@@ -48,6 +49,9 @@ function classificarFalha(erro: unknown): Falha {
         mensagem: 'Muitas tentativas. Aguarde um pouco antes de consultar de novo.',
         esperaSegundos: erro.retryAfterSegundos ?? ESPERA_PADRAO_SEGUNDOS,
       }
+    }
+    if (erro.status === 404 && erro.codigo === 'RECURSO_DESATIVADO') {
+      return { tipo: 'indisponivel', mensagem: 'O acompanhamento público está desativado no momento.' }
     }
     if ([400, 401, 403, 404, 410].includes(erro.status)) return { tipo: 'credencial', mensagem: MENSAGEM_CREDENCIAL }
     if (erro.status === 0) {
@@ -81,11 +85,13 @@ export default function AcompanharSolicitacaoPage() {
   /** Número da consulta "valida" no momento; respostas de números antigos são ignoradas. */
   const numeroAtualRef = useRef(0)
   const controleRef = useRef<AbortController | null>(null)
+  const prazoRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(
     () => () => {
       // Ao sair da tela: cancela a consulta e descarta qualquer resposta pendente.
       numeroAtualRef.current += 1
+      clearTimeout(prazoRef.current)
       controleRef.current?.abort()
       controleRef.current = null
     },
@@ -101,6 +107,7 @@ export default function AcompanharSolicitacaoPage() {
   /** Descarta consulta em andamento e o que está na tela (dados de outra credencial não podem ficar). */
   function invalidarConsulta() {
     numeroAtualRef.current += 1
+    clearTimeout(prazoRef.current)
     controleRef.current?.abort()
     controleRef.current = null
     setConsultando(false)
@@ -139,6 +146,11 @@ export default function AcompanharSolicitacaoPage() {
     const controle = new AbortController()
     controleRef.current = controle
     setConsultando(true)
+    prazoRef.current = setTimeout(() => {
+      if (numeroAtualRef.current !== numero) return
+      invalidarConsulta()
+      setFalha({ tipo: 'indisponivel', mensagem: 'A consulta demorou demais. Tente novamente.' })
+    }, PRAZO_CONSULTA_MS)
     setFalha(null)
     setResultado(null)
 
@@ -154,6 +166,7 @@ export default function AcompanharSolicitacaoPage() {
       if (classificada.tipo === 'limite') setEsperaSegundos(classificada.esperaSegundos ?? ESPERA_PADRAO_SEGUNDOS)
     } finally {
       if (numeroAtualRef.current === numero) {
+        clearTimeout(prazoRef.current)
         controleRef.current = null
         setConsultando(false)
       }

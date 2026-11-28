@@ -153,8 +153,9 @@ interface Opcoes {
 
 function lerRetryAfter(resposta: Response): number | undefined {
   const bruto = resposta.headers?.get?.('Retry-After')
-  const segundos = bruto ? Number(bruto) : Number.NaN
-  return Number.isFinite(segundos) && segundos > 0 ? Math.ceil(segundos) : undefined
+  if (!bruto) return undefined
+  const segundos = /^\d+$/.test(bruto) ? Number(bruto) : (Date.parse(bruto) - Date.now()) / 1000
+  return Number.isFinite(segundos) ? Math.max(0, Math.ceil(segundos)) : undefined
 }
 
 export async function request<T>(metodo: Metodo, caminho: string, opcoes: Opcoes = {}): Promise<T> {
@@ -259,7 +260,10 @@ async function executar<T>(
   const publico = opcoes.publico === true
   const token = opcoes.token ?? tokenStorage.get()
   if (token && !opcoes.semAutenticacao && !publico) headers.Authorization = `Bearer ${token}`
-  Object.assign(headers, opcoes.headers)
+  for (const [nome, valor] of Object.entries(opcoes.headers ?? {})) {
+    if (publico && ['authorization', 'proxy-authorization', 'cookie'].includes(nome.toLowerCase().trim())) continue
+    headers[nome] = valor
+  }
 
   let resposta: Response
   try {

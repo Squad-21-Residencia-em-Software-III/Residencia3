@@ -47,9 +47,16 @@ describe('http: requisição pública (visitante anônimo)', () => {
   it('repassa cabeçalhos extras (ex.: chave de idempotência)', async () => {
     fetchMock.mockResolvedValueOnce(resposta(201, {}))
 
-    await request('POST', '/publico', { publico: true, headers: { 'Idempotency-Key': 'chave-1' } })
+    const permitidos = {
+      'Idempotency-Key': 'chave-1', 'X-Prova-Tentativa': 'prova', 'X-Credencial-Acompanhamento': 'credencial',
+    }
+    await request('POST', '/publico', {
+      publico: true,
+      token: 'interno',
+      headers: { ...permitidos, aUtHoRiZaTiOn: 'Bearer interno', COOKIE: 'sessao=privada' },
+    })
 
-    expect(init(fetchMock.mock.calls[0]).headers['Idempotency-Key']).toBe('chave-1')
+    expect(init(fetchMock.mock.calls[0]).headers).toEqual({ Accept: 'application/json', ...permitidos })
   })
 
   it('expõe o Retry-After do servidor em erros 429', async () => {
