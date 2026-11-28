@@ -95,7 +95,6 @@ jobs:
       AVISOS_SVO_COLETA_POSTGRES_TESTS: '1'
       AVISOS_SVO_TRIAGEM_POSTGRES_TESTS: '1'
       METRICAS_NOTIFICACOES_POSTGRES_TESTS: '1'
-      PORTAL_SVO_POSTGRES_TESTS: '1'
 
     defaults:
       run:
@@ -137,6 +136,15 @@ jobs:
         run: npm test -- --no-file-parallelism
         env:
           JWT_SECRET: ci-test-only-secret-not-for-production
+
+      - name: Validar proteção do portal SVO em PostgreSQL com a role restrita
+        run: npx vitest run src/tests/portalSvoProtecao.test.ts --no-file-parallelism
+        env:
+          JWT_SECRET: ci-test-only-secret-not-for-production
+          PORTAL_SVO_POSTGRES_TESTS: '1'
+          DB_ROLE: app
+          POSTGRES_APP_USER: frotas_app_qa_svo_externo
+          POSTGRES_APP_PASSWORD: ci-svo-externo-test-only
 
       - name: Validar agenda temporal e NO_LOCAL em PostgreSQL
         env:

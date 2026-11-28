@@ -2,7 +2,7 @@ import knex from 'knex';
 import { createHmac, randomBytes } from 'node:crypto';
 import { ipKeyGenerator } from 'express-rate-limit';
 import request from 'supertest';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
 import { db } from '../config/database';
 import { env } from '../config/env';
@@ -49,11 +49,16 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
     },
   });
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     if (!['localhost', '127.0.0.1'].includes(process.env.POSTGRES_HOST ?? '') ||
-        !process.env.POSTGRES_DB?.endsWith('_teste')) {
-      throw new Error('Os testes exigem um PostgreSQL local descartável com sufixo _teste.');
+        !process.env.POSTGRES_DB?.endsWith('_teste') || !process.env.POSTGRES_APP_USER) {
+      throw new Error('Os testes exigem PostgreSQL local descartável com sufixo _teste e POSTGRES_APP_USER.');
     }
+    const { rows } = await db.raw('SELECT current_user');
+    expect(rows[0].current_user).toBe(process.env.POSTGRES_APP_USER);
+  });
+
+  beforeEach(async () => {
     env.recursosOperacionais = carregarRecursosOperacionais(portalAtivo);
     app.set('trust proxy', 1);
     await db(tabela).delete();
