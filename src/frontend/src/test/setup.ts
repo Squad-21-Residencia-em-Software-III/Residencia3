@@ -51,6 +51,8 @@ vi.mock('react-map-gl/maplibre', async () => {
           getMap: () => mapa,
           flyTo: vi.fn(),
           jumpTo: vi.fn(),
+          fitBounds: vi.fn(),
+          resize: vi.fn(),
         }),
         [mapa],
       );
@@ -158,9 +160,33 @@ vi.mock('react-map-gl/maplibre', async () => {
           : null,
       ),
     NavigationControl: () => React.createElement('div', { 'data-testid': 'mock-maplibre-nav' }),
-    Source: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement('div', { 'data-testid': 'mock-maplibre-source' }, children),
-    Layer: () => React.createElement('div', { 'data-testid': 'mock-maplibre-layer' }),
+    Source: ({
+      children,
+      id,
+      data,
+    }: {
+      children?: React.ReactNode;
+      id?: string;
+      data?: { features?: unknown[] };
+    }) =>
+      React.createElement(
+        'div',
+        {
+          'data-testid': 'mock-maplibre-source',
+          'data-source-id': id ?? '',
+          'data-features-count': Array.isArray(data?.features) ? String(data.features.length) : '0',
+        },
+        children,
+      ),
+    Layer: ({ id, type, paint }: { id?: string; type?: string; paint?: Record<string, unknown> }) =>
+      React.createElement('div', {
+        'data-testid': 'mock-maplibre-layer',
+        'data-layer-id': id ?? '',
+        'data-layer-type': type ?? '',
+        'data-dasharray': Array.isArray(paint?.['line-dasharray'])
+          ? (paint['line-dasharray'] as number[]).join(',')
+          : '',
+      }),
   };
 });
 
