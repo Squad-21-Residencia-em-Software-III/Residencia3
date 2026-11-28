@@ -8,6 +8,8 @@ const { DADOS, CREDENCIAIS } = require('../database/privilegiosSolicitacoesExter
 
 const ORIGINAL = '20261127130000_scrum_263_solicitacoes_externas_svo.js';
 const CORRECAO = '20261127140000_scrum_263_integridade_svo_externo.js';
+// A 266 cria tabela com FK para a credencial: precisa ser revertida antes da 263
+const ACOMPANHAMENTO_266 = '20261128100000_scrum_266_acompanhamento_e_recuperacao_svo.js';
 const SVO = 'solicitacoes_svo';
 const BASE = ['usuarios', SVO, 'ordens_svo', 'veiculos', 'motoristas', 'equipes_svo', 'notificacoes'];
 const externalRoot = {
@@ -261,6 +263,7 @@ async function validarSchemaSolicitacoesExternasSvo() {
       await assert.rejects(() => db('usuarios').where({ id: reg }).del(),
         (erro) => ['23001', '23503'].includes(erro.code));
 
+      await db.migrate.down({ name: ACOMPANHAMENTO_266 });
       await db.migrate.down({ name: CORRECAO });
       await db.migrate.down({ name: ORIGINAL });
       assert.deepEqual(await snapshot(db, false), antes);

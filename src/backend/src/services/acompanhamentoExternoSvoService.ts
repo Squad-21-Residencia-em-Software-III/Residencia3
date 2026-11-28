@@ -553,8 +553,9 @@ export const acompanhamentoExternoSvoService = {
       versaoAtual
     );
 
+    let emitidaEmBanco: Date | string;
     try {
-      await acompanhamentoExternoSvoModel.inserirCredencial(
+      const credencialEmitida = await acompanhamentoExternoSvoModel.inserirCredencial(
         {
           solicitacao_id: input.solicitacaoId,
           segredo_digest: segredoDigest,
@@ -563,10 +564,11 @@ export const acompanhamentoExternoSvoService = {
           chave_idempotencia_criacao: chaveIdempotencia,
           payload_criacao_digest: payloadDigest,
           prova_tentativa_digest: provaDigest,
-          emitida_em: agora,
+          // emitida_em usa o padrão do banco: a role da aplicação não tem INSERT nessa coluna
         },
         trx
       );
+      emitidaEmBanco = credencialEmitida?.emitida_em ?? agora;
     } catch (erro) {
       if (codigoErroBanco(erro) === '23505') {
         throw new AppError(
@@ -608,7 +610,7 @@ export const acompanhamentoExternoSvoService = {
       solicitacaoId: input.solicitacaoId,
       protocolo,
       credencial,
-      emitidaEm: agora.toISOString(),
+      emitidaEm: new Date(emitidaEmBanco).toISOString(),
       recuperacaoExpiraEm: recuperacaoExpiraEm
         ? recuperacaoExpiraEm.toISOString()
         : null,

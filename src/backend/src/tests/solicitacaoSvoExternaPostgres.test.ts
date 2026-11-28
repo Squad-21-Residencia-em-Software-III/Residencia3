@@ -197,7 +197,9 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     const recuperacao = await db('solicitacoes_svo_recuperacoes_tentativa').where({ solicitacao_id: s.id }).first();
     expect(JSON.stringify(recuperacao)).not.toContain(resposta.body.credencial);
     expect(JSON.stringify(recuperacao)).not.toContain(resposta.body.protocolo);
-    expect(new Date(recuperacao.expira_em).getTime() - new Date(credencial.emitida_em).getTime()).toBe(15 * 60 * 1000);
+    // 15 minutos, com margem: emitida_em vem do relógio do banco e expira_em, da aplicação
+    const janelaMs = new Date(recuperacao.expira_em).getTime() - new Date(credencial.emitida_em).getTime();
+    expect(Math.abs(janelaMs - 15 * 60 * 1000)).toBeLessThan(5_000);
 
     // Na fila interna, sem dados pessoais
     const fila = await request(app).get('/api/solicitacoes-svo?status=EM_TRIAGEM&limite=100').set('Authorization', gestorSvo.token);

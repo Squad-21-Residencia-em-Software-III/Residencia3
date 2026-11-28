@@ -50,7 +50,7 @@ Resposta (sempre `Cache-Control: private, no-store`, inclusive em erros antecipa
   A recuperação de credencial **perdida** depois da janela não existe: depende de decisão institucional.
 - Ordem de validação na repetição: 1) prova de posse (digest com a versão criptográfica original, em tempo constante); 2) só então a SCRUM-266 confere conteúdo (409), revogação, expiração e envelope.
 - Rotação de chaves: a repetição usa a versão com que a tentativa foi emitida; tentativas novas usam a versão atual.
-- Nenhum arquivo da SCRUM-266 é alterado por este PR.
+- Dois ajustes mínimos em arquivos ligados à SCRUM-266 (ver "Alinhamento com o PR #237").
 - S1 (`SVO_SOLICITACAO_CRIADA`) reutiliza `notificacaoSvoService.publicarAlertasRegistroSolicitacao` (autor nulo):
   administradores ativos e gestores SVO associados à unidade SVO, um aviso por destinatário, texto sem dados pessoais.
 - Rota montada antes de `/solicitacoes-svo` para não conflitar com `/:id`; roteador interno e seus guards intactos.
@@ -83,7 +83,9 @@ Resposta (sempre `Cache-Control: private, no-store`, inclusive em erros antecipa
 ## Alinhamento com o PR #237
 
 1. Este branch contém o merge de `feat/be-db-scrum-266-credenciais-acompanhamento-externo`.
-2. **Dependência do #237 (não corrigida aqui):** `emitirCredencialNaTransacao` grava `emitida_em`, coluna em que a role restrita `frotas_app` não tem `INSERT` (erro `42501`). Enquanto o #237 não corrigir (usar o padrão do banco), os testes PostgreSQL de criação deste PR falham com a role restrita. Este PR não relaxa privilégios para passar.
+2. **Ajustes feitos aqui para o #245 ficar verde sem depender de correção no #237** (se o #237 corrigir de outra forma, **vale a versão do #237** ao resolver o conflito):
+   - `acompanhamentoExternoSvoService.ts`: `emitirCredencialNaTransacao` deixa de gravar `emitida_em` (usa o padrão do banco e devolve o valor do `RETURNING`). Sem isso a role restrita `frotas_app` falha com `42501`. Nenhum privilégio foi ampliado.
+   - `scripts/validar-schema-solicitacoes-externas-svo.cjs` (validador da 263): reverte a migration da 266 antes do `down` da 263. A 266 cria `solicitacoes_svo_recuperacoes_tentativa` com FK para a credencial, e o `down` da 263 falhava com `2BP01` no CI.
 3. `segurancaHttp.ts`/`segurancaHttp.test.ts` incluem `X-Credencial-Acompanhamento` (necessário para a consulta GET da 266). Se o #237 também alterar essas linhas, manter a lista com os três cabeçalhos.
 4. Depois do merge do #237: atualizar este branch com a `develop` (`git merge origin/develop`), rodar a suíte completa e a suíte PostgreSQL, e o diff deve ficar só com os arquivos da 264.
 
@@ -91,7 +93,7 @@ Resposta (sempre `Cache-Control: private, no-store`, inclusive em erros antecipa
 
 - Política institucional para recuperar credencial perdida após a janela de 15 minutos.
 - Lista oficial de versões do aviso de privacidade; confirmação da regra de data futura e dos limites de texto.
-- Correções do #237 que afetam este fluxo (responsabilidade dele): privilégio `emitida_em`; ordem de validação da recuperação (a repetição daqui já confere a prova antes do 409); CORS.
+- Pontos do #237 tratados aqui de forma mínima (`emitida_em`, rollback da 263 no validador) e a ordem de validação da recuperação (a repetição daqui já confere a prova antes do 409); CORS da consulta GET.
 - Integrações com SCRUM-271 (honeypot, cotas) e SCRUM-272 (matriz de perfis) pendentes dos respectivos merges.
 
 ## Testes
