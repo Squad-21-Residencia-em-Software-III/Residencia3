@@ -190,15 +190,15 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
   });
 
   it('ajusta o diálogo quando o teclado reduz a área visual', () => {
-    const viewport = Object.assign(new EventTarget(), { height: 640, offsetTop: 0 });
+    const viewport = Object.assign(new EventTarget(), { height: 640, width: 390, offsetTop: 0, offsetLeft: 0 });
     vi.stubGlobal('visualViewport', viewport);
     abrir();
     const fundo = screen.getByRole('dialog').parentElement;
     expect(fundo).toHaveStyle({ height: '640px', top: '0px' });
 
-    Object.assign(viewport, { height: 290, offsetTop: 80 });
+    Object.assign(viewport, { height: 290, width: 320, offsetTop: 80, offsetLeft: 32 });
     viewport.dispatchEvent(new Event('resize'));
-    expect(fundo).toHaveStyle({ height: '290px', top: '80px' });
+    expect(fundo).toHaveStyle({ height: '290px', width: '320px', top: '80px', left: '32px' });
   });
 
   it('falha na transição: mantém km e foto e não reenvia a mesma foto', async () => {

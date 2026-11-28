@@ -104,7 +104,7 @@ export function ModalVeiculo({
   const isEdicao = Boolean(veiculoParaEditar);
 
   return (
-    <Modal title={isEdicao ? `Editar Veículo — ${veiculoParaEditar?.placa}` : 'Cadastrar Veículo'} onClose={onClose} telaInteira>
+    <Modal title={isEdicao ? `Editar Veículo — ${veiculoParaEditar?.placa}` : 'Cadastrar Veículo'} onClose={onClose}>
       <form onSubmit={handleSubmit} noValidate>
         {erro && (
           <Alert tone="danger" className="mb-4">

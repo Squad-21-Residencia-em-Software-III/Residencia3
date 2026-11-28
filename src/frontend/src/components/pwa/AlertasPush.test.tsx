@@ -312,9 +312,8 @@ describe('Operações ao mesmo tempo', () => {
   });
 
   const abrirAba = () => {
-    const { baseElement, unmount } = render(tela(), { container: document.body.appendChild(document.createElement('div')) });
-    const janelas = within(baseElement).getAllByRole('dialog', { hidden: true });
-    return { aba: within(janelas[janelas.length - 1]), unmount };
+    const { unmount } = render(tela(), { container: document.body.appendChild(document.createElement('div')) });
+    return { aba: within(screen.getByRole('dialog', { name: 'Preferências do Aplicativo' })), unmount };
   };
 
   it('ligar nas duas cria uma assinatura só', async () => {
@@ -488,7 +487,7 @@ describe('Estado do aparelho', () => {
     expect(botoes).toHaveLength(2);
     navegador.permissao = 'granted';
     fireEvent(window, new Event('focus'));
-    fireEvent.click(botoes[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Ligar alertas' }));
     await waitFor(() => expect(screen.getAllByText('Ligados')).toHaveLength(2));
     vi.unstubAllGlobals();
   });

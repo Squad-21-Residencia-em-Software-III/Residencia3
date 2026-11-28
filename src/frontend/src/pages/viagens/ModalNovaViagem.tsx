@@ -260,14 +260,14 @@ export function ModalNovaViagem({
 
   if (!autorizado) {
     return (
-      <Modal title="Agendar Viagem" onClose={onClose} telaInteira>
+      <Modal title="Agendar Viagem" onClose={onClose}>
         <Alert tone="warning">Seu perfil não tem permissão para agendar viagens.</Alert>
       </Modal>
     );
   }
 
   return (
-    <Modal title="Agendar Viagem" onClose={onClose} telaInteira>
+    <Modal title="Agendar Viagem" onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {erro && (
           <Alert tone="danger" className="mb-4">

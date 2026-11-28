@@ -196,7 +196,7 @@ export function ModalEvidenciasOdometro({ referencia, onClose }: ModalEvidencias
   const operacao = referencia.tipo_operacao === 'SVO' ? 'Coleta SVO' : 'Viagem administrativa';
 
   return (
-    <Modal title={`Fotos do odômetro · ${operacao} #${referencia.id}`} onClose={onClose} maxWidth="720px" telaInteira>
+    <Modal title={`Fotos do odômetro · ${operacao} #${referencia.id}`} onClose={onClose} maxWidth="720px">
       {erro && <Alert tone="danger">{erro}</Alert>}
       {!erro && !dados && (
         <p role="status" className="text-sm text-slate-500">

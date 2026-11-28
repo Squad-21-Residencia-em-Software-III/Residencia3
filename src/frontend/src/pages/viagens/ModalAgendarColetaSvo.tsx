@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { Alert, Button, Checkbox, IdBadge, Input, Modal, Select } from '../../components/ui';
+import { Alert, Button, Checkbox, IdBadge, Input, Modal, ModalFooter, Select } from '../../components/ui';
 import { recursoAtivo } from '../../config/recursosBackend';
 import { ApiError, mensagemDeErro } from '../../services/api/http';
 import { equipesSvoApi, type IntegranteSvo } from '../../services/api/equipesSvoApi';
@@ -283,7 +283,7 @@ export function ModalAgendarColetaSvo({
   };
 
   return (
-    <Modal gerenciarFoco title={viagemReprogramar ? 'Reagendar coleta SVO' : 'Agendar coleta SVO'} onClose={salvando ? () => {} : onClose} maxWidth="600px">
+    <Modal title={viagemReprogramar ? 'Reagendar coleta SVO' : 'Agendar coleta SVO'} onClose={onClose} bloquearFechamento={salvando} maxWidth="600px">
       <form onSubmit={handleSubmit} noValidate>
         <fieldset disabled={salvando || aguardandoDesignacoes}>
         {erroDesignacoes && <Alert tone="danger" className="mb-4">{erroDesignacoes}</Alert>}
@@ -435,7 +435,7 @@ export function ModalAgendarColetaSvo({
         )}
 
         </fieldset>
-        <div className="mt-4 flex flex-col-reverse justify-end gap-2 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
+        <ModalFooter>
           <Button variant="ghost" type="button" onClick={onClose} disabled={salvando}>
             Cancelar
           </Button>
@@ -452,7 +452,7 @@ export function ModalAgendarColetaSvo({
               {salvando ? 'Agendando...' : viagemReprogramar ? 'Reagendar coleta' : 'Agendar coleta'}
             </Button>
           )}
-        </div>
+        </ModalFooter>
       </form>
     </Modal>
   );

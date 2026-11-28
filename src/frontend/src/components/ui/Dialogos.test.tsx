@@ -34,6 +34,78 @@ function ComModal({ aoFechar = vi.fn() }: { aoFechar?: () => void }) {
 }
 
 describe('Modal', () => {
+  it('renderiza fora de regiões transformadas e isola a aplicação', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <div style={{ transform: 'translateY(0)', overflow: 'hidden' }}>
+        <ComModal />
+      </div>,
+    );
+    const abrir = screen.getByRole('button', { name: 'Abrir formulário' });
+    await user.click(abrir);
+    const dialogo = screen.getByRole('dialog', { name: 'Nova solicitação' });
+
+    expect(container).not.toContainElement(dialogo);
+    expect(dialogo.parentElement?.parentElement).toBe(document.body);
+    expect(container).toHaveAttribute('inert');
+    expect(container).toHaveAttribute('aria-hidden', 'true');
+    await user.keyboard('{Escape}');
+    expect(container).not.toHaveAttribute('inert');
+    expect(container).not.toHaveAttribute('aria-hidden');
+    expect(abrir).toHaveFocus();
+  });
+
+  it('mantém a confirmação acima do drawer e só restaura a rolagem após fechar os dois', async () => {
+    const user = userEvent.setup();
+    function PainelComConfirmacao() {
+      const [painel, setPainel] = useState(false);
+      const [confirmacao, setConfirmacao] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => { setPainel(true); setConfirmacao(true); }}>
+            Abrir painel com confirmação
+          </button>
+          <Drawer isOpen={painel} title="Painel lateral" onClose={() => setPainel(false)}>
+            <button type="button">Ação do painel</button>
+            <ConfirmDialog isOpen={confirmacao} title="Confirmar remoção" description="Deseja remover?"
+              onClose={() => setConfirmacao(false)} onConfirm={vi.fn()} />
+          </Drawer>
+        </>
+      );
+    }
+    const html = document.documentElement.style;
+    const body = document.body.style;
+    html.setProperty('overflow-y', 'scroll', 'important');
+    body.setProperty('overflow-x', 'clip');
+    try {
+      render(<PainelComConfirmacao />);
+      const abrir = screen.getByRole('button', { name: 'Abrir painel com confirmação' });
+      await user.click(abrir);
+      const confirmacao = await screen.findByRole('alertdialog', { name: 'Confirmar remoção' });
+      const painel = screen.getByText('Painel lateral').closest('[role=dialog]');
+      expect(Number(confirmacao.parentElement?.style.zIndex)).toBeGreaterThan(Number(painel?.parentElement?.style.zIndex));
+      expect(painel?.closest('[inert]')).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
+      expect(html.overflow).toBe('hidden');
+      expect(body.overflow).toBe('hidden');
+
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: 'Painel lateral' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Ação do painel' })).toHaveFocus();
+      expect(body.overflow).toBe('hidden');
+      await user.keyboard('{Escape}');
+
+      expect(html.overflowY).toBe('scroll');
+      expect(html.getPropertyPriority('overflow-y')).toBe('important');
+      expect(body.overflowX).toBe('clip');
+      expect(abrir).toHaveFocus();
+    } finally {
+      html.removeProperty('overflow-y');
+      body.removeProperty('overflow-x');
+    }
+  });
+
   it('é um diálogo nomeado pelo título e leva o foco ao primeiro campo, não ao botão de fechar', async () => {
     const user = userEvent.setup();
     render(<ComModal />);
@@ -186,6 +258,17 @@ describe('ConfirmDialog', () => {
       <ConfirmDialog isOpen variant="primary" title="Aprovar?" description="Confirma?" onClose={vi.fn()} onConfirm={vi.fn()} />,
     );
     expect(screen.getByRole('dialog', { name: 'Aprovar?' })).toBeInTheDocument();
+  });
+
+  it('preserva a confirmação aberta enquanto processa', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<ConfirmDialog isOpen isLoading title="Remover?" description="Aguarde."
+      onClose={onClose} onConfirm={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Processando...' })).toBeDisabled();
+    await user.keyboard('{Escape}');
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 

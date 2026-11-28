@@ -67,7 +67,6 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar, compacto = false
     <Modal
       title={`Iniciar Viagem #${viagem.id}`}
       onClose={onClose}
-      telaInteira
       gerenciarFoco
       ajustarAoTeclado
       bloquearFechamento={salvando}

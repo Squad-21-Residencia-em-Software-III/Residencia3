@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Button } from './Button';
 import { CloseIcon } from './icons';
 import { createPortal } from 'react-dom';
 import { cn } from '../../utils/cn';
-import { useDialogoAcessivel } from '../../hooks/useDialogoAcessivel';
+import { ContextoDialogo, useDialogoAcessivel } from '../../hooks/useDialogoAcessivel';
+import { Button } from './Button';
+import { ModalFooter } from './ModalForm';
 
 type ModalProps = {
   isOpen?: boolean;
@@ -15,7 +16,6 @@ type ModalProps = {
   hideFooter?: boolean;
   maxWidth?: string | number;
   children: ReactNode;
-  telaInteira?: boolean;
   /** Foco entra no diálogo, fica preso nele e volta para quem abriu (padrão). false só para casos antigos. */
   gerenciarFoco?: boolean;
   ajustarAoTeclado?: boolean;
@@ -37,9 +37,8 @@ export function Modal({
   hideFooter = false,
   maxWidth,
   children,
-  telaInteira = false,
   gerenciarFoco = true,
-  ajustarAoTeclado = false,
+  ajustarAoTeclado = true,
   bloquearFechamento = false,
   folhaInferior = false,
   papel = 'dialog',
@@ -56,6 +55,8 @@ export function Modal({
     // Em navegadores móveis o teclado pode reduzir só a área visual, sem mudar o layout.
     const ajustar = () => {
       elemento.style.top = `${viewport.offsetTop}px`;
+      elemento.style.left = `${viewport.offsetLeft}px`;
+      elemento.style.width = `${viewport.width}px`;
       elemento.style.height = `${viewport.height}px`;
     };
     ajustar();
@@ -65,13 +66,16 @@ export function Modal({
       viewport.removeEventListener('resize', ajustar);
       viewport.removeEventListener('scroll', ajustar);
       elemento.style.removeProperty('top');
+      elemento.style.removeProperty('left');
+      elemento.style.removeProperty('width');
       elemento.style.removeProperty('height');
     };
   }, [ajustarAoTeclado, isOpen]);
 
-  useDialogoAcessivel({
+  const contexto = useDialogoAcessivel({
     aberto: isOpen !== false,
     dialogo,
+    camada: fundo,
     aoFechar: onClose,
     fecharComEscape: !bloquearFechamento,
     gerenciarFoco,
@@ -81,24 +85,20 @@ export function Modal({
 
   const showFooter = !hideFooter && onConfirm !== undefined;
 
-  const conteudo = (
+  return createPortal(
     <div
       ref={fundo}
       className={cn(
-        'fixed inset-x-0 top-0 z-50 flex items-center justify-center bg-[#0d1b35]/45 backdrop-blur-[3px]',
-        ajustarAoTeclado
-          ? 'h-dvh px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]'
-          : 'bottom-0',
-        folhaInferior && 'items-end px-0 pb-0',
+        'fixed inset-0 z-120 flex items-center justify-center overscroll-none bg-[#0d1b35]/45 backdrop-blur-[3px]',
+        'pt-[max(0.75rem,env(safe-area-inset-top))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]',
+        folhaInferior ? 'items-end pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
       )}
       onClick={(e) => !bloquearFechamento && e.target === e.currentTarget && onClose()}
     >
       <div
         className={cn(
-          'relative mx-auto max-h-[88vh] w-[95vw] max-w-[95vw] overflow-y-auto rounded-lg bg-surface px-4 py-5 shadow-modal md:mx-4 md:max-h-[90vh] md:w-full md:max-w-[480px] md:rounded-modal md:p-8',
-          ajustarAoTeclado && 'max-h-full w-full max-w-full overscroll-contain wrap-anywhere md:max-h-full',
-          folhaInferior &&
-            'mx-auto w-full max-w-[560px] rounded-t-modal rounded-b-none md:mx-auto md:w-full md:max-w-[560px] md:rounded-b-none md:px-4 md:py-5',
+          'flex max-h-full w-full min-w-0 flex-col overflow-hidden rounded-modal border border-border bg-surface wrap-anywhere shadow-modal',
+          folhaInferior && 'rounded-b-none',
         )}
         ref={dialogo}
         tabIndex={-1}
@@ -106,35 +106,42 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={idTitulo}
         aria-describedby={descricaoId}
-        style={maxWidth ? { maxWidth } : undefined}
+        style={{ maxWidth: maxWidth ?? (folhaInferior ? '35rem' : '30rem') }}
       >
-        <button
-          type="button"
+        <div className="flex shrink-0 items-start justify-between gap-2 border-b border-divider px-4 py-2 sm:px-6">
+          <h2 id={idTitulo} className="min-w-0 self-center text-lg leading-tight font-bold tracking-tight text-text">
+            {title}
+          </h2>
+          <button
+            type="button"
+            className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary disabled:opacity-60"
+            onClick={onClose}
+            aria-label="Fechar"
+            data-fechar-dialogo
+            disabled={bloquearFechamento}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        <div
+          data-corpo-modal
           className={cn(
-            'absolute top-5 right-5 flex h-7 w-7 items-center justify-center rounded-full bg-transparent text-text-muted transition-colors hover:bg-surface-hover disabled:opacity-60',
-            ajustarAoTeclado && 'top-2 right-2 size-11 md:top-5 md:right-5',
+            'min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5',
+            folhaInferior && 'pb-[max(1rem,env(safe-area-inset-bottom))]',
           )}
-          onClick={onClose}
-          aria-label="Fechar"
-          data-fechar-dialogo
-          disabled={bloquearFechamento}
         >
-          <CloseIcon />
-        </button>
-        <h2 id={idTitulo} className="mb-4 pr-8 text-[1.0625rem] font-bold tracking-[-0.01em] text-text md:mb-6 md:text-xl">
-          {title}
-        </h2>
-        {children}
-        {showFooter && (
-          <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t border-divider pt-4 md:mt-6 md:flex-row md:gap-3 md:pt-5 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
-            <Button variant="ghost" onClick={onClose} disabled={bloquearFechamento}>
-              Cancelar
-            </Button>
-            <Button onClick={onConfirm}>{confirmLabel}</Button>
-          </div>
-        )}
+          <ContextoDialogo value={contexto}>{children}</ContextoDialogo>
+          {showFooter && (
+            <ModalFooter>
+              <Button variant="ghost" type="button" onClick={onClose} disabled={bloquearFechamento}>
+                Cancelar
+              </Button>
+              <Button type="button" onClick={onConfirm}>{confirmLabel}</Button>
+            </ModalFooter>
+          )}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
-  return telaInteira ? createPortal(conteudo, document.body) : conteudo;
 }

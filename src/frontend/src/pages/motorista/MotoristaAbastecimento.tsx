@@ -279,7 +279,6 @@ export default function MotoristaAbastecimento() {
         <Modal
           title="Últimos abastecimentos deste veículo"
           onClose={() => setHistoricoAberto(false)}
-          telaInteira
           gerenciarFoco
           ajustarAoTeclado
           folhaInferior

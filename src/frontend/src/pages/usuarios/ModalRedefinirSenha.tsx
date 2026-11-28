@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Alert, Button, Input, Modal } from '../../components/ui';
+import { Alert, Button, Input, Modal, ModalFooter } from '../../components/ui';
 import type { Usuario } from '../../types/usuario';
 import { mensagemDeErro } from '../../services/api/http';
 
@@ -91,14 +91,14 @@ export function ModalRedefinirSenha({ usuario, onClose, onSalvar }: ModalRedefin
           required
         />
 
-        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
+        <ModalFooter>
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancelar
           </Button>
           <Button type="submit" disabled={salvando}>
             {salvando ? 'Salvando...' : 'Salvar Nova Senha'}
           </Button>
-        </div>
+        </ModalFooter>
       </form>
     </Modal>
   );

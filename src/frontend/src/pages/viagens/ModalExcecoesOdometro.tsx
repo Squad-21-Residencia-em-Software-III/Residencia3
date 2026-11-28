@@ -52,7 +52,7 @@ export function ModalExcecoesOdometro({ tipo, onClose }: { tipo: TipoOperacaoVia
   }
 
   return (
-    <Modal telaInteira gerenciarFoco bloquearFechamento={salvando} onClose={onClose}
+    <Modal gerenciarFoco bloquearFechamento={salvando} onClose={onClose}
       title={tipo === 'SVO' ? 'Pedidos sem foto · SVO' : 'Pedidos sem foto · Administrativo'}>
       {erro && <Alert tone="danger" className="mb-3">{erro}</Alert>}
       {!fila && !erro && <p role="status">Carregando pedidos…</p>}

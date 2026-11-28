@@ -80,7 +80,6 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar, compacto = fal
     <Modal
       title={`Registrar Retorno da Viagem #${viagem.id}`}
       onClose={onClose}
-      telaInteira
       gerenciarFoco
       ajustarAoTeclado
       bloquearFechamento={salvando}
