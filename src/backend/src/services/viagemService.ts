@@ -4,6 +4,7 @@ import { configNotificacoes } from '../config/notificacoes';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { ORDENS_SVO_EM_CURSO, ordemSvoEmCurso } from '../constants/statusOrdemSvo';
 import { AppError } from '../errors/AppError';
+import { acompanhamentoExternoSvoModel } from '../models/acompanhamentoExternoSvoModel';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { motoristaModel } from '../models/motoristaModel';
 import { solicitacaoViagemModel } from '../models/solicitacaoViagemModel';
@@ -779,12 +780,13 @@ export const viagemService = {
       const evidenciaChegada = await registrarEvidenciaNaTransicao(trx, transicao);
 
       // Atualiza a viagem
+      const agoraConclusao = new Date();
       await trx(operacao.tabela)
         .where({ id: viagemId })
         .update({
           status: 'CONCLUIDA',
           km_final: kmFinal,
-          [operacao.colunaChegada]: new Date(),
+          [operacao.colunaChegada]: agoraConclusao,
         });
       // Prazo de guarda das fotos (12 meses) conta da conclusão real
       const conclusao = await concluirOperacao(trx, transicao);
@@ -798,6 +800,16 @@ export const viagemService = {
       await sincronizarStatus(trx, viagem.veiculo_id, viagem.motorista_id);
       await atualizarSolicitacao(trx, tipo, viagem.solicitacao_id, operacao.solicitacaoConcluida);
       if (tipo === 'SVO') {
+        const solSvo = await trx('solicitacoes_svo')
+          .where({ id: viagem.solicitacao_id })
+          .first('canal_origem');
+        if (solSvo?.canal_origem === 'EXTERNA') {
+          await acompanhamentoExternoSvoModel.registrarEncerramentoOperacional(
+            viagem.solicitacao_id,
+            agoraConclusao,
+            trx
+          );
+        }
         await trx('alertas_atraso_svo').where({ ordem_em_atraso_id: viagemId })
           .whereNull('resolvido_em').update({ resolvido_em: trx.fn.now() });
         await reavaliarFilaSvo(trx, autor.id);
@@ -868,6 +880,18 @@ export const viagemService = {
         cancelarSolicitacao ? 'CANCELADA' : operacao.solicitacaoReaberta
       );
       if (tipo === 'SVO') {
+        if (cancelarSolicitacao) {
+          const solSvo = await trx('solicitacoes_svo')
+            .where({ id: viagem.solicitacao_id })
+            .first('canal_origem');
+          if (solSvo?.canal_origem === 'EXTERNA') {
+            await acompanhamentoExternoSvoModel.registrarEncerramentoOperacional(
+              viagem.solicitacao_id,
+              new Date(),
+              trx
+            );
+          }
+        }
         await trx('alertas_atraso_svo').where({ ordem_afetada_id: viagemId })
           .whereNull('resolvido_em').update({ resolvido_em: trx.fn.now() });
         await reavaliarFilaSvo(trx, autor.id);
