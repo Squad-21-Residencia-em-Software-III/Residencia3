@@ -29,6 +29,11 @@ export const solicitacaoSvoController = {
     res.set('Cache-Control', 'private, no-store').json(await solicitacaoSvoService.buscarPorId(id));
   },
 
+  async iniciarAnalise(req: Request, res: Response): Promise<void> {
+    const { id } = idParamSchema.parse(req.params);
+    res.status(200).json(await solicitacaoSvoService.iniciarAnalise(id, usuarioAutenticado(req)));
+  },
+
   // 201 quando a ordem é gerada agora; 200 quando a confirmação já tinha sido feita
   async confirmar(req: Request, res: Response): Promise<void> {
     const { id } = idParamSchema.parse(req.params);

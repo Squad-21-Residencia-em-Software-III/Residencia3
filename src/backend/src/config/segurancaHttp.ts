@@ -20,7 +20,15 @@ export function cabecalhosDeSeguranca() {
 }
 
 export const METODOS_CORS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
-export const CABECALHOS_CORS = ['Content-Type', 'Authorization'];
+// Idempotency-Key e X-Prova-Tentativa: criação do portal SVO (SCRUM-264/266);
+// X-Credencial-Acompanhamento: consulta pública por credencial (SCRUM-266). Só os necessários, com origens restritas.
+export const CABECALHOS_CORS = [
+  'Content-Type',
+  'Authorization',
+  'Idempotency-Key',
+  'X-Prova-Tentativa',
+  'X-Credencial-Acompanhamento',
+];
 
 // Apenas as origens de CORS_ORIGIN (por ambiente), nunca "*", pois as rotas de sessão usam cookie
 export function corsPorAmbiente() {
@@ -29,6 +37,7 @@ export function corsPorAmbiente() {
     credentials: true,
     methods: METODOS_CORS,
     allowedHeaders: CABECALHOS_CORS,
+    exposedHeaders: ['Retry-After'],
     maxAge: 600,
   });
 }

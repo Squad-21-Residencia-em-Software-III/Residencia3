@@ -287,6 +287,76 @@ function configuracaoWebPush(origem: Origem) {
 
 export type ConfiguracaoWebPush = NonNullable<ReturnType<typeof configuracaoWebPush>['webPush']>;
 
+// Credenciais externas SVO (SCRUM-266): segredo e versionamento proprios, desacoplados do JWT_SECRET.
+const SEGREDO_DEV_CREDENCIAL_EXTERNA_SVO =
+  'fsph-svo-credencial-externa-desenvolvimento-local-nao-usar-em-producao-v1';
+
+function parsearSegredosAnterioresCredencialSvo(
+  valor: string | undefined,
+  versaoAtual: number
+): Readonly<Record<number, string>> {
+  if (!valor || valor.trim() === '') return Object.freeze({});
+  const mapa: Record<number, string> = {};
+  for (const entrada of valor.split(',').map((item) => item.trim()).filter(Boolean)) {
+    const idx = entrada.indexOf(':');
+    if (idx <= 0) {
+      throw new Error(
+        'CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS deve seguir o formato versao:segredo separados por vírgula'
+      );
+    }
+    const versaoTexto = entrada.slice(0, idx).trim();
+    const segredo = entrada.slice(idx + 1).trim();
+    if (!/^\d+$/.test(versaoTexto)) {
+      throw new Error('CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS deve usar versões numéricas inteiras >= 1');
+    }
+    const versao = Number(versaoTexto);
+    if (!Number.isSafeInteger(versao) || versao < 1 || versao > 1000 ||
+        versao === versaoAtual || Object.hasOwn(mapa, versao)) {
+      throw new Error(
+        'CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS deve conter versões únicas entre 1 e 1000, distintas da versão atual'
+      );
+    }
+    mapa[versao] = validarSegredo(segredo, `CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS[${versao}]`);
+  }
+  return Object.freeze(mapa);
+}
+
+function configuracaoCredencialExternaSvo(
+  origem: Origem,
+  producao: boolean,
+  recursos: ReturnType<typeof carregarRecursosOperacionais>['flags']
+) {
+  const versaoAtual = inteiroNaFaixa(
+    'CREDENCIAL_EXTERNA_SVO_KEY_VERSION',
+    origem.CREDENCIAL_EXTERNA_SVO_KEY_VERSION,
+    1,
+    1,
+    1000
+  );
+  const segredoInformado = segredoOpcional(origem, 'CREDENCIAL_EXTERNA_SVO_SECRET');
+  const recursoPublicoAtivo = recursos.portalSvo || recursos.acompanhamentoExterno;
+  if (producao && recursoPublicoAtivo && !segredoInformado) {
+    throw new Error(
+      'CREDENCIAL_EXTERNA_SVO_SECRET é obrigatória em produção quando PORTAL_SVO_ATIVO ou ACOMPANHAMENTO_EXTERNO_SVO_ATIVO está ativo'
+    );
+  }
+  const segredoAtual = segredoInformado ?? SEGREDO_DEV_CREDENCIAL_EXTERNA_SVO;
+  const segredosAnteriores = parsearSegredosAnterioresCredencialSvo(
+    origem.CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS,
+    versaoAtual
+  );
+  const chaves = [segredoAtual, ...Object.values(segredosAnteriores)];
+  if (producao && recursoPublicoAtivo &&
+      chaves.some((segredo) => segredo === SEGREDO_DEV_CREDENCIAL_EXTERNA_SVO || segredo === origem.JWT_SECRET?.trim())) {
+    throw new Error('As chaves de credencial SVO em produção devem ser dedicadas e independentes do JWT');
+  }
+  return Object.freeze({
+    versaoAtual,
+    segredoAtual,
+    segredosAnteriores,
+  });
+}
+
 export function carregarEnv(origem: Origem = process.env) {
   const nodeEnv = origem.NODE_ENV ?? 'development';
   const producao = nodeEnv === 'production';
@@ -304,6 +374,7 @@ export function carregarEnv(origem: Origem = process.env) {
 
   const requestTimeoutMs = inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000);
   const maximoMapasMs = Math.min(12000, requestTimeoutMs - 500);
+  const recursosOperacionais = carregarRecursosOperacionais(origem);
 
   return {
     nodeEnv,
@@ -335,7 +406,12 @@ export function carregarEnv(origem: Origem = process.env) {
     },
     ...configuracaoEvidenciasOdometro(origem, nodeEnv),
     ...configuracaoWebPush(origem),
-    recursosOperacionais: carregarRecursosOperacionais(origem),
+    recursosOperacionais,
+    credencialExternaSvo: configuracaoCredencialExternaSvo(
+      origem,
+      producao,
+      recursosOperacionais.flags
+    ),
   };
 }
 
