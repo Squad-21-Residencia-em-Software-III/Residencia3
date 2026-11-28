@@ -241,7 +241,7 @@ export const acompanhamentoExternoSvoModel = {
   ): Promise<boolean> {
     const resultado = await conexao.raw<{ rows: Array<{ solicitacao_id: number }> }>(
       `UPDATE solicitacoes_svo_credenciais_externas AS c
-          SET ultimo_acesso_em = GREATEST(c.ultimo_acesso_em, COALESCE(?::timestamptz, clock_timestamp())),
+          SET ultimo_acesso_em = GREATEST(c.ultimo_acesso_em, c.emitida_em, COALESCE(?::timestamptz, clock_timestamp())),
               atualizado_em = GREATEST(c.atualizado_em, COALESCE(?::timestamptz, clock_timestamp()))
          FROM solicitacoes_svo_dados_externos AS d
          JOIN solicitacoes_svo AS s ON s.id = d.solicitacao_id
@@ -332,7 +332,7 @@ export const acompanhamentoExternoSvoModel = {
   async revogarCredencial(
     solicitacaoId: number,
     motivo: string,
-    agora: Date,
+    agora: Date | undefined,
     conexao: Knex = db
   ): Promise<CredencialExternaRevogadaRow | undefined> {
     const [atualizada] = await conexao<CredencialExternaRevogadaRow>(
@@ -341,16 +341,16 @@ export const acompanhamentoExternoSvoModel = {
       .where({ solicitacao_id: solicitacaoId })
       .whereNull('revogada_em')
       .update({
-        revogada_em: agora,
+        revogada_em: conexao.raw('GREATEST(emitida_em, COALESCE(?::timestamptz, clock_timestamp()))', [agora ?? null]),
         revogada_motivo: motivo,
-        atualizado_em: conexao.raw('GREATEST(atualizado_em, ?)', [agora]),
+        atualizado_em: conexao.raw('GREATEST(atualizado_em, emitida_em, COALESCE(?::timestamptz, clock_timestamp()))', [agora ?? null]),
       })
       .returning([...COLUNAS_RETORNO_REVOGACAO]);
 
     await conexao('solicitacoes_svo_recuperacoes_tentativa')
       .where({ solicitacao_id: solicitacaoId })
       .whereNull('descartada_em')
-      .update({ descartada_em: agora });
+      .update({ descartada_em: conexao.raw('GREATEST(criado_em, COALESCE(?::timestamptz, clock_timestamp()))', [agora ?? null]) });
 
     if (atualizada) return { ...atualizada, alterada: true };
 

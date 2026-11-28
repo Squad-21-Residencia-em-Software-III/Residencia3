@@ -95,7 +95,8 @@ async function executarValidacaoPostgresScrum266() {
     await db.transaction(async (trx) => {
       await trx.raw('SET LOCAL search_path TO ??', [schema]);
 
-      const agoraBase = new Date('2026-11-27T12:00:00.000Z');
+      // Marcos operacionais são anteriores ao commit, como exige a constraint.
+      const agoraBase = new Date(Date.now() - 4 * 3_600_000);
       const protocoloA = gerarProtocoloExternoSvo(agoraBase);
       const protocoloB = gerarProtocoloExternoSvo(agoraBase);
       const chaveIdemA = 'idem-266-pg-chamado-a';
@@ -131,7 +132,7 @@ async function executarValidacaoPostgresScrum266() {
         numero_imovel: '100',
         sem_numero_imovel: false,
         descricao_ocorrencia: 'Obito domiciliar natural relatado para triagem.',
-        data_hora_ocorrencia: new Date('2026-11-27T11:00:00.000Z'),
+        data_hora_ocorrencia: new Date(agoraBase.getTime() - 60 * 60_000),
         ciencia_aviso_privacidade: true,
         versao_aviso_privacidade: 'v1.0-2026',
         criado_em: agoraBase,
@@ -173,7 +174,7 @@ async function executarValidacaoPostgresScrum266() {
         numero_imovel: '200',
         sem_numero_imovel: false,
         descricao_ocorrencia: 'Segunda ocorrencia sintetica para teste cruzado.',
-        data_hora_ocorrencia: new Date('2026-11-27T11:15:00.000Z'),
+        data_hora_ocorrencia: new Date(agoraBase.getTime() - 45 * 60_000),
         ciencia_aviso_privacidade: true,
         versao_aviso_privacidade: 'v1.0-2026',
         criado_em: agoraBase,
@@ -193,14 +194,14 @@ async function executarValidacaoPostgresScrum266() {
         '1. Emissao atomica e envelope cifrado em tabela separada (SCRUM-263 + SCRUM-266): OK'
       );
 
-      // 2. Recuperacao autenticada apos commit
+      // 2. Recuperação autenticada no schema de teste
       const recuperado =
         await acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
           {
             chaveIdempotencia: chaveIdemA,
             provaTentativa: provaTentativaA,
             payloadNormalizado: payloadA,
-            agora: new Date('2026-11-27T12:05:00.000Z'),
+            agora: new Date(),
           },
           trx
         );
@@ -214,7 +215,7 @@ async function executarValidacaoPostgresScrum266() {
               chaveIdempotencia: chaveIdemA,
               provaTentativa: gerarSegredoCredencialExterna(),
               payloadNormalizado: payloadA,
-              agora: new Date('2026-11-27T12:05:00.000Z'),
+              agora: new Date(),
             },
             trx
           ),
@@ -228,7 +229,7 @@ async function executarValidacaoPostgresScrum266() {
               chaveIdempotencia: chaveIdemA,
               provaTentativa: provaTentativaA,
               payloadNormalizado: { ...payloadA, local_ocorrencia: 'Adulterado' },
-              agora: new Date('2026-11-27T12:05:00.000Z'),
+              agora: new Date(),
             },
             trx
           ),
@@ -260,7 +261,7 @@ async function executarValidacaoPostgresScrum266() {
       assert.equal(dtoRecebida.status, 'RECEBIDA');
 
       // Inicia analise na triagem (RECEBIDA -> EM_ANALISE)
-      const inicioAnalise = new Date('2026-11-27T12:10:00.000Z');
+      const inicioAnalise = new Date(agoraBase.getTime() + 10 * 60_000);
       await acompanhamentoExternoSvoModel.registrarInicioAnalise(
         solA.id,
         2,
@@ -295,7 +296,7 @@ async function executarValidacaoPostgresScrum266() {
       assert.equal(dtoConfirmada.status, 'CONFIRMADA');
 
       // EM_ANDAMENTO apos saida efetiva
-      const saidaEm = new Date('2026-11-27T12:30:00.000Z');
+      const saidaEm = new Date(agoraBase.getTime() + 30 * 60_000);
       await trx('solicitacoes_svo').where({ id: solA.id }).update({ status: 'EM_ANDAMENTO' });
       await trx('ordens_svo')
         .where({ id: ordemA.id })
@@ -309,7 +310,7 @@ async function executarValidacaoPostgresScrum266() {
       assert.equal(dtoEmAndamento.status, 'EM_ANDAMENTO');
 
       // CONCLUIDA + fronteira de 30 dias via coluna GENERATED consulta_publica_expira_em
-      const encerradoEm = new Date('2026-11-27T15:00:00.000Z');
+      const encerradoEm = new Date(agoraBase.getTime() + 180 * 60_000);
       const limite30Dias = new Date(
         encerradoEm.getTime() + JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS
       );
@@ -361,6 +362,7 @@ async function executarValidacaoPostgresScrum266() {
         .update({
           motivo_recusa_publico: 'Encaminhado ao orgao pericial competente.',
         });
+      await acompanhamentoExternoSvoModel.registrarEncerramentoOperacional(solB.id, agoraBase, trx);
       const dtoNaoAcolhida =
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           protocoloB,
@@ -404,12 +406,7 @@ async function executarValidacaoPostgresScrum266() {
         '3. Sete estados publicos, transicao RECEBIDA->EM_ANALISE, ALOCADA em CONFIRMADA, fronteira de 30 dias e zero vazamento interno: OK'
       );
 
-      // Commit para testar concorrencia real entre conexoes separadas do PostgreSQL
-      await trx('solicitacoes_svo_credenciais_externas')
-        .where({ solicitacao_id: solB.id })
-        .update({ ultimo_acesso_em: null });
-
-      // Revogacao descarta recuperacao e bloqueia consultas concorrentes
+      // Revogação e tentativa de acesso na mesma transação da fixture.
       await acompanhamentoExternoSvoModel.revogarCredencial(
         solB.id,
         'Revogada em validacao PG',
