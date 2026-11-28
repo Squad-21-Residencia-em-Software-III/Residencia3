@@ -195,7 +195,11 @@ export function SeletorLocalMapa({
   const debounceRef = useRef<number | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const intencaoRef = useRef(0);
-  const ultimaEmissao = useRef<{ valor: string; coordenadas: CoordenadaMapa | null } | null>(null);
+  const ultimaEmissao = useRef<{
+    chaveRegistro: string | number | undefined;
+    valor: string;
+    coordenadas: CoordenadaMapa | null;
+  } | null>(null);
   const latitude = coordenadas?.latitude;
   const longitude = coordenadas?.longitude;
   const camposCoordenadas = coordenadasDigitadas ?? {
@@ -227,9 +231,9 @@ export function SeletorLocalMapa({
   }, [invalidarIntencao]);
 
   const publicarMudanca = useCallback((texto: string, coords: CoordenadaMapa | null) => {
-    ultimaEmissao.current = { valor: texto, coordenadas: coords };
+    ultimaEmissao.current = { chaveRegistro, valor: texto, coordenadas: coords };
     onChange(texto, coords);
-  }, [onChange]);
+  }, [chaveRegistro, onChange]);
 
   useEffect(() => {
     if (exibicaoMapa === 'aberto') setMapaExpandido(true);
@@ -238,7 +242,8 @@ export function SeletorLocalMapa({
   useLayoutEffect(() => {
     const emissao = ultimaEmissao.current;
     ultimaEmissao.current = null;
-    if (emissao?.valor === valor && emissao.coordenadas?.latitude === latitude &&
+    if (emissao && emissao.chaveRegistro === chaveRegistro && emissao.valor === valor &&
+        emissao.coordenadas?.latitude === latitude &&
         emissao.coordenadas?.longitude === longitude) return;
     iniciarIntencao();
     const ponto = latitude !== undefined && longitude !== undefined ? { latitude, longitude } : null;

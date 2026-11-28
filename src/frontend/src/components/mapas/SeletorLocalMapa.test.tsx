@@ -271,6 +271,28 @@ describe('SeletorLocalMapa', () => {
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 
+  it('invalida a busca quando o formulário troca de registro com o mesmo endereço emitido', async () => {
+    vi.useFakeTimers();
+
+    function Formulario() {
+      const [registro, setRegistro] = useState({ chave: 1, endereco: '' });
+      return (
+        <SeletorLocalMapa
+          chaveRegistro={registro.chave}
+          valor={registro.endereco}
+          onChange={(endereco) => setRegistro({ chave: 2, endereco })}
+        />
+      );
+    }
+
+    render(<Formulario />);
+    const endereco = screen.getByRole('combobox');
+    fireEvent.change(endereco, { target: { value: 'Avenida Augusto Franco' } });
+    await act(() => vi.advanceTimersByTimeAsync(410));
+    expect(endereco).toHaveValue('Avenida Augusto Franco');
+    expect(mapasApi.buscar).not.toHaveBeenCalled();
+  });
+
   it('ignora um GPS pendente depois de alteração externa ou desabilitação', async () => {
     let gps!: PositionCallback;
     const anterior = Object.getOwnPropertyDescriptor(navigator, 'geolocation');
