@@ -61,21 +61,27 @@ function sessao(id: number) {
 }
 
 /** Como no sistema: sem login, a janela de preferências é desmontada. */
+let solicitarLogout: () => void;
+
 function Sistema() {
   const { usuario, carregando, login, logout } = useAuth();
+  solicitarLogout = logout;
   if (carregando) return null;
   if (!usuario) return <button type="button" onClick={() => void login('x', 'y')}>Entrar</button>;
   return (
     <>
       <p>{usuario.nome}</p>
-      <button type="button" onClick={logout}>Sair</button>
       <ModalPreferenciasPwa isOpen onClose={() => undefined} />
     </>
   );
 }
 
 const abrir = () => render(<AuthProvider><Sistema /></AuthProvider>);
-const clicar = async (nome: string) => userEvent.click(await screen.findByRole('button', { name: nome }));
+const clicar = async (nome: string) => {
+  // A preferência é modal. Simula o comando de sessão externo enquanto ela está aberta.
+  if (nome === 'Sair') await act(async () => { solicitarLogout(); });
+  else await userEvent.click(await screen.findByRole('button', { name: nome }));
+};
 
 beforeEach(() => {
   vi.resetAllMocks();

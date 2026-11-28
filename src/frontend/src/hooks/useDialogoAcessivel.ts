@@ -1,115 +1,153 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
-// Diálogos abertos, do mais antigo ao de cima. Só o de cima reage a Tab e Escape: com um modal aberto sobre
-// outro (ex.: confirmação dentro de um formulário), Escape fecha só o de cima (SCRUM-306).
-const pilha: symbol[] = [];
+interface DialogoAtivo {
+  elemento: HTMLElement;
+  acionador: HTMLElement | null;
+}
+
+const pilha: DialogoAtivo[] = [];
+const isolados = new Map<HTMLElement, { inert: boolean; ariaHidden: string | null }>();
+let overflowAnterior = '';
+let observador: MutationObserver | undefined;
 
 const FOCAVEIS = [
-  'a[href]',
-  'area[href]',
-  'button',
-  'input',
-  'select',
-  'textarea',
-  'iframe',
-  'summary',
-  '[tabindex]',
-  '[contenteditable="true"]',
+  'a[href]', 'area[href]', 'button', 'input', 'select', 'textarea', 'iframe',
+  'summary', '[tabindex]', '[contenteditable="true"]',
 ].join(',');
 
-/** Controles alcançáveis pelo Tab, na ordem da página. */
+function podeReceberFoco(el: HTMLElement): boolean {
+  return el.isConnected && !el.matches(':disabled, input[type=hidden]') &&
+    !el.closest('[hidden], [inert], [aria-hidden="true"]') &&
+    (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true }));
+}
+
 export function focaveisDe(container: HTMLElement): HTMLElement[] {
-  return [...container.querySelectorAll<HTMLElement>(FOCAVEIS)].filter(
-    (el) =>
-      el.tabIndex >= 0 &&
-      !el.matches(':disabled') &&
-      !el.hidden &&
-      !el.closest('[inert]') &&
-      // Escondido por CSS (inclusive por um ancestral); sem a API, considera visível
-      (typeof el.checkVisibility === 'function' ? el.checkVisibility() : true),
-  );
+  return [...container.querySelectorAll<HTMLElement>(FOCAVEIS)]
+    .filter((el) => el.tabIndex >= 0 && podeReceberFoco(el));
+}
+
+function focarDentro(elemento: HTMLElement, preferirInicial = true) {
+  const itens = focaveisDe(elemento);
+  const inicial = preferirInicial ? elemento.querySelector<HTMLElement>('[data-foco-inicial]') : null;
+  const destino = (inicial && podeReceberFoco(inicial) ? inicial : null) ??
+    itens.find((el) => !el.hasAttribute('data-fechar-dialogo')) ?? itens[0] ?? elemento;
+  destino.focus();
+}
+
+function atualizarIsolamento(moverFoco?: () => void) {
+  const desejados = new Set<HTMLElement>();
+  let no: HTMLElement | null = pilha.at(-1)?.elemento ?? null;
+  while (no && no !== document.body) {
+    const pai: HTMLElement | null = no.parentElement;
+    if (!pai) break;
+    for (const irmao of pai.children) {
+      if (irmao !== no && irmao instanceof HTMLElement && !irmao.matches('script,style,link')) {
+        desejados.add(irmao);
+      }
+    }
+    no = pai;
+  }
+
+  for (const [elemento, anterior] of isolados) {
+    if (desejados.has(elemento)) continue;
+    elemento.toggleAttribute('inert', anterior.inert);
+    if (anterior.ariaHidden === null) elemento.removeAttribute('aria-hidden');
+    else elemento.setAttribute('aria-hidden', anterior.ariaHidden);
+    isolados.delete(elemento);
+  }
+  moverFoco?.();
+  for (const elemento of desejados) {
+    if (isolados.has(elemento)) continue;
+    isolados.set(elemento, { inert: elemento.hasAttribute('inert') || elemento.inert === true, ariaHidden: elemento.getAttribute('aria-hidden') });
+    // Atributo explícito também permite verificar o isolamento em ambientes sem a propriedade inert.
+    elemento.setAttribute('inert', '');
+    elemento.setAttribute('aria-hidden', 'true');
+  }
 }
 
 interface Opcoes {
   aberto: boolean;
   dialogo: RefObject<HTMLElement | null>;
   aoFechar: () => void;
-  /** false: Escape não fecha (ex.: envio em andamento). */
   fecharComEscape?: boolean;
-  /** false: não move nem prende o foco (compatibilidade com usos antigos). */
+  /** false preserva um foco inicial já posicionado pelo consumidor. */
   gerenciarFoco?: boolean;
 }
 
-/**
- * Comportamento de diálogo modal acessível (WCAG 2.4.3, 2.1.2 e padrão de diálogo da WAI-ARIA):
- * foco vai para dentro ao abrir (no elemento com `data-foco-inicial`, ou no primeiro controle que não seja o de
- * fechar), Tab e Shift+Tab ficam presos no diálogo, Escape fecha o de cima, e ao fechar o foco volta para quem
- * abriu. Se esse elemento não existe mais, vai para o conteúdo principal, em vez de se perder no topo da página.
- */
 export function useDialogoAcessivel({ aberto, dialogo, aoFechar, fecharComEscape = true, gerenciarFoco = true }: Opcoes) {
-  const fechar = useRef(aoFechar);
-  const escape = useRef(fecharComEscape);
-  useEffect(() => {
-    fechar.current = aoFechar;
-    escape.current = fecharComEscape;
+  const opcoes = useRef({ aoFechar, fecharComEscape, gerenciarFoco });
+  useLayoutEffect(() => {
+    opcoes.current = { aoFechar, fecharComEscape, gerenciarFoco };
   });
 
-  useEffect(() => {
-    if (!aberto) return;
-    const id = Symbol('dialogo');
-    pilha.push(id);
-    const acionador = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const noTopo = () => pilha[pilha.length - 1] === id;
-
-    if (gerenciarFoco && dialogo.current) {
-      const elemento = dialogo.current;
-      const itens = focaveisDe(elemento);
-      const inicial =
-        elemento.querySelector<HTMLElement>('[data-foco-inicial]') ??
-        itens.find((el) => !el.hasAttribute('data-fechar-dialogo')) ??
-        itens[0] ??
-        elemento;
-      inicial.focus();
+  useLayoutEffect(() => {
+    const elemento = dialogo.current;
+    if (!aberto || !elemento) return;
+    const ativo: DialogoAtivo = {
+      elemento,
+      acionador: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    };
+    if (!pilha.length) {
+      overflowAnterior = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      observador = new MutationObserver(() => atualizarIsolamento());
+      observador.observe(document.body, { childList: true, subtree: true });
     }
+    const filhoAberto = pilha.findIndex((outro) => elemento.contains(outro.elemento));
+    if (filhoAberto < 0) pilha.push(ativo);
+    else pilha.splice(filhoAberto, 0, ativo);
+    const noTopo = () => pilha.at(-1) === ativo;
 
+    atualizarIsolamento(() => {
+      if (noTopo() && (opcoes.current.gerenciarFoco || !elemento.contains(document.activeElement))) {
+        focarDentro(elemento, opcoes.current.gerenciarFoco);
+      }
+    });
+    const aoFocar = (evento: FocusEvent) => {
+      if (noTopo() && evento.target instanceof Node && !elemento.contains(evento.target)) {
+        focarDentro(elemento, false);
+      }
+    };
     const aoPressionar = (evento: KeyboardEvent) => {
       if (!noTopo()) return;
       if (evento.key === 'Escape') {
-        if (!escape.current) return;
         evento.stopPropagation();
-        fechar.current();
+        if (opcoes.current.fecharComEscape) opcoes.current.aoFechar();
         return;
       }
-      if (evento.key !== 'Tab' || !gerenciarFoco || !dialogo.current) return;
-      const itens = focaveisDe(dialogo.current);
-      if (itens.length === 0) {
-        evento.preventDefault();
-        dialogo.current.focus();
-        return;
-      }
+      if (evento.key !== 'Tab') return;
+      const itens = focaveisDe(elemento);
       const atual = itens.indexOf(document.activeElement as HTMLElement);
-      const primeiro = itens[0];
-      const ultimo = itens[itens.length - 1];
-      // Saindo pelas pontas, ou com o foco fora do diálogo: volta para dentro
       if (atual === -1 || (evento.shiftKey && atual === 0) || (!evento.shiftKey && atual === itens.length - 1)) {
         evento.preventDefault();
-        (evento.shiftKey ? ultimo : primeiro).focus();
+        (itens[evento.shiftKey ? itens.length - 1 : 0] ?? elemento).focus();
       }
     };
+    document.addEventListener('focusin', aoFocar);
     document.addEventListener('keydown', aoPressionar);
-
     return () => {
+      document.removeEventListener('focusin', aoFocar);
       document.removeEventListener('keydown', aoPressionar);
-      const posicao = pilha.indexOf(id);
-      if (posicao !== -1) pilha.splice(posicao, 1);
-      if (!gerenciarFoco) return;
-      if (acionador?.isConnected && !acionador.closest('[inert]')) {
-        acionador.focus();
-      } else {
-        // Quem abriu sumiu (ex.: linha removida da lista): o foco vai para o conteúdo principal
-        document.getElementById('conteudo')?.focus();
+      const estavaNoTopo = noTopo();
+      pilha.splice(pilha.indexOf(ativo), 1);
+      if (!pilha.length) {
+        observador?.disconnect();
+        observador = undefined;
+        document.body.style.overflow = overflowAnterior;
       }
+      atualizarIsolamento(() => {
+        if (!estavaNoTopo) return;
+        const superior = pilha.at(-1)?.elemento;
+        const acionador = ativo.acionador;
+        if (acionador && (!superior || superior.contains(acionador)) && podeReceberFoco(acionador)) {
+          acionador.focus();
+        } else if (superior && !superior.contains(document.activeElement)) {
+          focarDentro(superior, false);
+        } else if (!superior) {
+          document.getElementById('conteudo')?.focus();
+        }
+      });
     };
-  }, [aberto, gerenciarFoco, dialogo]);
+  }, [aberto, dialogo]);
 }

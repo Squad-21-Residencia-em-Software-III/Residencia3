@@ -37,12 +37,16 @@ export function Drawer({
   useEffect(() => {
     if (isOpen) {
       setMounted(true);
+      let segundoFrame: number | undefined;
       const raf = requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+        segundoFrame = requestAnimationFrame(() => {
           setVisible(true);
         });
       });
-      return () => cancelAnimationFrame(raf);
+      return () => {
+        cancelAnimationFrame(raf);
+        if (segundoFrame !== undefined) cancelAnimationFrame(segundoFrame);
+      };
     } else {
       setVisible(false);
       const timer = setTimeout(() => {
@@ -56,28 +60,16 @@ export function Drawer({
   // início da animação de fechar
   useDialogoAcessivel({ aberto: mounted && isOpen, dialogo: painel, aoFechar: onClose });
 
-  // Previne rolagem do fundo quando aberto
-  useEffect(() => {
-    if (mounted) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [mounted]);
-
   if (!mounted) return null;
 
   const conteudo = (
-    <div className="fixed inset-0 z-50 flex justify-end overflow-hidden">
+    <div className="pointer-events-none fixed inset-0 z-50 flex justify-end overflow-hidden" inert={!isOpen} aria-hidden={isOpen ? undefined : true}>
       {/* Backdrop com transição fade-in / fade-out suave */}
       <div
         className={cn(
           'fixed inset-0 transition-opacity duration-300',
           telaInteira ? 'bg-[#0d1b35]/45 backdrop-blur-[3px]' : 'bg-slate-950/40 backdrop-blur-[2px]',
-          visible ? 'opacity-100 ease-out' : 'opacity-0 ease-in pointer-events-none'
+          visible ? 'pointer-events-auto opacity-100 ease-out' : 'opacity-0 ease-in pointer-events-none'
         )}
         onClick={onClose}
         aria-hidden="true"
@@ -95,7 +87,7 @@ export function Drawer({
           'relative z-10 flex h-full w-full flex-col bg-surface sm:w-auto',
           'border-l border-divider shadow-[-16px_0_48px_rgba(0,0,0,0.16)]',
           'transform-gpu transition-transform duration-350 ease-[cubic-bezier(0.16,1,0.3,1)]',
-          visible ? 'translate-x-0' : 'translate-x-full pointer-events-none',
+          visible ? 'pointer-events-auto translate-x-0' : 'translate-x-full pointer-events-none',
           width,
           className
         )}
