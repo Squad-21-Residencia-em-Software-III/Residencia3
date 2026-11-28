@@ -1,0 +1,75 @@
+/*
+ * Preferências de acessibilidade (SCRUM-305) e base de teclado e leitores de tela (SCRUM-306).
+ * Os atributos vêm de utils/preferenciasAcessibilidade.ts. Ordem de precedência, de baixo para cima:
+ *   tema (claro/escuro, SCRUM-303) → paleta de cores (styles/paletas.css, SCRUM-307) → alto contraste (este arquivo).
+ * O alto contraste deriva dos tokens do tema (--color-text e --color-surface), por isso vale em qualquer base.
+ */
+
+/* Escala de texto: o rem inteiro acompanha, sem mexer no zoom do navegador, que continua funcionando por cima */
+html {
+  font-size: calc(100% * var(--escala-texto, 1));
+}
+
+/* Alto contraste: texto secundário com a cor do texto principal, bordas e divisórias bem visíveis */
+:root[data-contraste='alto'] {
+  --color-text-secondary: var(--color-text);
+  --color-text-strong: var(--color-text);
+  --color-text-muted: color-mix(in oklab, var(--color-text) 88%, var(--color-surface));
+  --color-text-subtle: color-mix(in oklab, var(--color-text) 80%, var(--color-surface));
+  --color-border: color-mix(in oklab, var(--color-text) 60%, var(--color-surface));
+  --color-border-strong: color-mix(in oklab, var(--color-text) 75%, var(--color-surface));
+  --color-divider: color-mix(in oklab, var(--color-text) 45%, var(--color-surface));
+  --color-row-divider: color-mix(in oklab, var(--color-text) 40%, var(--color-surface));
+  --color-card-border: color-mix(in oklab, var(--color-text) 60%, var(--color-surface));
+  /* Cinzas do Tailwind usados como texto de apoio (ex.: text-slate-400) */
+  --color-slate-400: color-mix(in oklab, var(--color-text) 78%, var(--color-surface));
+  --color-slate-500: color-mix(in oklab, var(--color-text) 85%, var(--color-surface));
+  --color-slate-600: color-mix(in oklab, var(--color-text) 92%, var(--color-surface));
+}
+
+:root[data-contraste='alto'] :focus-visible {
+  outline: 3px solid var(--color-text);
+  outline-offset: 3px;
+}
+
+/* Movimento reduzido: pela escolha na seção ou pelo aparelho. Transições continuam acontecendo (eventos de fim
+   disparam), só que instantâneas */
+:root[data-movimento='reduzido'] *,
+:root[data-movimento='reduzido'] *::before,
+:root[data-movimento='reduzido'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Cores forçadas do sistema (ex.: Alto Contraste do Windows): o navegador troca as cores e some com sombras e
+   anéis; o foco ganha contorno próprio, e os selos de status têm borda transparente, que passa a aparecer */
+@media (forced-colors: active) {
+  :root :focus-visible,
+  :root[data-contraste='alto'] :focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: 3px;
+  }
+
+  .barra-indicador {
+    forced-color-adjust: none;
+    background-color: Canvas;
+    border: 1px solid CanvasText;
+  }
+
+  .barra-indicador > div {
+    background-color: Highlight;
+  }
+}

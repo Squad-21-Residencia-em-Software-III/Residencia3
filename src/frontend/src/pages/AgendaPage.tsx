@@ -183,10 +183,10 @@ export default function AgendaPage() {
             key={`${modoVisualizacao}-${dataReferenciaIso}`}
             className="animate-agenda-fade"
           >
-            <span className="block text-center font-display text-[14px] font-bold text-text md:inline md:text-left md:text-base">
+            <span className="block text-center font-display text-[0.875rem] font-bold text-text md:inline md:text-left md:text-base">
               {tituloPrincipal}
             </span>
-            <span className="mt-0.5 block text-center text-[11px] text-text-muted md:mt-0 md:ml-3 md:inline md:text-left md:text-xs">
+            <span className="mt-0.5 block text-center text-[0.6875rem] text-text-muted md:mt-0 md:ml-3 md:inline md:text-left md:text-xs">
               {totalViagensHoje} {totalViagensHoje === 1 ? 'viagem' : 'viagens'}
             </span>
           </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cva } from 'class-variance-authority';
@@ -14,6 +14,9 @@ import { ModalPreferenciasPwa } from '../pwa/ModalPreferenciasPwa';
 import { SinoNotificacoes } from './SinoNotificacoes';
 import type { NotificacaoItem } from './SinoNotificacoes';
 import { cn } from '../../utils/cn';
+import { ID_CONTEUDO, SaltoConteudo } from '../acessibilidade/SaltoConteudo';
+import { useDialogoAcessivel } from '../../hooks/useDialogoAcessivel';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 export type NavItem = {
   path: string;
@@ -77,6 +80,14 @@ export function AppLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [preferenciasOpen, setPreferenciasOpen] = useState(false);
   const location = useLocation();
+  const menu = useRef<HTMLElement>(null);
+  const idMenu = useId();
+  // Mesmo ponto de quebra do md do Tailwind (em media query, rem segue o tamanho padrão do navegador)
+  const telaLarga = useMediaQuery('(min-width: 48rem)', true);
+  const menuSobreposto = !telaLarga && mobileOpen;
+  // No celular, o menu aberto se comporta como diálogo: foco dentro, o resto da página inerte, Escape fecha e o
+  // foco volta ao botão
+  useDialogoAcessivel({ aberto: menuSobreposto, dialogo: menu, aoFechar: () => setMobileOpen(false) });
 
   const isHomePage = location.pathname === '/' || location.pathname === '/inicio';
   const isCompact = collapsed && !mobileOpen;
@@ -92,16 +103,26 @@ export function AppLayout({
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-page-bg">
+      <SaltoConteudo />
       {/* Backdrop para fechar o menu ao clicar fora no mobile */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-95 bg-navy-900/55 backdrop-blur-xs md:hidden"
           onClick={() => setMobileOpen(false)}
           aria-hidden="true"
+          data-fundo-dialogo
         />
       )}
 
       <aside
+        ref={menu}
+        id={idMenu}
+        role={menuSobreposto ? 'dialog' : undefined}
+        aria-modal={menuSobreposto ? true : undefined}
+        aria-label={menuSobreposto ? 'Menu de navegação' : undefined}
+        tabIndex={menuSobreposto ? -1 : undefined}
+        // Fechado no celular, fica fora da tela: também fora do Tab e dos leitores de tela
+        inert={!telaLarga && !mobileOpen ? true : undefined}
         className={cn(
           'fixed inset-y-0 left-0 z-100 flex h-full w-[270px] max-w-[82vw] shrink-0 flex-col border-r border-white/6 bg-sidebar shadow-2xl transition-all duration-250 ease-out md:relative md:z-auto md:max-w-none md:translate-x-0 md:shadow-none',
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
@@ -124,12 +145,15 @@ export function AppLayout({
             className="ml-2 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/8 text-white transition-colors hover:bg-white/16 md:hidden"
             onClick={() => setMobileOpen(false)}
             aria-label="Fechar menu"
+            data-fechar-dialogo
           >
             <CloseIcon size={18} />
           </button>
         </div>
 
-        {/* Botão Circular de Recolher: topo colado na base da Topbar (60px) e centro em 72px */}
+        {/* Botão Circular de Recolher: topo colado na base da Topbar (60px) e centro em 72px. Só na tela larga:
+            escondido por CSS, ainda receberia o foco do menu no celular */}
+        {telaLarga && (
         <button
           type="button"
           className="absolute top-[60px] -right-3 z-10 hidden h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-border-strong bg-white p-0 leading-none text-text shadow-md md:flex"
@@ -146,6 +170,7 @@ export function AppLayout({
             <ChevronLeftIcon size={12} />
           </span>
         </button>
+        )}
 
         <nav
           className={cn(
@@ -193,6 +218,8 @@ export function AppLayout({
                   )
                 }
                 title={isCompact ? label : undefined}
+                // Recolhido, só o ícone aparece: o nome (e o contador) continua para leitores de tela
+                aria-label={isCompact ? (badge !== undefined ? `${label}, ${badge}` : label) : undefined}
               >
                 {({ isActive }) => (
                   <>
@@ -281,6 +308,8 @@ export function AppLayout({
               className="-ml-1 inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-surface p-0 text-text transition-all hover:border-border-strong hover:bg-surface-hover active:scale-95 md:hidden"
               onClick={() => setMobileOpen(true)}
               aria-label="Abrir menu de navegação"
+              aria-expanded={mobileOpen}
+              aria-controls={idMenu}
               title="Abrir menu"
             >
               <MenuIcon size={20} />
@@ -327,7 +356,7 @@ export function AppLayout({
             </button>
           </div>
         </header>
-        <main className="min-w-0 flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+        <main id={ID_CONTEUDO} tabIndex={-1} className="min-w-0 flex-1 overflow-y-auto px-3 py-4 outline-none md:px-6 md:py-6">
           {children}
         </main>
       </div>

@@ -326,7 +326,7 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                   aria-describedby={erroMotivo ? 'motivo-recusa-svo-erro' : undefined}
                   maxLength={MAX_JUSTIFICATIVA_RECUSA_SVO}
                   rows={3}
-                  className="bg-white text-[13px]"
+                  className="bg-white text-[0.8125rem]"
                   disabled={enviando}
                 />
                 {erroMotivo && (
@@ -339,7 +339,7 @@ export function DrawerTriagemSvo({ solicitacaoId, onClose, onAtualizada }: Drawe
                   </p>
                 )}
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[0.6875rem] text-slate-500">
                     {motivo.length}/{MAX_JUSTIFICATIVA_RECUSA_SVO} caracteres
                   </span>
                   <div className="flex gap-2">

@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Calendar } from 'lucide-react';
 import { EmptyState } from '../../components/ui';
 import type { LinhaRecursoAgenda } from '../../types/agenda';
-import type { StatusViagem, Viagem } from '../../types/viagem';
+import type { Viagem } from '../../types/viagem';
 import { alocarSubfaixasBlocos, obterResumoTrajeto } from '../../utils/agenda';
 import { cn } from '../../utils/cn';
+import { BLOCO_STATUS, LegendaStatusAgenda, MARCADOR_STATUS, rotuloStatusAgenda } from './statusAgenda';
 
 interface AgendaGanttHojeProps {
   linhas: LinhaRecursoAgenda[];
@@ -21,28 +22,6 @@ const PADDING_LINHA_PX = 8;
 const TOTAL_HORAS = HORA_FIM - HORA_INICIO;
 const LARGURA_TOTAL_GRADE = TOTAL_HORAS * HORA_LARGURA_PX;
 
-const GANTT_STATUS_STYLES: Record<StatusViagem, { block: string; dot: string }> = {
-  CONCLUIDA: {
-    block: 'border-[#cbd5e1] bg-[#f8fafc] text-[#475569] hover:border-[#64748b]',
-    dot: 'bg-[#94a3b8]',
-  },
-  EM_ANDAMENTO: {
-    block: 'border-[#93c5fd] bg-[#eff6ff] text-[#1d4ed8] hover:border-[#2563eb]',
-    dot: 'bg-[#1d4ed8]',
-  },
-  NO_LOCAL: {
-    block: 'border-[#fcd34d] bg-[#fffbeb] text-[#b45309] hover:border-[#d97706]',
-    dot: 'bg-[#d97706]',
-  },
-  AGENDADA: {
-    block: 'border-[#c4b5fd] bg-[#faf5ff] text-[#6d28d9] hover:border-[#7c3aed]',
-    dot: 'bg-[#7c3aed]',
-  },
-  CANCELADA: {
-    block: 'border-[#fecaca] bg-[#fef2f2] text-[#991b1b] opacity-75 hover:border-[#dc2626]',
-    dot: 'bg-[#dc2626]',
-  },
-};
 
 function obterMinutosAtuais(): number {
   const agora = new Date();
@@ -146,7 +125,7 @@ export function AgendaGanttHoje({
     <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-card">
       {/* ── Linha de Horas Fixa no Topo (00:00 às 23:00) ── */}
       <div className="relative z-5 flex shrink-0 border-b border-border bg-surface-alt">
-        <div className="flex h-[38px] w-[120px] shrink-0 items-center border-r border-border px-2 font-display text-[10px] font-bold tracking-[0.05em] text-text-muted uppercase md:w-[190px] md:px-4 md:text-[11px]">
+        <div className="flex h-[38px] w-[120px] shrink-0 items-center border-r border-border px-2 font-display text-[0.625rem] font-bold tracking-[0.05em] text-text-muted uppercase md:w-[190px] md:px-4 md:text-[0.6875rem]">
           Veículo
         </div>
         <div className="flex-1 overflow-x-hidden" ref={headerScrollRef}>
@@ -155,7 +134,7 @@ export function AgendaGanttHoje({
               <div
                 key={h}
                 className={cn(
-                  'flex h-[38px] w-[80px] shrink-0 items-center border-r border-divider pl-2 text-[11px] font-semibold',
+                  'flex h-[38px] w-[80px] shrink-0 items-center border-r border-divider pl-2 text-[0.6875rem] font-semibold',
                   h < 7 || h >= 17 ? 'bg-surface/40 text-text-muted/80' : 'text-text-muted',
                 )}
               >
@@ -185,19 +164,19 @@ export function AgendaGanttHoje({
                 style={{ height: `${alturaLinha}px` }}
               >
                 <div
-                  className="truncate font-display text-[11px] font-bold text-text md:text-xs"
+                  className="truncate font-display text-[0.6875rem] font-bold text-text md:text-xs"
                   title={linha.modelo}
                 >
                   {linha.modelo}
                 </div>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <span className="font-mono text-[10px] font-semibold text-text-muted md:text-[11px]">
+                  <span className="font-mono text-[0.625rem] font-semibold text-text-muted md:text-[0.6875rem]">
                     {linha.placa}
                   </span>
-                  <span className="text-[10px] text-text-muted">·</span>
+                  <span className="text-[0.625rem] text-text-muted">·</span>
                   <span
                     className={cn(
-                      'truncate text-[11px]',
+                      'truncate text-[0.6875rem]',
                       emViagem ? 'font-semibold text-primary' : 'text-text-muted',
                     )}
                     title={subtituloSecundario}
@@ -250,7 +229,7 @@ export function AgendaGanttHoje({
                 className="pointer-events-none absolute top-0 bottom-0 z-10 flex flex-col items-center"
                 style={{ left: `${agoraLeft}px` }}
               >
-                <div className="rounded-sm bg-primary px-1.5 py-[1px] text-[10px] font-bold whitespace-nowrap text-white shadow-[0_2px_4px_rgba(21,84,184,0.3)]">
+                <div className="rounded-sm bg-primary px-1.5 py-[1px] text-[0.625rem] font-bold whitespace-nowrap text-white shadow-[0_2px_4px_rgba(21,84,184,0.3)]">
                   {formatarMinutosParaHora(agoraMinutos)}
                 </div>
                 <div className="w-0.5 flex-1 bg-primary shadow-[0_0_4px_rgba(21,84,184,0.4)]" />
@@ -266,7 +245,7 @@ export function AgendaGanttHoje({
                 const width = Math.max(duracaoHoras * HORA_LARGURA_PX, 56);
                 const top = topLinha + PADDING_LINHA_PX / 2 + bloco.faixa * ALTURA_FAIXA_PX;
 
-                const statusStyles = GANTT_STATUS_STYLES[viagem.status];
+                const rotuloStatus = rotuloStatusAgenda(viagem.status);
                 const resumoTrajeto = obterResumoTrajeto(viagem);
                 const faixaHorario = `${bloco.horaInicioLabel}–${bloco.horaFimLabel}`;
 
@@ -277,7 +256,7 @@ export function AgendaGanttHoje({
                     onClick={() => onSelecionarViagem(viagem)}
                     className={cn(
                       'absolute z-3 flex cursor-pointer items-center overflow-hidden rounded-lg border-[1.5px] px-3 text-left shadow-[0_1px_3px_rgba(13,27,53,0.08)] transition-all duration-150 hover:z-8 hover:-translate-y-px hover:shadow-[0_4px_10px_rgba(13,27,53,0.15)]',
-                      statusStyles.block,
+                      BLOCO_STATUS[viagem.status],
                     )}
                     style={{
                       top: `${top + 3}px`,
@@ -285,18 +264,20 @@ export function AgendaGanttHoje({
                       left: `${left + 2}px`,
                       width: `${width - 4}px`,
                     }}
-                    title={`#${viagem.id} (${viagem.tipo_operacao}): ${resumoTrajeto} (${faixaHorario})`}
+                    title={`#${viagem.id} (${viagem.tipo_operacao}) · ${rotuloStatus}: ${resumoTrajeto} (${faixaHorario})`}
                   >
                     <div className="flex w-full min-w-0 items-center gap-2">
                       <span
-                        className={cn('h-[7px] w-[7px] shrink-0 rounded-[2px]', statusStyles.dot)}
+                        className={cn('size-2 shrink-0 rounded-[2px]', MARCADOR_STATUS[viagem.status])}
+                        aria-hidden="true"
                       />
+                      <span className="sr-only">{rotuloStatus}: </span>
                       <div className="flex min-w-0 flex-col leading-[1.2]">
-                        <span className="truncate font-display text-[11px] font-bold md:text-xs">
+                        <span className="truncate font-display text-[0.6875rem] font-bold md:text-xs">
                           {resumoTrajeto}
                         </span>
                         {width >= 90 && (
-                          <span className="truncate text-[10px] opacity-75 md:text-[11px]">
+                          <span className="truncate text-[0.625rem] opacity-75 md:text-[0.6875rem]">
                             {faixaHorario}
                             {bloco.semPrevisaoFim ? ' · sem previsão de retorno' : ''}
                           </span>
@@ -313,23 +294,10 @@ export function AgendaGanttHoje({
 
       {/* ── Rodapé de Legenda de Status ── */}
       <div className="flex shrink-0 flex-col-reverse items-stretch justify-between gap-2 border-t border-border bg-surface-alt px-3 py-2.5 md:flex-row md:items-center md:px-5">
-        <span className="text-[11px] text-text-muted md:text-xs">
+        <span className="text-[0.6875rem] text-text-muted md:text-xs">
           Grade 24h (SVO contínuo · 07h–17h comercial) · Clique em um bloco para ver detalhes
         </span>
-        <div className="flex flex-wrap items-center justify-start gap-2.5 md:gap-4">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-            <span className="h-[9px] w-[9px] rounded-[2px] bg-[#2563eb]" />
-            <span>Em Andamento</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-            <span className="h-[9px] w-[9px] rounded-[2px] bg-[#7c3aed]" />
-            <span>Agendada</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-            <span className="h-[9px] w-[9px] rounded-[2px] bg-[#94a3b8]" />
-            <span>Concluída</span>
-          </div>
-        </div>
+        <LegendaStatusAgenda />
       </div>
     </div>
   );

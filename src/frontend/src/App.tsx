@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { BrowserRouter, useLocation } from 'react-router-dom'
+import { AcessibilidadeProvider } from './contexts/AcessibilidadeContext'
 import { AuthProvider } from './contexts/AuthContext'
 import { NotificacoesProvider } from './contexts/NotificacoesContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -7,7 +8,15 @@ import { BridgeNotificacoesSw } from './components/notificacoes/BridgeNotificaco
 import { ToastNotificacao } from './components/notificacoes/ToastNotificacao'
 import { BannerOffline } from './components/pwa/BannerOffline'
 import { PromptAtualizacaoPwa } from './components/pwa/PromptAtualizacaoPwa'
+import { BotaoAcessibilidade } from './components/acessibilidade/BotaoAcessibilidade'
+import { SaltoConteudo } from './components/acessibilidade/SaltoConteudo'
+import { AcoesPublicasContext } from './components/layout/AcoesPublicasContext'
 import { AppRoutes } from './routes'
+
+const acoesPublicas = {
+  saltoConteudo: <SaltoConteudo />,
+  preferencias: <BotaoAcessibilidade superficie="clara" />,
+}
 
 export default function App() {
   return (
@@ -16,7 +25,11 @@ export default function App() {
         <SessaoPorRota>
           <NotificacoesProvider>
             <BannerOffline />
-            <AppRoutes />
+            <AcessibilidadeProvider>
+              <AcoesPublicasContext.Provider value={acoesPublicas}>
+                <AppRoutes />
+              </AcoesPublicasContext.Provider>
+            </AcessibilidadeProvider>
             <BridgeNotificacoesSw />
             <ToastNotificacao />
             <PromptAtualizacaoPwa />

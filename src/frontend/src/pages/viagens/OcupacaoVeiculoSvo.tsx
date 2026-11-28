@@ -42,20 +42,21 @@ export function OcupacaoVeiculoSvoPainel({ veiculo, apenasInformativo = false }:
 
   return (
     <div className="mt-3.5" data-testid="ocupacao-svo">
-      <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="font-medium text-slate-700">Ocupação atual</span>
         <Badge tone={toneOcupacao(veiculo)}>{rotuloOcupacao(veiculo)}</Badge>
       </div>
       <div
-        className="h-2 w-full overflow-hidden rounded-full bg-slate-100"
+        className="barra-indicador h-2 w-full overflow-hidden rounded-full bg-slate-100"
         role="progressbar"
         aria-label="Ocupação do veículo"
         aria-valuemin={0}
         aria-valuemax={veiculo.capacidade_maxima}
         aria-valuenow={veiculo.capacidade_utilizada}
+        aria-valuetext={rotuloOcupacao(veiculo)}
       >
         <div
-          className={bloqueio ? 'h-full bg-rose-500' : 'h-full bg-emerald-500'}
+          className={bloqueio && !apenasInformativo ? 'h-full bg-danger' : 'h-full bg-primary'}
           style={{ width: `${percentual}%` }}
         />
       </div>

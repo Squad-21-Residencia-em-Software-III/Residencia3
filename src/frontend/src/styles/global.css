@@ -12,7 +12,7 @@
   --color-text: #0e172e;
   --color-text-secondary: #2a3d54;
   --color-text-strong: #334155;
-  --color-text-muted: #8da2b5;
+  --color-text-muted: #526679;
   --color-text-subtle: #94a3b8;
 
   --color-success: #15803d;
@@ -139,7 +139,8 @@
 
   body {
     font-family: var(--font-sans);
-    font-size: 14px;
+    /* rem, para acompanhar a escala de texto (SCRUM-305) */
+    font-size: 0.875rem;
     color: var(--color-text-secondary);
     background: var(--color-page-bg);
     -webkit-font-smoothing: antialiased;
@@ -193,12 +194,12 @@
 
 /* Motorista no celular (MotoristaLayout): altura visível da tela e espaço da barra inferior. */
 [data-layout='motorista'] {
-  --altura-barra-inferior: calc(60px + env(safe-area-inset-bottom, 0px));
+  --altura-barra-inferior: calc(3.75rem + env(safe-area-inset-bottom, 0px));
 }
 
 @media (max-height: 500px) {
   [data-layout='motorista'] {
-    --altura-barra-inferior: calc(48px + env(safe-area-inset-bottom, 0px));
+    --altura-barra-inferior: calc(3rem + env(safe-area-inset-bottom, 0px));
   }
 }
 

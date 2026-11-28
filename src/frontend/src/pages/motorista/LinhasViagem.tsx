@@ -15,7 +15,7 @@ interface LinhasViagemProps {
 export function LinhasViagem({ titulo, viagens, onAbrir, rodape }: LinhasViagemProps) {
   return (
     <section aria-label={titulo}>
-      <h2 className="mb-2 px-1 text-[15px] font-bold">{titulo}</h2>
+      <h2 className="mb-2 px-1 text-[0.9375rem] font-bold">{titulo}</h2>
       <Card className="overflow-hidden">
         <ul className="m-0 list-none divide-y divide-divider p-0">
           {viagens.map((v) => (
@@ -26,7 +26,7 @@ export function LinhasViagem({ titulo, viagens, onAbrir, rodape }: LinhasViagemP
                 onClick={() => onAbrir(v)}
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-semibold text-text">
+                  <span className="block truncate text-[0.9375rem] font-semibold text-text">
                     {v.destino ?? 'Destino não informado'}
                   </span>
                   <span className="block truncate font-sans text-sm text-neutral">

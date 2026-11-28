@@ -154,7 +154,7 @@ export function DrawerDetalhesVeiculo({
               </h2>
               <span
                 className={cn(
-                  'rounded px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase',
+                  'rounded px-2 py-0.5 text-[0.625rem] font-bold tracking-wide uppercase',
                   veiculoState.tipo_frota === 'SVO'
                     ? 'bg-purple-bg text-purple'
                     : 'bg-blue-50 text-blue-700',
@@ -203,7 +203,7 @@ export function DrawerDetalhesVeiculo({
         {/* 1. Barra de Ações Rápidas (só as que o perfil pode usar neste veículo) */}
         {(onNovoAbastecimento || onNovaMulta) && (
           <div>
-            <div className="mb-2.5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+            <div className="mb-2.5 text-[0.6875rem] font-bold tracking-wider text-slate-400 uppercase">
               Ações Rápidas do Veículo
             </div>
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -295,7 +295,7 @@ export function DrawerDetalhesVeiculo({
         {/* 3. Indicadores de Custo Acumulado */}
         {(veManutencoes || veAbastecimentos) && (
           <div className="rounded-xl border border-border bg-surface p-4 shadow-2xs">
-            <div className="mb-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+            <div className="mb-3 text-[0.6875rem] font-bold tracking-wider text-slate-400 uppercase">
               Investimento no Veículo
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -312,7 +312,7 @@ export function DrawerDetalhesVeiculo({
                           currency: 'BRL',
                         })}
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-[0.6875rem] text-slate-400">
                         {dadosVeiculo?.manutencoes.length ?? 0} ordens registradas
                       </div>
                     </>
@@ -333,7 +333,7 @@ export function DrawerDetalhesVeiculo({
                           currency: 'BRL',
                         })}
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-[0.6875rem] text-slate-400">
                         {dadosVeiculo?.abastecimentos.length ?? 0} abastecimentos
                       </div>
                     </>
@@ -348,7 +348,7 @@ export function DrawerDetalhesVeiculo({
         {veManutencoes && (
           <div>
             <div className="mb-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+              <div className="flex items-center gap-1.5 text-[0.6875rem] font-bold tracking-wider text-slate-400 uppercase">
                 <History size={13} /> Últimas Manutenções
               </div>
               <button
@@ -390,7 +390,7 @@ export function DrawerDetalhesVeiculo({
                         <span className="text-xs font-bold text-slate-900">
                           {m.tipo_manutencao === 'PREVENTIVA' ? 'Preventiva' : 'Corretiva'}
                         </span>
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[0.625rem] text-slate-400">
                           {new Date(m.data_manutencao).toLocaleDateString('pt-BR', {
                             timeZone: 'UTC',
                           })}
@@ -410,7 +410,7 @@ export function DrawerDetalhesVeiculo({
                       </div>
                       <span
                         className={cn(
-                          'text-[10px] font-semibold',
+                          'text-[0.625rem] font-semibold',
                           m.status === 'CONCLUIDA'
                             ? 'text-emerald-700'
                             : m.status === 'EM_ANDAMENTO'

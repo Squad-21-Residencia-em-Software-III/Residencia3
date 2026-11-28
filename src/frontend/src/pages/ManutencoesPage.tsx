@@ -493,7 +493,7 @@ export default function ManutencoesPage() {
                   <td>
                     <div className="flex flex-col gap-1">
                       <PlacaMercosul placa={m.veiculo_placa || 'IAI-0000'} size="sm" />
-                      <span className="text-[11px] text-slate-500">{m.veiculo_modelo}</span>
+                      <span className="text-[0.6875rem] text-slate-500">{m.veiculo_modelo}</span>
                     </div>
                   </td>
                   <td>
@@ -511,7 +511,7 @@ export default function ManutencoesPage() {
                       {m.descricao}
                     </div>
                     {m.fornecedor_nome && (
-                      <div className="text-[11px] text-slate-500 truncate">
+                      <div className="text-[0.6875rem] text-slate-500 truncate">
                         Oficina: {m.fornecedor_nome}
                       </div>
                     )}

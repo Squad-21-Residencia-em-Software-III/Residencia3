@@ -238,7 +238,7 @@ export function DrawerDetalhesViagem({
         <div className="rounded-2xl border border-blue-100 bg-[#f4f8fe] p-5">
           <div className="grid grid-cols-2 gap-4 items-start">
             <div>
-              <span className="text-[11px] font-bold text-primary tracking-wide">
+              <span className="text-[0.6875rem] font-bold text-primary tracking-wide">
                 Partida
               </span>
               <div className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900">
@@ -255,7 +255,7 @@ export function DrawerDetalhesViagem({
             </div>
 
             <div className="text-right">
-              <span className="text-[11px] font-bold text-primary tracking-wide">
+              <span className="text-[0.6875rem] font-bold text-primary tracking-wide">
                 Destino
               </span>
               <div
@@ -284,7 +284,7 @@ export function DrawerDetalhesViagem({
             <div className="flex items-center gap-3">
               <Avatar name={viagem.motorista_nome} size={36} />
               <div className="min-w-0">
-                <div className="text-[11px] text-slate-400 font-medium leading-none">
+                <div className="text-[0.6875rem] text-slate-400 font-medium leading-none">
                   Motorista
                 </div>
                 <div className="mt-1 font-display text-sm font-bold text-slate-900 truncate">
@@ -297,7 +297,7 @@ export function DrawerDetalhesViagem({
             <div className="flex items-center gap-3">
               <Avatar name={viagem.solicitante_nome ?? 'Solicitante'} size={36} />
               <div className="min-w-0">
-                <div className="text-[11px] text-slate-400 font-medium leading-none">
+                <div className="text-[0.6875rem] text-slate-400 font-medium leading-none">
                   Solicitante
                 </div>
                 <div className="mt-1 font-display text-sm font-bold text-slate-900 truncate">
@@ -310,7 +310,7 @@ export function DrawerDetalhesViagem({
             <div className="flex items-center gap-3">
               <PlacaMercosul placa={viagem.veiculo_placa} />
               <div className="min-w-0">
-                <div className="text-[11px] text-slate-400 font-medium leading-none">
+                <div className="text-[0.6875rem] text-slate-400 font-medium leading-none">
                   Veículo
                 </div>
                 <div className="mt-1 text-sm font-bold text-slate-900 truncate">
@@ -328,7 +328,7 @@ export function DrawerDetalhesViagem({
         {viagem.tipo_operacao === 'ADMINISTRATIVA' && viagem.material_sensivel && <p className="text-sm font-semibold text-amber-700">Material sensível</p>}
         {viagem.finalidade && (
           <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
-            <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+            <div className="text-[0.625rem] font-bold tracking-wider text-slate-400 uppercase">
               Finalidade Institucional
             </div>
             <p className="mt-1 text-xs leading-relaxed text-slate-700">
@@ -363,7 +363,7 @@ export function DrawerDetalhesViagem({
                   : 'Em aberto'}
               </div>
               {kmRodados !== null && (
-                <span className="text-[11px] font-bold text-emerald-600">
+                <span className="text-[0.6875rem] font-bold text-emerald-600">
                   {kmRodados} km rodados
                 </span>
               )}

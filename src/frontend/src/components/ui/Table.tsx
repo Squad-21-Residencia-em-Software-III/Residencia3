@@ -10,8 +10,8 @@ export function Table({ children, className }: { children: ReactNode; className?
       <table
         className={cn(
           'w-full border-collapse',
-          '[&_th]:border-b [&_th]:border-divider [&_th]:px-2.5 [&_th]:py-2.5 [&_th]:text-left [&_th]:font-display [&_th]:text-[11px] [&_th]:font-bold [&_th]:tracking-[0.05em] [&_th]:whitespace-nowrap [&_th]:text-text-muted [&_th]:uppercase md:[&_th]:px-3.5 md:[&_th]:py-3',
-          '[&_td]:px-2.5 [&_td]:py-2.5 [&_td]:align-middle [&_td]:text-[13px] [&_td]:break-words [&_td]:wrap-anywhere md:[&_td]:px-3.5 md:[&_td]:py-3 md:[&_td]:text-sm',
+          '[&_th]:border-b [&_th]:border-divider [&_th]:px-2.5 [&_th]:py-2.5 [&_th]:text-left [&_th]:font-display [&_th]:text-[0.6875rem] [&_th]:font-bold [&_th]:tracking-[0.05em] [&_th]:whitespace-nowrap [&_th]:text-text-muted [&_th]:uppercase md:[&_th]:px-3.5 md:[&_th]:py-3',
+          '[&_td]:px-2.5 [&_td]:py-2.5 [&_td]:align-middle [&_td]:text-[0.8125rem] [&_td]:break-words [&_td]:wrap-anywhere md:[&_td]:px-3.5 md:[&_td]:py-3 md:[&_td]:text-sm',
           '[&_td:first-child]:pl-3 md:[&_td:first-child]:pl-5 [&_th:first-child]:pl-3 md:[&_th:first-child]:pl-5',
           '[&_td:last-child]:pr-3 md:[&_td:last-child]:pr-5 [&_th:last-child]:pr-3 md:[&_th:last-child]:pr-5',
           '[&_tbody_tr]:border-b [&_tbody_tr]:border-border [&_tbody_tr]:transition-colors [&_tbody_tr]:duration-100 [&_tbody_tr:last-child]:border-b-0 [&_tbody_tr:hover]:bg-surface-hover',
@@ -49,7 +49,7 @@ export function TableToolbar({
   return (
     <div className="flex flex-col items-stretch justify-between gap-3 border-b border-divider px-3.5 py-3 md:flex-row md:flex-wrap md:items-center md:px-6 md:py-4">
       <div>
-        <h2 className="text-[15px] font-bold text-text md:text-base">{title}</h2>
+        <h2 className="text-[0.9375rem] font-bold text-text md:text-base">{title}</h2>
         {subtitle && <p className="mt-0.5 text-xs text-text-muted">{subtitle}</p>}
       </div>
       <div
@@ -68,9 +68,12 @@ export function TableToolbar({
             onClick={onFilter}
             title="Alternar filtros"
           >
-            <Filter size={13} className="mr-1.5" /> Filtrar
+            <Filter size={13} className="mr-1.5" aria-hidden="true" /> Filtrar
             {isFilterActive && (
-              <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+              <>
+                <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                <span className="sr-only"> (filtros ativos)</span>
+              </>
             )}
           </Button>
         )}
@@ -239,7 +242,8 @@ export function TableFilterCollapse({
           : 'grid-rows-[0fr] opacity-0 border-b-0 pointer-events-none'
       )}
     >
-      <div className="overflow-hidden">
+      {/* Recolhido, os filtros saem também do Tab e dos leitores de tela (SCRUM-306) */}
+      <div className="overflow-hidden" inert={!isOpen ? true : undefined}>
         <div className="flex flex-col gap-2.5 bg-surface-alt px-3.5 py-3 sm:flex-row sm:flex-wrap sm:items-center md:px-6 md:py-3">
           {children}
         </div>

@@ -7,6 +7,7 @@ import { ModalPreferenciasPwa } from '../pwa/ModalPreferenciasPwa';
 import { cn } from '../../utils/cn';
 import type { NavItem } from './AppLayout';
 import { SinoNotificacoes } from './SinoNotificacoes';
+import { ID_CONTEUDO, SaltoConteudo } from '../acessibilidade/SaltoConteudo';
 
 type MotoristaLayoutProps = {
   navItems: NavItem[];
@@ -34,7 +35,7 @@ const ITEM_BARRA =
   'relative flex h-full w-full flex-col items-center justify-center gap-1 font-display text-xs font-semibold no-underline active:bg-surface-hover [@media(max-height:500px)]:flex-row [@media(max-height:500px)]:gap-1.5';
 
 const OPCAO_CONTA =
-  'flex min-h-13 w-full items-center gap-3 rounded-lg border border-border bg-surface px-4 text-left text-[15px] font-semibold text-text no-underline active:bg-surface-hover';
+  'flex min-h-13 w-full items-center gap-3 rounded-lg border border-border bg-surface px-4 text-left text-[0.9375rem] font-semibold text-text no-underline active:bg-surface-hover';
 
 /** Casca do motorista no celular: navegação na parte de baixo, ao alcance do polegar. */
 export function MotoristaLayout({ navItems, title, user, onLogout, children }: MotoristaLayoutProps) {
@@ -50,6 +51,7 @@ export function MotoristaLayout({ navItems, title, user, onLogout, children }: M
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-page-bg">
+      <SaltoConteudo />
       <header className="flex h-14 shrink-0 items-center justify-between gap-3 bg-sidebar px-4 [@media(max-height:500px)]:h-12">
         <div className="flex min-w-0 items-center gap-2.5">
           <img src="/assets/icon.png" alt="FSPH" className="h-8 w-8 shrink-0 object-contain" />
@@ -58,7 +60,11 @@ export function MotoristaLayout({ navItems, title, user, onLogout, children }: M
         <SinoNotificacoes variante="escuro" className="shrink-0" />
       </header>
 
-      <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+      <main
+        id={ID_CONTEUDO}
+        tabIndex={-1}
+        className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 outline-none"
+      >
         <div className="mx-auto flex min-h-full w-full max-w-[560px] flex-col">{children}</div>
       </main>
 
@@ -112,7 +118,7 @@ export function MotoristaLayout({ navItems, title, user, onLogout, children }: M
           folhaInferior
         >
           <p className="-mt-3 mb-4 text-sm text-neutral">
-            <strong className="block text-[15px] text-text">{user.name}</strong>
+            <strong className="block text-[0.9375rem] text-text">{user.name}</strong>
             {user.role}
           </p>
           <div className="flex flex-col gap-2">

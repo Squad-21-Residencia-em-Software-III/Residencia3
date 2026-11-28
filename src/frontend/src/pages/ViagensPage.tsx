@@ -558,7 +558,7 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
       {podeAlocarSvo && (
         <Card>
           <div className="flex flex-col gap-1 border-b border-divider px-3.5 py-3 md:px-6">
-            <h2 className="text-[15px] font-bold text-text md:text-base">
+            <h2 className="text-[0.9375rem] font-bold text-text md:text-base">
               Aguardando agendamento
             </h2>
             <p className="text-xs text-text-muted">
@@ -592,7 +592,7 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
                     <td>
                       <div className="flex flex-col gap-0.5">
                         {o.ordem_id !== null && <IdBadge id={`#${o.ordem_id}`} />}
-                        <span className="text-[11px] text-slate-500">
+                        <span className="text-[0.6875rem] text-slate-500">
                           Solicitação #{o.solicitacao_id}
                         </span>
                       </div>
@@ -754,7 +754,7 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
                       <td className="px-1.5 pr-3">
                         <span
                           className={cn(
-                            'rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap uppercase',
+                            'rounded px-1.5 py-0.5 text-[0.625rem] font-bold whitespace-nowrap uppercase',
                             v.tipo_operacao === 'ADMINISTRATIVA'
                               ? 'bg-blue-50 text-blue-700'
                               : 'bg-violet-50 text-violet-700',
@@ -775,7 +775,7 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
                             </span>
                           </div>
                           <div className="flex items-center gap-1 pl-2">
-                            <span className="shrink-0 text-[11px] text-slate-400">↳</span>
+                            <span className="shrink-0 text-[0.6875rem] text-slate-400">↳</span>
                             <span
                               className="truncate text-xs leading-tight text-slate-500"
                               title={v.destino ?? undefined}
@@ -791,27 +791,27 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
                           {v.status === 'AGENDADA' ? (
                             <>
                               <span className="font-semibold text-purple">
-                                <span className="text-[11px] font-medium text-slate-500">
+                                <span className="text-[0.6875rem] font-medium text-slate-500">
                                   Partida:{' '}
                                 </span>
                                 {formatarDataHora(v.inicio_previsto ?? v.data_hora_efetiva_saida)}
                               </span>
-                              <span className="text-[11px] text-slate-500">Aguardando saída</span>
+                              <span className="text-[0.6875rem] text-slate-500">Aguardando saída</span>
                             </>
                           ) : (
                             <>
                               <span className="text-slate-900">
-                                <span className="text-[11px] text-slate-500">Saída: </span>
+                                <span className="text-[0.6875rem] text-slate-500">Saída: </span>
                                 {formatarDataHora(v.data_hora_efetiva_saida)}
                               </span>
                               {v.data_hora_efetiva_chegada ? (
                                 <span className="text-slate-500">
-                                  <span className="text-[11px] text-slate-500">Chegada: </span>
+                                  <span className="text-[0.6875rem] text-slate-500">Chegada: </span>
                                   {formatarDataHora(v.data_hora_efetiva_chegada)}
                                 </span>
                               ) : (
                                 viagemEmCurso(v.status) && (
-                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
+                                  <span className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold text-primary">
                                     <span className="h-1.5 w-1.5 rounded-full bg-primary" />
                                     {v.status === 'NO_LOCAL' ? 'No local da coleta' : 'Em trânsito'}
                                   </span>
@@ -823,7 +823,7 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
                       </td>
                       {!somenteProprias && <><td>
                         <span
-                          className="block max-w-[170px] truncate text-[13px] font-medium text-slate-900"
+                          className="block max-w-[170px] truncate text-[0.8125rem] font-medium text-slate-900"
                           title={v.motorista_nome}
                         >
                           {v.motorista_nome}
@@ -832,12 +832,12 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
                       <td>
                         <div className="flex flex-col gap-0.5 whitespace-nowrap">
                           <span
-                            className="text-[13px] font-medium text-slate-900 leading-tight"
+                            className="text-[0.8125rem] font-medium text-slate-900 leading-tight"
                             title={v.veiculo_modelo}
                           >
                             {v.veiculo_modelo}
                           </span>
-                          <span className="w-fit rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-600">
+                          <span className="w-fit rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[0.6875rem] font-semibold text-slate-600">
                             {v.veiculo_placa}
                           </span>
                         </div>
@@ -849,7 +849,7 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
                               <span className="text-xs font-bold text-emerald-700">
                                 {kmRodados} km rodados
                               </span>
-                              <span className="font-mono text-[10px] text-slate-500">
+                              <span className="font-mono text-[0.625rem] text-slate-500">
                                 {v.km_inicial?.toLocaleString('pt-BR')} →{' '}
                                 {v.km_final?.toLocaleString('pt-BR')} km
                               </span>
@@ -861,7 +861,7 @@ function PainelViagens({ operacao, somenteProprias, filtros, atualizarFiltros }:
                                   ? `${v.km_inicial.toLocaleString('pt-BR')} km`
                                   : '—'}
                               </span>
-                              <span className="text-[10px] text-slate-500">Odômetro inicial</span>
+                              <span className="text-[0.625rem] text-slate-500">Odômetro inicial</span>
                             </>
                           )}
                         </div>

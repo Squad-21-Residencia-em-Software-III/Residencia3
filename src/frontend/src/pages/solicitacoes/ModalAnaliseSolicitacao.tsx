@@ -167,7 +167,7 @@ export function ModalAnaliseSolicitacao({
             <Avatar name={solicitacao.solicitante_nome} size={42} />
             <div>
               <div className="flex items-center gap-2">
-                <strong className="text-[15px] text-slate-900">
+                <strong className="text-[0.9375rem] text-slate-900">
                   {solicitacao.solicitante_nome}
                 </strong>
                 <IdBadge id={`#${solicitacao.id}`} />
@@ -186,28 +186,28 @@ export function ModalAnaliseSolicitacao({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Card Trajeto */}
           <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[0.6875rem] font-semibold text-slate-500 uppercase">
               <MapPin size={13} className="text-primary" /> Trajeto Solicitado
             </div>
             {solicitacao.material_sensivel && <p className="text-sm font-semibold text-amber-700">Material sensível</p>}
-            <div className="text-[13px] font-semibold text-slate-900">{solicitacao.origem}</div>
-            <div className="my-0.5 text-[11px] font-semibold text-primary">↓ destino</div>
-            <div className="text-[13px] font-semibold text-slate-900">{solicitacao.destino}</div>
+            <div className="text-[0.8125rem] font-semibold text-slate-900">{solicitacao.origem}</div>
+            <div className="my-0.5 text-[0.6875rem] font-semibold text-primary">↓ destino</div>
+            <div className="text-[0.8125rem] font-semibold text-slate-900">{solicitacao.destino}</div>
           </div>
 
           {/* Card Horários */}
           <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[0.6875rem] font-semibold text-slate-500 uppercase">
               <Clock size={13} className="text-primary" /> Período Pretendido
             </div>
             <div className="text-xs text-slate-500">Saída desejada:</div>
-            <div className="mb-1 text-[13px] font-semibold text-slate-900">
+            <div className="mb-1 text-[0.8125rem] font-semibold text-slate-900">
               {formatarDataHora(solicitacao.data_saida_desejada)}
             </div>
             {solicitacao.data_chegada_desejada && (
               <>
                 <div className="text-xs text-slate-500">Retorno previsto:</div>
-                <div className="text-[13px] font-semibold text-slate-900">
+                <div className="text-[0.8125rem] font-semibold text-slate-900">
                   {formatarDataHora(solicitacao.data_chegada_desejada)}
                 </div>
               </>
@@ -217,10 +217,10 @@ export function ModalAnaliseSolicitacao({
 
         {/* 3. Finalidade e Justificativa */}
         <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase">
+          <div className="mb-1 flex items-center gap-1.5 text-[0.6875rem] font-semibold text-slate-500 uppercase">
             <FileText size={13} /> Finalidade & Justificativa Institucional
           </div>
-          <p className="m-0 text-[13px] leading-relaxed text-slate-900">{solicitacao.finalidade}</p>
+          <p className="m-0 text-[0.8125rem] leading-relaxed text-slate-900">{solicitacao.finalidade}</p>
         </div>
 
         {/* 4. Validação de Disponibilidade de Recursos (SCRUM-73) */}
@@ -258,7 +258,7 @@ export function ModalAnaliseSolicitacao({
                 )}
                 <strong
                   className={cn(
-                    'text-[13px]',
+                    'text-[0.8125rem]',
                     temRecursosDisponiveis ? 'text-emerald-900' : 'text-amber-900',
                   )}
                 >
@@ -283,7 +283,7 @@ export function ModalAnaliseSolicitacao({
             </div>
 
             <div className="mt-3 border-t border-black/5 pt-3">
-              <div className="mb-1.5 text-[11px] font-semibold text-slate-500 uppercase">
+              <div className="mb-1.5 text-[0.6875rem] font-semibold text-slate-500 uppercase">
                 Veículos disponíveis no período
               </div>
               {disponibilidade.veiculos_disponiveis.length === 0 ? (
@@ -299,7 +299,7 @@ export function ModalAnaliseSolicitacao({
                     >
                       <div className="flex items-center gap-3">
                         <PlacaMercosul placa={veiculo.placa} size="sm" />
-                        <span className="text-[13px] font-semibold text-slate-900">
+                        <span className="text-[0.8125rem] font-semibold text-slate-900">
                           {veiculo.modelo}
                         </span>
                       </div>
@@ -320,10 +320,10 @@ export function ModalAnaliseSolicitacao({
         )}
         {solicitacao.status === 'RECUSADA' && solicitacao.motivo_recusa && (
           <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
-            <div className="mb-0.5 text-[11px] font-semibold text-rose-700 uppercase">
+            <div className="mb-0.5 text-[0.6875rem] font-semibold text-rose-700 uppercase">
               Motivo da Recusa Registrado
             </div>
-            <div className="text-[13px] text-rose-700">{solicitacao.motivo_recusa}</div>
+            <div className="text-[0.8125rem] text-rose-700">{solicitacao.motivo_recusa}</div>
           </div>
         )}
 
@@ -344,7 +344,7 @@ export function ModalAnaliseSolicitacao({
               placeholder="Ex: Veículos da categoria alocados em outra missão de urgência."
               maxLength={200}
               rows={3}
-              className="bg-white text-[13px]"
+              className="bg-white text-[0.8125rem]"
             />
             {erroMotivo && (
               <p id="motivo-recusa-erro" role="alert" className="-mt-2 text-xs font-semibold text-rose-700">
@@ -352,7 +352,7 @@ export function ModalAnaliseSolicitacao({
               </p>
             )}
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[0.6875rem] text-slate-500">
                 {motivoRecusa.length}/200 caracteres
               </span>
               <div className="flex gap-2">

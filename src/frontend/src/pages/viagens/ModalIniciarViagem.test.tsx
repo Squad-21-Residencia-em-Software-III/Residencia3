@@ -150,11 +150,17 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     const substituta = new File([fotoJpeg()], 'substituta.jpg', { type: 'image/jpeg' });
     const camera = screen.getByTestId('foto-camera-SAIDA');
     const abrirCamera = vi.spyOn(camera, 'click');
-    fireEvent.click(screen.getByRole('button', { name: 'Tirar outra foto' }));
+    const botaoCamera = screen.getByRole('button', { name: 'Tirar outra foto' });
+    botaoCamera.focus();
+    fireEvent.click(botaoCamera);
     expect(abrirCamera).toHaveBeenCalledTimes(1);
     fireEvent.change(camera, { target: { files: [substituta] } });
 
     expect(screen.getByText('Verificando a foto...')).toBeVisible();
+    expect(botaoCamera).toHaveFocus();
+    expect(botaoCamera).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(botaoCamera);
+    expect(abrirCamera).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: /Confirmar Saída/ })).toBeDisabled();
     fireEvent.submit(screen.getByLabelText(/Odômetro de Saída/).closest('form')!);
     expect(api.enviar).not.toHaveBeenCalled();
@@ -173,6 +179,8 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     informarKm('35000');
     fireEvent.click(screen.getByRole('button', { name: 'Remover foto' }));
 
+    expect(screen.getByRole('button', { name: 'Carregar foto' })).toHaveFocus();
+    expect(screen.getByText('Foto removida.')).toHaveAttribute('role', 'status');
     expect(screen.queryByAltText(/Prévia/)).not.toBeInTheDocument();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:previa');
     expect(screen.getByLabelText(/Odômetro de Saída/)).toHaveValue(35000);
@@ -243,9 +251,11 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     await screen.findByRole('button', { name: /Carregar foto/ });
     await escolherFoto();
     informarKm('35000');
+    screen.getByRole('button', { name: /Confirmar Saída/ }).focus();
     confirmar();
 
     expect(await screen.findByText(/A saída não foi confirmada/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toHaveFocus();
     expect(onSalvar).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/Odômetro de Saída/)).toHaveValue(35000);
     expect(screen.getByAltText(/Prévia/)).toBeInTheDocument();

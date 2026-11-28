@@ -126,6 +126,7 @@ export default function AbastecimentoPage() {
     });
 
     const listaConsumo: Array<{
+      veiculoId: number;
       placa: string;
       consumoNum: number;
       value: string;
@@ -133,7 +134,7 @@ export default function AbastecimentoPage() {
       belowTarget: boolean;
     }> = [];
 
-    porVeiculo.forEach((listaAbast) => {
+    porVeiculo.forEach((listaAbast, veiculoId) => {
       if (listaAbast.length < 2) return;
       const ordenados = [...listaAbast].sort((a, b) => Number(a.quilometragem) - Number(b.quilometragem));
       let somaKm = 0;
@@ -150,10 +151,11 @@ export default function AbastecimentoPage() {
 
       if (somaLitros > 0 && somaKm > 0) {
         const media = Number((somaKm / somaLitros).toFixed(1));
-        const placa = ordenados[0].veiculo_placa ?? 'Veículo';
+        const placa = ordenados[0].veiculo_placa ?? `Veículo #${veiculoId}`;
         const belowTarget = media < 8.5;
         const pct = Math.min(Math.round((media / 15) * 100), 100);
         listaConsumo.push({
+          veiculoId,
           placa,
           consumoNum: media,
           value: media.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
@@ -364,18 +366,18 @@ export default function AbastecimentoPage() {
                       <IdBadge id={`ABS-${String(a.id).padStart(4, '0')}`} />
                     </td>
                     <td>
-                      <span className="text-[13px] text-slate-500">
+                      <span className="text-[0.8125rem] text-slate-500">
                         {new Date(a.data_abastecimento).toLocaleDateString('pt-BR')}
                       </span>
                     </td>
                     <td>
                       <div>
                         <div className="font-semibold text-slate-900">{a.veiculo_placa ?? 'N/D'}</div>
-                        <div className="text-[11px] text-slate-500">{a.veiculo_modelo ?? ''}</div>
+                        <div className="text-[0.6875rem] text-slate-500">{a.veiculo_modelo ?? ''}</div>
                       </div>
                     </td>
                     <td>
-                      <span className="text-[13px] text-slate-700">{a.motorista_nome ?? 'N/D'}</span>
+                      <span className="text-[0.8125rem] text-slate-700">{a.motorista_nome ?? 'N/D'}</span>
                     </td>
                     <td>
                       <span className="font-medium text-slate-800">
@@ -419,19 +421,19 @@ export default function AbastecimentoPage() {
                 </p>
               ) : (
                 consumoPorVeiculo.slice(0, 6).map((item) => (
-                  <div key={item.placa} className="flex flex-col gap-1">
-                    <div className="flex justify-between text-xs">
+                  <div key={item.veiculoId} className="flex flex-col gap-1">
+                    <div className="flex flex-wrap justify-between gap-x-2 text-xs">
                       <span className="font-medium text-slate-800">{item.placa}</span>
                       <span
                         className={cn(
                           'font-semibold',
-                          item.belowTarget ? 'text-rose-600' : 'text-emerald-600',
+                          item.belowTarget ? 'text-rose-700' : 'text-emerald-700',
                         )}
                       >
-                        {item.value} km/L
+                        {item.value} km/L · {item.belowTarget ? 'Abaixo da meta' : 'Na meta ou acima'}
                       </span>
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="barra-indicador h-1.5 w-full overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
                       <div
                         className={cn(
                           'h-full rounded-full transition-all',
@@ -455,7 +457,7 @@ export default function AbastecimentoPage() {
               {distribuicaoPorFrota.map((cat) => (
                 <div key={cat.label} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <span className={cn('h-2 w-2 rounded-full', cat.dotClass)} />
+                    <span className={cn('h-2 w-2 rounded-full', cat.dotClass)} aria-hidden="true" />
                     <span className="text-slate-700">{cat.label}</span>
                   </div>
                   <div className="flex items-center gap-2 font-medium text-slate-900">

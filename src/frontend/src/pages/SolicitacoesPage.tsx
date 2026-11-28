@@ -339,26 +339,26 @@ function SolicitacoesAdministrativas() {
                     <div className="flex items-center gap-2.5">
                       <Avatar name={s.solicitante_nome} size={28} />
                       <div>
-                        <div className="text-[13px] font-semibold text-slate-900">
+                        <div className="text-[0.8125rem] font-semibold text-slate-900">
                           {s.solicitante_nome}
                         </div>
-                        <div className="text-[11px] text-slate-500">
+                        <div className="text-[0.6875rem] text-slate-500">
                           {s.unidade_nome ?? 'Sem unidade'}
                         </div>
                       </div>
                     </div>
                   </td>
                   <td>
-                    <div className="text-[13px] font-medium text-slate-900">{s.destino}</div>
+                    <div className="text-[0.8125rem] font-medium text-slate-900">{s.destino}</div>
                     {s.material_sensivel && <span className="text-xs font-semibold text-amber-700">Material sensível</span>}
-                    <div className="text-[11px] text-slate-500">Origem: {s.origem}</div>
+                    <div className="text-[0.6875rem] text-slate-500">Origem: {s.origem}</div>
                   </td>
                   <td>
                     <div className="text-xs whitespace-nowrap text-slate-900">
                       {formatarDataHora(s.data_saida_desejada)}
                     </div>
                     {s.data_chegada_desejada && (
-                      <div className="text-[11px] whitespace-nowrap text-slate-500">
+                      <div className="text-[0.6875rem] whitespace-nowrap text-slate-500">
                         Retorno: {formatarDataHora(s.data_chegada_desejada)}
                       </div>
                     )}

@@ -123,7 +123,7 @@ export default function TriagemSvoPage() {
       <Card>
         <div className="flex flex-col gap-3 border-b border-divider px-3.5 py-3 md:flex-row md:items-center md:justify-between md:px-6">
           <div>
-            <h2 className="text-[15px] font-bold text-text md:text-base">Solicitações SVO</h2>
+            <h2 className="text-[0.9375rem] font-bold text-text md:text-base">Solicitações SVO</h2>
             <p className="mt-0.5 text-xs text-text-muted">
               Analise os chamados recebidos e confirme o atendimento para gerar a ordem de coleta.
             </p>

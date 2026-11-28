@@ -29,7 +29,7 @@ export function PlacaMercosul({ placa, className, size = 'md' }: PlacaMercosulPr
         <span
           className={cn(
             'font-sans font-black tracking-widest text-white uppercase leading-none select-none',
-            isSm ? 'text-[5.5px]' : 'text-[6.5px]',
+            isSm ? 'text-[0.34375rem]' : 'text-[0.40625rem]',
           )}
         >
           BRASIL
@@ -40,7 +40,7 @@ export function PlacaMercosul({ placa, className, size = 'md' }: PlacaMercosulPr
       <div
         className={cn(
           'flex flex-1 items-center justify-center bg-white px-0.5 font-mono font-black tracking-widest text-slate-950 uppercase leading-none',
-          isSm ? 'text-[10px]' : 'text-[12px]',
+          isSm ? 'text-[0.625rem]' : 'text-[0.75rem]',
         )}
       >
         {placa}

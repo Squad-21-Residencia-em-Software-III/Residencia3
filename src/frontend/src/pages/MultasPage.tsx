@@ -344,9 +344,9 @@ export default function MultasPage() {
                     <IdBadge id={`MLT-${String(m.id).padStart(4, '0')}`} />
                   </td>
                   <td>
-                    <div className="text-[13px] text-slate-700">{formatarDataHora(m.data_infracao)}</div>
+                    <div className="text-[0.8125rem] text-slate-700">{formatarDataHora(m.data_infracao)}</div>
                     {m.data_vencimento && (
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-[0.6875rem] text-slate-400">
                         Venc.: {new Date(m.data_vencimento).toLocaleDateString('pt-BR')}
                       </div>
                     )}
@@ -354,12 +354,12 @@ export default function MultasPage() {
                   <td>
                     <div>
                       <span className="font-semibold text-slate-900">{m.veiculo_placa ?? 'N/D'}</span>
-                      <div className="text-[11px] text-slate-500">{m.veiculo_modelo ?? ''}</div>
+                      <div className="text-[0.6875rem] text-slate-500">{m.veiculo_modelo ?? ''}</div>
                     </div>
                   </td>
                   <td>
                     {m.motorista_nome ? (
-                      <span className="text-[13px] text-slate-700">{m.motorista_nome}</span>
+                      <span className="text-[0.8125rem] text-slate-700">{m.motorista_nome}</span>
                     ) : (
                       <Badge tone="danger">
                         Não identificado
@@ -367,11 +367,11 @@ export default function MultasPage() {
                     )}
                   </td>
                   <td>
-                    <div className="text-[13px] text-slate-800">
+                    <div className="text-[0.8125rem] text-slate-800">
                       {m.id_infracao ?? (m.descricao ? m.descricao.slice(0, 30) : '—')}
                     </div>
                     {m.orgao_autuador && (
-                      <div className="text-[11px] text-slate-400">{m.orgao_autuador}</div>
+                      <div className="text-[0.6875rem] text-slate-400">{m.orgao_autuador}</div>
                     )}
                   </td>
                   <td>

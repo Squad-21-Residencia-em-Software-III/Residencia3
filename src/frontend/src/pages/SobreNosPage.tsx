@@ -262,7 +262,7 @@ export default function SobreNosPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
             <h3
               style={{
-                fontSize: '15px',
+                fontSize: '0.9375rem',
                 fontWeight: 700,
                 color: 'var(--color-text)',
                 fontFamily: 'var(--font-display)',
@@ -277,7 +277,7 @@ export default function SobreNosPage() {
           {/* Linha 2: Síntese de atuação */}
           <p
             style={{
-              fontSize: '12.5px',
+              fontSize: '0.78125rem',
               lineHeight: 1.5,
               color: 'var(--color-text-secondary)',
               margin: '0 0 10px 0',
@@ -301,7 +301,7 @@ export default function SobreNosPage() {
                 border: '1px solid var(--color-border)',
                 background: aberto ? 'var(--color-surface-alt)' : 'transparent',
                 color: aberto ? 'var(--color-primary)' : 'var(--color-text-strong)',
-                fontSize: '11.5px',
+                fontSize: '0.71875rem',
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
@@ -310,7 +310,7 @@ export default function SobreNosPage() {
               <span>Principais contribuições ({membro.entregas.length})</span>
               <span
                 style={{
-                  fontSize: '10px',
+                  fontSize: '0.625rem',
                   display: 'inline-block',
                   transform: aberto ? 'rotate(180deg)' : 'rotate(0deg)',
                   transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -344,7 +344,7 @@ export default function SobreNosPage() {
                     <div
                       key={item.titulo}
                       style={{
-                        fontSize: '11.5px',
+                        fontSize: '0.71875rem',
                         lineHeight: 1.45,
                         color: 'var(--color-text-secondary)',
                       }}
@@ -379,7 +379,7 @@ export default function SobreNosPage() {
               display: 'inline-flex',
               alignItems: 'center',
               gap: '5px',
-              fontSize: '11.5px',
+              fontSize: '0.71875rem',
               color: 'var(--color-text-muted)',
               textDecoration: 'none',
               transition: 'color 0.15s ease',
@@ -397,7 +397,7 @@ export default function SobreNosPage() {
               <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 012-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z" />
             </svg>
             <span>github.com/{membro.usuarioGit}</span>
-            <span style={{ fontSize: '10px' }}>↗</span>
+            <span style={{ fontSize: '0.625rem' }}>↗</span>
           </a>
         </div>
       </Card>
@@ -410,7 +410,7 @@ export default function SobreNosPage() {
       <div style={{ marginBottom: 'var(--space-1)' }}>
         <h1
           style={{
-            fontSize: '20px',
+            fontSize: '1.25rem',
             fontWeight: 700,
             color: 'var(--color-text)',
             fontFamily: 'var(--font-display)',
@@ -423,7 +423,7 @@ export default function SobreNosPage() {
 
         <span
           style={{
-            fontSize: '11px',
+            fontSize: '0.6875rem',
             fontWeight: 700,
             color: 'var(--color-primary)',
             textTransform: 'uppercase',
@@ -437,7 +437,7 @@ export default function SobreNosPage() {
 
         <p
           style={{
-            fontSize: '13px',
+            fontSize: '0.8125rem',
             lineHeight: 1.6,
             color: 'var(--color-text-secondary)',
             margin: 0,
@@ -453,7 +453,7 @@ export default function SobreNosPage() {
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div
           style={{
-            fontSize: '11px',
+            fontSize: '0.6875rem',
             fontWeight: 700,
             color: 'var(--color-text-muted)',
             marginBottom: 'var(--space-3)',

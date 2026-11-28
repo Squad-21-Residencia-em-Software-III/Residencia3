@@ -174,7 +174,7 @@ export function ModalUsuario({
             ))}
           </Select>
           <div className="mt-1 text-xs leading-snug text-slate-500">{DESCRICAO_PERFIS[perfil]}</div>
-          <div className="mt-1 text-[11px] font-semibold text-primary">
+          <div className="mt-1 text-[0.6875rem] font-semibold text-primary">
             Tipo de usuário no banco: {tipoPrevisao}
           </div>
         </div>
@@ -189,7 +189,7 @@ export function ModalUsuario({
               onChange={(e: ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)}
               required
             />
-            <div className="-mt-2 mb-3.5 text-[11px] text-slate-500">
+            <div className="-mt-2 mb-3.5 text-[0.6875rem] text-slate-500">
               Requisitos: mínimo de 8 caracteres com letras maiúsculas, minúsculas, números e
               símbolo.
             </div>

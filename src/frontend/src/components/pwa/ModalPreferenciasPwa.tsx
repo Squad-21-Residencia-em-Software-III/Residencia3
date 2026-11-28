@@ -9,6 +9,7 @@ import {
   type EstadoPermissao,
 } from '../../hooks/usePermissoesDispositivo';
 import { AlertasPush } from './AlertasPush';
+import { SecaoAcessibilidade } from '../acessibilidade/SecaoAcessibilidade';
 
 type ModalPreferenciasPwaProps = {
   isOpen: boolean;
@@ -57,6 +58,9 @@ export function ModalPreferenciasPwa({ isOpen, onClose, folhaInferior = false }:
       folhaInferior={folhaInferior}
     >
       <div className="space-y-4 text-sm text-text">
+        {/* Tamanho do texto, contraste, animações e cores (SCRUM-305 e SCRUM-307) */}
+        <SecaoAcessibilidade toqueGrande={folhaInferior} />
+
         {/* Status de conectividade */}
         <div className="flex items-center justify-between rounded-lg border border-border bg-surface-alt px-3.5 py-2.5">
           <div className="flex items-center gap-2.5">

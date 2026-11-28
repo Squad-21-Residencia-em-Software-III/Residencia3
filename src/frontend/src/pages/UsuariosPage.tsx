@@ -350,23 +350,23 @@ export default function UsuariosPage() {
                           <div className="flex items-center gap-1.5 font-semibold text-slate-900">
                             {u.nome}
                             {isProprio && (
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[0.625rem] text-slate-500">
                                 Você
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-slate-500">ID #{u.id}</div>
+                          <div className="text-[0.6875rem] text-slate-500">ID #{u.id}</div>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <span className="text-[13px] text-slate-500">{u.email}</span>
+                      <span className="text-[0.8125rem] text-slate-500">{u.email}</span>
                     </td>
                     <td>
                       <Badge tone={obterBadgeTonePerfil(u.perfil)}>{LABELS_PERFIS[u.perfil]}</Badge>
                     </td>
                     <td>
-                      <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[0.6875rem] font-semibold text-slate-500">
                         {u.tipo_usuario}
                       </span>
                     </td>
