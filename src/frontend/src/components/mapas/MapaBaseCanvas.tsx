@@ -24,7 +24,12 @@ export interface MarcadorMapaPadrao extends CoordenadaMapa {
 
 export interface MapaBaseCanvasProps {
   centroInicial?: Partial<VisaoInicialMapa>;
+  /** Quando atualizado, centraliza o mapa suavemente no novo ponto (sem bloquear pan/zoom do usuário). */
+  centroControlado?: Partial<VisaoInicialMapa> | null;
   marcadorPadrao?: MarcadorMapaPadrao | null;
+  marcadorArrastavel?: boolean;
+  onDragEndMarcador?: (coordenada: CoordenadaMapa) => void;
+  onClickMapa?: (coordenada: CoordenadaMapa) => void;
   altura?: string;
   tema?: TemaMapa;
   tituloAcessivel?: string;
@@ -34,24 +39,39 @@ export interface MapaBaseCanvasProps {
 
 export default function MapaBaseCanvas({
   centroInicial,
+  centroControlado,
   marcadorPadrao,
+  marcadorArrastavel = false,
+  onDragEndMarcador,
+  onClickMapa,
   altura = '320px',
   tema = 'claro',
   tituloAcessivel = 'Mapa interativo da frota FSPH',
   onErroCarregamento,
   children,
 }: MapaBaseCanvasProps) {
-  const latitude = centroInicial?.latitude ?? marcadorPadrao?.latitude ?? CENTRO_PADRAO_SERGIPE.latitude;
-  const longitude = centroInicial?.longitude ?? marcadorPadrao?.longitude ?? CENTRO_PADRAO_SERGIPE.longitude;
-  const zoom = centroInicial?.zoom ?? CENTRO_PADRAO_SERGIPE.zoom;
+  const latitude =
+    centroControlado?.latitude ??
+    centroInicial?.latitude ??
+    marcadorPadrao?.latitude ??
+    CENTRO_PADRAO_SERGIPE.latitude;
+  const longitude =
+    centroControlado?.longitude ??
+    centroInicial?.longitude ??
+    marcadorPadrao?.longitude ??
+    CENTRO_PADRAO_SERGIPE.longitude;
+  const zoom = centroControlado?.zoom ?? centroInicial?.zoom ?? CENTRO_PADRAO_SERGIPE.zoom;
   const estiloMapa = obterEstiloMapa(tema);
+  const mapaRef = useRef<MapRef | null>(null);
   const carregamento = useRef({ estiloPronto: false, recebeuTile: false, perdeuContexto: false });
   const prazo = useRef<number | undefined>(undefined);
   const removerListeners = useRef<(() => void) | undefined>(undefined);
   const aoFalhar = useRef(onErroCarregamento);
   const falhaComunicada = useRef(false);
 
-  useEffect(() => { aoFalhar.current = onErroCarregamento; }, [onErroCarregamento]);
+  useEffect(() => {
+    aoFalhar.current = onErroCarregamento;
+  }, [onErroCarregamento]);
 
   const cancelarPrazo = useCallback(() => {
     window.clearTimeout(prazo.current);
@@ -63,13 +83,16 @@ export default function MapaBaseCanvas({
     cancelarPrazo();
     aoFalhar.current?.();
   }, [cancelarPrazo]);
-  const aguardar = useCallback((mapaRecuperado: () => boolean) => {
-    if (prazo.current !== undefined) return;
-    prazo.current = window.setTimeout(() => {
-      prazo.current = undefined;
-      if (!mapaRecuperado()) reportarFalha();
-    }, LIMITE_CARREGAMENTO_MAPA_MS);
-  }, [reportarFalha]);
+  const aguardar = useCallback(
+    (mapaRecuperado: () => boolean) => {
+      if (prazo.current !== undefined) return;
+      prazo.current = window.setTimeout(() => {
+        prazo.current = undefined;
+        if (!mapaRecuperado()) reportarFalha();
+      }, LIMITE_CARREGAMENTO_MAPA_MS);
+    },
+    [reportarFalha],
+  );
   const recuperado = useCallback(() => {
     const { estiloPronto, recebeuTile, perdeuContexto } = carregamento.current;
     return estiloPronto && recebeuTile && !perdeuContexto;
@@ -82,32 +105,36 @@ export default function MapaBaseCanvas({
     liberarPrazoSeRecuperado();
   }, [liberarPrazoSeRecuperado]);
 
-  const registrarMapa = useCallback((referencia: MapRef | null) => {
-    removerListeners.current?.();
-    removerListeners.current = undefined;
-    if (!referencia) return;
-    const mapa = referencia.getMap();
+  const registrarMapa = useCallback(
+    (referencia: MapRef | null) => {
+      mapaRef.current = referencia;
+      removerListeners.current?.();
+      removerListeners.current = undefined;
+      if (!referencia) return;
+      const mapa = referencia.getMap();
 
-    const perdeuContexto = () => {
-      carregamento.current = { estiloPronto: false, recebeuTile: false, perdeuContexto: true };
-      cancelarPrazo();
-      aguardar(recuperado);
-    };
-    const restaurouContexto = () => {
-      carregamento.current.perdeuContexto = false;
-      if (mapa.isStyleLoaded()) registrarEstilo();
-      liberarPrazoSeRecuperado();
-    };
+      const perdeuContexto = () => {
+        carregamento.current = { estiloPronto: false, recebeuTile: false, perdeuContexto: true };
+        cancelarPrazo();
+        aguardar(recuperado);
+      };
+      const restaurouContexto = () => {
+        carregamento.current.perdeuContexto = false;
+        if (mapa.isStyleLoaded()) registrarEstilo();
+        liberarPrazoSeRecuperado();
+      };
 
-    mapa.on('style.load', registrarEstilo);
-    mapa.on('webglcontextlost', perdeuContexto);
-    mapa.on('webglcontextrestored', restaurouContexto);
-    removerListeners.current = () => {
-      mapa.off('style.load', registrarEstilo);
-      mapa.off('webglcontextlost', perdeuContexto);
-      mapa.off('webglcontextrestored', restaurouContexto);
-    };
-  }, [aguardar, cancelarPrazo, liberarPrazoSeRecuperado, recuperado, registrarEstilo]);
+      mapa.on('style.load', registrarEstilo);
+      mapa.on('webglcontextlost', perdeuContexto);
+      mapa.on('webglcontextrestored', restaurouContexto);
+      removerListeners.current = () => {
+        mapa.off('style.load', registrarEstilo);
+        mapa.off('webglcontextlost', perdeuContexto);
+        mapa.off('webglcontextrestored', restaurouContexto);
+      };
+    },
+    [aguardar, cancelarPrazo, liberarPrazoSeRecuperado, recuperado, registrarEstilo],
+  );
 
   useEffect(() => {
     carregamento.current.estiloPronto = false;
@@ -115,6 +142,29 @@ export default function MapaBaseCanvas({
     aguardar(recuperado);
     return cancelarPrazo;
   }, [estiloMapa, aguardar, cancelarPrazo, recuperado]);
+
+  const latControlada = centroControlado?.latitude;
+  const lonControlada = centroControlado?.longitude;
+  const zoomControlado = centroControlado?.zoom;
+
+  useEffect(() => {
+    if (latControlada === undefined || lonControlada === undefined) return;
+    const instancia = mapaRef.current;
+    if (!instancia) return;
+    const movimentoReduzido =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const opcoes = {
+      center: [lonControlada, latControlada] as [number, number],
+      ...(zoomControlado !== undefined ? { zoom: zoomControlado } : {}),
+    };
+    if (movimentoReduzido && typeof instancia.jumpTo === 'function') {
+      instancia.jumpTo(opcoes);
+    } else if (typeof instancia.flyTo === 'function') {
+      instancia.flyTo({ ...opcoes, duration: 350 });
+    }
+  }, [latControlada, lonControlada, zoomControlado]);
 
   return (
     <div
@@ -129,9 +179,22 @@ export default function MapaBaseCanvas({
         mapStyle={estiloMapa}
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}
+        onClick={
+          onClickMapa
+            ? (evento) => {
+                onClickMapa({
+                  latitude: evento.lngLat.lat,
+                  longitude: evento.lngLat.lng,
+                });
+              }
+            : undefined
+        }
         onLoad={registrarEstilo}
         onSourceData={(evento) => {
-          if (evento.tile?.hasData() && (evento.source?.type === 'vector' || evento.source?.type === 'raster')) {
+          if (
+            evento.tile?.hasData() &&
+            (evento.source?.type === 'vector' || evento.source?.type === 'raster')
+          ) {
             carregamento.current.recebeuTile = true;
             liberarPrazoSeRecuperado();
           }
@@ -155,11 +218,22 @@ export default function MapaBaseCanvas({
             latitude={marcadorPadrao.latitude}
             longitude={marcadorPadrao.longitude}
             anchor="bottom"
+            draggable={marcadorArrastavel}
+            onDragEnd={
+              onDragEndMarcador
+                ? (evento) => {
+                    onDragEndMarcador({
+                      latitude: evento.lngLat.lat,
+                      longitude: evento.lngLat.lng,
+                    });
+                  }
+                : undefined
+            }
           >
             <img
               src={PIN_FSPH_URL}
               alt={marcadorPadrao.titulo ?? 'Localização marcada no mapa'}
-              className="h-9 w-9 select-none drop-shadow-md"
+              className={`h-9 w-9 drop-shadow-md select-none ${marcadorArrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}
               draggable={false}
             />
           </Marker>
@@ -169,7 +243,7 @@ export default function MapaBaseCanvas({
       </Map>
 
       <div
-        className="pointer-events-auto absolute right-2 bottom-2 z-10 max-w-[calc(100%-1rem)] flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-white/90 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur-xs"
+        className="pointer-events-auto absolute right-2 bottom-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-white/90 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur-xs"
         aria-label="Atribuições cartográficas"
       >
         {ATRIBUICOES_MAPA.map((item, indice) => (
