@@ -12,7 +12,7 @@ Sem back e sem migration. Nenhuma flag: as preferências são opcionais e, no pa
 
 ## SCRUM-305: preferências
 
-- **Onde:** seção "Acessibilidade" nas preferências do aplicativo (engrenagem da área interna e "Minha conta" do motorista) e botão "Acessibilidade" na tela de entrada, antes do login.
+- **Onde:** seção "Acessibilidade" nas preferências internas e do motorista, botão na entrada e o mesmo botão no layout público em composição com o #236. O layout público também recebe o salto para o conteúdo.
 - **Opções:** texto em 87,5%, 100%, 112,5%, 125% ou 150%; contraste padrão ou alto; animações seguindo o aparelho ou reduzidas; cores para daltonismo (SCRUM-307). "Restaurar padrões" volta tudo e anuncia a restauração ao leitor de tela.
 - **Guardadas no aparelho** (`localStorage`), sem servidor:
   - `fsph.acessibilidade.visitante`: quem não entrou;
@@ -100,16 +100,30 @@ Edge headless (Chromium), página de entrada e janela de Acessibilidade, com o a
 
 A primeira rodada achou contraste insuficiente nos textos de apoio da seção (2,63:1) e o botão de senha pequeno; os dois foram corrigidos antes desta tabela.
 
-### Não executado
+
+### Composição local com #236, #245, #246 e #239
+
+Chrome 158 com PostgreSQL descartável e API real. A composição passou pelo build e 872 testes de frontend. A base do navegador foi o portal com cadastro, acompanhamento, proteção e proxy cartográfico em execução. A página de teste do seletor monta o componente real com o mesmo layout público, enquanto a SCRUM-265 permanece responsável pelo formulário de produção.
+
+| Critério | Resultado de navegador |
+| --- | --- |
+| Portal e mapa a 320 CSS px | Salto focou o conteúdo. Enter abriu as preferências, Escape devolveu foco. Alto contraste, tritanopia e texto a 150% coexistiram sem rolagem horizontal. Depois de recarregar, o modo anônimo preservou as escolhas. |
+| Teclado na cartografia | CEP, seleção no listbox, ajuste manual, reverso real via proxy, limpeza e endereço textual passaram com WebGL indisponível. |
+| Reflow interno | Início, solicitações ADM/SVO, agenda, viagens, veículos, infrações, motoristas e abastecimento abriram a 320 CSS px sem overflow horizontal no documento. A medição da página cobre a estrutura geral. |
+| Indicadores ADM | Aprovação e recusa identificadas pelo rótulo no padrão e em protanopia, deuteranopia, tritanopia e escala de cinza emulados no Chrome. O axe no navegador não apontou falha de contraste nessa amostra. |
+| Indicadores complementares | Os testes automatizados cobrem ícones de status, legenda e padrões da agenda, barra de ocupação, rótulos da meta de consumo e filtro do cartão com Tab e Enter. |
+| Zoom nativo | Consulta pública real com ampliação de 200% confirmada nas configurações do Chrome. |
+
+### Evidência pendente
 
 - **Leitores de tela reais** (NVDA, VoiceOver, TalkBack) e **aparelhos Android e iOS**: sem dispositivo nesta entrega. Os nomes, papéis e estados foram conferidos pelos testes e pelo axe.
 - **Alto Contraste do Windows** (cores forçadas): só o CSS, sem verificação manual.
 - **Tema escuro**: a SCRUM-303 ainda não está na develop.
-- **Telas internas no navegador real** (solicitações, triagem, viagens, multas): precisam de login e dados. Cobertas pelos componentes base, pelos testes e pelo axe no jsdom, mas o markup próprio de cada página não foi auditado tela a tela.
-- **Mapas e GPS**: os componentes das SCRUM-277 e 292 ainda não existem.
+- **Fluxos internos completos**: faltam medições de ampliação nativa e interações por operação, especialmente agendamento, condução, upload/captura, recuperação de falha e reabertura do PWA. O reflow acima registra a área geral renderizada.
+- **Rotas e GPS em campo**: visualização de rotas e GPS físico dependem das entregas correspondentes e dos aparelhos de teste.
 
 ## Para alinhar
 
-1. **Token `--color-text-muted` (`#8da2b5`)**: tem 2,63:1 sobre branco, abaixo dos 4,5:1 da WCAG, e é usado no sistema inteiro. Este PR não muda o token (é decisão de design e área da SCRUM-303): usa `text-neutral` na seção nova, e o alto contraste já corrige. Sugestão para a 303: escurecer para algo como `#5b6b7d` (5,46:1).
+1. **Texto secundário**: a correção anterior escureceu `--color-text-muted` no padrão. Os cartões de métrica usam esse token e ajustam a quebra dos rótulos. A SCRUM-303 deve preservar o contraste nas duas bases do tema.
 2. **Tema escuro (SCRUM-303)**: conferir a combinação com alto contraste e paletas quando entrar. Se o tema redefinir `--color-text-muted` e afins, o alto contraste precisa vir depois na cascata (ele está em `styles/acessibilidade.css`, importado depois do `global.css`).
 3. **Conflitos esperados**: a troca de `px` por `rem` toca 42 telas. Quem tiver branch aberta nelas resolve trocando só o tamanho da fonte.
