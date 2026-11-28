@@ -106,7 +106,7 @@ Resposta (sempre `Cache-Control: private, no-store`, inclusive em erros antecipa
   resposta perdida recuperada, flag desligada, campos inválidos e 413, registro interno inalterado e, na integração real com a 266:
   criar → perder resposta → repetir → recuperar o mesmo comprovante → consultar o acompanhamento real, endpoint de recuperação da 266, janela expirada,
   credencial revogada, rotação de chaves e falha transacional.
-- CI: `ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS=1` no job de testes (já com `POSTGRES_APP_USER` restrito).
+- CI: step próprio "Validar endpoint público SVO em PostgreSQL com a role restrita", com `ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS=1`, `POSTGRES_APP_USER` e `POSTGRES_APP_PASSWORD` da role restrita (provisionada no passo de migração). As demais suítes PostgreSQL não mudam de role.
 
 ## Evidências
 

@@ -95,7 +95,6 @@ jobs:
       AVISOS_SVO_COLETA_POSTGRES_TESTS: '1'
       AVISOS_SVO_TRIAGEM_POSTGRES_TESTS: '1'
       METRICAS_NOTIFICACOES_POSTGRES_TESTS: '1'
-      ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS: '1'
 
     defaults:
       run:
@@ -137,6 +136,16 @@ jobs:
         run: npm test -- --no-file-parallelism
         env:
           JWT_SECRET: ci-test-only-secret-not-for-production
+
+      # A suíte do endpoint público SVO precisa rodar com a role restrita da aplicação (provada por current_user),
+      # que foi provisionada no banco frotas_teste pelo passo de migração acima. As demais suítes seguem como estavam.
+      - name: Validar endpoint público SVO em PostgreSQL com a role restrita
+        run: npx vitest run src/tests/solicitacaoSvoExternaPostgres.test.ts --no-file-parallelism
+        env:
+          JWT_SECRET: ci-test-only-secret-not-for-production
+          ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS: '1'
+          POSTGRES_APP_USER: frotas_app_qa_svo_externo
+          POSTGRES_APP_PASSWORD: ci-svo-externo-test-only
 
       - name: Validar agenda temporal e NO_LOCAL em PostgreSQL
         env:
