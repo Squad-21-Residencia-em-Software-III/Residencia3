@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
+import { ID_CONTEUDO } from '../layout/AcoesPublicasContext';
 
-export const ID_CONTEUDO = 'conteudo';
+export { ID_CONTEUDO };
 
 /**
  * Primeiro item do Tab: leva direto ao conteúdo, sem passar pelo menu (WCAG 2.4.1). Invisível até receber foco.

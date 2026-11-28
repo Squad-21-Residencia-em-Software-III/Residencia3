@@ -7,22 +7,32 @@ import { BridgeNotificacoesSw } from './components/notificacoes/BridgeNotificaco
 import { ToastNotificacao } from './components/notificacoes/ToastNotificacao'
 import { BannerOffline } from './components/pwa/BannerOffline'
 import { PromptAtualizacaoPwa } from './components/pwa/PromptAtualizacaoPwa'
+import { BotaoAcessibilidade } from './components/acessibilidade/BotaoAcessibilidade'
+import { SaltoConteudo } from './components/acessibilidade/SaltoConteudo'
+import { AcoesPublicasContext } from './components/layout/AcoesPublicasContext'
 import { AppRoutes } from './routes'
+
+const acoesPublicas = {
+  saltoConteudo: <SaltoConteudo />,
+  preferencias: <BotaoAcessibilidade superficie="clara" />,
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
         <AuthProvider>
-          <AcessibilidadeProvider>
-            <NotificacoesProvider>
-              <BannerOffline />
-              <AppRoutes />
-              <BridgeNotificacoesSw />
-              <ToastNotificacao />
-              <PromptAtualizacaoPwa />
-            </NotificacoesProvider>
-          </AcessibilidadeProvider>
+          <NotificacoesProvider>
+            <BannerOffline />
+            <AcessibilidadeProvider>
+              <AcoesPublicasContext.Provider value={acoesPublicas}>
+                <AppRoutes />
+              </AcoesPublicasContext.Provider>
+            </AcessibilidadeProvider>
+            <BridgeNotificacoesSw />
+            <ToastNotificacao />
+            <PromptAtualizacaoPwa />
+          </NotificacoesProvider>
         </AuthProvider>
       </ErrorBoundary>
     </BrowserRouter>
