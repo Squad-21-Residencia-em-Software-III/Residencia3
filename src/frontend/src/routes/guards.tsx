@@ -1,6 +1,8 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import type { Perfil } from '../types/usuario';
+import { recursoAtivo } from '../config/recursosBackend';
+import type { RecursoBackend } from '../config/recursosBackend';
 import { usePermissao } from '../utils/permissoes';
 import type { Permissao } from '../utils/permissoes';
 
@@ -36,4 +38,9 @@ export function RotaPublica() {
   if (carregando) return <TelaCarregando />;
   if (usuario) return <Navigate to="/inicio" replace />;
   return <Outlet />;
+}
+
+/** Rota que só existe com a flag ligada (ver config/recursosBackend). Desligada, vai para a 404. */
+export function RotaComRecurso({ recurso }: { recurso: RecursoBackend }) {
+  return recursoAtivo(recurso) ? <Outlet /> : <Navigate to="/404" replace />;
 }
