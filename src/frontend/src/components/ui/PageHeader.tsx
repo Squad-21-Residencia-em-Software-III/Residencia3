@@ -31,7 +31,7 @@ export function PageHeader({
           {badge}
         </div>
         {subtitle && (
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+          <p className="text-xs sm:text-sm text-text-muted mt-1 leading-relaxed">
             {subtitle}
           </p>
         )}

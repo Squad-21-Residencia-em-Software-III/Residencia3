@@ -144,3 +144,9 @@ A SCRUM-303 está em andamento no Jira e nenhuma implementação foi localizada 
 ### Preferências em Chrome desktop
 
 Em perfil temporário de Chrome, alto contraste, tritanopia e escala 150% sincronizaram com outra aba, sobreviveram ao fechamento da aba e reapareceram após reiniciar o navegador. Com o service worker ativo, as três preferências continuaram disponíveis em navegação offline. A verificação também confirmou que abrir e alterar preferências preserva o e-mail digitado no formulário de login e que a emulação de movimento reduzido do sistema é reconhecida. A tentativa de instalação pelo menu do Chrome foi interrompida pelo controle de interface do Windows. A reabertura como aplicativo instalado continua pendente.
+
+### Matriz de indicadores e odômetro na composição final
+
+Chrome 158 com `develop`, #239, #246 e PostgreSQL local descartável. Foram avaliados dashboard, veículos, CNH, multas, legenda da agenda, consumo/meta e o painel de ocupação. Os casos cobrem sete combinações em 320 CSS px: padrão, protanopia, deuteranopia, tritanopia, escala de cinza, alto contraste mais ampliação de texto e cores forçadas emuladas. As 49 combinações mantiveram os rótulos visíveis e sem rolagem horizontal. O axe apontou contraste de 4,39:1 no subtítulo do dashboard. A troca para o token semântico de texto secundário eliminou a ocorrência na repetição do axe em padrão e alto contraste.
+
+No fluxo do motorista, o Chrome emulou largura de 320 CSS px e cores forçadas. O seletor de arquivo emulou a entrada de câmera. Foram verificados o alerta para arquivo inválido, a prévia, a ampliação, a remoção com foco na galeria e a substituição. A saída e a chegada com imagem JPEG sintética passaram pela API real e gravaram a transição e a quilometragem no PostgreSQL. O roteiro de reflow e diálogos internos também passou no zoom nativo de 200%. A captura pela câmera física e a ampliação específica do fluxo de odômetro ainda precisam de homologação.
