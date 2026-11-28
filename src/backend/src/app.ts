@@ -26,6 +26,11 @@ app.use(logRequisicao);
 // Antes das rotas, para valer também nas respostas de erro e no 404
 app.use(cabecalhosDeSeguranca());
 app.use(corsPorAmbiente());
+// Rotas públicas do portal SVO: nunca em cache, inclusive nos erros antecipados (JSON inválido, 413, 429, 503, 404)
+app.use('/api/solicitacoes-svo/externas', (_req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
 // Proteção contra excesso (docs/limites-e-timeouts.md): concorrência e tempo limite por requisição
 app.use(limitarConcorrencia);
 // O envio da foto do odômetro tem tempo próprio, maior (ver evidenciaOdometroRoutes)

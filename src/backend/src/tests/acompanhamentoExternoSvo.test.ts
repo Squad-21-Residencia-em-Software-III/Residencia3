@@ -66,6 +66,7 @@ import {
   type RegistroAcompanhamentoExternoRow,
 } from '../models/acompanhamentoExternoSvoModel';
 import { authService } from '../services/authService';
+import { solicitacaoSvoExternaSchema } from '../validators/solicitacaoSvoExternaSchemas';
 import {
   JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS,
   MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA,
@@ -259,15 +260,22 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
       const provaCorreta = gerarSegredoCredencialExterna();
       const provaImpostor = gerarSegredoCredencialExterna();
       const payloadOriginal = {
+        tipo_solicitante: 'PESSOA_FISICA',
         nome_solicitante: 'Hospital Sintético',
+        telefone_solicitante: '(79) 99999-0000',
+        email_solicitante: 'sintetico@example.invalid',
+        cpf_solicitante: '529.982.247-25',
+        nome_falecido: 'Falecido Sintético',
         local_ocorrencia: 'Av. Beira Mar, 1500',
+        numero_imovel: '1500',
+        descricao_ocorrencia: 'Descrição sintética da ocorrência.',
+        data_hora_ocorrencia: '2026-01-10T10:00:00-03:00',
+        ciencia_aviso_privacidade: true,
+        versao_aviso_privacidade: '2026-11-v1',
       };
-      const payloadAdulterado = {
-        nome_solicitante: 'Outro Solicitante',
-        local_ocorrencia: 'Rua Diferente, 999',
-      };
+      const payloadAdulterado = { ...payloadOriginal, local_ocorrencia: 'Rua Diferente, 999' };
 
-      const payloadDigest = calcularDigestPayloadCriacao(payloadOriginal);
+      const payloadDigest = calcularDigestPayloadCriacao(solicitacaoSvoExternaSchema.parse(payloadOriginal));
       const provaDigest = calcularDigestProvaTentativa(
         chaveIdempotencia,
         provaCorreta
@@ -746,7 +754,20 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         .post('/api/solicitacoes-svo/externas/recuperar-comprovante')
         .set('Idempotency-Key', 'idem-flag-indep-01')
         .set('X-Prova-Tentativa', gerarSegredoCredencialExterna())
-        .send({ payload: { a: 1 } });
+        .send({ payload: {
+        tipo_solicitante: 'PESSOA_FISICA',
+        nome_solicitante: 'Hospital Sintético',
+        telefone_solicitante: '(79) 99999-0000',
+        email_solicitante: 'sintetico@example.invalid',
+        cpf_solicitante: '529.982.247-25',
+        nome_falecido: 'Falecido Sintético',
+        local_ocorrencia: 'Av. Beira Mar, 1500',
+        numero_imovel: '1500',
+        descricao_ocorrencia: 'Descrição sintética da ocorrência.',
+        data_hora_ocorrencia: '2026-01-10T10:00:00-03:00',
+        ciencia_aviso_privacidade: true,
+        versao_aviso_privacidade: '2026-11-v1',
+      } });
       expect(respRecComPortalLigado.status).toBe(401);
 
       // Acompanhamento ligado, portal desligado: consulta funciona normalmente
