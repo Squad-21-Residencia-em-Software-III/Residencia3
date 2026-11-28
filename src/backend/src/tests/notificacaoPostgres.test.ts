@@ -8,7 +8,7 @@ import { env } from '../config/env';
 
 // API In-App (SCRUM-226) contra a tabela da SCRUM-225. Só executa num banco descartável explicitamente
 // identificado, depois de `npm run migrate`.
-const habilitado = process.env.SCRUM226_POSTGRES_TESTS === '1';
+const habilitado = process.env.NOTIFICACOES_IN_APP_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(8).toString('hex');
 
 interface Conta { id: number; token: string }

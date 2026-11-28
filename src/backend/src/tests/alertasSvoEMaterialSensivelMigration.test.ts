@@ -7,13 +7,13 @@ const provisionarModule = require('../../scripts/provisionar-usuario-app.cjs') a
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migrationScrum183 = require('../../database/migrations/20261117172500_scrum_183_fila_alertas_svo_e_material_sensivel.js') as {
+const migrationAlertasSvoEMaterialSensivel = require('../../database/migrations/20261117172500_scrum_183_fila_alertas_svo_e_material_sensivel.js') as {
   up: (knex: unknown) => Promise<void>;
   down: (knex: unknown) => Promise<void>;
   validarCatalogoScrum183: (knex: unknown) => Promise<boolean>;
 };
 
-describe('Segurança da role da aplicação e da migration SCRUM-183', () => {
+describe('Segurança da role da aplicação e da migration de alertas SVO e material sensível', () => {
   const estadoSeguroBase = {
     rolname: 'frotas_app',
     rolcanlogin: true,
@@ -116,7 +116,7 @@ describe('Segurança da role da aplicação e da migration SCRUM-183', () => {
     });
   });
 
-  describe('Validação de catálogo e bloqueio de rollback destrutivo na migration SCRUM-183', () => {
+  describe('Validação de catálogo e bloqueio de rollback destrutivo na migration de alertas SVO e material sensível', () => {
     function criarKnexCatalogoValido(sobrescritas?: {
       tipoLiberadaEm?: string;
       alertaExistente?: { id: number };
@@ -224,24 +224,24 @@ describe('Segurança da role da aplicação e da migration SCRUM-183', () => {
     it('rejeita estrutura preexistente incompatível em validarCatalogoScrum183', async () => {
       const { knexMock } = criarKnexCatalogoValido({ tipoLiberadaEm: 'text' });
 
-      await expect(migrationScrum183.validarCatalogoScrum183(knexMock)).rejects.toThrow(
+      await expect(migrationAlertasSvoEMaterialSensivel.validarCatalogoScrum183(knexMock)).rejects.toThrow(
         /Estrutura incompativel em public\.ordens_svo\.liberada_em/
       );
     });
 
     it('bloqueia down quando há alertas, ordens liberadas ou solicitações com material sensível', async () => {
       const comAlerta = criarKnexCatalogoValido({ alertaExistente: { id: 10 } });
-      await expect(migrationScrum183.down(comAlerta.knexMock)).rejects.toThrow(
+      await expect(migrationAlertasSvoEMaterialSensivel.down(comAlerta.knexMock)).rejects.toThrow(
         /Rollback bloqueado: existem registros em alertas_atraso_svo/
       );
 
       const comOrdemLiberada = criarKnexCatalogoValido({ ordemLiberada: { id: 3 } });
-      await expect(migrationScrum183.down(comOrdemLiberada.knexMock)).rejects.toThrow(
+      await expect(migrationAlertasSvoEMaterialSensivel.down(comOrdemLiberada.knexMock)).rejects.toThrow(
         /Rollback bloqueado: existem ordens em ordens_svo com liberada_em preenchido/
       );
 
       const comMaterialSensivel = criarKnexCatalogoValido({ solicitacaoSensivel: { id: 8 } });
-      await expect(migrationScrum183.down(comMaterialSensivel.knexMock)).rejects.toThrow(
+      await expect(migrationAlertasSvoEMaterialSensivel.down(comMaterialSensivel.knexMock)).rejects.toThrow(
         /Rollback bloqueado: existem solicitacoes em solicitacoes_viagem com material_sensivel = true/
       );
     });
@@ -249,7 +249,7 @@ describe('Segurança da role da aplicação e da migration SCRUM-183', () => {
     it('executa DROP estrito (sem IF EXISTS) no down quando não há dados operacionais', async () => {
       const { knexMock, sqlExecutados } = criarKnexCatalogoValido();
 
-      await migrationScrum183.down(knexMock);
+      await migrationAlertasSvoEMaterialSensivel.down(knexMock);
 
       expect(sqlExecutados).toContain('DROP INDEX idx_alertas_atraso_svo_abertos');
       expect(sqlExecutados).toContain('DROP TABLE alertas_atraso_svo');

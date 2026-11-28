@@ -6,8 +6,6 @@ on:
     branches:
       - develop
       - main
-      # Base temporária do PR da SCRUM-275 até o merge da SCRUM-296.
-      - feature/scrum-296-flags-rollout
 
   push:
     branches:
@@ -84,20 +82,20 @@ jobs:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ci-test-only
       POSTGRES_SSL: 'false'
-      SCRUM263_DB_DESCARTAVEL: '1'
-      SCRUM226_POSTGRES_TESTS: '1'
+      SOLICITACOES_EXTERNAS_SVO_DB_DESCARTAVEL: '1'
+      NOTIFICACOES_IN_APP_POSTGRES_TESTS: '1'
       EXPIRACAO_POSTGRES_TESTS: '1'
       NOTIFICACOES_POSTGRES_TESTS: '1'
-      SCRUM208_POSTGRES_TESTS: '1'
-      SCRUM233_POSTGRES_TESTS: '1'
-      SCRUM229_POSTGRES_TESTS: '1'
-      SCRUM230_POSTGRES_TESTS: '1'
-      SCRUM237_POSTGRES_TESTS: '1'
-      SCRUM231_POSTGRES_TESTS: '1'
-      SCRUM235_POSTGRES_TESTS: '1'
-      SCRUM234_POSTGRES_TESTS: '1'
-      SCRUM241_POSTGRES_TESTS: '1'
-      SCRUM271_POSTGRES_TESTS: '1'
+      EVIDENCIAS_ODOMETRO_POSTGRES_TESTS: '1'
+      NOTIFICACOES_SVO_POSTGRES_TESTS: '1'
+      FILA_PUSH_POSTGRES_TESTS: '1'
+      AVISOS_SOLICITACAO_POSTGRES_TESTS: '1'
+      WEB_PUSH_POSTGRES_TESTS: '1'
+      REPROGRAMACAO_ADMINISTRATIVA_POSTGRES_TESTS: '1'
+      AVISOS_SVO_COLETA_POSTGRES_TESTS: '1'
+      AVISOS_SVO_TRIAGEM_POSTGRES_TESTS: '1'
+      METRICAS_NOTIFICACOES_POSTGRES_TESTS: '1'
+      PORTAL_SVO_POSTGRES_TESTS: '1'
 
     defaults:
       run:
@@ -122,16 +120,15 @@ jobs:
           node --test ../../scripts/audit-ci.test.cjs
           node ../../scripts/audit-ci.cjs
 
-      - name: Migrar PostgreSQL descartável
-        run: npm run migrate
-
-      - name: Validar upgrade e privilégios SCRUM-263
+      - name: Migrar PostgreSQL descartável e validar privilégios de solicitações externas SVO
         env:
-          POSTGRES_APP_USER: frotas_app_qa263
-          POSTGRES_APP_PASSWORD: ci-scrum263-test-only
+          POSTGRES_APP_USER: frotas_app_qa_svo_externo
+          POSTGRES_APP_PASSWORD: ci-svo-externo-test-only
         run: |
           npm run db:provisionar-app-user
-          npm run db:validar-scrum263
+          npm run migrate
+          npm run db:provisionar-app-user
+          npm run db:validar-solicitacoes-externas-svo
 
       - name: Compilar backend
         run: npm run build
@@ -145,16 +142,18 @@ jobs:
         env:
           JWT_SECRET: ci-test-only-secret-not-for-production
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
-          POSTGRES_DB: fsph_scrum166_teste
+          POSTGRES_DB: fsph_agenda_svo_teste
+          POSTGRES_APP_USER: frotas_app_qa_svo_externo
+          DB_ROLE: migration
           POSTGRES_SVO_TEST_PORT: '5432'
-          SCRUM166_POSTGRES_TESTS: '1'
-          SCRUM196_BL31_POSTGRES_TESTS: '1'
-          BL31_POSTGRES_TESTS: '1'
+          AGENDA_SVO_POSTGRES_TESTS: '1'
+          CHEGADA_AGENDA_SVO_POSTGRES_TESTS: '1'
+          CHEGADA_COLETA_SVO_POSTGRES_TESTS: '1'
         run: |
-          docker exec "$POSTGRES_CONTAINER" createdb -U postgres fsph_scrum166_teste
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres fsph_agenda_svo_teste
           export POSTGRES_TEST_CONTAINER_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$POSTGRES_CONTAINER")"
           npm run migrate
-          npx vitest run src/tests/agendaSvoPostgres.test.ts src/tests/bl31Postgres.test.ts --no-file-parallelism
+          npx vitest run src/tests/agendaSvoPostgres.test.ts src/tests/chegadaColetaSvoPostgres.test.ts --no-file-parallelism
 
       - name: Verificar tipos TypeScript
         run: npm run typecheck

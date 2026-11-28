@@ -5,7 +5,7 @@ import { mapasController } from '../controllers/mapasController';
 import { AppError } from '../errors/AppError';
 import { autenticar } from '../middlewares/autenticar';
 import { autorizar, exigirAssociacaoSvo } from '../middlewares/autorizar';
-import { exigirRecursoFase3 } from '../middlewares/exigirRecursoFase3';
+import { exigirRecursoAtivo } from '../middlewares/exigirRecursoAtivo';
 import { criarLimitador } from '../middlewares/limitarTentativasLogin';
 import { MAXIMO_PARADAS_ADM } from '../validators/mapasSchemas';
 
@@ -13,9 +13,9 @@ export const LIMITE_MAPAS_POR_USUARIO_POR_MINUTO = 20;
 const TAMANHO_MAXIMO_URL = 4096;
 const permitirAdm = autorizar(...PERFIS_SOLICITANTES);
 const permitirSvo = autorizar(PERFIS.ADMINISTRADOR, PERFIS.GESTOR_SVO);
-const habilitarAdm = exigirRecursoFase3('mapasInternos');
-const habilitarSvo = exigirRecursoFase3('mapasSvo');
-const habilitarParadasAdm = exigirRecursoFase3('multiplasParadas');
+const habilitarAdm = exigirRecursoAtivo('mapasInternos');
+const habilitarSvo = exigirRecursoAtivo('mapasSvo');
+const habilitarParadasAdm = exigirRecursoAtivo('multiplasParadas');
 
 const selecionarSvo: RequestHandler = (req, _res, next) => {
   const operacao = req.query.operacao ?? 'ADM';

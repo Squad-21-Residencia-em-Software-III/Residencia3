@@ -1,7 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 const knex = require('knex');
-const { aplicarPrivilegiosScrum263, DADOS } = require('../database/scrum263-privilegios.cjs');
+const { aplicarPrivilegiosSolicitacoesExternasSvo, DADOS } = require('../database/privilegiosSolicitacoesExternasSvo.cjs');
 const knexConfig = require('../knexfile');
 
 /**
@@ -420,7 +420,7 @@ async function provisionarUsuarioAplicacao() {
 
       if (await trx.schema.withSchema('public').hasTable(DADOS)) {
         const corrigida = !(await trx.schema.withSchema('public').hasColumn(DADOS, 'endereco_ocorrencia'));
-        await aplicarPrivilegiosScrum263(trx, 'public', appUser, corrigida);
+        await aplicarPrivilegiosSolicitacoesExternasSvo(trx, 'public', appUser, corrigida);
       }
 
       // Validacao obrigatoria dos atributos efetivos e privilegios antes de confirmar a transacao

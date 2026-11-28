@@ -8,14 +8,14 @@ const provisionarModule = require('../../scripts/provisionar-usuario-app.cjs') a
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migrationScrum228 = require('../../database/migrations/20261124200000_scrum_228_notificacao_outbox.js') as {
+const migrationNotificacaoOutbox = require('../../database/migrations/20261124200000_scrum_228_notificacao_outbox.js') as {
   up: (knex: unknown) => Promise<void>;
   down: (knex: unknown) => Promise<void>;
   validarCatalogoScrum228: (knex: unknown) => Promise<void>;
 };
 
-describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox transacional)', () => {
-  function criarKnexScrum228Mock(opcoes?: {
+describe('Contrato de banco, migration e privilégios de outbox de notificações (outbox transacional)', () => {
+  function criarKnexNotificacaoOutboxMock(opcoes?: {
     schemaAtual?: string;
     tabelasBaseCount?: number;
     tabelaOutboxPreexistente?: boolean;
@@ -233,7 +233,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     return { knexMock, sqlExecutados };
   }
 
-  it('não utiliza IF EXISTS nem IF NOT EXISTS cegos no código-fonte da migration SCRUM-228', () => {
+  it('não utiliza IF EXISTS nem IF NOT EXISTS cegos no código-fonte da migration de outbox de notificações', () => {
     const caminhoMigration = path.resolve(
       __dirname,
       '../../database/migrations/20261124200000_scrum_228_notificacao_outbox.js'
@@ -245,8 +245,8 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
   });
 
   it('define contrato alinhado à Seção 6.1 do Plano (ON DELETE CASCADE, sem default v1 em ocorrencia_versao e unicidade incluindo referencia_tipo/id)', async () => {
-    const { knexMock, sqlExecutados } = criarKnexScrum228Mock();
-    await migrationScrum228.up(knexMock);
+    const { knexMock, sqlExecutados } = criarKnexNotificacaoOutboxMock();
+    await migrationNotificacaoOutbox.up(knexMock);
 
     const ddlCreate = sqlExecutados.find((item) =>
       item.sql.includes('CREATE TABLE notificacao_outbox')
@@ -263,43 +263,43 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
   });
 
   it('bloqueia up quando a tabela base usuarios não está presente no schema alvo', async () => {
-    const semBase = criarKnexScrum228Mock({ tabelasBaseCount: 0 });
-    await expect(migrationScrum228.up(semBase.knexMock)).rejects.toThrow(
+    const semBase = criarKnexNotificacaoOutboxMock({ tabelasBaseCount: 0 });
+    await expect(migrationNotificacaoOutbox.up(semBase.knexMock)).rejects.toThrow(
       /tabela base usuarios ausente no schema alvo/
     );
   });
 
   it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum228 (tipo, limite, default v1 em ocorrencia_versao, constraint e índice)', async () => {
-    const tipoInvalido = criarKnexScrum228Mock({ tipoPayloadPush: 'text' });
-    await expect(migrationScrum228.validarCatalogoScrum228(tipoInvalido.knexMock)).rejects.toThrow(
+    const tipoInvalido = criarKnexNotificacaoOutboxMock({ tipoPayloadPush: 'text' });
+    await expect(migrationNotificacaoOutbox.validarCatalogoScrum228(tipoInvalido.knexMock)).rejects.toThrow(
       /Estrutura incompativel em notificacao_outbox\.payload_push/
     );
 
-    const tamanhoInvalido = criarKnexScrum228Mock({ tamanhoEventoTipo: 120 });
+    const tamanhoInvalido = criarKnexNotificacaoOutboxMock({ tamanhoEventoTipo: 120 });
     await expect(
-      migrationScrum228.validarCatalogoScrum228(tamanhoInvalido.knexMock)
+      migrationNotificacaoOutbox.validarCatalogoScrum228(tamanhoInvalido.knexMock)
     ).rejects.toThrow(/Estrutura incompativel em notificacao_outbox\.evento_tipo/);
 
-    const comDefaultOcorrencia = criarKnexScrum228Mock({
+    const comDefaultOcorrencia = criarKnexNotificacaoOutboxMock({
       defaultOcorrenciaVersao: "'v1'::character varying",
     });
     await expect(
-      migrationScrum228.validarCatalogoScrum228(comDefaultOcorrencia.knexMock)
+      migrationNotificacaoOutbox.validarCatalogoScrum228(comDefaultOcorrencia.knexMock)
     ).rejects.toThrow(/nao deve possuir default implicito/);
 
-    const semConstraint = criarKnexScrum228Mock({
+    const semConstraint = criarKnexNotificacaoOutboxMock({
       omitirConstraint: 'notificacao_outbox.uq_notificacao_outbox_evento_destinatario_ocorrencia',
     });
     await expect(
-      migrationScrum228.validarCatalogoScrum228(semConstraint.knexMock)
+      migrationNotificacaoOutbox.validarCatalogoScrum228(semConstraint.knexMock)
     ).rejects.toThrow(
       /Constraint obrigatoria ausente ou incompativel: notificacao_outbox\.uq_notificacao_outbox_evento_destinatario_ocorrencia/
     );
 
-    const semIndice = criarKnexScrum228Mock({
+    const semIndice = criarKnexNotificacaoOutboxMock({
       omitirIndice: 'idx_notificacao_outbox_fila_pendente',
     });
-    await expect(migrationScrum228.validarCatalogoScrum228(semIndice.knexMock)).rejects.toThrow(
+    await expect(migrationNotificacaoOutbox.validarCatalogoScrum228(semIndice.knexMock)).rejects.toThrow(
       /Indice obrigatorio ausente ou incompativel: idx_notificacao_outbox_fila_pendente/
     );
   });
@@ -308,12 +308,12 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
     const appUserAnterior = process.env.POSTGRES_APP_USER;
     process.env.POSTGRES_APP_USER = 'frotas_app';
     try {
-      const { knexMock, sqlExecutados } = criarKnexScrum228Mock({
+      const { knexMock, sqlExecutados } = criarKnexNotificacaoOutboxMock({
         schemaAtual: 'schema_isolado_228',
         roleAppPresente: true,
       });
 
-      await migrationScrum228.up(knexMock);
+      await migrationNotificacaoOutbox.up(knexMock);
 
       const cmdRevoke = sqlExecutados.find((item) =>
         item.sql.includes('REVOKE ALL PRIVILEGES ON TABLE ??.notificacao_outbox FROM ??')
@@ -336,15 +336,15 @@ describe('Contrato de banco, migration e privilégios da SCRUM-228 (outbox trans
   });
 
   it('bloqueia rollback (down) quando há registros persistidos em notificacao_outbox', async () => {
-    const comDados = criarKnexScrum228Mock({ totalOutbox: 2 });
-    await expect(migrationScrum228.down(comDados.knexMock)).rejects.toThrow(
+    const comDados = criarKnexNotificacaoOutboxMock({ totalOutbox: 2 });
+    await expect(migrationNotificacaoOutbox.down(comDados.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem registros em notificacao_outbox/
     );
   });
 
   it('executa DROP estrito (sem IF EXISTS) no down quando não há dados operacionais', async () => {
-    const limpo = criarKnexScrum228Mock({ totalOutbox: 0 });
-    await migrationScrum228.down(limpo.knexMock);
+    const limpo = criarKnexNotificacaoOutboxMock({ totalOutbox: 0 });
+    await migrationNotificacaoOutbox.down(limpo.knexMock);
 
     const ddlDown = limpo.sqlExecutados.find((item) =>
       item.sql.includes('DROP TABLE notificacao_outbox')

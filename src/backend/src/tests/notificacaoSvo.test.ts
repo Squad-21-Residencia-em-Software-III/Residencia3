@@ -7,7 +7,7 @@ import { EVENTO_SVO_S1, CATEGORIA_NOTIFICACAO_SVO, notificacaoSvoService } from 
 import { solicitacaoSvoService } from '../services/solicitacaoSvoService';
 import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
-const habilitado = process.env.SCRUM233_POSTGRES_TESTS === '1';
+const habilitado = process.env.NOTIFICACOES_SVO_POSTGRES_TESTS === '1';
 const dados = { dados_solicitante: 'Nome reservado', local_ocorrencia: 'Endereço reservado', material_sensivel: true };
 
 async function conta(perfil: string, { associado = false, ativo = true } = {}) {

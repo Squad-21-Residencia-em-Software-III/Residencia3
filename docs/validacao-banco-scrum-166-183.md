@@ -81,7 +81,7 @@ Ordens criadas antes da `SCRUM-176` que permaneçam em status ativo (`ALOCADA` o
 ### 5.2. Sequência de Implantação por Ambiente
 1. Gerar backup criptografado pré-mudança (`npm run db:backup` em `src/backend`).
 2. Aplicar a migration com a credencial administrativa (`npm run migrate`) e validar o estado da role da aplicação (`npm run db:provisionar-app-user`).
-3. Executar o script de verificação isolada (`node scripts/validar-migration-scrum183.cjs`).
+3. Executar o script de verificação isolada (`node scripts/validar-migration-alertas-svo-e-material-sensivel.cjs`).
 4. Implantar o backend atualizado e reconciliar eventuais ordens legadas de homologação em estado `ALOCADA` sem período.
 5. Habilitar `VITE_AGENDA_SVO_ATIVA=true` no build do frontend somente após a conclusão dos passos acima.
 
@@ -93,11 +93,11 @@ Os testes abaixo podem ser reproduzidos em qualquer ambiente configurado executa
 
 ```bash
 cd src/backend
-node scripts/validar-migration-scrum183.cjs
-npx vitest run src/tests/scrum183MigrationEPrivilegios.test.ts
+node scripts/validar-migration-alertas-svo-e-material-sensivel.cjs
+npx vitest run src/tests/alertasSvoEMaterialSensivelMigration.test.ts
 ```
 
-### Resultado da Validação Automatizada em Schema Isolado (`validar-migration-scrum183.cjs`)
+### Resultado da Validação Automatizada em Schema Isolado (`validar-migration-alertas-svo-e-material-sensivel.cjs`)
 - **Item 1 — Bloqueio de estrutura preexistente incompatível no `up`:** Coluna `liberada_em` preexistente com tipo divergente (`TEXT`) é rejeitada com erro explícito `Estrutura incompativel`.
 - **Item 2 — Aplicação limpa (`up`) e preservação de registros:** Registros prévios em `ordens_svo` e `solicitacoes_viagem` preservados intactos (`liberada_em = null`, `material_sensivel = false`).
 - **Item 3 — Constraints e `EXPLAIN`:**

@@ -8,14 +8,14 @@ const provisionarModule = require('../../scripts/provisionar-usuario-app.cjs') a
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const migrationScrum263 = require('../../database/migrations/20261127130000_scrum_263_solicitacoes_externas_svo.js') as {
+const migrationSolicitacoesExternasSvo = require('../../database/migrations/20261127130000_scrum_263_solicitacoes_externas_svo.js') as {
   up: (knex: unknown) => Promise<void>;
   down: (knex: unknown) => Promise<void>;
   validarCatalogoScrum263: (knex: unknown) => Promise<void>;
 };
 
-describe('Contrato de banco, migration e privilégios da SCRUM-263 (solicitações externas SVO, canal e dados protegidos)', () => {
-  function criarKnexScrum263Mock(opcoes?: {
+describe('Contrato de banco, migration e privilégios de solicitações externas SVO (solicitações externas SVO, canal e dados protegidos)', () => {
+  function criarKnexSolicitacoesExternasSvoMock(opcoes?: {
     schemaAtual?: string;
     tabelasBaseCount?: number;
     nullableRegistranteId?: string;
@@ -394,7 +394,7 @@ describe('Contrato de banco, migration e privilégios da SCRUM-263 (solicitaçõ
     return { knexMock, sqlExecutados };
   }
 
-  it('não utiliza IF EXISTS nem IF NOT EXISTS cegos no código-fonte da migration SCRUM-263', () => {
+  it('não utiliza IF EXISTS nem IF NOT EXISTS cegos no código-fonte da migration de solicitações externas SVO', () => {
     const caminhoMigration = path.resolve(
       __dirname,
       '../../database/migrations/20261127130000_scrum_263_solicitacoes_externas_svo.js'
@@ -406,8 +406,8 @@ describe('Contrato de banco, migration e privilégios da SCRUM-263 (solicitaçõ
   });
 
   it('evolui solicitacoes_svo com backfill INTERNA, registrante_id nullable, protocolo único opaco e cria tabelas protegidas com todos os campos da HU-01', async () => {
-    const { knexMock, sqlExecutados } = criarKnexScrum263Mock();
-    await migrationScrum263.up(knexMock);
+    const { knexMock, sqlExecutados } = criarKnexSolicitacoesExternasSvoMock();
+    await migrationSolicitacoesExternasSvo.up(knexMock);
 
     const ddlAlterSvo = sqlExecutados.find((item) =>
       item.sql.includes('ALTER TABLE solicitacoes_svo')
@@ -444,47 +444,47 @@ describe('Contrato de banco, migration e privilégios da SCRUM-263 (solicitaçõ
   });
 
   it('bloqueia up quando as tabelas base usuarios e solicitacoes_svo não estão presentes no schema alvo', async () => {
-    const semBase = criarKnexScrum263Mock({ tabelasBaseCount: 1 });
-    await expect(migrationScrum263.up(semBase.knexMock)).rejects.toThrow(
+    const semBase = criarKnexSolicitacoesExternasSvoMock({ tabelasBaseCount: 1 });
+    await expect(migrationSolicitacoesExternasSvo.up(semBase.knexMock)).rejects.toThrow(
       /tabelas base \(usuarios, solicitacoes_svo\) ausentes no schema alvo/
     );
   });
 
   it('rejeita estruturas preexistentes incompatíveis em validarCatalogoScrum263', async () => {
-    const registranteNaoNulavel = criarKnexScrum263Mock({ nullableRegistranteId: 'NO' });
+    const registranteNaoNulavel = criarKnexSolicitacoesExternasSvoMock({ nullableRegistranteId: 'NO' });
     await expect(
-      migrationScrum263.validarCatalogoScrum263(registranteNaoNulavel.knexMock)
+      migrationSolicitacoesExternasSvo.validarCatalogoScrum263(registranteNaoNulavel.knexMock)
     ).rejects.toThrow(/Estrutura incompativel em solicitacoes_svo\.registrante_id/);
 
-    const tipoCpfInvalido = criarKnexScrum263Mock({ tipoCpfSolicitante: 'text' });
+    const tipoCpfInvalido = criarKnexSolicitacoesExternasSvoMock({ tipoCpfSolicitante: 'text' });
     await expect(
-      migrationScrum263.validarCatalogoScrum263(tipoCpfInvalido.knexMock)
+      migrationSolicitacoesExternasSvo.validarCatalogoScrum263(tipoCpfInvalido.knexMock)
     ).rejects.toThrow(/Estrutura incompativel em solicitacoes_svo_dados_externos\.cpf_solicitante/);
 
-    const semConstraint = criarKnexScrum263Mock({
+    const semConstraint = criarKnexSolicitacoesExternasSvoMock({
       omitirConstraint: 'solicitacoes_svo.uq_solicitacoes_svo_protocolo',
     });
     await expect(
-      migrationScrum263.validarCatalogoScrum263(semConstraint.knexMock)
+      migrationSolicitacoesExternasSvo.validarCatalogoScrum263(semConstraint.knexMock)
     ).rejects.toThrow(
       /Constraint obrigatoria ausente ou incompativel: solicitacoes_svo\.uq_solicitacoes_svo_protocolo/
     );
 
-    const semIndice = criarKnexScrum263Mock({
+    const semIndice = criarKnexSolicitacoesExternasSvoMock({
       omitirIndice: 'idx_solicitacoes_svo_canal_status_id',
     });
     await expect(
-      migrationScrum263.validarCatalogoScrum263(semIndice.knexMock)
+      migrationSolicitacoesExternasSvo.validarCatalogoScrum263(semIndice.knexMock)
     ).rejects.toThrow(
       /Indice obrigatorio ausente ou incompativel: idx_solicitacoes_svo_canal_status_id/
     );
 
-    const semTrigger = criarKnexScrum263Mock({
+    const semTrigger = criarKnexSolicitacoesExternasSvoMock({
       omitirTrigger:
         'solicitacoes_svo_dados_externos.trg_validar_vinculo_canal_externo_dados_svo',
     });
     await expect(
-      migrationScrum263.validarCatalogoScrum263(semTrigger.knexMock)
+      migrationSolicitacoesExternasSvo.validarCatalogoScrum263(semTrigger.knexMock)
     ).rejects.toThrow(
       /Trigger obrigatoria ausente: solicitacoes_svo_dados_externos\.trg_validar_vinculo_canal_externo_dados_svo/
     );
@@ -494,12 +494,12 @@ describe('Contrato de banco, migration e privilégios da SCRUM-263 (solicitaçõ
     const appUserAnterior = process.env.POSTGRES_APP_USER;
     process.env.POSTGRES_APP_USER = 'frotas_app';
     try {
-      const { knexMock, sqlExecutados } = criarKnexScrum263Mock({
+      const { knexMock, sqlExecutados } = criarKnexSolicitacoesExternasSvoMock({
         schemaAtual: 'schema_isolado_263',
         roleAppPresente: true,
       });
 
-      await migrationScrum263.up(knexMock);
+      await migrationSolicitacoesExternasSvo.up(knexMock);
 
       const cmdRevoke = sqlExecutados.find((item) =>
         item.sql.includes(
@@ -530,18 +530,18 @@ describe('Contrato de banco, migration e privilégios da SCRUM-263 (solicitaçõ
   });
 
   it('bloqueia rollback (down) quando há dados externos, credenciais ou solicitações EXTERNA persistidas', async () => {
-    const comDadosExternos = criarKnexScrum263Mock({ totalDadosExternos: 1 });
-    await expect(migrationScrum263.down(comDadosExternos.knexMock)).rejects.toThrow(
+    const comDadosExternos = criarKnexSolicitacoesExternasSvoMock({ totalDadosExternos: 1 });
+    await expect(migrationSolicitacoesExternasSvo.down(comDadosExternos.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem registros em solicitacoes_svo_dados_externos/
     );
 
-    const comCredenciais = criarKnexScrum263Mock({ totalCredenciaisExternas: 1 });
-    await expect(migrationScrum263.down(comCredenciais.knexMock)).rejects.toThrow(
+    const comCredenciais = criarKnexSolicitacoesExternasSvoMock({ totalCredenciaisExternas: 1 });
+    await expect(migrationSolicitacoesExternasSvo.down(comCredenciais.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem registros em solicitacoes_svo_credenciais_externas/
     );
 
-    const comSolicitacoesExternas = criarKnexScrum263Mock({ totalSolicitacoesExternas: 1 });
-    await expect(migrationScrum263.down(comSolicitacoesExternas.knexMock)).rejects.toThrow(
+    const comSolicitacoesExternas = criarKnexSolicitacoesExternasSvoMock({ totalSolicitacoesExternas: 1 });
+    await expect(migrationSolicitacoesExternasSvo.down(comSolicitacoesExternas.knexMock)).rejects.toThrow(
       /Rollback bloqueado: existem solicitacoes em solicitacoes_svo com canal_origem EXTERNA/
     );
   });

@@ -16,7 +16,7 @@ import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 // SCRUM-237 de ponta a ponta no PostgreSQL: rotas reais (sessão por JWT), regras do banco (SCRUM-236),
 // publicação e fila (SCRUM-229) e o enviador Web Push com cifra e VAPID reais. Só o destino HTTP é falso.
 // Só roda num banco descartável explicitamente identificado, depois de `npm run migrate`.
-const habilitado = process.env.SCRUM237_POSTGRES_TESTS === '1';
+const habilitado = process.env.WEB_PUSH_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(8).toString('hex');
 const BASE = '/api/notificacoes';
 const vapid = generateVAPIDKeys();

@@ -4,13 +4,13 @@ Base `/api/mapas`. As três operações usam GET, sessão Bearer ativa e `Cache-
 
 ## Parâmetros e permissões
 
-`operacao` é `ADM` (padrão) ou `SVO`. ADM exige `FASE3_MAPAS_INTERNOS`. SVO exige `FASE3_MAPAS_SVO`. Em SVO, administrador e gestor associado à unidade SVO podem usar as três rotas. Em ADM, administrador, gestor de Frota, gestor SVO e solicitante podem buscar, consultar reverso e calcular rotas conforme os perfis de criação ADM da matriz de acesso. A associação do gestor à unidade SVO é exigida nas chamadas SVO. O proxy recebe pontos e endereços, sem acesso a registros de ocorrências ou autorização para alterá-los.
+`operacao` é `ADM` (padrão) ou `SVO`. ADM exige `MAPAS_INTERNOS_ATIVOS`. SVO exige `MAPAS_SVO_ATIVOS`. Em SVO, administrador e gestor associado à unidade SVO podem usar as três rotas. Em ADM, administrador, gestor de Frota, gestor SVO e solicitante podem buscar, consultar reverso e calcular rotas conforme os perfis de criação ADM da matriz de acesso. A associação do gestor à unidade SVO é exigida nas chamadas SVO. O proxy recebe pontos e endereços, sem acesso a registros de ocorrências ou autorização para alterá-los.
 
 | Caminho | Parâmetros | Exemplo sintético |
 | --- | --- | --- |
 | `/buscar` | Exatamente um entre `q` (3–120 caracteres após normalização), `cep` (8 dígitos, hífen opcional) e `unidade` (`HEMOSE`, `LACEN`, `SVO`). | `/api/mapas/buscar?cep=01001-000` |
 | `/reverso` | `lat` em [−90, 90] e `lon` em [−180, 180]. Decimais com ponto e até 12 casas. O proxy usa seis casas. | `/api/mapas/reverso?lat=-10.91&lon=-37.07` |
-| `/rota` | Repita `pontos` para cada `latitude,longitude`, de origem até destino. `retornarOrigem=true` acrescenta um trecho final. ADM permite oito paradas intermediárias, com `FASE3_MULTIPLAS_PARADAS` ativa. O teto técnico do proxy é de 50 pontos, incluindo retorno, e a URL é limitada a 4 KiB. Para ponto sem coordenadas, preserve sua posição usando `pontos=`. | `/api/mapas/rota?pontos=-10.91,-37.07&pontos=-10.93,-37.06&pontos=-10.92,-37.05&retornarOrigem=true` |
+| `/rota` | Repita `pontos` para cada `latitude,longitude`, de origem até destino. `retornarOrigem=true` acrescenta um trecho final. ADM permite oito paradas intermediárias, com `MULTIPLAS_PARADAS_ATIVAS` ativa. O teto técnico do proxy é de 50 pontos, incluindo retorno, e a URL é limitada a 4 KiB. Para ponto sem coordenadas, preserve sua posição usando `pontos=`. | `/api/mapas/rota?pontos=-10.91,-37.07&pontos=-10.93,-37.06&pontos=-10.92,-37.05&retornarOrigem=true` |
 
 O teto técnico de 50 também protege SVO e limita a carga enviada ao serviço de demonstração. A sequência SVO não herda a regra administrativa de oito paradas. O provedor pode recusar uma sequência antes desse teto. Qualquer necessidade operacional maior exige acordo de capacidade antes da ativação.
 

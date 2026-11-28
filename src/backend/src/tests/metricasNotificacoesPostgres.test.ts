@@ -12,7 +12,7 @@ import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 // SCRUM-241: métricas da liberação dos avisos, pela rota real e no PostgreSQL. Só roda num banco descartável
 // explicitamente identificado, depois de `npm run migrate`.
-const habilitado = process.env.SCRUM241_POSTGRES_TESTS === '1';
+const habilitado = process.env.METRICAS_NOTIFICACOES_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(8).toString('hex');
 const ROTA = '/api/notificacoes/metricas';
 

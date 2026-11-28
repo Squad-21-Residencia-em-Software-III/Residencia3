@@ -54,7 +54,7 @@ Revogar a designação, ou trocar o motorista, tira o conteúdo dos avisos já r
 ## Testes
 
 - `avisosSvoS3S5.test.ts`: quem recebe S3 e S4 em cada mudança, links, tag, ocorrências, S5 e interruptor desligado.
-- `avisosSvoS3S5Postgres.test.ts`: de ponta a ponta, com HTTP autenticado, operações reais, central e fila. Roda com `SCRUM234_POSTGRES_TESTS=1` em `127.0.0.1/frotas_teste`, depois de `npm run migrate`, e está ligado no CI. Cobre:
+- `avisosSvoS3S5Postgres.test.ts`: de ponta a ponta, com HTTP autenticado, operações reais, central e fila. Roda com `AVISOS_SVO_TRIAGEM_POSTGRES_TESTS=1` em `127.0.0.1/frotas_teste`, depois de `npm run migrate`, e está ligado no CI. Cobre:
   - pessoa da equipe não designada;
   - designação removida (sem S4 e sem conteúdo);
   - troca de motorista;
