@@ -140,13 +140,23 @@ export function useDialogoAcessivel({ aberto, dialogo, aoFechar, fecharComEscape
         if (!estavaNoTopo) return;
         const superior = pilha.at(-1)?.elemento;
         const acionador = ativo.acionador;
-        if (acionador && (!superior || superior.contains(acionador)) && podeReceberFoco(acionador)) {
-          acionador.focus();
-        } else if (superior && !superior.contains(document.activeElement)) {
-          focarDentro(superior, false);
-        } else if (!superior) {
-          document.getElementById('conteudo')?.focus();
-        }
+        const restaurar = () => {
+          if (acionador && (!superior || superior.contains(acionador)) && podeReceberFoco(acionador)) {
+            acionador.focus();
+          } else if (superior && !superior.contains(document.activeElement)) {
+            focarDentro(superior, false);
+          } else if (!superior) {
+            document.getElementById('conteudo')?.focus();
+          }
+        };
+        restaurar();
+        // Enquanto o Drawer anima, o nó focado continua montado. O commit do React pode
+        // restaurar esse foco depois dos layout effects; confirme ao final do commit.
+        queueMicrotask(() => {
+          const foco = document.activeElement;
+          if (pilha.at(-1)?.elemento === superior &&
+              (foco === document.body || elemento.contains(foco))) restaurar();
+        });
       });
     };
   }, [aberto, dialogo]);
