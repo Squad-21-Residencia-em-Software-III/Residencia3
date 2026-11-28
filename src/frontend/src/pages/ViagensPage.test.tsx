@@ -446,7 +446,8 @@ describe('ViagensPage: status e ações da coleta SVO por perfil (SCRUM-110)', (
     expect(drawer.getByText('A caminho')).toBeInTheDocument();
     expect(linha.getByText('A caminho')).toBeInTheDocument();
     expect(drawer.getByRole('button', { name: 'Registrando chegada…' })).toBeDisabled();
-    expect(linha.getByRole('button', { name: 'Registrando chegada…' })).toBeDisabled();
+    expect(detalhes.closest('[inert]')).not.toBeNull();
+    expect(linha.getByText('Registrando chegada…', { selector: 'button' })).toBeDisabled();
 
     await act(async () => confirmar(coleta('NO_LOCAL')));
     expect(drawer.getByText('No local')).toBeInTheDocument();
@@ -454,11 +455,12 @@ describe('ViagensPage: status e ações da coleta SVO por perfil (SCRUM-110)', (
     expect(drawer.queryByRole('button', { name: 'Cheguei ao local' })).not.toBeInTheDocument();
     expect(drawer.getByRole('button', { name: 'Finalizar viagem' })).toBeEnabled();
     expect(linha.getByText('No local')).toBeInTheDocument();
-    expect(linha.getByRole('button', { name: 'Finalizar' })).toBeEnabled();
+    expect(linha.queryByRole('button', { name: 'Finalizar' })).not.toBeInTheDocument();
     expect(api.listar).toHaveBeenCalledTimes(1);
 
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(linha.getByRole('button', { name: 'Finalizar' })).toBeEnabled();
     await userEvent.click(detalhes);
     expect(within(await screen.findByRole('dialog')).getByText('No local')).toBeInTheDocument();
   });

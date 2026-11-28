@@ -110,12 +110,17 @@ export function AppLayout({
           className="fixed inset-0 z-95 bg-navy-900/55 backdrop-blur-xs md:hidden"
           onClick={() => setMobileOpen(false)}
           aria-hidden="true"
+          data-fundo-dialogo
         />
       )}
 
       <aside
         ref={menu}
         id={idMenu}
+        role={menuSobreposto ? 'dialog' : undefined}
+        aria-modal={menuSobreposto ? true : undefined}
+        aria-label={menuSobreposto ? 'Menu de navegação' : undefined}
+        tabIndex={menuSobreposto ? -1 : undefined}
         // Fechado no celular, fica fora da tela: também fora do Tab e dos leitores de tela
         inert={!telaLarga && !mobileOpen ? true : undefined}
         className={cn(
@@ -294,7 +299,7 @@ export function AppLayout({
         </div>
       </aside>
 
-      <div className="flex h-full min-w-0 flex-1 flex-col" inert={menuSobreposto ? true : undefined}>
+      <div className="flex h-full min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-3.5 shadow-2xs md:h-[60px] md:px-8">
           <div className="flex min-w-0 items-center gap-3">
             {/* Botão de Menu Hambúrguer Clássico (3 barras) no mobile */}

@@ -55,11 +55,13 @@ describe('AppLayout', () => {
     const navegacao = container.querySelector('aside');
     expect(navegacao).toHaveAttribute('inert');
 
+    const principal = screen.getByRole('main');
     const abrir = screen.getByRole('button', { name: 'Abrir menu de navegação' });
     expect(abrir).toHaveAttribute('aria-expanded', 'false');
     await user.click(abrir);
     expect(navegacao).not.toHaveAttribute('inert');
-    expect(screen.getByRole('main').closest('[inert]')).not.toBeNull();
+    expect(principal.closest('[inert]')).not.toBeNull();
+    expect(screen.queryByRole('main')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Início' })).toHaveFocus();
     expect(abrir).toHaveAttribute('aria-expanded', 'true');
 

@@ -73,6 +73,7 @@ export function Drawer({
         )}
         onClick={onClose}
         aria-hidden="true"
+        data-fundo-dialogo
       />
 
       {/* Painel Lateral com transição slide-in / slide-out suave premium */}

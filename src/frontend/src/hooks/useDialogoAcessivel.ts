@@ -42,7 +42,7 @@ function atualizarIsolamento(moverFoco?: () => void) {
     const pai: HTMLElement | null = no.parentElement;
     if (!pai) break;
     for (const irmao of pai.children) {
-      if (irmao !== no && irmao instanceof HTMLElement && !irmao.matches('script,style,link')) {
+      if (irmao !== no && irmao instanceof HTMLElement && !irmao.matches('script,style,link,[data-fundo-dialogo][aria-hidden="true"]')) {
         desejados.add(irmao);
       }
     }
