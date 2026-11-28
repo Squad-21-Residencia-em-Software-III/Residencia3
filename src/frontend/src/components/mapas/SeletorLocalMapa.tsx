@@ -785,7 +785,7 @@ export function SeletorLocalMapa({
       )}
 
       {/* Avisos de status (fallback, degradado, GPS, 429, unidade sem coordenadas) */}
-      <p className="sr-only" role="status">
+      <p className="sr-only" aria-live="polite">
         {buscando || buscandoUnidade || buscandoGps || buscandoReverso ? 'Consultando localização…' : ''}
       </p>
       {aviso && (
