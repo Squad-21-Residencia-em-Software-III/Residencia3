@@ -890,12 +890,11 @@ export const acompanhamentoExternoSvoService = {
       );
     }
 
-    const agora = new Date();
     return db.transaction(async (trx) => {
       const revogada = await acompanhamentoExternoSvoModel.revogarCredencial(
         solicitacaoId,
         motivo.trim(),
-        agora,
+        undefined,
         trx
       );
       if (!revogada) {
