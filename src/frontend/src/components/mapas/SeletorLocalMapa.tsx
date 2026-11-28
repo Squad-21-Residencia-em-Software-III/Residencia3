@@ -190,6 +190,8 @@ export function SeletorLocalMapa({
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const enderecoRef = useRef<HTMLInputElement>(null);
+  const confirmarCoordenadasRef = useRef<HTMLButtonElement>(null);
   const debounceRef = useRef<number | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const intencaoRef = useRef(0);
@@ -281,6 +283,7 @@ export function SeletorLocalMapa({
       setCentroControlado(coords ? { ...coords, zoom: ZOOM_SELECAO } : null);
 
       publicarMudanca(textoFormatado, coords);
+      setAviso({ tom: 'info', texto: coords ? 'Endereço e ponto selecionados.' : 'Endereço selecionado, sem coordenadas.' });
       onSelecaoConfirmada?.({
         endereco: textoFormatado,
         coordenadas: coords,
@@ -329,7 +332,7 @@ export function SeletorLocalMapa({
         if (sequencia !== intencaoRef.current) return;
 
         setSugestoes(resposta.resultados);
-        setDropdownAberto(resposta.resultados.length > 0);
+        setDropdownAberto(resposta.resultados.length > 0 && document.activeElement === enderecoRef.current);
         setIndiceAtivo(resposta.resultados.length > 0 ? 0 : -1);
 
         if (resposta.degradado && resposta.resultados.length > 0) {
@@ -379,7 +382,11 @@ export function SeletorLocalMapa({
 
   const handleKeyDown = (evento: KeyboardEvent<HTMLInputElement>) => {
     if (!dropdownAberto || sugestoes.length === 0) {
-      if (evento.key === 'Escape') {
+      if (sugestoes.length > 0 && (evento.key === 'ArrowDown' || evento.key === 'ArrowUp')) {
+        evento.preventDefault();
+        setIndiceAtivo(evento.key === 'ArrowDown' ? 0 : sugestoes.length - 1);
+        setDropdownAberto(true);
+      } else if (evento.key === 'Escape') {
         setDropdownAberto(false);
       }
       return;
@@ -400,6 +407,7 @@ export function SeletorLocalMapa({
       }
     } else if (evento.key === 'Escape') {
       evento.preventDefault();
+      evento.stopPropagation();
       setDropdownAberto(false);
       setIndiceAtivo(-1);
     }
@@ -600,6 +608,10 @@ export function SeletorLocalMapa({
   const ativoDescendantId =
     dropdownAberto && indiceAtivo >= 0 ? `${listaId}-opcao-${indiceAtivo}` : undefined;
 
+  useEffect(() => {
+    if (ativoDescendantId) document.getElementById(ativoDescendantId)?.scrollIntoView?.({ block: 'nearest' });
+  }, [ativoDescendantId]);
+
   return (
     <div ref={containerRef} className={cn('mb-4 flex flex-col gap-2', className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -632,6 +644,7 @@ export function SeletorLocalMapa({
             aria-hidden="true"
           />
           <input
+            ref={enderecoRef}
             id={inputId}
             type="text"
             role="combobox"
@@ -645,14 +658,15 @@ export function SeletorLocalMapa({
             value={valor}
             onChange={(evento) => handleTextoChange(evento.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => {
-              if (sugestoes.length > 0) setDropdownAberto(true);
+            onBlur={() => {
+              setDropdownAberto(false);
+              setIndiceAtivo(-1);
             }}
             placeholder={placeholderEfetivo}
             disabled={desabilitado}
             autoComplete="off"
             className={cn(
-              'min-h-[42px] w-full rounded-md border-[1.5px] border-border bg-surface py-2.5 pr-9 pl-9 font-sans text-sm text-text-secondary transition-colors duration-150 outline-none focus:border-primary disabled:cursor-not-allowed disabled:bg-surface-alt disabled:opacity-70 md:min-h-0',
+              'min-h-[42px] w-full rounded-md border-[1.5px] border-border bg-surface py-2.5 pr-9 pl-9 font-sans text-sm text-text-secondary transition-colors duration-150 outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:bg-surface-alt disabled:opacity-70 md:min-h-0',
               erro && 'border-danger focus:border-danger',
             )}
           />
@@ -660,7 +674,7 @@ export function SeletorLocalMapa({
             <Loader2
               size={16}
               className="absolute top-1/2 right-3 -translate-y-1/2 text-primary motion-safe:animate-spin"
-              aria-label="Consultando endereço"
+              aria-hidden="true"
             />
           )}
 
@@ -773,8 +787,13 @@ export function SeletorLocalMapa({
                   aria-invalid={erroCoordenadas ? true : undefined}
                   aria-describedby={erroCoordenadas ? idErroCoordenadas : undefined}
                   onChange={(evento) => {
+                    iniciarIntencao(true);
+                    if (buscandoReverso) {
+                      setCentroControlado(coordenadas
+                        ? { ...coordenadas, zoom: ZOOM_SELECAO }
+                        : CENTRO_PADRAO_SERGIPE);
+                    }
                     setCoordenadasDigitadas({ ...camposCoordenadas, [campo]: evento.target.value });
-                    setErroCoordenadas(null);
                   }}
                   className="min-h-[42px] w-full rounded-md border border-border-strong bg-surface px-2 text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
                 />
@@ -785,6 +804,7 @@ export function SeletorLocalMapa({
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
+              ref={confirmarCoordenadasRef}
               onClick={handleConfirmarCoordenadas}
               className="min-h-[42px] rounded-md border border-border-strong bg-surface px-3 py-1 text-sm font-semibold text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
             >
@@ -793,7 +813,10 @@ export function SeletorLocalMapa({
             {(coordenadas || coordenadasDigitadas || buscandoReverso) && (
               <button
                 type="button"
-                onClick={handleLimparCoordenadas}
+                onClick={() => {
+                  handleLimparCoordenadas();
+                  confirmarCoordenadasRef.current?.focus();
+                }}
                 className="inline-flex min-h-[42px] items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:underline focus-visible:outline-2 focus-visible:outline-primary"
               >
                 <X size={12} aria-hidden="true" />
@@ -868,20 +891,17 @@ export function SeletorLocalMapa({
       <p className="sr-only" aria-live="polite">
         {buscando || buscandoUnidade || buscandoGps || buscandoReverso ? 'Consultando localização…' : ''}
       </p>
-      {aviso && (
-        <p
-          role="status"
-          aria-live="polite"
-          className={cn(
+      <p
+        role="status"
+        className={!aviso ? 'sr-only' : cn(
             'rounded-md px-3 py-2 text-xs leading-relaxed',
             aviso.tom === 'alerta'
               ? 'border border-amber-200 bg-amber-50 text-amber-900'
               : 'border border-slate-200 bg-slate-50 text-slate-700',
-          )}
-        >
-          {aviso.texto}
-        </p>
-      )}
+        )}
+      >
+        {aviso?.texto}
+      </p>
 
       {dica && !erro && <p id={inputId + '-dica'} className="text-xs text-slate-500">{dica}</p>}
       {erro && (

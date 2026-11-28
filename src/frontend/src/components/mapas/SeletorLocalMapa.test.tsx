@@ -130,6 +130,7 @@ describe('SeletorLocalMapa', () => {
     await teclado.tab();
     expect(screen.getByRole('button', { name: 'Limpar ponto no mapa' })).toHaveFocus();
     await teclado.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Confirmar coordenadas' })).toHaveFocus();
     expect(screen.getByRole('textbox', { name: 'Latitude' })).toHaveValue('');
     expect(screen.getByRole('textbox', { name: 'Longitude' })).toHaveValue('');
     expect(screen.queryByText('Ponto definido')).not.toBeInTheDocument();
@@ -160,6 +161,82 @@ describe('SeletorLocalMapa', () => {
     expect(endereco).toHaveValue('Endereço informado por teclado');
     expect(confirmar).not.toHaveBeenCalled();
   });
+
+  it('preserva o endereço confirmado e o rascunho quando um reverso cancelado ainda responde', async () => {
+    let responder!: (resposta: RespostaBuscaMapa) => void;
+    vi.mocked(mapasApi.reverso).mockReturnValueOnce(new Promise((resolve) => { responder = resolve; }));
+    const confirmar = vi.fn();
+    const onChange = vi.fn();
+    render(<Harness valorInicial="Endereço confirmado" coordenadasIniciais={ENDERECO_ARACAJU.coordenadas}
+      onChangeSpy={onChange} onSelecaoSpy={confirmar} />);
+
+    const latitude = screen.getByRole('textbox', { name: 'Latitude' });
+    const longitude = screen.getByRole('textbox', { name: 'Longitude' });
+    const botao = screen.getByRole('button', { name: 'Confirmar coordenadas' });
+    fireEvent.change(latitude, { target: { value: '-23.56' } });
+    fireEvent.click(botao);
+    fireEvent.change(longitude, { target: { value: '-37,08' } });
+
+    expect(vi.mocked(mapasApi.reverso).mock.lastCall?.[0].signal?.aborted).toBe(true);
+    await act(() => responder({ resultados: [ENDERECO_FORA_SE], degradado: false }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(confirmar).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox')).toHaveValue('Endereço confirmado');
+    expect(latitude).toHaveValue('-23.56');
+    expect(longitude).toHaveValue('-37,08');
+    expect(screen.queryByRole('checkbox', { name: /fora de Sergipe/ })).not.toBeInTheDocument();
+
+    vi.mocked(mapasApi.reverso).mockResolvedValueOnce({ resultados: [ENDERECO_ARACAJU], degradado: false });
+    fireEvent.click(botao);
+    await waitFor(() => expect(confirmar).toHaveBeenCalledWith(expect.objectContaining({
+      coordenadas: { latitude: -23.56, longitude: -37.08 },
+    })));
+  });
+
+  it('mantém as sugestões fechadas depois do Tab e permite reabri-las pela seta', async () => {
+    vi.useFakeTimers();
+    let responder!: (resposta: RespostaBuscaMapa) => void;
+    vi.mocked(mapasApi.buscar).mockReturnValueOnce(new Promise((resolve) => { responder = resolve; }));
+    render(<Harness />);
+    const endereco = screen.getByRole('combobox');
+    act(() => endereco.focus());
+    fireEvent.change(endereco, { target: { value: 'Avenida Augusto Franco' } });
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    act(() => endereco.blur());
+    await act(() => responder({ resultados: [ENDERECO_ARACAJU], degradado: false }));
+    expect(endereco).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    act(() => endereco.focus());
+    fireEvent.keyDown(endereco, { key: 'ArrowDown' });
+    expect(endereco).toHaveAttribute('aria-activedescendant', screen.getByRole('option').id);
+    fireEvent.keyDown(endereco, { key: 'Escape' });
+    expect(endereco).toHaveFocus();
+    expect(endereco).not.toHaveAttribute('aria-activedescendant');
+  });
+
+  it.each([[2, /não foi possível/i], [3, /tempo limite/i]])(
+    'oferece preenchimento manual quando o GPS falha com código %i',
+    (codigo, aviso) => {
+      const anterior = Object.getOwnPropertyDescriptor(navigator, 'geolocation');
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: { getCurrentPosition: (_: PositionCallback, falhar: PositionErrorCallback) => {
+          falhar({ code: codigo } as GeolocationPositionError);
+        } },
+      });
+      try {
+        render(<Harness />);
+        fireEvent.click(screen.getByRole('button', { name: /usar minha localização/i }));
+        expect(screen.getByText(aviso)).toBeInTheDocument();
+        expect(screen.getByRole('combobox')).toBeEnabled();
+        expect(mapasApi.reverso).not.toHaveBeenCalled();
+      } finally {
+        if (anterior) Object.defineProperty(navigator, 'geolocation', anterior);
+        else Reflect.deleteProperty(navigator, 'geolocation');
+      }
+    },
+  );
 
   it('substitui o endereço antigo quando o reverso falha e oferece a confirmação territorial', async () => {
     vi.mocked(mapasApi.reverso).mockRejectedValueOnce(new ApiError('Offline', 0));
@@ -262,6 +339,7 @@ describe('SeletorLocalMapa', () => {
 
     render(<Harness operacao="SVO" onSelecaoSpy={onSelecaoSpy} />);
     const input = screen.getByRole('combobox');
+    act(() => input.focus());
 
     fireEvent.change(input, { target: { value: 'Av. Augusto Franco' } });
     expect(mapasApi.buscar).not.toHaveBeenCalled();
@@ -308,6 +386,7 @@ describe('SeletorLocalMapa', () => {
 
     render(<Harness onSelecaoSpy={onSelecaoSpy} />);
     const input = screen.getByRole('combobox');
+    act(() => input.focus());
 
     fireEvent.change(input, { target: { value: '49010-000' } });
     await act(async () => {
@@ -341,6 +420,7 @@ describe('SeletorLocalMapa', () => {
     expect(screen.queryByRole('button', { name: 'HEMOSE' })).not.toBeInTheDocument();
 
     const input = screen.getByRole('combobox');
+    act(() => input.focus());
     fireEvent.change(input, { target: { value: 'Rua das Flores, Aracaju' } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(450);
@@ -493,6 +573,7 @@ describe('SeletorLocalMapa', () => {
     );
 
     const input = screen.getByRole('combobox');
+    act(() => input.focus());
     fireEvent.change(input, { target: { value: 'Rua Primeira' } });
     // Edição manual invalida imediatamente as coordenadas antigas
     expect(onChangeSpy).toHaveBeenLastCalledWith('Rua Primeira', null);
@@ -532,6 +613,7 @@ describe('SeletorLocalMapa', () => {
 
     render(<Harness />);
     const input = screen.getByRole('combobox');
+    act(() => input.focus());
 
     fireEvent.change(input, { target: { value: 'Av. Paulista' } });
     await act(async () => {

@@ -54,4 +54,23 @@ Componente reutilizável de seleção de endereço/coordenadas e cliente REST de
 
 ## Ajuste de coordenadas por teclado
 
-Com a cartografia ativa, o seletor oferece campos opcionais para latitude e longitude mesmo com o mapa recolhido ou sem WebGL. Aceita ponto ou vírgula decimal, exige o par e valida latitude de −90 a 90 e longitude de −180 a 180. A confirmação inicia o mesmo fluxo de geocodificação reversa usado pelo mapa e pelo GPS. O ajuste prevalece sobre consultas antigas. A edição do endereço e a limpeza cancelam o reverso pendente. Se o provedor não encontrar um endereço, o ponto recebe um rótulo de coordenadas, preservando a possibilidade de informar o endereço textualmente. Se o único rótulo for de coordenadas, limpar o ponto limpa também esse rótulo.
+Com a cartografia ativa, o seletor oferece campos opcionais para latitude e longitude mesmo com o mapa recolhido ou sem WebGL. Aceita ponto ou vírgula decimal, exige o par e valida latitude de −90 a 90 e longitude de −180 a 180. A confirmação inicia o mesmo fluxo de geocodificação reversa usado pelo mapa e pelo GPS. O ajuste prevalece sobre consultas antigas. A primeira edição da latitude ou da longitude invalida consultas anteriores e preserva o rascunho até a próxima confirmação. A edição do endereço e a limpeza também cancelam o reverso pendente. Se o provedor não encontrar um endereço, o ponto recebe um rótulo de coordenadas, preservando a possibilidade de informar o endereço textualmente. Se o único rótulo for de coordenadas, limpar o ponto limpa também esse rótulo.
+
+
+## Referências cartográficas das unidades
+
+| Unidade | Endereço confirmado pela liderança | Latitude | Longitude | Fonte e confiança |
+| --- | --- | ---: | ---: | --- |
+| HEMOSE | Rua Quinze, 127, Capucho | -10.9137051 | -37.0916354 | Média para a unidade e baixa para o portão. [Mapa da unidade](https://www.benditoguia.com.br/empresa/hemose-hematology-center-of-sergipe-jabotiana-aracaju-se) · [Portal de Serviços de Sergipe](https://www.se.gov.br/servicos/302). |
+| LACEN | Rua Campo do Brito, 551, São José | -10.9257059 | -37.0495937 | Média para a unidade e baixa para o portão. [Mapa da unidade](https://www.benditoguia.com.br/empresa/instituto-parreiras-horta-lacen-salgado-filho-aracaju-se) · [Contrato da SES](https://saude.se.gov.br/wp-content/uploads/2025/03/CTR-101.2024.pdf). |
+| SVO | Rua Campo do Brito, 551, São José | -10.9255029 | -37.0493169 | Média para a unidade e baixa para o portão. [Mapa da unidade](https://www.benditoguia.com.br/empresa/svo-servico-de-verificacao-obito-sergipe-salgado-filho-aracaju-se). |
+
+Os pontos são candidatos de mapa para as três unidades em Aracaju/SE. A liderança confirmou que LACEN e SVO usam entradas distintas no complexo e que o SVO continua na Rua Campo do Brito. Os pontos precisam de confirmação institucional antes de serem usados para navegação até o acesso veicular. O seletor continua a consultar somente a configuração institucional no proxy.
+
+## Regressão do seletor na revisão final
+
+A lista abre somente com foco no campo de busca. Tab fecha a lista, as setas permitem reabri-la e Escape fecha as sugestões mantendo o foco no campo. A limpeza do ponto devolve o foco ao botão de confirmar coordenadas. Uma região de status anuncia o resultado, inclusive quando o endereço vem sem coordenadas.
+
+- **Vitest** — 40 testes do seletor e do cliente de mapas. Inclui resposta que chega após cancelamento por edição das coordenadas, rascunho preservado, foco da lista, GPS indisponível/timeout e fallback. A suíte completa do frontend passou em 767 testes, com typecheck e build PWA.
+- **Integração PostgreSQL local** — 37 migrations e zero pendentes na composição de `develop` com #239 e #238. A suíte HTTP do #239 passou em 11 testes com role restrita, incluindo 429, Retry-After, timeout, recuperação e distinção das rotas internas. A composição passou em 2.310 testes gerais do backend, com 78 cenários condicionais ignorados nessa rodada.
+- **Homologação pendente** — confirmação de cada portão e GPS físico. A adoção nos formulários de produção pertence às respectivas tarefas consumidoras. Os testes do seletor verificam o contrato com valor existente, coordenadas ausentes e controle pelo formulário.
