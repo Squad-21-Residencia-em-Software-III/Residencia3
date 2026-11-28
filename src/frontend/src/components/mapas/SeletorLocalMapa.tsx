@@ -79,6 +79,15 @@ type AvisoStatus = {
   texto: string;
 };
 
+type CoordenadasDigitadas = Record<keyof CoordenadaMapa, string>;
+
+function lerCoordenada(texto: string, limite: number): number | null {
+  const decimal = texto.trim().replace(',', '.');
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(decimal)) return null;
+  const valor = Number(decimal);
+  return Number.isFinite(valor) && Math.abs(valor) <= limite ? valor : null;
+}
+
 function mensagemErroBusca(erro: unknown): AvisoStatus | null {
   if (erro instanceof ApiError) {
     if (erro.codigo === CODIGO_CANCELADO) return null;
@@ -172,6 +181,8 @@ export function SeletorLocalMapa({
     coordenadas ? coordenadaForaDeSergipe(coordenadas) : false,
   );
   const [confirmouForaDeSergipe, setConfirmouForaDeSergipe] = useState(false);
+  const [coordenadasDigitadas, setCoordenadasDigitadas] = useState<CoordenadasDigitadas | null>(null);
+  const [erroCoordenadas, setErroCoordenadas] = useState<string | null>(null);
   const [centroControlado, setCentroControlado] = useState<Partial<VisaoInicialMapa> | null>(
     coordenadas
       ? { latitude: coordenadas.latitude, longitude: coordenadas.longitude, zoom: ZOOM_SELECAO }
@@ -185,6 +196,11 @@ export function SeletorLocalMapa({
   const ultimaEmissao = useRef<{ valor: string; coordenadas: CoordenadaMapa | null } | null>(null);
   const latitude = coordenadas?.latitude;
   const longitude = coordenadas?.longitude;
+  const camposCoordenadas = coordenadasDigitadas ?? {
+    latitude: latitude?.toString() ?? '',
+    longitude: longitude?.toString() ?? '',
+  };
+  const idErroCoordenadas = `${inputId}-erro-coordenadas`;
 
   const invalidarIntencao = useCallback(() => {
     intencaoRef.current += 1;
@@ -193,7 +209,7 @@ export function SeletorLocalMapa({
     abortRef.current = null;
   }, []);
 
-  const iniciarIntencao = useCallback(() => {
+  const iniciarIntencao = useCallback((manterDigitadas = false) => {
     invalidarIntencao();
     setBuscando(false);
     setBuscandoUnidade(null);
@@ -203,6 +219,8 @@ export function SeletorLocalMapa({
     setDropdownAberto(false);
     setIndiceAtivo(-1);
     setAviso(null);
+    if (!manterDigitadas) setCoordenadasDigitadas(null);
+    setErroCoordenadas(null);
     return intencaoRef.current;
   }, [invalidarIntencao]);
 
@@ -388,9 +406,9 @@ export function SeletorLocalMapa({
   };
 
   const consultarPontoNoMapa = useCallback(
-    async (pontoBruto: CoordenadaMapa, origem: 'mapa' | 'gps') => {
+    async (pontoBruto: CoordenadaMapa, origem: 'mapa' | 'gps' | 'manual', digitadas?: CoordenadasDigitadas) => {
       if (desabilitado || !mapasAtivos) return;
-      const sequencia = iniciarIntencao();
+      const sequencia = iniciarIntencao(digitadas !== undefined);
       const ponto: CoordenadaMapa = {
         latitude: arredondarCoordenada(pontoBruto.latitude),
         longitude: arredondarCoordenada(pontoBruto.longitude),
@@ -405,8 +423,6 @@ export function SeletorLocalMapa({
         zoom: ZOOM_SELECAO,
       });
       setBuscandoReverso(true);
-      setAviso(null);
-
       try {
         const resposta = await mapasApi.reverso({
           lat: ponto.latitude,
@@ -438,7 +454,7 @@ export function SeletorLocalMapa({
         });
         setAviso({
           tom: 'info',
-          texto: 'Ponto marcado no mapa. Complete ou ajuste o endereço manualmente se necessário.',
+          texto: 'Ponto definido. Complete ou ajuste o endereço manualmente se necessário.',
         });
       } catch (erroCapturado) {
         if (sequencia !== intencaoRef.current) return;
@@ -460,11 +476,12 @@ export function SeletorLocalMapa({
         setAviso({
           tom: 'info',
           texto:
-            'Ponto marcado no mapa, mas não foi possível traduzir o endereço automaticamente. Informe o endereço manualmente.',
+            'Ponto definido, mas não foi possível obter o endereço automaticamente. Informe o endereço manualmente.',
         });
       } finally {
         if (sequencia === intencaoRef.current) {
           setBuscandoReverso(false);
+          setCoordenadasDigitadas((atuais) => atuais === digitadas ? null : atuais);
         }
       }
     },
@@ -561,7 +578,23 @@ export function SeletorLocalMapa({
     setCentroControlado(null);
     setForaDeSergipe(false);
     setConfirmouForaDeSergipe(false);
-    publicarMudanca(valor, null);
+    const apenasCoordenadas = coordenadas && valor === [coordenadas.latitude, coordenadas.longitude].join(', ');
+    publicarMudanca(apenasCoordenadas ? '' : valor, null);
+  };
+
+  const handleConfirmarCoordenadas = () => {
+    if (desabilitado || !mapasAtivos) return;
+    if (!camposCoordenadas.latitude.trim() && !camposCoordenadas.longitude.trim()) {
+      handleLimparCoordenadas();
+      return;
+    }
+    const lat = lerCoordenada(camposCoordenadas.latitude, 90);
+    const lon = lerCoordenada(camposCoordenadas.longitude, 180);
+    if (lat === null || lon === null) {
+      setErroCoordenadas('Informe latitude entre −90 e 90 e longitude entre −180 e 180, ou deixe os dois campos vazios.');
+      return;
+    }
+    void consultarPontoNoMapa({ latitude: lat, longitude: lon }, 'manual', coordenadasDigitadas ?? undefined);
   };
 
   const ativoDescendantId =
@@ -626,7 +659,7 @@ export function SeletorLocalMapa({
           {(buscando || buscandoReverso) && (
             <Loader2
               size={16}
-              className="absolute top-1/2 right-3 -translate-y-1/2 animate-spin text-primary"
+              className="absolute top-1/2 right-3 -translate-y-1/2 text-primary motion-safe:animate-spin"
               aria-label="Consultando endereço"
             />
           )}
@@ -723,6 +756,53 @@ export function SeletorLocalMapa({
           )}
         </div>
       </div>
+
+      {mapasAtivos && (
+        <fieldset className="min-w-0 rounded-md border border-border p-3" disabled={desabilitado}>
+          <legend className="px-1 text-sm font-semibold text-text-secondary">Coordenadas opcionais</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(['latitude', 'longitude'] as const).map((campo) => (
+              <label key={campo} className="flex min-w-0 flex-col gap-1 text-sm text-text-secondary">
+                {campo === 'latitude' ? 'Latitude' : 'Longitude'}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  maxLength={32}
+                  value={camposCoordenadas[campo]}
+                  aria-invalid={erroCoordenadas ? true : undefined}
+                  aria-describedby={erroCoordenadas ? idErroCoordenadas : undefined}
+                  onChange={(evento) => {
+                    setCoordenadasDigitadas({ ...camposCoordenadas, [campo]: evento.target.value });
+                    setErroCoordenadas(null);
+                  }}
+                  className="min-h-[42px] w-full rounded-md border border-border-strong bg-surface px-2 text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
+                />
+              </label>
+            ))}
+          </div>
+          {erroCoordenadas && <p id={idErroCoordenadas} role="alert" className="mt-2 text-sm text-danger">{erroCoordenadas}</p>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleConfirmarCoordenadas}
+              className="min-h-[42px] rounded-md border border-border-strong bg-surface px-3 py-1 text-sm font-semibold text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              Confirmar coordenadas
+            </button>
+            {(coordenadas || coordenadasDigitadas || buscandoReverso) && (
+              <button
+                type="button"
+                onClick={handleLimparCoordenadas}
+                className="inline-flex min-h-[42px] items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:underline focus-visible:outline-2 focus-visible:outline-primary"
+              >
+                <X size={12} aria-hidden="true" />
+                Limpar ponto no mapa
+              </button>
+            )}
+          </div>
+        </fieldset>
+      )}
 
       {/* Chips de atalho institucional (HEMOSE / SVO / LACEN) */}
       {mostrarAtalhos && (
@@ -855,21 +935,9 @@ export function SeletorLocalMapa({
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
             <span>
-              {mapaIndisponivel ? 'Informe o endereço no campo de texto.' : coordenadas
-                ? `Coordenadas: ${arredondarCoordenada(coordenadas.latitude)}, ${arredondarCoordenada(coordenadas.longitude)} — clique no mapa ou arraste o pin para ajustar.`
-                : 'Clique em qualquer ponto do mapa para marcar as coordenadas manualmente.'}
+              {mapaIndisponivel ? 'Informe o endereço no campo de texto ou preencha as coordenadas.'
+                : 'Use os campos de coordenadas, clique no mapa ou arraste o marcador para ajustar o ponto.'}
             </span>
-
-            {coordenadas && !desabilitado && (
-              <button
-                type="button"
-                onClick={handleLimparCoordenadas}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-700 underline-offset-2 hover:bg-slate-100 hover:underline"
-              >
-                <X size={12} aria-hidden="true" />
-                Limpar ponto no mapa
-              </button>
-            )}
           </div>
         </div>
       )}

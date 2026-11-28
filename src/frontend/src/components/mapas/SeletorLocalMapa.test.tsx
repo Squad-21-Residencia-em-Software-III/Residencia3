@@ -1,6 +1,7 @@
 import * as recursos from '../../config/recursosBackend';
 import { useState } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SeletorLocalMapa, type SeletorLocalMapaProps } from './SeletorLocalMapa';
 import { mapasApi } from '../../services/api/mapasApi';
@@ -90,6 +91,93 @@ afterEach(() => {
 });
 
 describe('SeletorLocalMapa', () => {
+  it.each([['-10', ''], ['91', '-37'], ['-10', '-181'], ['Infinity', '0'], ['1e1', '0']])(
+    'não consulta com latitude %s e longitude %s inválidas', (latitude, longitude) => {
+      render(<Harness />);
+      const campoLatitude = screen.getByRole('textbox', { name: 'Latitude' });
+      fireEvent.change(campoLatitude, { target: { value: latitude } });
+      fireEvent.change(screen.getByRole('textbox', { name: 'Longitude' }), { target: { value: longitude } });
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar coordenadas' }));
+      expect(screen.getByRole('alert')).toHaveTextContent('latitude entre');
+      expect(campoLatitude).toHaveAccessibleDescription(/longitude entre/);
+      expect(mapasApi.reverso).not.toHaveBeenCalled();
+    },
+  );
+
+  it('confirma coordenadas decimais só por teclado e permite limpar com o mapa recolhido', async () => {
+    const teclado = userEvent.setup();
+    const onSelecaoSpy = vi.fn();
+    vi.mocked(mapasApi.reverso).mockResolvedValueOnce({ resultados: [ENDERECO_ARACAJU], degradado: false });
+    render(<Harness modoPublico onSelecaoSpy={onSelecaoSpy} />);
+    await teclado.tab(); // endereço
+    await teclado.tab(); // GPS
+    await teclado.tab(); // abrir mapa
+    await teclado.tab();
+    expect(screen.getByRole('textbox', { name: 'Latitude' })).toHaveFocus();
+    await teclado.keyboard('-10,91');
+    await teclado.tab();
+    expect(screen.getByRole('textbox', { name: 'Longitude' })).toHaveFocus();
+    await teclado.keyboard('-37,07');
+    expect(mapasApi.reverso).not.toHaveBeenCalled();
+    await teclado.tab();
+    await teclado.keyboard('{Enter}');
+    expect(mapasApi.reverso).toHaveBeenCalledWith(expect.objectContaining({ lat: -10.91, lon: -37.07, modoPublico: true }));
+    await waitFor(() => expect(onSelecaoSpy).toHaveBeenCalledWith(expect.objectContaining({
+      origem: 'manual', coordenadas: { latitude: -10.91, longitude: -37.07 }, foraDeSergipe: false,
+    })));
+    const endereco = screen.getByRole('combobox');
+    expect(endereco).toHaveProperty('value', expect.stringContaining('Augusto Franco'));
+    await teclado.tab();
+    expect(screen.getByRole('button', { name: 'Limpar ponto no mapa' })).toHaveFocus();
+    await teclado.keyboard('{Enter}');
+    expect(screen.getByRole('textbox', { name: 'Latitude' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'Longitude' })).toHaveValue('');
+    expect(screen.queryByText('Ponto definido')).not.toBeInTheDocument();
+    expect(endereco).toHaveProperty('value', expect.stringContaining('Augusto Franco'));
+  });
+
+  it('cancela busca de CEP com ajuste manual e descarta o reverso antigo após edição do endereço', async () => {
+    vi.useFakeTimers();
+    let resolverCep!: (resposta: RespostaBuscaMapa) => void;
+    let resolverReverso!: (resposta: RespostaBuscaMapa) => void;
+    vi.mocked(mapasApi.buscar).mockReturnValueOnce(new Promise((resolver) => { resolverCep = resolver; }));
+    vi.mocked(mapasApi.reverso).mockReturnValueOnce(new Promise((resolver) => { resolverReverso = resolver; }));
+    const confirmar = vi.fn();
+    render(<Harness onSelecaoSpy={confirmar} modoPublico />);
+    const endereco = screen.getByRole('combobox');
+    fireEvent.change(endereco, { target: { value: '49075100' } });
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Latitude' }), { target: { value: '90' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Longitude' }), { target: { value: '-180' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar coordenadas' }));
+    expect(vi.mocked(mapasApi.buscar).mock.lastCall?.[0].signal?.aborted).toBe(true);
+    expect(mapasApi.reverso).toHaveBeenCalledWith(expect.objectContaining({ lat: 90, lon: -180 }));
+    await act(() => resolverCep({ resultados: [ENDERECO_ARACAJU], degradado: false }));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.change(endereco, { target: { value: 'Endereço informado por teclado' } });
+    expect(vi.mocked(mapasApi.reverso).mock.lastCall?.[0].signal?.aborted).toBe(true);
+    await act(() => resolverReverso({ resultados: [ENDERECO_FORA_SE], degradado: false }));
+    expect(endereco).toHaveValue('Endereço informado por teclado');
+    expect(confirmar).not.toHaveBeenCalled();
+  });
+
+  it('substitui o endereço antigo quando o reverso falha e oferece a confirmação territorial', async () => {
+    vi.mocked(mapasApi.reverso).mockRejectedValueOnce(new ApiError('Offline', 0));
+    const confirmar = vi.fn();
+    render(<Harness valorInicial="Endereço antigo" onSelecaoSpy={confirmar} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Latitude' }), { target: { value: '-23.5614' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Longitude' }), { target: { value: '-46.6559' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar coordenadas' }));
+    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('-23.5614, -46.6559'));
+    const territorial = screen.getByRole('checkbox', { name: /fora de Sergipe/ });
+    fireEvent.click(territorial);
+    expect(territorial).toBeChecked();
+    expect(confirmar).toHaveBeenCalledWith(expect.objectContaining({ foraDeSergipe: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar ponto no mapa' }));
+    expect(screen.getByRole('combobox')).toHaveValue('');
+    expect(territorial).not.toBeInTheDocument();
+  });
+
   it('cancela imediatamente a busca iniciada quando o texto muda durante o debounce', async () => {
     vi.useFakeTimers();
     let resolver!: (resposta: RespostaBuscaMapa) => void;

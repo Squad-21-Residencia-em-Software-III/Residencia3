@@ -47,7 +47,11 @@ Componente reutilizável de seleção de endereço/coordenadas e cliente REST de
 
 - **Zero chamadas diretas do navegador a ViaCEP/Photon/OSRM:** todas as consultas passam pelo proxy `/api/mapas/*` ou `/api/portal-svo/mapas/*`.
 - **Proteção contra vazamento e race conditions:** `consultaTextoValidaParaBusca` bloqueia termos sensíveis (CPF, telefone, paciente, etc.) antes do envio; `AbortController` + contador de sequência descartam respostas obsoletas fora de ordem.
-- **Reverso controlado:** a geocodificação reversa dispara somente no clique ou no `dragend` do marcador (nunca durante o arraste contínuo).
+- **Reverso controlado:** a geocodificação reversa dispara no clique, no `dragend` do marcador, quando o GPS entrega um ponto ou ao confirmar as coordenadas digitadas.
 - **Fallback completo:** `404 RECURSO_DESATIVADO`, `429`, `503`, timeout, WebGL indisponível ou `degradado: true` (ViaCEP sem coordenadas) nunca bloqueiam o preenchimento manual do formulário.
 - **Fora de Sergipe:** exibe aviso `role="alert"` com confirmação consciente via checkbox, sem impedir o envio.
-- **Acessibilidade:** `role="combobox"` / `listbox` / `option` navegável por teclado (`ArrowDown`, `ArrowUp`, `Enter`, `Escape`), alternativa sem arraste (clique no mapa + limpar coordenadas mantendo texto) e suporte a `prefers-reduced-motion`.
+- **Acessibilidade:** `role="combobox"` / `listbox` / `option` navegável por teclado (`ArrowDown`, `ArrowUp`, `Enter`, `Escape`), ajuste de coordenadas por teclado e suporte a `prefers-reduced-motion`.
+
+## Ajuste de coordenadas por teclado
+
+Com a cartografia ativa, o seletor oferece campos opcionais para latitude e longitude mesmo com o mapa recolhido ou sem WebGL. Aceita ponto ou vírgula decimal, exige o par e valida latitude de −90 a 90 e longitude de −180 a 180. A confirmação inicia o mesmo fluxo de geocodificação reversa usado pelo mapa e pelo GPS. O ajuste prevalece sobre consultas antigas. A edição do endereço e a limpeza cancelam o reverso pendente. Se o provedor não encontrar um endereço, o ponto recebe um rótulo de coordenadas, preservando a possibilidade de informar o endereço textualmente. Se o único rótulo for de coordenadas, limpar o ponto limpa também esse rótulo.
