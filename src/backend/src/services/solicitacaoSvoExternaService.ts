@@ -1,17 +1,16 @@
 import { db } from '../config/database';
 import { AppError } from '../errors/AppError';
+import { acompanhamentoExternoSvoModel } from '../models/acompanhamentoExternoSvoModel';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { solicitacaoSvoExternaModel } from '../models/solicitacaoSvoExternaModel';
 import type { CriarSolicitacaoSvoExternaInput } from '../validators/solicitacaoSvoExternaSchemas';
 import {
-  ALGORITMO_DIGEST_CREDENCIAL,
-  calcularDigestCredencialExterna,
-  calcularDigestPayloadCriacao,
+  acompanhamentoExternoSvoService,
   calcularDigestProvaTentativa,
-  derivarCredencialExterna,
-  digestsIguais,
+  compararDigestsTempoConstante,
   gerarProtocoloExternoSvo,
-} from './credencialExternaSvo';
+  MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA,
+} from './acompanhamentoExternoSvoService';
 import { notificacaoSvoService } from './notificacaoSvoService';
 
 export interface TentativaCriacaoExterna {
@@ -20,7 +19,7 @@ export interface TentativaCriacaoExterna {
 }
 
 export interface ResultadoCriacaoExterna {
-  /** true: chamado criado agora; false: repetição da mesma tentativa (replay) */
+  /** true: chamado criado agora; false: resposta perdida recuperada dentro da janela autorizada */
   criada: boolean;
   protocolo: string;
   credencial: string;
@@ -30,18 +29,20 @@ export interface ResultadoCriacaoExterna {
 const VIOLACAO_UNIQUE_POSTGRES = '23505';
 const TENTATIVAS_DE_PROTOCOLO = 3;
 
-// Mesma resposta para payload diferente e prova errada: não revela qual dos dois falhou
-const conflito = () =>
-  new AppError('Esta tentativa de envio já foi usada com outro conteúdo. Gere um novo envio.', 409, 'IDEMPOTENCIA_CONFLITO');
-
-const paraIso = (valor: Date | string): string => new Date(valor).toISOString();
+// Mesma resposta (e mesmo código) da recuperação da SCRUM-266: prova errada, chave sem prova,
+// credencial revogada e janela expirada são indistinguíveis para quem não prova a posse da tentativa.
+const naoAutorizado = () =>
+  new AppError(MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA, 401, 'CREDENCIAL_EXTERNA_INVALIDA');
 
 export const solicitacaoSvoExternaService = {
   /**
    * Registra a solicitação do cidadão e só devolve o protocolo depois do commit.
-   * Na mesma transação: chamado (canal EXTERNA, sem registrante), dados protegidos, credencial,
-   * auditoria sem dado pessoal e o aviso S1 (sem S2, sem confirmação automática).
-   * Repetir a mesma tentativa (mesma chave, mesmo conteúdo, mesma prova) devolve o mesmo resultado.
+   * Na mesma transação: chamado (canal EXTERNA, sem registrante), dados protegidos, credencial
+   * (emitida pelo serviço da SCRUM-266), auditoria sem dado pessoal e o aviso S1 (sem S2).
+   *
+   * Chave de idempotência já existente NÃO cria outro chamado. Só quem prova a posse da tentativa recebe
+   * resposta: dentro da janela de recuperação (15 min) devolve o mesmo protocolo e a mesma credencial
+   * (200); payload divergente com prova correta responde 409; todo o resto responde 401 uniforme.
    */
   async registrar(
     dados: CriarSolicitacaoSvoExternaInput,
@@ -49,32 +50,36 @@ export const solicitacaoSvoExternaService = {
     opcoes: { agora?: Date } = {},
   ): Promise<ResultadoCriacaoExterna> {
     const { chaveIdempotencia, provaTentativa } = tentativa;
-    const payloadDigest = calcularDigestPayloadCriacao(dados);
-    const provaDigest = calcularDigestProvaTentativa(chaveIdempotencia, provaTentativa);
-    const credencial = derivarCredencialExterna(chaveIdempotencia, provaTentativa);
-    const segredoDigest = calcularDigestCredencialExterna(credencial);
 
     return db.transaction(async (trx) => {
       await solicitacaoSvoExternaModel.bloquearTentativa(trx, chaveIdempotencia);
 
-      const existente = await solicitacaoSvoExternaModel.buscarCredencialPorChave(trx, chaveIdempotencia);
+      const existente = await acompanhamentoExternoSvoModel.buscarTentativaPorChaveIdempotencia(
+        chaveIdempotencia,
+        trx,
+      );
       if (existente) {
+        // 1º a prova de posse (tempo constante); só depois qualquer informação sobre o conteúdo
+        const provaDigest = calcularDigestProvaTentativa(
+          chaveIdempotencia,
+          provaTentativa,
+          existente.versao_credencial,
+        );
         if (
-          !digestsIguais(existente.payload_criacao_digest, payloadDigest) ||
-          !digestsIguais(existente.prova_tentativa_digest, provaDigest) ||
-          !digestsIguais(existente.segredo_digest, segredoDigest) ||
-          !existente.protocolo
+          !existente.prova_tentativa_digest ||
+          !compararDigestsTempoConstante(provaDigest, existente.prova_tentativa_digest)
         ) {
-          throw conflito();
+          throw naoAutorizado();
         }
-        if (existente.revogada_em) {
-          throw new AppError('Este acompanhamento não está mais disponível.', 410, 'CREDENCIAL_INDISPONIVEL');
-        }
+        const recuperada = await acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
+          { chaveIdempotencia, provaTentativa, payloadNormalizado: dados, agora: opcoes.agora },
+          trx,
+        );
         return {
           criada: false,
-          protocolo: existente.protocolo,
-          credencial,
-          registradaEm: paraIso(existente.emitida_em),
+          protocolo: recuperada.protocolo,
+          credencial: recuperada.credencial,
+          registradaEm: recuperada.emitidaEm,
         };
       }
 
@@ -93,13 +98,15 @@ export const solicitacaoSvoExternaService = {
       }
 
       await solicitacaoSvoExternaModel.inserirDadosProtegidos(trx, solicitacaoId, dados);
-      const emitidaEm = await solicitacaoSvoExternaModel.inserirCredencial(trx, {
+      // Credencial aleatória, digest com chave dedicada/versionada e envelope de recuperação: tudo na SCRUM-266
+      const emitida = await acompanhamentoExternoSvoService.emitirCredencialNaTransacao(trx, {
         solicitacaoId,
-        segredoDigest,
-        algoritmoDigest: ALGORITMO_DIGEST_CREDENCIAL,
+        protocolo,
         chaveIdempotencia,
-        payloadDigest,
-        provaDigest,
+        payloadNormalizado: dados,
+        provaTentativa,
+        habilitarRecuperacao: true,
+        agora: opcoes.agora,
       });
 
       // A trilha guarda só o identificador: nenhum dado pessoal
@@ -114,7 +121,7 @@ export const solicitacaoSvoExternaService = {
       // S1 na mesma transação/outbox, sem autor interno: todos os destinatários elegíveis são avisados
       await notificacaoSvoService.publicarAlertasRegistroSolicitacao({ id: solicitacaoId }, null, trx);
 
-      return { criada: true, protocolo, credencial, registradaEm: paraIso(emitidaEm) };
+      return { criada: true, protocolo: emitida.protocolo, credencial: emitida.credencial, registradaEm: emitida.emitidaEm };
     });
   },
 };

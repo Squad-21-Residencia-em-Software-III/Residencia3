@@ -8,12 +8,16 @@ import { db } from '../config/database';
 import { env } from '../config/env';
 import { carregarRecursosOperacionais } from '../config/recursosOperacionais';
 import { configNotificacoes } from '../config/notificacoes';
-import { calcularDigestCredencialExterna } from '../services/credencialExternaSvo';
+import { acompanhamentoExternoSvoService, calcularDigestCredencialExterna } from '../services/acompanhamentoExternoSvoService';
 import { EVENTO_SVO_S1, notificacaoSvoService } from '../services/notificacaoSvoService';
+import { solicitacaoSvoExternaService } from '../services/solicitacaoSvoExternaService';
+import { solicitacaoSvoExternaSchema } from '../validators/solicitacaoSvoExternaSchemas';
 import { usarBancoComExclusividade } from './exclusividadeNoBanco';
 
 // SCRUM-264 de ponta a ponta por HTTP e PostgreSQL: criação pública, transação, idempotência, concorrência,
-// rollback e resposta perdida. Só roda num banco descartável explicitamente identificado, depois de
+// rollback, resposta perdida e compatibilidade REAL com a SCRUM-266 (credencial, recuperação e consulta pública).
+// A aplicação usa a role restrita POSTGRES_APP_USER (provado por current_user); fixtures e verificações de
+// privilégio usam outra conexão, administrativa. Só roda num banco descartável explicitamente identificado, depois de
 // `npm run migrate`. Todos os dados são sintéticos.
 const habilitado = process.env.ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS === '1';
 const nonce = () => randomBytes(4).toString('hex');
@@ -91,6 +95,9 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     if (process.env.POSTGRES_HOST !== '127.0.0.1' || process.env.POSTGRES_DB !== 'frotas_teste') {
       throw new Error('A suíte exige PostgreSQL descartável em 127.0.0.1/frotas_teste');
     }
+    if (!process.env.POSTGRES_APP_USER) {
+      throw new Error('A suíte exige POSTGRES_APP_USER: a aplicação precisa rodar com a role restrita (npm run db:provisionar-app-user)');
+    }
     admin = knex({
       client: 'pg',
       pool: { min: 0, max: 1 },
@@ -106,8 +113,10 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     solicitante = await conta(admin, 'SOLICITANTE');
   }, 60_000);
 
+  const rolesDoPortal = { PORTAL_SVO_ATIVO: 'true', ACOMPANHAMENTO_EXTERNO_SVO_ATIVO: 'true' };
+
   beforeEach(() => {
-    env.recursosOperacionais = carregarRecursosOperacionais({ PORTAL_SVO_ATIVO: 'true' });
+    env.recursosOperacionais = carregarRecursosOperacionais(rolesDoPortal);
     configNotificacoes.ativas = true;
   });
 
@@ -121,6 +130,7 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     for (const comando of [
       (ids: number[]) => admin('notificacao_outbox').where({ referencia_tipo: 'SOLICITACAO_SVO' }).whereIn('referencia_id', ids).delete(),
       (ids: number[]) => admin('notificacoes').where({ referencia_tipo: 'SOLICITACAO_SVO' }).whereIn('referencia_id', ids).delete(),
+      (ids: number[]) => admin('solicitacoes_svo_recuperacoes_tentativa').whereIn('solicitacao_id', ids).delete(),
       (ids: number[]) => admin('solicitacoes_svo_credenciais_externas').whereIn('solicitacao_id', ids).delete(),
       (ids: number[]) => admin('solicitacoes_svo_dados_externos').whereIn('solicitacao_id', ids).delete(),
       (ids: number[]) => admin('solicitacoes_svo').whereIn('id', ids).delete(),
@@ -129,6 +139,28 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     }
     await admin.destroy();
     await db.destroy();
+  });
+
+  it('a aplicação roda com a role restrita: current_user, sem poderes administrativos e sem privilégios extras', async () => {
+    const { rows: [atual] } = await db.raw('SELECT current_user AS role');
+    const { rows: [administrativa] } = await admin.raw('SELECT current_user AS role');
+    expect(atual.role).toBe(process.env.POSTGRES_APP_USER);
+    expect(administrativa.role).not.toBe(atual.role);
+
+    const { rows: [poderes] } = await admin.raw(
+      `SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls AS admin FROM pg_roles WHERE rolname = ?`,
+      [atual.role],
+    );
+    expect(poderes.admin).toBe(false);
+
+    const { rows: [privilegios] } = await admin.raw(
+      `SELECT has_table_privilege(?, 'solicitacoes_svo_credenciais_externas', 'DELETE') AS apaga,
+              has_column_privilege(?, 'solicitacoes_svo_credenciais_externas', 'emitida_em', 'INSERT') AS grava_emitida_em,
+              has_column_privilege(?, 'solicitacoes_svo_credenciais_externas', 'segredo_digest', 'UPDATE') AS altera_digest`,
+      [atual.role, atual.role, atual.role],
+    );
+    // Privilégios mínimos: a emissão usa o padrão do banco para emitida_em e não há DELETE nem troca de digest
+    expect(privilegios).toEqual({ apaga: false, grava_emitida_em: false, altera_digest: false });
   });
 
   it('sucesso: devolve o protocolo após o commit, grava tudo e aparece na fila', async () => {
@@ -154,10 +186,18 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
 
     // Só digests: a credencial e a prova nunca ficam em texto claro
     const credencial = await db('solicitacoes_svo_credenciais_externas').where({ solicitacao_id: s.id }).first();
-    expect(credencial.segredo_digest).toBe(calcularDigestCredencialExterna(resposta.body.credencial));
+    expect(resposta.body.credencial).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(credencial.segredo_digest).toBe(
+      calcularDigestCredencialExterna(resposta.body.credencial, credencial.algoritmo_digest, credencial.versao_credencial),
+    );
     expect(credencial.algoritmo_digest).toBe('HMAC-SHA-256');
     expect(JSON.stringify(credencial)).not.toContain(resposta.body.credencial);
     expect(JSON.stringify(credencial)).not.toContain(t.prova);
+    // Envelope de recuperação cifrado (AES-256-GCM da SCRUM-266): nada em texto claro, expira em 15 minutos
+    const recuperacao = await db('solicitacoes_svo_recuperacoes_tentativa').where({ solicitacao_id: s.id }).first();
+    expect(JSON.stringify(recuperacao)).not.toContain(resposta.body.credencial);
+    expect(JSON.stringify(recuperacao)).not.toContain(resposta.body.protocolo);
+    expect(new Date(recuperacao.expira_em).getTime() - new Date(credencial.emitida_em).getTime()).toBe(15 * 60 * 1000);
 
     // Na fila interna, sem dados pessoais
     const fila = await request(app).get('/api/solicitacoes-svo?status=EM_TRIAGEM&limite=100').set('Authorization', gestorSvo.token);
@@ -223,7 +263,7 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     expect((await avisosS1(s.id)).map((a) => a.usuario_id)).toEqual(esperados);
   });
 
-  it('mesma chave com conteúdo ou prova diferentes falha sem efeitos e sem credencial', async () => {
+  it('mesma chave: prova errada recebe 401 uniforme; conteúdo diferente só para quem prova a posse (409)', async () => {
     const t = tentativa();
     const primeira = await enviar(corpo(), t);
     expect(primeira.status).toBe(201);
@@ -231,16 +271,27 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     const antes = await contarExternas();
     const auditoriasAntes = await contarAuditoriasExternas();
 
-    const outroConteudo = await enviar(corpo({ descricao_ocorrencia: 'Outra descricao sintetica.' }), t);
-    expect(outroConteudo.status).toBe(409);
-    expect(outroConteudo.body.codigo).toBe('IDEMPOTENCIA_CONFLITO');
+    const provaErrada = { ...t, prova: 'Z'.repeat(43) };
+    const mesmoConteudo = await enviar(corpo(), provaErrada);
+    const outroConteudo = await enviar(corpo({ descricao_ocorrencia: 'Outra descricao sintetica.' }), provaErrada);
+    const chaveInexistente = await enviar(corpo({ descricao_ocorrencia: 'Outra descricao sintetica.' }), { ...t, chave: `inexistente-${nonce()}${nonce()}` });
+    for (const resposta of [mesmoConteudo, outroConteudo]) {
+      expect(resposta.status).toBe(401);
+      expect(resposta.body.codigo).toBe('CREDENCIAL_EXTERNA_INVALIDA');
+      expect(JSON.stringify(resposta.body)).not.toContain(primeira.body.credencial);
+    }
+    // Quem erra a prova não distingue "payload diferente" de "prova errada"
+    expect(outroConteudo.body).toEqual(mesmoConteudo.body);
+    criadas.push(...(await db('solicitacoes_svo').where({ protocolo: chaveInexistente.body.protocolo }).pluck('id')));
 
-    const outraProva = await enviar(corpo(), { ...t, prova: 'Z'.repeat(43) });
-    expect(outraProva.status).toBe(409);
-    expect(JSON.stringify(outraProva.body)).not.toContain(primeira.body.credencial);
+    const conflito = await enviar(corpo({ descricao_ocorrencia: 'Outra descricao sintetica.' }), t);
+    expect(conflito.status).toBe(409);
+    expect(conflito.body.codigo).toBe('CONFLITO_IDEMPOTENCIA');
+    expect(JSON.stringify(conflito.body)).not.toContain(primeira.body.credencial);
 
-    expect(await contarExternas()).toBe(antes);
-    expect(await contarAuditoriasExternas()).toBe(auditoriasAntes);
+    // Só a chave inexistente criou chamado; nenhuma das outras tentativas gravou
+    expect(await contarExternas()).toBe(antes + 1);
+    expect(await contarAuditoriasExternas()).toBe(auditoriasAntes + 1);
   });
 
   it('rollback: falha ao publicar o S1 não deixa chamado, credencial, aviso ou auditoria órfãos', async () => {
@@ -280,9 +331,134 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     expect(recuperada.body.credencial).toBe(perdida.body.credencial);
 
     const credencial = await db('solicitacoes_svo_credenciais_externas').where({ solicitacao_id: s.id }).first();
-    expect(credencial.segredo_digest).toBe(calcularDigestCredencialExterna(recuperada.body.credencial));
+    expect(credencial.segredo_digest).toBe(
+      calcularDigestCredencialExterna(recuperada.body.credencial, credencial.algoritmo_digest, credencial.versao_credencial),
+    );
     expect(await db('solicitacoes_svo').where({ protocolo: perdida.body.protocolo })).toHaveLength(1);
     expect((await avisosS1(s.id)).length).toBe((await audienciaEsperada()).length);
+  });
+
+  describe('integração real com a SCRUM-266 (serviço, API de acompanhamento e recuperação)', () => {
+    const consultar = (protocolo: string, credencial: string) =>
+      request(app).post(`${URL_EXTERNA}/acompanhamento`).send({ protocolo, credencial });
+
+    it('cria, perde a resposta, repete, recupera o mesmo comprovante e consulta pelo acompanhamento real', async () => {
+      const t = tentativa();
+      const perdida = await enviar(corpo(), t); // 1-2: criou e commitou; o cidadão não recebeu a resposta
+      expect(perdida.status).toBe(201);
+      const s = await solicitacaoPorProtocolo(perdida.body.protocolo);
+      criadas.push(s.id);
+
+      const repetida = await enviar(corpo(), t); // 3-5: repetição dentro da janela recupera o mesmo comprovante
+      expect(repetida.status).toBe(200);
+      expect(repetida.body.protocolo).toBe(perdida.body.protocolo);
+      expect(repetida.body.credencial).toBe(perdida.body.credencial);
+
+      // 6: a API de acompanhamento da SCRUM-266 aceita a credencial emitida pelo endpoint público
+      const consulta = await consultar(repetida.body.protocolo, repetida.body.credencial);
+      expect(consulta.status).toBe(200);
+      expect(consulta.headers['cache-control']).toContain('no-store');
+      expect(consulta.body).toMatchObject({ protocolo: repetida.body.protocolo, status: 'RECEBIDA', status_label: 'Recebida' });
+      expect(JSON.stringify(consulta.body)).not.toMatch(/Sentinela|52998224725|example\.com/);
+      expect((await consultar(repetida.body.protocolo, 'x'.repeat(43))).status).toBe(401);
+
+      // 7: um único chamado e um S1 lógico por destinatário
+      expect(await db('solicitacoes_svo').where({ protocolo: perdida.body.protocolo })).toHaveLength(1);
+      expect(await db('solicitacoes_svo_credenciais_externas').where({ solicitacao_id: s.id })).toHaveLength(1);
+      expect((await avisosS1(s.id)).map((a) => a.usuario_id)).toEqual(await audienciaEsperada());
+    });
+
+    it('o endpoint de recuperação da SCRUM-266 devolve o mesmo comprovante (payload já normalizado)', async () => {
+      const t = tentativa();
+      const criada = await enviar(corpo(), t);
+      expect(criada.status).toBe(201);
+      criadas.push((await solicitacaoPorProtocolo(criada.body.protocolo)).id);
+
+      const normalizado = solicitacaoSvoExternaSchema.parse(corpo());
+      const recuperada = await request(app)
+        .post(`${URL_EXTERNA}/recuperar-comprovante`)
+        .set({ 'Idempotency-Key': t.chave, 'X-Prova-Tentativa': t.prova })
+        .send({ payload: normalizado });
+      expect(recuperada.status).toBe(200);
+      expect(recuperada.body.protocolo).toBe(criada.body.protocolo);
+      expect(recuperada.body.credencial).toBe(criada.body.credencial);
+    });
+
+    it('janela de recuperação expirada: não devolve a credencial nem cria novo chamado', async () => {
+      const t = tentativa();
+      const criada = await enviar(corpo(), t);
+      expect(criada.status).toBe(201);
+      criadas.push((await solicitacaoPorProtocolo(criada.body.protocolo)).id);
+      const antes = await contarExternas();
+
+      const dados = solicitacaoSvoExternaSchema.parse(corpo());
+      const depoisDaJanela = new Date(Date.now() + 16 * 60 * 1000);
+      await expect(
+        solicitacaoSvoExternaService.registrar(dados, { chaveIdempotencia: t.chave, provaTentativa: t.prova }, { agora: depoisDaJanela }),
+      ).rejects.toMatchObject({ statusCode: 401, codigo: 'CREDENCIAL_EXTERNA_INVALIDA' });
+      expect(await contarExternas()).toBe(antes);
+    });
+
+    it('credencial revogada: a repetição responde 401 uniforme e não cria novo chamado', async () => {
+      const t = tentativa();
+      const criada = await enviar(corpo(), t);
+      expect(criada.status).toBe(201);
+      const s = await solicitacaoPorProtocolo(criada.body.protocolo);
+      criadas.push(s.id);
+      await admin('solicitacoes_svo_credenciais_externas')
+        .where({ solicitacao_id: s.id })
+        .update({ revogada_em: admin.fn.now(), revogada_motivo: 'teste de revogacao', atualizado_em: admin.fn.now() });
+      const antes = await contarExternas();
+
+      const repetida = await enviar(corpo(), t);
+      expect(repetida.status).toBe(401);
+      expect(repetida.body.codigo).toBe('CREDENCIAL_EXTERNA_INVALIDA');
+      expect((await consultar(criada.body.protocolo, criada.body.credencial)).status).toBe(401);
+      expect(await contarExternas()).toBe(antes);
+    });
+
+    it('rotação de chaves: a tentativa antiga continua recuperável com a versão com que foi emitida', async () => {
+      const t = tentativa();
+      const original = env.credencialExternaSvo;
+      const criada = await enviar(corpo(), t);
+      expect(criada.status).toBe(201);
+      criadas.push((await solicitacaoPorProtocolo(criada.body.protocolo)).id);
+
+      const mutavel = env as unknown as { credencialExternaSvo: typeof original };
+      mutavel.credencialExternaSvo = {
+        ...original,
+        versaoAtual: original.versaoAtual + 1,
+        segredoAtual: `rotacao-${nonce()}${nonce()}`.padEnd(48, 'r'),
+        segredosAnteriores: { ...original.segredosAnteriores, [original.versaoAtual]: original.segredoAtual },
+      };
+      try {
+        const recuperada = await enviar(corpo(), t);
+        expect(recuperada.status).toBe(200);
+        expect(recuperada.body.credencial).toBe(criada.body.credencial);
+        expect((await consultar(criada.body.protocolo, criada.body.credencial)).status).toBe(200);
+
+        // Tentativa nova já nasce com a versão nova
+        const nova = await enviar(corpo(), tentativa());
+        expect(nova.status).toBe(201);
+        const linha = await solicitacaoPorProtocolo(nova.body.protocolo);
+        criadas.push(linha.id);
+        const credencial = await db('solicitacoes_svo_credenciais_externas').where({ solicitacao_id: linha.id }).first();
+        expect(credencial.versao_credencial).toBe(original.versaoAtual + 1);
+      } finally {
+        mutavel.credencialExternaSvo = original;
+      }
+    });
+
+    it('falha transacional da SCRUM-266 desfaz o chamado inteiro', async () => {
+      const t = tentativa();
+      const antes = await contarExternas();
+      vi.spyOn(acompanhamentoExternoSvoService, 'emitirCredencialNaTransacao').mockRejectedValueOnce(new Error('falha simulada'));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect((await enviar(corpo(), t)).status).toBe(500);
+      expect(await contarExternas()).toBe(antes);
+      expect(await db('solicitacoes_svo_credenciais_externas').where({ chave_idempotencia_criacao: t.chave })).toHaveLength(0);
+    });
   });
 
   it('flag desligada bloqueia sem gravar nada', async () => {

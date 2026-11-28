@@ -133,6 +133,45 @@ describe('POST /api/solicitacoes-svo/externas (SCRUM-264, rota pública)', () =>
     expect(solicitacaoSvoExternaService.registrar).not.toHaveBeenCalled();
   });
 
+  it('rejeita parâmetros na URL sem chamar o serviço', async () => {
+    const resposta = await request(app)
+      .post(`${URL}?cpf=${CPF_SENTINELA}`)
+      .set({ 'Idempotency-Key': CHAVE, 'X-Prova-Tentativa': PROVA })
+      .send(payload);
+    expect(resposta.status).toBe(400);
+    expect(resposta.headers['cache-control']).toContain('no-store');
+    expect(JSON.stringify(resposta.body)).not.toContain(CPF_SENTINELA);
+    expect(solicitacaoSvoExternaService.registrar).not.toHaveBeenCalled();
+  });
+
+  it('mantém no-store nos erros antecipados: JSON inválido e corpo acima de 100 KB', async () => {
+    const invalido = await request(app)
+      .post(URL)
+      .set({ 'Content-Type': 'application/json', 'Idempotency-Key': CHAVE, 'X-Prova-Tentativa': PROVA })
+      .send('{"nome_solicitante": ');
+    expect(invalido.status).toBe(400);
+    expect(invalido.headers['cache-control']).toContain('no-store');
+
+    const grande = await enviar({ ...payload, descricao_ocorrencia: 'a'.repeat(150_000) });
+    expect(grande.status).toBe(413);
+    expect(grande.headers['cache-control']).toContain('no-store');
+    expect(solicitacaoSvoExternaService.registrar).not.toHaveBeenCalled();
+  });
+
+  it('preflight libera só os cabeçalhos da tentativa para a origem permitida', async () => {
+    const origem = env.corsOrigens[0] as string;
+    const resposta = await request(app)
+      .options(URL)
+      .set('Origin', origem)
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type,idempotency-key,x-prova-tentativa');
+    expect(resposta.status).toBe(204);
+    expect(resposta.headers['access-control-allow-origin']).toBe(origem);
+    expect(resposta.headers['access-control-allow-headers']).toContain('Idempotency-Key');
+    expect(resposta.headers['access-control-allow-headers']).toContain('X-Prova-Tentativa');
+    expect(resposta.headers['access-control-allow-headers']).not.toContain('*');
+  });
+
   it('erro interno responde genérico, sem dado pessoal', async () => {
     const logs = [vi.spyOn(console, 'log'), vi.spyOn(console, 'error')];
     logs.forEach((espiao) => espiao.mockImplementation(() => {}));

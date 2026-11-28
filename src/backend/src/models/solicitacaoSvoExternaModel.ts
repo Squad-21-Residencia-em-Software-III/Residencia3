@@ -4,42 +4,12 @@ import type { CriarSolicitacaoSvoExternaInput } from '../validators/solicitacaoS
 // Rótulo operacional da fila; identidade e contato ficam só nas tabelas protegidas
 export const ROTULO_SOLICITANTE_EXTERNO = 'Solicitação externa';
 
-export interface CredencialExistente {
-  solicitacao_id: number;
-  protocolo: string | null;
-  segredo_digest: string;
-  algoritmo_digest: string;
-  payload_criacao_digest: string;
-  prova_tentativa_digest: string | null;
-  emitida_em: Date | string;
-  revogada_em: Date | string | null;
-}
-
-export interface NovaCredencialExterna {
-  solicitacaoId: number;
-  segredoDigest: string;
-  algoritmoDigest: string;
-  chaveIdempotencia: string;
-  payloadDigest: string;
-  provaDigest: string;
-}
-
-// Só as colunas que a role da aplicação pode gravar (database/scrum263-privilegios.cjs).
-// Versão, datas e demais campos usam os padrões do banco.
+// Só as colunas que a role da aplicação pode gravar (database/privilegiosSolicitacoesExternasSvo.cjs).
+// A credencial e a recuperação da tentativa são do modelo da SCRUM-266 (acompanhamentoExternoSvoModel).
 export const solicitacaoSvoExternaModel = {
   // Serializa tentativas com a mesma chave, inclusive entre processos; solta no fim da transação
   async bloquearTentativa(trx: Knex.Transaction, chaveIdempotencia: string): Promise<void> {
     await trx.raw('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [chaveIdempotencia]);
-  },
-
-  async buscarCredencialPorChave(trx: Knex.Transaction, chaveIdempotencia: string): Promise<CredencialExistente | undefined> {
-    return trx('solicitacoes_svo_credenciais_externas as c')
-      .join('solicitacoes_svo as s', 's.id', 'c.solicitacao_id')
-      .where('c.chave_idempotencia_criacao', chaveIdempotencia)
-      .first(
-        'c.solicitacao_id', 's.protocolo', 'c.segredo_digest', 'c.algoritmo_digest',
-        'c.payload_criacao_digest', 'c.prova_tentativa_digest', 'c.emitida_em', 'c.revogada_em',
-      );
   },
 
   // Canal EXTERNA, registrante nulo e estado inicial são definidos aqui, nunca pela requisição
@@ -82,19 +52,5 @@ export const solicitacaoSvoExternaModel = {
       ciencia_aviso_privacidade: d.ciencia_aviso_privacidade,
       versao_aviso_privacidade: d.versao_aviso_privacidade,
     });
-  },
-
-  async inserirCredencial(trx: Knex.Transaction, c: NovaCredencialExterna): Promise<Date | string> {
-    const [linha] = await trx('solicitacoes_svo_credenciais_externas')
-      .insert({
-        solicitacao_id: c.solicitacaoId,
-        segredo_digest: c.segredoDigest,
-        algoritmo_digest: c.algoritmoDigest,
-        chave_idempotencia_criacao: c.chaveIdempotencia,
-        payload_criacao_digest: c.payloadDigest,
-        prova_tentativa_digest: c.provaDigest,
-      })
-      .returning<{ emitida_em: Date | string }[]>('emitida_em');
-    return linha!.emitida_em;
   },
 };

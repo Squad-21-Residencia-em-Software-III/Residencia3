@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { versaoAvisoPrivacidadeReconhecida, versoesAvisoPrivacidadeSvo } from '../config/avisoPrivacidadeSvo';
 import {
   cpfValido,
   criarSolicitacaoSvoExternaSchema,
@@ -89,6 +90,9 @@ describe('solicitacaoSvoExternaSchema (SCRUM-264)', () => {
     it('exige o nome da instituição para INSTITUICAO', () => {
       expect(validar({ tipo_solicitante: 'INSTITUICAO' }).success).toBe(false);
       expect(validar({ tipo_solicitante: 'INSTITUICAO', nome_instituicao: 'Hospital Teste' }).success).toBe(true);
+      // mínimo declarado de 2 caracteres também para o nome da instituição
+      expect(validar({ tipo_solicitante: 'INSTITUICAO', nome_instituicao: 'H' }).success).toBe(false);
+      expect(validar({ tipo_solicitante: 'INSTITUICAO', nome_instituicao: 'HU' }).success).toBe(true);
     });
 
     it('rejeita nome de instituição para pessoa física e tipo desconhecido', () => {
@@ -112,6 +116,20 @@ describe('solicitacaoSvoExternaSchema (SCRUM-264)', () => {
       expect(validar({ longitude_ocorrencia: -37.07 }).success).toBe(false);
     });
 
+    it('força fora_area_cobertura quando as coordenadas estão fora do retângulo de Sergipe', () => {
+      const fora = validar({ latitude_ocorrencia: -23.55, longitude_ocorrencia: -46.63, fora_area_cobertura: false });
+      expect(fora.success && fora.data.fora_area_cobertura).toBe(true);
+    });
+
+    it('mantém o informado dentro do retângulo ou sem coordenadas (endereço manual é aceito)', () => {
+      const dentro = validar({ latitude_ocorrencia: -10.9, longitude_ocorrencia: -37.07, fora_area_cobertura: false });
+      expect(dentro.success && dentro.data.fora_area_cobertura).toBe(false);
+      const manual = validar({ fora_area_cobertura: true });
+      expect(manual.success && manual.data.fora_area_cobertura).toBe(true);
+      const padrao = validar();
+      expect(padrao.success && padrao.data.fora_area_cobertura).toBe(false);
+    });
+
     it('rejeita fora do intervalo e valores não numéricos', () => {
       expect(validar({ latitude_ocorrencia: 91, longitude_ocorrencia: 0 }).success).toBe(false);
       expect(validar({ latitude_ocorrencia: 0, longitude_ocorrencia: -181 }).success).toBe(false);
@@ -126,9 +144,10 @@ describe('solicitacaoSvoExternaSchema (SCRUM-264)', () => {
       expect(validar({ data_hora_ocorrencia: 'ontem' }).success).toBe(false);
     });
 
-    it('aceita até a tolerância de relógio adiantado', () => {
-      expect(validar({ data_hora_ocorrencia: '2026-11-27T15:04:00.000Z' }).success).toBe(true);
-      expect(validar({ data_hora_ocorrencia: '2026-11-27T15:06:00.000Z' }).success).toBe(false);
+    it('não tem tolerância: só o instante atual ou anterior é aceito (regra a confirmar com a instituição)', () => {
+      expect(validar({ data_hora_ocorrencia: '2026-11-27T15:00:00.000Z' }).success).toBe(true);
+      expect(validar({ data_hora_ocorrencia: '2026-11-27T15:00:00.001Z' }).success).toBe(false);
+      expect(validar({ data_hora_ocorrencia: '2026-11-27T15:04:00.000Z' }).success).toBe(false);
     });
   });
 
@@ -161,6 +180,28 @@ describe('solicitacaoSvoExternaSchema (SCRUM-264)', () => {
       expect(validar({ ciencia_aviso_privacidade: false }).success).toBe(false);
       expect(validar({ ciencia_aviso_privacidade: undefined }).success).toBe(false);
       expect(validar({ versao_aviso_privacidade: '' }).success).toBe(false);
+    });
+
+    describe('versão do aviso de privacidade', () => {
+      afterEach(() => {
+        delete process.env.AVISO_PRIVACIDADE_SVO_VERSOES;
+      });
+
+      it('sem lista configurada valida só o formato', () => {
+        expect(validar({ versao_aviso_privacidade: '2026-11-v1' }).success).toBe(true);
+        expect(validar({ versao_aviso_privacidade: 'versão com espaços' }).success).toBe(false);
+      });
+
+      it('com lista configurada aceita apenas versões reconhecidas', () => {
+        process.env.AVISO_PRIVACIDADE_SVO_VERSOES = '2026-11-v1, 2026-12-v2';
+        expect(validar({ versao_aviso_privacidade: '2026-12-v2' }).success).toBe(true);
+        expect(validar({ versao_aviso_privacidade: '2026-11-v9' }).success).toBe(false);
+      });
+
+      it('lista malformada falha com erro claro', () => {
+        expect(() => versoesAvisoPrivacidadeSvo({ AVISO_PRIVACIDADE_SVO_VERSOES: 'ok, inválida!' })).toThrow(/AVISO_PRIVACIDADE_SVO_VERSOES/);
+        expect(versaoAvisoPrivacidadeReconhecida('x', ['x'])).toBe(true);
+      });
     });
   });
 

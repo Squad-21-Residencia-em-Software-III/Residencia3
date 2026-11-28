@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import { pontoForaDoRetanguloDeSergipe } from '../config/areaCoberturaSvo';
+import { versaoAvisoPrivacidadeReconhecida } from '../config/avisoPrivacidadeSvo';
+import {
+  CABECALHO_CHAVE_IDEMPOTENCIA,
+  CABECALHO_PROVA_TENTATIVA,
+  REGEX_CHAVE_IDEMPOTENCIA_CRIACAO,
+  REGEX_PROVA_TENTATIVA_CRIACAO,
+} from './acompanhamentoExternoSvoSchemas';
+
+export { CABECALHO_CHAVE_IDEMPOTENCIA, CABECALHO_PROVA_TENTATIVA };
 
 /**
  * Contrato de entrada do formulário público do SVO (SCRUM-264).
@@ -25,9 +35,6 @@ export const LIMITES_SOLICITACAO_EXTERNA = {
   informacoesMedicas: { max: 2000 },
   versaoAviso: { max: 40 },
 } as const;
-
-// Tolerância para relógios de aparelhos levemente adiantados
-export const TOLERANCIA_DATA_FUTURA_MS = 5 * 60 * 1000;
 
 // Caracteres de controle, exceto tabulação, quebra de linha e retorno de carro
 const CONTROLES = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
@@ -58,10 +65,10 @@ function texto(rotulo: string, limites: { min?: number; max: number }, multilinh
 }
 
 // Campo opcional: ausente, nulo ou vazio viram "não informado"
-function textoOpcional(rotulo: string, max: number, multilinha = false) {
+function textoOpcional(rotulo: string, max: number, multilinha = false, min = 1) {
   return z.preprocess(
     (valor) => (valor === null || (typeof valor === 'string' && valor.trim() === '') ? undefined : valor),
-    texto(rotulo, { max }, multilinha).optional(),
+    texto(rotulo, { min, max }, multilinha).optional(),
   );
 }
 
@@ -120,10 +127,8 @@ function dataHoraOcorrenciaSchema(agora: () => Date) {
     .trim()
     .pipe(z.iso.datetime({ offset: true, error: 'Data e hora da ocorrência inválidas' }))
     .transform((valor) => new Date(valor).toISOString())
-    .refine(
-      (valor) => new Date(valor).getTime() <= agora().getTime() + TOLERANCIA_DATA_FUTURA_MS,
-      'A data e hora da ocorrência não podem estar no futuro',
-    );
+    // Sem tolerância: a documentação da SCRUM-264 rejeita datas futuras (regra a confirmar com a instituição)
+    .refine((valor) => new Date(valor).getTime() <= agora().getTime(), 'A data e hora da ocorrência não podem estar no futuro');
 }
 
 export function criarSolicitacaoSvoExternaSchema(agora: () => Date = () => new Date()) {
@@ -132,7 +137,7 @@ export function criarSolicitacaoSvoExternaSchema(agora: () => Date = () => new D
     .strictObject(
       {
         tipo_solicitante: z.enum(TIPOS_SOLICITANTE_EXTERNO, { error: 'Tipo de solicitante inválido' }),
-        nome_instituicao: textoOpcional('O nome da instituição', L.nomeInstituicao.max),
+        nome_instituicao: textoOpcional('O nome da instituição', L.nomeInstituicao.max, false, L.nomeInstituicao.min),
         nome_solicitante: texto('O nome do solicitante', L.nomeSolicitante),
         telefone_solicitante: telefoneSchema,
         email_solicitante: emailSchema,
@@ -156,7 +161,10 @@ export function criarSolicitacaoSvoExternaSchema(agora: () => Date = () => new D
         informacoes_medicas: textoOpcional('As informações médicas', L.informacoesMedicas.max, true),
 
         ciencia_aviso_privacidade: z.literal(true, { error: 'É necessário estar ciente do aviso de privacidade' }),
-        versao_aviso_privacidade: texto('A versão do aviso de privacidade', { max: L.versaoAviso.max }),
+        versao_aviso_privacidade: texto('A versão do aviso de privacidade', { max: L.versaoAviso.max }).refine(
+          (versao) => versaoAvisoPrivacidadeReconhecida(versao),
+          'Versão do aviso de privacidade não reconhecida',
+        ),
       },
       { error: 'Campo não permitido na solicitação externa' },
     )
@@ -192,25 +200,33 @@ export function criarSolicitacaoSvoExternaSchema(agora: () => Date = () => new D
           message: 'Informe latitude e longitude juntas ou nenhuma delas',
         });
       }
-    });
+    })
+    // fora_area_cobertura não é só do cliente: coordenadas fora do retângulo de Sergipe forçam true.
+    // Sem coordenadas (endereço manual) vale o informado; nada é inventado nem rejeitado.
+    .transform((dados) =>
+      dados.latitude_ocorrencia !== undefined &&
+      dados.longitude_ocorrencia !== undefined &&
+      pontoForaDoRetanguloDeSergipe(dados.latitude_ocorrencia, dados.longitude_ocorrencia)
+        ? { ...dados, fora_area_cobertura: true }
+        : dados,
+    );
 }
 
 export const solicitacaoSvoExternaSchema = criarSolicitacaoSvoExternaSchema();
 
 export type CriarSolicitacaoSvoExternaInput = z.infer<typeof solicitacaoSvoExternaSchema>;
 
-// Cabeçalhos da tentativa de criação (mesmo formato do contrato da SCRUM-266).
-// A chave identifica a tentativa; a prova é gerada pelo navegador e nunca depende da chave.
-export const CABECALHO_CHAVE_IDEMPOTENCIA = 'idempotency-key';
-export const CABECALHO_PROVA_TENTATIVA = 'x-prova-tentativa';
-
+// Cabeçalhos da tentativa de criação: mesmo formato (e mesmas regex) do contrato da SCRUM-266.
+// A chave identifica a tentativa; a prova de posse é gerada pelo navegador (SCRUM-265) com 256 bits
+// aleatórios do CSPRNG (crypto.getRandomValues) em Base64URL e nunca é derivada da chave nem do conteúdo.
+// O servidor não consegue comprovar entropia: valida só formato/tamanho e a exige no contrato.
 export const cabecalhosCriacaoExternaSchema = z.object({
   [CABECALHO_CHAVE_IDEMPOTENCIA]: z
     .string({ error: 'O cabeçalho Idempotency-Key é obrigatório' })
     .trim()
-    .regex(/^[A-Za-z0-9._:-]{8,120}$/, 'Idempotency-Key inválido'),
+    .regex(REGEX_CHAVE_IDEMPOTENCIA_CRIACAO, 'Idempotency-Key inválido'),
   [CABECALHO_PROVA_TENTATIVA]: z
     .string({ error: 'O cabeçalho X-Prova-Tentativa é obrigatório' })
     .trim()
-    .regex(/^[A-Za-z0-9_-]{32,128}$/, 'X-Prova-Tentativa inválido'),
+    .regex(REGEX_PROVA_TENTATIVA_CRIACAO, 'X-Prova-Tentativa inválido'),
 });
