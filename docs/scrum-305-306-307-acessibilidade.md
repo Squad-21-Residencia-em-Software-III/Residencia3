@@ -109,17 +109,19 @@ Chrome 158 com PostgreSQL descartável e API real. A composição passou pelo bu
 | --- | --- |
 | Portal e mapa a 320 CSS px | Salto focou o conteúdo. Enter abriu as preferências, Escape devolveu foco. Alto contraste, tritanopia e texto a 150% coexistiram sem rolagem horizontal. Depois de recarregar, o modo anônimo preservou as escolhas. |
 | Teclado na cartografia | CEP, seleção no listbox, ajuste manual, reverso real via proxy, limpeza e endereço textual passaram com WebGL indisponível. |
-| Reflow interno | Início, solicitações ADM/SVO, agenda, viagens, veículos, infrações, motoristas e abastecimento abriram a 320 CSS px sem overflow horizontal no documento. A medição da página cobre a estrutura geral. |
+| Reflow interno | Início, solicitações ADM/SVO, agenda, viagens, veículos, infrações, motoristas e abastecimento abriram a 320 CSS px e a 200% de zoom nativo, sem overflow horizontal no documento. A medição da página cobre a estrutura geral. |
+| Formulários internos | Agendamento a partir de Solicitações, cadastro de veículo e registro de multa passaram com Enter, Tab, Shift+Tab e Escape a 320 CSS px e a 200%. O agendamento fecha com foco no conteúdo da nova rota. Nos outros dois diálogos, o foco volta ao acionador. |
 | Indicadores ADM | Aprovação e recusa identificadas pelo rótulo no padrão e em protanopia, deuteranopia, tritanopia e escala de cinza emulados no Chrome. O axe no navegador não apontou falha de contraste nessa amostra. |
 | Indicadores complementares | Os testes automatizados cobrem ícones de status, legenda e padrões da agenda, barra de ocupação, rótulos da meta de consumo e filtro do cartão com Tab e Enter. |
 | Zoom nativo | Consulta pública real com ampliação de 200% confirmada nas configurações do Chrome. |
+| Narrador do Windows | A recapitulação da fala confirmou o salto ao conteúdo, o botão de acessibilidade, o combobox cartográfico e, no formulário de acompanhamento, o campo Protocolo como necessário e inválido com a mensagem associada. |
 
 ### Evidência pendente
 
-- **Leitores de tela reais** (NVDA, VoiceOver, TalkBack) e **aparelhos Android e iOS**: sem dispositivo nesta entrega. Os nomes, papéis e estados foram conferidos pelos testes e pelo axe.
+- **NVDA, VoiceOver, TalkBack e aparelhos Android/iOS**: sem execução registrada. A amostra do Narrador do Windows cobre somente os anúncios acima.
 - **Alto Contraste do Windows** (cores forçadas): só o CSS, sem verificação manual.
 - **Tema escuro**: a SCRUM-303 ainda não está na develop.
-- **Fluxos internos completos**: faltam medições de ampliação nativa e interações por operação, especialmente agendamento, condução, upload/captura, recuperação de falha e reabertura do PWA. O reflow acima registra a área geral renderizada.
+- **Fluxos internos completos**: ainda faltam evidências de condução, upload/captura, recuperação de falha e reabertura do PWA. A matriz acima cobre o reflow geral e as interações explicitadas.
 - **Rotas e GPS em campo**: visualização de rotas e GPS físico dependem das entregas correspondentes e dos aparelhos de teste.
 
 ## Para alinhar

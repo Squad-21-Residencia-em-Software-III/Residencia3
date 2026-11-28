@@ -143,6 +143,24 @@ describe('Modal', () => {
     await user.keyboard('{Escape}');
     expect(screen.getByRole('main')).toHaveFocus();
   });
+
+  it('ao fechar um diálogo aberto por navegação, dá foco ao conteúdo da nova rota', async () => {
+    const teclado = userEvent.setup();
+    function RotaComDialogo() {
+      const [aberto, setAberto] = useState(true);
+      return (
+        <main id="conteudo" tabIndex={-1}>
+          <Modal title="Agendar viagem" isOpen={aberto} onClose={() => setAberto(false)}>
+            <button type="button">Agendar</button>
+          </Modal>
+        </main>
+      );
+    }
+    render(<RotaComDialogo />);
+    expect(screen.getByRole('button', { name: 'Agendar' })).toHaveFocus();
+    await teclado.keyboard('{Escape}');
+    expect(screen.getByRole('main')).toHaveFocus();
+  });
 });
 
 describe('ConfirmDialog', () => {

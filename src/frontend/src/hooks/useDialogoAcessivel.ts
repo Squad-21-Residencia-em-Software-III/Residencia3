@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
+import { ID_CONTEUDO } from '../components/layout/AcoesPublicasContext';
 
 interface DialogoAtivo {
   elemento: HTMLElement;
@@ -141,12 +142,15 @@ export function useDialogoAcessivel({ aberto, dialogo, aoFechar, fecharComEscape
         const superior = pilha.at(-1)?.elemento;
         const acionador = ativo.acionador;
         const restaurar = () => {
-          if (acionador && (!superior || superior.contains(acionador)) && podeReceberFoco(acionador)) {
+          if (acionador && acionador !== document.body && acionador !== document.documentElement &&
+              (!superior || superior.contains(acionador)) && podeReceberFoco(acionador)) {
             acionador.focus();
-          } else if (superior && !superior.contains(document.activeElement)) {
+            if (document.activeElement === acionador) return;
+          }
+          if (superior && !superior.contains(document.activeElement)) {
             focarDentro(superior, false);
           } else if (!superior) {
-            document.getElementById('conteudo')?.focus();
+            document.getElementById(ID_CONTEUDO)?.focus();
           }
         };
         restaurar();
