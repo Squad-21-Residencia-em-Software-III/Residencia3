@@ -1,6 +1,7 @@
 import { db } from '../config/database';
 import { PERFIS, type Perfil } from '../constants/perfis';
 import { AppError } from '../errors/AppError';
+import { acompanhamentoExternoSvoModel } from '../models/acompanhamentoExternoSvoModel';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import {
   solicitacaoSvoModel,
@@ -106,6 +107,58 @@ export const solicitacaoSvoService = {
     return { ...solicitacao, ordem: ordem ?? null };
   },
 
+  // Marca início verificável da análise na triagem para solicitações externas (RECEBIDA -> EM_ANALISE)
+  async iniciarAnalise(
+    id: number,
+    autor: Autor
+  ): Promise<{ solicitacao: SolicitacaoSvo; analise_iniciada_em: string | null }> {
+    garantirAcessoTriagem(autor);
+    return db.transaction(async (trx) => {
+      const solicitacao = await solicitacaoSvoModel.buscarParaAtualizar(id, trx);
+      if (!solicitacao) {
+        throw new AppError('Solicitação SVO não encontrada', 404);
+      }
+      if (solicitacao.canal_origem !== 'EXTERNA') {
+        throw new AppError(
+          'Somente solicitações externas possuem etapa pública de início de análise',
+          409
+        );
+      }
+      if (solicitacao.status !== 'EM_TRIAGEM') {
+        throw new AppError('Somente solicitações em triagem podem iniciar análise', 409);
+      }
+
+      const agora = new Date();
+      const iniciadaAgora = await acompanhamentoExternoSvoModel.registrarInicioAnalise(
+        id,
+        autor.id,
+        agora,
+        trx
+      );
+      if (iniciadaAgora) {
+        await auditoriaModel.registrar(
+          {
+            usuario_id: autor.id,
+            acao: `INICIOU_ANALISE_SOLICITACAO_EXTERNA_SVO id=${id}`,
+            modulo: MODULOS_AUDITORIA.SOLICITACOES_SVO,
+          },
+          trx
+        );
+      }
+
+      const registro = await trx('solicitacoes_svo_dados_externos')
+        .where({ solicitacao_id: id })
+        .first<{ analise_iniciada_em: Date | string | null }>('analise_iniciada_em');
+
+      return {
+        solicitacao,
+        analise_iniciada_em: registro?.analise_iniciada_em
+          ? new Date(registro.analise_iniciada_em).toISOString()
+          : null,
+      };
+    });
+  },
+
   // Confirma a solicitação em triagem e gera a ordem de coleta na mesma transação (RF20/RF21/RN09).
   // Repetir a confirmação devolve a ordem já existente, sem duplicar.
   async confirmar(id: number, autor: Autor): Promise<ConfirmacaoSvo> {
@@ -169,6 +222,14 @@ export const solicitacaoSvoService = {
       }
 
       const recusada = await solicitacaoSvoModel.recusar(id, motivoSanitizado, trx);
+      if (recusada.canal_origem === 'EXTERNA') {
+        const agora = new Date();
+        await acompanhamentoExternoSvoModel.registrarEncerramentoOperacional(
+          id,
+          agora,
+          trx
+        );
+      }
       const resumoMotivo =
         motivoSanitizado.length > 180 ? `${motivoSanitizado.slice(0, 177)}...` : motivoSanitizado;
 

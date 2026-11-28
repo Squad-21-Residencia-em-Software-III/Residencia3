@@ -88,7 +88,9 @@ describe('CORS por ambiente', () => {
     expect(res.status).toBe(204);
     expect(res.headers['access-control-allow-origin']).toBe(ORIGEM_FRONT);
     expect(res.headers['access-control-allow-methods']).toBe('GET,POST,PUT,PATCH,DELETE');
-    expect(res.headers['access-control-allow-headers']).toBe('Content-Type,Authorization');
+    expect(res.headers['access-control-allow-headers']).toBe(
+      'Content-Type,Authorization,Idempotency-Key,X-Prova-Tentativa,X-Credencial-Acompanhamento',
+    );
     expect(res.headers['access-control-max-age']).toBe('600');
   });
 
