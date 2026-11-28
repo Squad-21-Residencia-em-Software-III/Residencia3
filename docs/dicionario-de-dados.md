@@ -389,12 +389,15 @@ Estrutura protegida 1:1 para dados pessoais, institucionais, clínicos, localiza
 | `versao_aviso_privacidade` | Varchar(40) | NOT NULL | Versão do aviso de privacidade apresentada ao solicitante. |
 | `ciencia_registrada_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Instante do registro da ciência do aviso. |
 | `motivo_recusa_publico` | Varchar(500) | NULLABLE | Justificativa pública específica exibida no portal quando a solicitação não é acolhida (separada de `solicitacoes_svo.motivo_recusa`). |
+| `analise_iniciada_em` | Timestamptz | NULLABLE | Marco operacional verificável de início de análise na triagem (`RECEBIDA` → `EM_ANALISE`, `SCRUM-266` / `SCRUM-270`). |
+| `analise_iniciada_por` | Integer | NULLABLE, FOREIGN KEY | Gestor/admin que iniciou a análise na triagem (`usuarios.id`, `ON DELETE RESTRICT`). |
 | `cancelamento_solicitado_em` | Timestamptz | NULLABLE | Instante em que o solicitante externo pediu cancelamento no portal. |
 | `cancelamento_motivo` | Varchar(500) | NULLABLE | Motivo informado pelo solicitante no pedido de cancelamento. |
 | `cancelamento_status` | Varchar(20) | NULLABLE | CHECK: `NULL`, `PENDENTE`, `ACEITO`, `NEGADO` (`chk_solicitacoes_svo_dados_externos_cancelamento`). |
 | `cancelamento_decidido_por` | Integer | NULLABLE, FOREIGN KEY | Gestor/admin que decidiu o pedido de cancelamento (`usuarios.id`, `ON DELETE RESTRICT`). |
 | `cancelamento_decidido_em` | Timestamptz | NULLABLE | Instante da decisão operacional sobre o pedido de cancelamento. |
-| `cancelamento_justificativa_decisao` | Varchar(500) | NULLABLE | Justificativa da decisão do gestor sobre o pedido de cancelamento. |
+| `cancelamento_justificativa_decisao` | Varchar(500) | NULLABLE | Justificativa interna da decisão do gestor sobre o pedido de cancelamento (nunca exposta no portal público). |
+| `cancelamento_mensagem_publica` | Varchar(500) | NULLABLE | Mensagem pública autorizada sobre a decisão de cancelamento (`SCRUM-266`), exibida separada da justificativa interna. |
 | `versao_dados` | Integer | NOT NULL, DEFAULT 1 | Controle de concorrência otimista (`CHECK: >= 1`) para edições externas durante a análise. |
 | `encerrado_operacional_em` | Timestamptz | NULLABLE | Marco de encerramento operacional para contagem da janela pública de 30 dias e retenção de 12 meses. |
 | `consulta_publica_expira_em` | Timestamptz | GENERATED, NULLABLE | Limite público calculado em UTC como 30 dias após o encerramento operacional. |
@@ -425,6 +428,18 @@ Armazena o digest protegido da credencial secreta de acompanhamento externo e os
 | `revogada_motivo` | Varchar(120) | NULLABLE | Motivo obrigatório quando `revogada_em IS NOT NULL`. |
 | `ultimo_acesso_em` | Timestamptz | NULLABLE | Último acesso autenticado com sucesso pela credencial. |
 | `atualizado_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Última atualização de ciclo de vida da credencial. |
+
+## 26. Tabela: `solicitacoes_svo_recuperacoes_tentativa`
+Armazena exclusivamente o envelope cifrado autenticado (`AES-256-GCM`) de curta duração (máximo de 15 minutos) para recuperação autenticada de comprovante após perda de resposta HTTP na criação externa (`SCRUM-264` / `SCRUM-266`), condicionado à existência de `prova_tentativa_digest` na credencial.
+
+| Coluna | Tipo | Restrições / Notas | Descrição |
+| :--- | :--- | :--- | :--- |
+| `solicitacao_id` | Integer | PRIMARY KEY, FOREIGN KEY | Credencial associada (`solicitacoes_svo_credenciais_externas.solicitacao_id`, `ON DELETE RESTRICT`). |
+| `envelope_cifrado` | Text | NOT NULL | Envelope cifrado em `AES-256-GCM` vinculado a `chave_idempotencia_criacao`, `prova_tentativa` e `payload_criacao_digest` (jamais segredo em texto claro). |
+| `versao_chave` | Integer | NOT NULL, DEFAULT 1 | Versão da chave dedicada (`CREDENCIAL_EXTERNA_SVO_KEY_VERSION`) usada na cifragem (`CHECK: >= 1`). |
+| `criado_em` | Timestamptz | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Instante de geração do envelope temporário. |
+| `expira_em` | Timestamptz | NOT NULL | Limite estrito da janela de recuperação (`expira_em > criado_em` e `<= criado_em + interval '15 minutes'`). |
+| `descartada_em` | Timestamptz | NULLABLE | Preenchido no descarte explícito (revogação/expiração) para invalidar o envelope antes do prazo final. |
 
 
 

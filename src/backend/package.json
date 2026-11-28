@@ -29,7 +29,8 @@
     "db:validar-notificacoes-in-app": "node scripts/validar-migration-notificacoes-in-app.cjs",
     "db:validar-notificacao-outbox": "node scripts/validar-migration-notificacao-outbox.cjs",
     "db:validar-preferencias-e-inscricoes-push": "node scripts/validar-migration-preferencias-e-inscricoes-push.cjs",
-    "db:validar-solicitacoes-externas-svo": "node scripts/validar-migration-solicitacoes-externas-svo.cjs"
+    "db:validar-solicitacoes-externas-svo": "node scripts/validar-migration-solicitacoes-externas-svo.cjs",
+    "db:validar-scrum266": "tsx scripts/validar-acompanhamento-scrum266.cjs"
   },
   "keywords": [],
   "author": "",

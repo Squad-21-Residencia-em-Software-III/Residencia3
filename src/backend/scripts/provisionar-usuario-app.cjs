@@ -91,7 +91,7 @@ function validarEstadoMinimoPrivilegio(estado, opcoes = {}) {
 
   if (estado.podeDeletarDadosExternosSvo) {
     violacoes.push(
-      'role nao pode ter privilegio DELETE sobre as tabelas protegidas de solicitacoes externas SVO (solicitacoes_svo_dados_externos, solicitacoes_svo_credenciais_externas)'
+      'role nao pode ter privilegio DELETE sobre as tabelas protegidas de solicitacoes externas SVO (solicitacoes_svo_dados_externos, solicitacoes_svo_credenciais_externas, solicitacoes_svo_recuperacoes_tentativa)'
     );
   }
 
@@ -216,8 +216,15 @@ async function inspecionarEstadoRole(conexao, appUser) {
          WHEN to_regclass('public.solicitacoes_svo_credenciais_externas') IS NOT NULL THEN
            has_table_privilege(?, 'public.solicitacoes_svo_credenciais_externas', 'DELETE')
          ELSE false
+       END
+       OR
+       CASE
+         WHEN to_regclass('public.solicitacoes_svo_recuperacoes_tentativa') IS NOT NULL THEN
+           has_table_privilege(?, 'public.solicitacoes_svo_recuperacoes_tentativa', 'DELETE')
+         ELSE false
        END AS pode_deletar_dados_externos_svo`,
     [
+      appUser,
       appUser,
       appUser,
       appUser,

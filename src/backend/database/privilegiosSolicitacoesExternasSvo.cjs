@@ -1,5 +1,6 @@
 const DADOS = 'solicitacoes_svo_dados_externos';
 const CREDENCIAIS = 'solicitacoes_svo_credenciais_externas';
+const RECUPERACOES = 'solicitacoes_svo_recuperacoes_tentativa';
 
 const CONTATO_LOCAL = [
   'telefone_solicitante', 'email_solicitante', 'numero_imovel', 'sem_numero_imovel',
@@ -15,18 +16,24 @@ const PERMISSOES = {
       'ciencia_aviso_privacidade', 'versao_aviso_privacidade',
     ],
     update: [
-      ...CONTATO_LOCAL, 'motivo_recusa_publico', 'cancelamento_solicitado_em',
-      'cancelamento_motivo', 'cancelamento_status', 'cancelamento_decidido_por',
-      'cancelamento_decidido_em', 'cancelamento_justificativa_decisao',
+      ...CONTATO_LOCAL, 'motivo_recusa_publico',
+      'analise_iniciada_em', 'analise_iniciada_por',
+      'cancelamento_solicitado_em', 'cancelamento_motivo', 'cancelamento_status',
+      'cancelamento_decidido_por', 'cancelamento_decidido_em',
+      'cancelamento_justificativa_decisao', 'cancelamento_mensagem_publica',
       'versao_dados', 'encerrado_operacional_em', 'atualizado_em',
     ],
   },
   [CREDENCIAIS]: {
     insert: [
-      'solicitacao_id', 'segredo_digest', 'algoritmo_digest',
+      'solicitacao_id', 'segredo_digest', 'algoritmo_digest', 'versao_credencial',
       'chave_idempotencia_criacao', 'payload_criacao_digest', 'prova_tentativa_digest',
     ],
     update: ['revogada_em', 'revogada_motivo', 'ultimo_acesso_em', 'atualizado_em'],
+  },
+  [RECUPERACOES]: {
+    insert: ['solicitacao_id', 'envelope_cifrado', 'versao_chave', 'criado_em', 'expira_em'],
+    update: ['descartada_em'],
   },
 };
 
@@ -50,7 +57,6 @@ async function aplicarPrivilegiosSolicitacoesExternasSvo(knex, schema, appUser, 
   const manutencao = server.versao >= 170000 ? ', MAINTAIN' : '';
 
   for (const [tabela, operacoes] of Object.entries(PERMISSOES)) {
-    const permissoes = corrigida ? operacoes : { insert: [], update: [] };
     const { rows: colunas } = await knex.raw(`
       SELECT a.attname AS nome, c.oid AS tabela_oid, a.attnum AS numero
         FROM pg_attribute a
@@ -59,9 +65,18 @@ async function aplicarPrivilegiosSolicitacoesExternasSvo(knex, schema, appUser, 
        WHERE n.nspname = ? AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
        ORDER BY a.attnum
     `, [schema, tabela]);
-    if (!colunas.length) throw new Error(`solicitacoes externas svo: tabela protegida ausente: ${tabela}.`);
+    if (!colunas.length) {
+      if (tabela === RECUPERACOES) continue;
+      throw new Error(`solicitacoes externas svo: tabela protegida ausente: ${tabela}.`);
+    }
 
     const nomes = colunas.map(({ nome }) => nome);
+    const permissoes = corrigida
+      ? {
+          insert: operacoes.insert.filter((col) => nomes.includes(col)),
+          update: operacoes.update.filter((col) => nomes.includes(col)),
+        }
+      : { insert: [], update: [] };
     const listaColunas = nomes.map(() => '??').join(', ');
     const destinatarios = appUser ? 'PUBLIC, ??' : 'PUBLIC';
     const bindingsRole = appUser ? [appUser] : [];
@@ -125,4 +140,4 @@ async function aplicarPrivilegiosSolicitacoesExternasSvo(knex, schema, appUser, 
   }
 }
 
-module.exports = { aplicarPrivilegiosSolicitacoesExternasSvo, DADOS, CREDENCIAIS };
+module.exports = { aplicarPrivilegiosSolicitacoesExternasSvo, DADOS, CREDENCIAIS, RECUPERACOES };
