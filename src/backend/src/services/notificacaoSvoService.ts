@@ -119,7 +119,7 @@ export const notificacaoSvoService = {
 
   async publicarAlertasRegistroSolicitacao(
     solicitacao: Pick<SolicitacaoSvo, 'id'>,
-    registranteId: number,
+    registranteId: number | null,
     trx: Knex.Transaction,
   ): Promise<void> {
     if (!configNotificacoes.ativas) return;

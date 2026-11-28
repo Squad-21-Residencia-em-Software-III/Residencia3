@@ -44,7 +44,7 @@ Em `src/backend/scripts/provisionar-usuario-app.cjs` e na migration `20261118121
 Comando reproduzivel:
 ```bash
 cd src/backend
-npm run db:validar-scrum210
+npm run db:validar-evidencias-odometro-e-deslocamentos-svo
 ```
 
 Resultado obtido:

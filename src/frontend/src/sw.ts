@@ -6,7 +6,14 @@ import { ExpirationPlugin } from 'workbox-expiration';
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import type { PrecacheEntry } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
-import { CacheFirst, NetworkOnly } from 'workbox-strategies';
+import { CacheFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
+import {
+  CACHE_MAPA_ESTILOS,
+  CACHE_MAPA_RECURSOS,
+  ORCAMENTO_CACHE_MAPAS,
+  ehRequisicaoEstiloMapa,
+  ehRequisicaoRecursoMapa,
+} from './sw/cacheMapasSw';
 import {
   extrairPayloadPush,
   lerReferenciaPush,
@@ -54,6 +61,38 @@ registerRoute(
     cacheName: 'google-fonts-webfonts',
     plugins: [
       new ExpirationPlugin({ maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 }),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
+  }),
+);
+
+// Cartografia gratuita OpenFreeMap (orçamento conjunto de 250 entradas / 7 dias).
+// Nunca inclui `/api/*` nem origens de terceiros fora de `https://tiles.openfreemap.org`.
+registerRoute(
+  ({ url, request }) => ehRequisicaoEstiloMapa(url, request.method),
+  new StaleWhileRevalidate({
+    cacheName: CACHE_MAPA_ESTILOS,
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: ORCAMENTO_CACHE_MAPAS.maxEntradasEstilo,
+        maxAgeSeconds: ORCAMENTO_CACHE_MAPAS.maxIdadeSegundos,
+        purgeOnQuotaError: ORCAMENTO_CACHE_MAPAS.limparAoExcederCota,
+      }),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
+  }),
+);
+
+registerRoute(
+  ({ url, request }) => ehRequisicaoRecursoMapa(url, request.method),
+  new CacheFirst({
+    cacheName: CACHE_MAPA_RECURSOS,
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: ORCAMENTO_CACHE_MAPAS.maxEntradasRecursos,
+        maxAgeSeconds: ORCAMENTO_CACHE_MAPAS.maxIdadeSegundos,
+        purgeOnQuotaError: ORCAMENTO_CACHE_MAPAS.limparAoExcederCota,
+      }),
       new CacheableResponsePlugin({ statuses: [0, 200] }),
     ],
   }),

@@ -82,7 +82,7 @@ O usuário é sempre o da sessão. Nenhuma rota aceita id de usuário, e um camp
 - `pushRoutes.test.ts`: o contrato das rotas, a validação, o SSRF, os erros `409` e `503`, as categorias por perfil e o log sem endpoint ou chaves.
 - `env.test.ts`: configuração VAPID ausente, parcial, inválida, com par trocado e válida, sem expor valores.
 - `matrizAcesso.test.ts`: as novas rotas para todos os perfis, com `401` sem sessão.
-- `pushPostgres.test.ts`, de ponta a ponta no PostgreSQL. Roda no CI com `SCRUM237_POSTGRES_TESTS=1` e localmente em `127.0.0.1/frotas_teste` depois de `npm run migrate`. Cobre:
+- `pushPostgres.test.ts`, de ponta a ponta no PostgreSQL. Roda no CI com `WEB_PUSH_POSTGRES_TESTS=1` e localmente em `127.0.0.1/frotas_teste` depois de `npm run migrate`. Cobre:
   - assinatura idempotente;
   - aparelho de outra conta;
   - limite de 5 e renovação no limite;

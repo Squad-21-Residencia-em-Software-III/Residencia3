@@ -12,10 +12,10 @@ import { env } from '../config/env';
 import { tipoUsuarioDoPerfil, type Perfil } from '../constants/perfis';
 
 // SCRUM-241 (NF-25/26): medição do sino, da central e das métricas com histórico acumulado, no PostgreSQL
-// local e descartável. Fora do CI (gera ~270 mil linhas): rode com SCRUM241_DESEMPENHO=1 num banco novo,
-// depois de `npm run migrate`. Resultado no console e, com SCRUM241_RELATORIO=<arquivo>, em JSON.
+// local e descartável. Fora do CI (gera ~270 mil linhas): rode com NOTIFICACOES_TESTE_DESEMPENHO=1 num banco novo,
+// depois de `npm run migrate`. Resultado no console e, com NOTIFICACOES_RELATORIO_DESEMPENHO=<arquivo>, em JSON.
 // Mede a API e o banco nesta máquina: não inclui a rede até o Render e o Neon nem a partida a frio.
-const habilitado = process.env.SCRUM241_DESEMPENHO === '1';
+const habilitado = process.env.NOTIFICACOES_TESTE_DESEMPENHO === '1';
 
 const USUARIOS = 50;
 const AVISOS_POR_USUARIO = 3_000;
@@ -156,7 +156,7 @@ describe.skipIf(!habilitado)('Desempenho dos avisos com histórico acumulado (SC
     if (servidor) await new Promise((resolve) => servidor.close(resolve));
     if (pessoas.length > 0) await db('usuarios').whereIn('id', pessoas.map((p) => p.id)).del();
     console.info(JSON.stringify(relatorio, null, 2));
-    if (process.env.SCRUM241_RELATORIO) writeFileSync(process.env.SCRUM241_RELATORIO, JSON.stringify(relatorio, null, 2));
+    if (process.env.NOTIFICACOES_RELATORIO_DESEMPENHO) writeFileSync(process.env.NOTIFICACOES_RELATORIO_DESEMPENHO, JSON.stringify(relatorio, null, 2));
     vi.restoreAllMocks();
     await db.destroy();
   }, 120_000);
