@@ -1,5 +1,4 @@
 import knex from 'knex';
-import knexConfig = require('../../knexfile');
 import { createHmac, randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,7 +35,17 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
   const http = vi.fn<typeof fetch>();
   const cliente = (ip: string) => request(app).get(PUBLICO + '/reverso?lat=0&lon=0').set('X-Forwarded-For', ip);
   const appTrustProxy = app.get('trust proxy');
-  const admin = knex(knexConfig.criarConfigKnex({ ...process.env, DB_ROLE: 'migration' }));
+  const admin = knex({
+    client: 'pg',
+    pool: { min: 0, max: 1 },
+    connection: {
+      host: process.env.POSTGRES_HOST,
+      port: Number(process.env.POSTGRES_PORT ?? 5432),
+      database: process.env.POSTGRES_DB,
+      user: process.env.POSTGRES_MIGRATION_USER || process.env.POSTGRES_USER,
+      password: process.env.POSTGRES_MIGRATION_PASSWORD || process.env.POSTGRES_PASSWORD,
+    },
+  });
 
   beforeEach(async () => {
     if (!['localhost', '127.0.0.1'].includes(process.env.POSTGRES_HOST ?? '') ||
