@@ -52,7 +52,7 @@ describe('ModalMotorista: cadastro', () => {
     const { onSalvo, onClose } = await abrirCriacao();
 
     fireEvent.change(campo(/Usuário motorista/), { target: { value: '5' } });
-    expect(screen.getByText('Frota Administrativa')).toBeTruthy();
+    expect(campo(/Tipo de motorista/).value).toBe('Frota Administrativa');
     digitar(/Número da CNH/, '012.345.678-90');
     fireEvent.click(screen.getByRole('checkbox', { name: 'D' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'A' }));
@@ -151,7 +151,8 @@ describe('ModalMotorista: edição', () => {
   it('carrega o detalhe e envia só o campo alterado', async () => {
     await abrirEdicao();
 
-    expect(screen.getByText('Motorista Sintético')).toBeTruthy();
+    expect(screen.getByDisplayValue('Motorista Sintético')).toBeTruthy();
+    expect(campo(/Tipo de motorista/).value).toBe('Frota Administrativa');
     expect((screen.getByRole('checkbox', { name: 'A' }) as HTMLInputElement).checked).toBe(true);
     digitar(/Validade da CNH/, '2031-01-15');
     salvar(/Salvar alterações/);

@@ -132,17 +132,24 @@ export function ModalMotorista({ modo, motoristaId, onClose, onSalvo }: ModalMot
 
   const titulo = modo === 'criar' ? 'Cadastrar Motorista' : 'Editar CNH do Motorista';
 
-  return (
-    <Modal title={titulo} onClose={onClose}>
-      <form onSubmit={handleSubmit} noValidate aria-busy={carregando || salvando}>
-        {erros.geral && (
-          <Alert tone="danger" className="mb-4">
-            {erros.geral}
-          </Alert>
-        )}
+  const tipoExibido =
+    modo === 'criar'
+      ? usuarioSelecionado
+        ? ROTULO_TIPO[usuarioSelecionado.perfil]
+        : ''
+      : original
+        ? ROTULO_TIPO[original.tipo_motorista === 'SVO' ? 'MOTORISTA_SVO' : 'MOTORISTA_FROTA']
+        : '';
 
-        {modo === 'criar' ? (
-          <>
+  // Mesmo padrão visual da Nova Solicitação: portal sobre a tela inteira, 560px, grade de 2 colunas.
+  return (
+    <Modal title={titulo} onClose={onClose} maxWidth="560px" telaInteira bloquearFechamento={salvando}>
+      <form onSubmit={handleSubmit} noValidate aria-busy={carregando || salvando} className="grid gap-4">
+        {erros.geral && <Alert tone="danger">{erros.geral}</Alert>}
+
+        {/* Motorista (usuário existente) e tipo derivado do perfil */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {modo === 'criar' ? (
             <Select
               label="Usuário motorista *"
               value={usuarioId}
@@ -163,37 +170,60 @@ export function ModalMotorista({ modo, motoristaId, onClose, onSalvo }: ModalMot
                 </option>
               ))}
             </Select>
-            <p className="mb-4 text-[0.8125rem] text-slate-600">
-              Tipo de motorista:{' '}
-              <strong>{usuarioSelecionado ? ROTULO_TIPO[usuarioSelecionado.perfil] : 'definido pelo perfil do usuário'}</strong>
-            </p>
-          </>
-        ) : (
-          <p className="mb-4 text-[0.8125rem] text-slate-700">
-            Motorista: <strong>{original?.nome ?? '...'}</strong>
-          </p>
+          ) : (
+            <Input label="Motorista" value={original?.nome ?? ''} placeholder="Carregando..." disabled />
+          )}
+          <Input
+            label="Tipo de motorista"
+            value={tipoExibido}
+            placeholder="Definido pelo perfil do usuário"
+            descricao={modo === 'criar' ? 'Vem do perfil do usuário selecionado.' : undefined}
+            disabled
+          />
+        </div>
+
+        {/* Número e validade */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            label="Número da CNH *"
+            placeholder="11 dígitos"
+            inputMode="numeric"
+            autoComplete="off"
+            value={cnh}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setCnh(e.target.value)}
+            erro={erros.numero_cnh}
+            descricao="Zeros à esquerda são mantidos. Pontos, hífens e espaços são ignorados."
+            maxLength={20}
+            disabled={carregando}
+            required
+          />
+          <Input
+            label="Validade da CNH *"
+            type="date"
+            min="2000-01-01"
+            max="2099-12-31"
+            value={validade}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setValidade(e.target.value)}
+            erro={erros.validade_cnh}
+            disabled={carregando}
+            required
+          />
+        </div>
+
+        {vencida && !erros.validade_cnh && (
+          <Alert tone="warning">Esta CNH está vencida. O registro pode ser salvo, mas aparecerá como vencido.</Alert>
         )}
 
-        <Input
-          label="Número da CNH *"
-          placeholder="11 dígitos"
-          inputMode="numeric"
-          autoComplete="off"
-          value={cnh}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setCnh(e.target.value)}
-          erro={erros.numero_cnh}
-          descricao="Zeros à esquerda são mantidos. Pontos, hífens e espaços são ignorados."
-          maxLength={20}
-          disabled={carregando}
-          required
-        />
-
-        <fieldset className="mb-4" aria-describedby={erros.categoria_cnh ? `${idCategorias}-erro` : undefined}>
-          <legend className="mb-2 block text-[0.8125rem] font-semibold text-slate-900">Categoria da CNH *</legend>
+        {/* Categorias */}
+        <fieldset
+          className="m-0 flex flex-col gap-1.5 border-0 p-0"
+          aria-describedby={erros.categoria_cnh ? `${idCategorias}-erro` : undefined}
+        >
+          <legend className="mb-1.5 font-display text-sm font-semibold text-text-secondary">Categoria da CNH *</legend>
           <div
             className={cn(
-              'flex flex-wrap gap-2.5 rounded-md border bg-white p-2',
-              erros.categoria_cnh ? 'border-danger' : 'border-slate-200',
+              'flex flex-wrap gap-2.5 rounded-md border-[1.5px] bg-surface p-2',
+              erros.categoria_cnh ? 'border-danger' : 'border-border',
             )}
           >
             {LETRAS_CATEGORIA_CNH.map((letra) => {
@@ -221,35 +251,18 @@ export function ModalMotorista({ modo, motoristaId, onClose, onSalvo }: ModalMot
             })}
           </div>
           {erros.categoria_cnh && (
-            <p id={`${idCategorias}-erro`} className="mt-1.5 text-xs font-semibold text-danger-strong">
+            <p id={`${idCategorias}-erro`} className="m-0 text-xs font-semibold text-danger-strong">
               {erros.categoria_cnh}
             </p>
           )}
         </fieldset>
 
-        <Input
-          label="Validade da CNH *"
-          type="date"
-          min="2000-01-01"
-          max="2099-12-31"
-          value={validade}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setValidade(e.target.value)}
-          erro={erros.validade_cnh}
-          disabled={carregando}
-          required
-        />
-
-        {vencida && !erros.validade_cnh && (
-          <Alert tone="warning" className="mb-4">
-            Esta CNH está vencida. O registro pode ser salvo, mas aparecerá como vencido.
-          </Alert>
-        )}
-
-        <div className="mt-4 flex flex-col-reverse justify-end gap-2 border-t-0 p-0 md:mt-5 md:flex-row md:gap-3 [&>button]:w-full [&>button]:justify-center md:[&>button]:w-auto">
-          <Button variant="ghost" type="button" onClick={onClose}>
+        {/* Rodapé de ações */}
+        <div className="mt-2 flex justify-end gap-2 border-t border-slate-100 pt-3">
+          <Button variant="ghost" type="button" onClick={onClose} disabled={salvando}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={carregando || salvando}>
+          <Button variant="primary" type="submit" disabled={carregando || salvando}>
             {salvando ? 'Salvando...' : modo === 'criar' ? 'Cadastrar Motorista' : 'Salvar alterações'}
           </Button>
         </div>
