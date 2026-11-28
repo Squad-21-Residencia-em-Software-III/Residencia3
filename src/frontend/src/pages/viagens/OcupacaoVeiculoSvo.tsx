@@ -42,7 +42,7 @@ export function OcupacaoVeiculoSvoPainel({ veiculo, apenasInformativo = false }:
 
   return (
     <div className="mt-3.5" data-testid="ocupacao-svo">
-      <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="font-medium text-slate-700">Ocupação atual</span>
         <Badge tone={toneOcupacao(veiculo)}>{rotuloOcupacao(veiculo)}</Badge>
       </div>
@@ -55,7 +55,7 @@ export function OcupacaoVeiculoSvoPainel({ veiculo, apenasInformativo = false }:
         aria-valuenow={veiculo.capacidade_utilizada}
       >
         <div
-          className={bloqueio ? 'h-full bg-rose-500' : 'h-full bg-emerald-500'}
+          className={bloqueio && !apenasInformativo ? 'h-full bg-danger' : 'h-full bg-primary'}
           style={{ width: `${percentual}%` }}
         />
       </div>

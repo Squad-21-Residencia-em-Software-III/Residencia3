@@ -104,5 +104,21 @@ describe('AbastecimentoPage', () => {
       expect(screen.getByRole('button', { name: /Tentar novamente/i })).toBeInTheDocument();
     });
   });
+
+  it('rotula a relação com a meta de consumo mesmo sem distinguir a cor da barra', async () => {
+    vi.mocked(veiculosApi.listar).mockResolvedValue([]);
+    vi.mocked(motoristasApi.listar).mockResolvedValue([]);
+    vi.mocked(abastecimentosApi.listarTodos).mockResolvedValue(
+      [1, 2].flatMap((veiculo) => [0, 1].map((dia) => ({
+        id: veiculo * 10 + dia, veiculo_id: veiculo, motorista_id: 1,
+        data_abastecimento: `2026-11-0${dia + 1}`, quilometragem: 1000 + dia * 100,
+        litros: veiculo * 10, valor_total: 60, veiculo_placa: `PLACA${veiculo}`,
+        veiculo_modelo: `Modelo ${veiculo}`, veiculo_tipo_frota: 'ADMINISTRATIVA' as const,
+      }))) as Awaited<ReturnType<typeof abastecimentosApi.listarTodos>>,
+    );
+    render(<AbastecimentoPage />);
+    expect(await screen.findByText('10,0 km/L · Na meta ou acima')).toBeInTheDocument();
+    expect(screen.getByText('5,0 km/L · Abaixo da meta')).toBeInTheDocument();
+  });
 });
 

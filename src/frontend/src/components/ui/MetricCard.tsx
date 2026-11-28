@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Card } from "./Card";
+import { Card, CLASSES_CARD } from "./Card";
 import { cn } from "../../utils/cn";
 
 const metricCardVariants = cva("p-5 transition-all duration-150", {
@@ -105,34 +105,27 @@ export function MetricCard({
   tone = "primary",
   subtitle,
   trend,
-  isActive = false,
+  isActive,
   onClick,
   className,
 }: MetricCardProps) {
-  const isClickable = Boolean(onClick);
-
-  return (
-    <Card
-      onClick={onClick}
-      className={cn(
-        metricCardVariants({ tone, isClickable, isActive }),
-        className,
-      )}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className={metricValueVariants({ tone })}>{value}</div>
-          <div className="mt-1 truncate text-xs font-semibold text-slate-500">
-            {label} {isActive ? "• Ativo" : ""}
-          </div>
+  const estilo = cn(metricCardVariants({ tone, isClickable: Boolean(onClick), isActive }), className);
+  const conteudo = (
+    <>
+      <span className="flex items-center justify-between gap-3">
+        <span className="min-w-0 flex-1">
+          <span className={cn('block', metricValueVariants({ tone }))}>{value}</span>
+          <span className="mt-1 block text-xs font-semibold text-text-muted">
+            {label} {isActive && <span aria-hidden={onClick ? true : undefined}>· Ativo</span>}
+          </span>
           {subtitle && (
-            <div className="mt-0.5 text-xs text-slate-400">{subtitle}</div>
+            <span className="mt-0.5 block text-xs text-text-muted">{subtitle}</span>
           )}
-        </div>
-        {icon && <div className={metricIconVariants({ tone })}>{icon}</div>}
-      </div>
+        </span>
+        {icon && <span className={metricIconVariants({ tone })} aria-hidden="true">{icon}</span>}
+      </span>
       {trend && (
-        <div className="mt-3 flex items-center gap-1.5 border-t border-slate-100 pt-3 text-xs">
+        <span className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3 text-xs">
           <span
             className={cn(
               "font-semibold",
@@ -141,9 +134,23 @@ export function MetricCard({
           >
             {trend.value}
           </span>
-          <span className="text-slate-400">vs período anterior</span>
-        </div>
+          <span className="text-text-muted">vs período anterior</span>
+        </span>
       )}
-    </Card>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={isActive}
+        className={cn(CLASSES_CARD, 'w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary', estilo)}
+      >
+        {conteudo}
+      </button>
+    );
+  }
+  return <Card className={estilo}>{conteudo}</Card>;
 }

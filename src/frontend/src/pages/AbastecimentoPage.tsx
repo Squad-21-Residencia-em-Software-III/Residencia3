@@ -420,18 +420,18 @@ export default function AbastecimentoPage() {
               ) : (
                 consumoPorVeiculo.slice(0, 6).map((item) => (
                   <div key={item.placa} className="flex flex-col gap-1">
-                    <div className="flex justify-between text-xs">
+                    <div className="flex flex-wrap justify-between gap-x-2 text-xs">
                       <span className="font-medium text-slate-800">{item.placa}</span>
                       <span
                         className={cn(
                           'font-semibold',
-                          item.belowTarget ? 'text-rose-600' : 'text-emerald-600',
+                          item.belowTarget ? 'text-rose-700' : 'text-emerald-700',
                         )}
                       >
-                        {item.value} km/L
+                        {item.value} km/L · {item.belowTarget ? 'Abaixo da meta' : 'Na meta ou acima'}
                       </span>
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
                       <div
                         className={cn(
                           'h-full rounded-full transition-all',
@@ -455,7 +455,7 @@ export default function AbastecimentoPage() {
               {distribuicaoPorFrota.map((cat) => (
                 <div key={cat.label} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <span className={cn('h-2 w-2 rounded-full', cat.dotClass)} />
+                    <span className={cn('h-2 w-2 rounded-full', cat.dotClass)} aria-hidden="true" />
                     <span className="text-slate-700">{cat.label}</span>
                   </div>
                   <div className="flex items-center gap-2 font-medium text-slate-900">
