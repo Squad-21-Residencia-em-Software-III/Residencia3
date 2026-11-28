@@ -7,6 +7,7 @@ import type { Perfil, Usuario } from '../types/usuario'
 import { CHAVE_CLIQUE_PUSH } from '../sw/logicaPushSw'
 import { suspenderApresentacao } from '../sw/estadoPush'
 import { comLimite, invalidarOperacoesPush } from '../utils/operacoesPush'
+import { ehRotaPublicaAnonima } from '../utils/rotasPublicas'
 
 const CANAL_AUTENTICACAO = 'fsph_auth'
 const CHAVE_LOGOUT = 'fsph.auth.logout-pendente'
@@ -57,21 +58,31 @@ function criarCanalAutenticacao(): BroadcastChannel | null {
   }
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children, pathname = window.location.pathname }: { children: ReactNode; pathname?: string }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [versaoSessao, avancarSessao] = useState(0)
-  const [carregando, setCarregando] = useState(true)
+  // Página pública aberta a qualquer pessoa: não há sessão a restaurar, então não fica "carregando".
+  const [restauracaoPendente, setRestauracaoPendente] = useState(true)
+  const carregando = restauracaoPendente && !usuario && !ehRotaPublicaAnonima(pathname)
   const canalRef = useRef<BroadcastChannel | null>(null)
   const geracaoAuth = useRef(0)
 
+  useEffect(() => {
+    const aoConectar = () => { void comTravaDeCookie(concluirLogout).catch(() => undefined) }
+    window.addEventListener('online', aoConectar)
+    if (logoutPendente()) aoConectar()
+    return () => window.removeEventListener('online', aoConectar)
+  }, [])
+
   // Cold start / F5: tenta restaurar a sessão em memória usando o cookie HttpOnly de refresh.
   useEffect(() => {
+    // Visitante anônimo em página pública (SCRUM-272): não renova sessão nem chama /auth/refresh.
+    if (!carregando) return
     let cancelado = false
     const geracao = geracaoAuth.current
     const atual = () => !cancelado && geracaoAuth.current === geracao
-    const aoConectar = () => { void comTravaDeCookie(concluirLogout).catch(() => undefined) }
-    window.addEventListener('online', aoConectar)
     void comTravaDeCookie(async () => {
+      if (!atual()) return null
       if (logoutPendente()) {
         await concluirLogout()
         return null
@@ -89,13 +100,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUsuario(null)
       })
       .finally(() => {
-        if (!cancelado) setCarregando(false)
+        if (atual()) setRestauracaoPendente(false)
       })
     return () => {
       cancelado = true
-      window.removeEventListener('online', aoConectar)
     }
-  }, [])
+  }, [carregando])
 
   useVinculoPush(usuario?.id)
 
@@ -104,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     avancarSessao((versao) => versao + 1)
     invalidarOperacoesPush()
     tokenStorage.clear()
+    setRestauracaoPendente(false)
     setUsuario(null)
   }, [])
 
@@ -154,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await comLimite(null, () => suspenderApresentacao(false)).catch(() => undefined)
     garantirAtual()
     tokenStorage.set(resultado.token)
+    setRestauracaoPendente(false)
     setUsuario(resultado.usuario)
   }, [])
 

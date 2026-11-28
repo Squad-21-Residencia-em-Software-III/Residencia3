@@ -1,11 +1,9 @@
 import cookieParser from 'cookie-parser';
-import express, { type RequestHandler } from 'express';
+import express from 'express';
 import { z } from 'zod';
 import { env } from './config/env';
 import { cabecalhosDeSeguranca, corsPorAmbiente } from './config/segurancaHttp';
 import { errorHandler, rotaNaoEncontrada } from './middlewares/errorHandler';
-import { exigirRecursoAtivo } from './middlewares/exigirRecursoAtivo';
-import { protegerPortalSvo, verificarHoneypotPortalSvo } from './middlewares/protegerPortalSvo';
 import { identificarCliente } from './middlewares/identificarCliente';
 import { logRequisicao } from './middlewares/logRequisicao';
 import { limitarConcorrencia } from './middlewares/limitarConcorrencia';
@@ -28,21 +26,17 @@ app.use(logRequisicao);
 // Antes das rotas, para valer também nas respostas de erro e no 404
 app.use(cabecalhosDeSeguranca());
 app.use(corsPorAmbiente());
-const criacaoExternaSvo = '/api/solicitacoes-svo/externas';
-const semCachePortalSvo: RequestHandler = (_req, res, next) => {
+// Rotas públicas do portal SVO: nunca em cache, inclusive nos erros antecipados (JSON inválido, 413, 429, 503, 404)
+app.use(['/api/solicitacoes-svo/externas', '/api/portal-svo/mapas'], (_req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
   next();
-};
-app.use([criacaoExternaSvo, '/api/portal-svo/mapas'], semCachePortalSvo);
+});
 // Proteção contra excesso (docs/limites-e-timeouts.md): concorrência e tempo limite por requisição
 app.use(limitarConcorrencia);
 // O envio da foto do odômetro tem tempo próprio, maior (ver evidenciaOdometroRoutes)
 app.use((req, res, next) => (ehEnvioDeFotoOdometro(req) ? next() : limitarTempoRequisicao(req, res, next)));
 app.use(cookieParser());
-// Ponto de integração do cadastro enquanto a SCRUM-264 está em revisão.
-app.post(criacaoExternaSvo, exigirRecursoAtivo('portalSvo'), protegerPortalSvo('cadastrar'));
 app.use(express.json({ limit: '100kb' }));
-app.post(criacaoExternaSvo, verificarHoneypotPortalSvo);
 
 // Limites por tipo de operação: leitura e escrita por minuto, e consultas pesadas com limite menor
 app.use('/api', limitarPorTipoDeOperacao);

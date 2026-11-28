@@ -1,3 +1,4 @@
+import { solicitacaoSvoExternaSchema } from '../validators/solicitacaoSvoExternaSchemas';
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../errors/AppError';
 import { usuarioAutenticado } from '../middlewares/autenticar';
@@ -131,7 +132,7 @@ export const acompanhamentoExternoSvoController = {
       await acompanhamentoExternoSvoService.recuperarComprovanteTentativa({
         chaveIdempotencia: chaveValidada.data,
         provaTentativa: provaValidada.data,
-        payloadNormalizado: body.payload,
+        payloadNormalizado: solicitacaoSvoExternaSchema.parse(body.payload),
       });
 
     res.status(200).json({

@@ -92,17 +92,6 @@ async function reservar(operacao: Operacao, req: Request, res: Response): Promis
   return undefined;
 }
 
-// Adaptador para as rotas públicas enquanto seus handlers estiverem em branches independentes.
-export function protegerPortalSvo(operacao: Operacao): RequestHandler {
-  return async (req, res, next) => {
-    const liberar = await reservar(operacao, req, res);
-    if (!liberar) return;
-    res.once('finish', liberar);
-    res.once('close', liberar);
-    next();
-  };
-}
-
 export function protegerTrabalhoPortalSvo(
   operacao: Operacao,
   executar: (req: Request, res: Response) => Promise<void>,
