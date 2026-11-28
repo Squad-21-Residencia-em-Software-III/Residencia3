@@ -22,10 +22,15 @@ export interface MarcadorMapaPadrao extends CoordenadaMapa {
   titulo?: string;
 }
 
+export type LimitesMapa = [[number, number], [number, number]];
+
 export interface MapaBaseCanvasProps {
   centroInicial?: Partial<VisaoInicialMapa>;
   /** Quando atualizado, centraliza o mapa suavemente no novo ponto (sem bloquear pan/zoom do usuário). */
   centroControlado?: Partial<VisaoInicialMapa> | null;
+  /** Quando informado, enquadra todos os pontos via `fitBounds` (respeitando `prefers-reduced-motion`). */
+  limitesControlados?: LimitesMapa | null;
+  paddingLimites?: number;
   marcadorPadrao?: MarcadorMapaPadrao | null;
   marcadorArrastavel?: boolean;
   onDragEndMarcador?: (coordenada: CoordenadaMapa) => void;
@@ -40,6 +45,8 @@ export interface MapaBaseCanvasProps {
 export default function MapaBaseCanvas({
   centroInicial,
   centroControlado,
+  limitesControlados = null,
+  paddingLimites = 48,
   marcadorPadrao,
   marcadorArrastavel = false,
   onDragEndMarcador,
@@ -62,6 +69,7 @@ export default function MapaBaseCanvas({
     CENTRO_PADRAO_SERGIPE.longitude;
   const zoom = centroControlado?.zoom ?? centroInicial?.zoom ?? CENTRO_PADRAO_SERGIPE.zoom;
   const estiloMapa = obterEstiloMapa(tema);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const mapaRef = useRef<MapRef | null>(null);
   const carregamento = useRef({ estiloPronto: false, recebeuTile: false, perdeuContexto: false });
   const prazo = useRef<number | undefined>(undefined);
@@ -166,8 +174,44 @@ export default function MapaBaseCanvas({
     }
   }, [latControlada, lonControlada, zoomControlado]);
 
+  const aplicarFitBounds = useCallback(
+    (limites: LimitesMapa | null) => {
+      if (!limites) return;
+      const instancia = mapaRef.current;
+      if (!instancia || typeof instancia.fitBounds !== 'function') return;
+      const movimentoReduzido =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      instancia.fitBounds(limites, {
+        padding: paddingLimites,
+        maxZoom: 16,
+        duration: movimentoReduzido ? 0 : 350,
+      });
+    },
+    [paddingLimites],
+  );
+
+  const chaveLimites = limitesControlados ? JSON.stringify(limitesControlados) : null;
+
+  useEffect(() => {
+    if (!chaveLimites) return;
+    aplicarFitBounds(limitesControlados);
+  }, [chaveLimites, aplicarFitBounds, limitesControlados]);
+
+  useEffect(() => {
+    const elemento = containerRef.current;
+    if (!elemento || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      mapaRef.current?.resize?.();
+    });
+    observer.observe(elemento);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div
+      ref={containerRef}
       className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
       style={{ height: altura }}
       role="region"
@@ -189,7 +233,10 @@ export default function MapaBaseCanvas({
               }
             : undefined
         }
-        onLoad={registrarEstilo}
+        onLoad={() => {
+          registrarEstilo();
+          aplicarFitBounds(limitesControlados);
+        }}
         onSourceData={(evento) => {
           if (
             evento.tile?.hasData() &&
