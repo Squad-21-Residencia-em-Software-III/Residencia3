@@ -13,6 +13,7 @@ export interface CredencialExternaRevogadaRow {
   solicitacao_id: number;
   revogada_em: Date | string | null;
   revogada_motivo: string | null;
+  alterada?: boolean;
   atualizado_em: Date | string;
 }
 
@@ -24,7 +25,6 @@ export interface NovaCredencialExternaSvo {
   chave_idempotencia_criacao: string;
   payload_criacao_digest: string;
   prova_tentativa_digest?: string | null;
-  emitida_em?: Date;
 }
 
 export interface NovaRecuperacaoTentativaSvo {
@@ -86,6 +86,7 @@ export interface TentativaCriacaoExternaRow {
   versao_chave: number | null;
   recuperacao_expira_em: Date | string | null;
   recuperacao_descartada_em: Date | string | null;
+  verificada_em: Date;
 }
 
 const COLUNAS_RETORNO_EMISSAO = [
@@ -205,6 +206,13 @@ export const acompanhamentoExternoSvoModel = {
     chaveIdempotencia: string,
     conexao: Knex = db
   ): Promise<TentativaCriacaoExternaRow | undefined> {
+    // Revogação bloqueia a mesma credencial. Leia o envelope após obter o lock
+    // para que a projeção use um snapshot posterior a uma revogação concorrente.
+    await conexao('solicitacoes_svo_credenciais_externas')
+      .where({ chave_idempotencia_criacao: chaveIdempotencia })
+      .whereNull('revogada_em')
+      .forUpdate()
+      .first('solicitacao_id');
     return conexao('solicitacoes_svo_credenciais_externas as c')
       .innerJoin('solicitacoes_svo as s', 's.id', 'c.solicitacao_id')
       .leftJoin(
@@ -216,7 +224,10 @@ export const acompanhamentoExternoSvoModel = {
         's.canal_origem': 'EXTERNA',
         'c.chave_idempotencia_criacao': chaveIdempotencia,
       })
-      .first<TentativaCriacaoExternaRow>(...COLUNAS_TENTATIVA_RECUPERACAO);
+      .first<TentativaCriacaoExternaRow>(
+        ...COLUNAS_TENTATIVA_RECUPERACAO,
+        conexao.raw('clock_timestamp() AS verificada_em')
+      );
   },
 
   /**
@@ -225,22 +236,66 @@ export const acompanhamentoExternoSvoModel = {
    */
   async registrarAcessoValidoSeAutorizado(
     solicitacaoId: number,
-    agora: Date,
+    agora: Date | undefined,
     conexao: Knex = db
   ): Promise<boolean> {
     const resultado = await conexao.raw<{ rows: Array<{ solicitacao_id: number }> }>(
       `UPDATE solicitacoes_svo_credenciais_externas AS c
-          SET ultimo_acesso_em = ?,
-              atualizado_em = ?
+          SET ultimo_acesso_em = GREATEST(c.ultimo_acesso_em, COALESCE(?::timestamptz, clock_timestamp())),
+              atualizado_em = GREATEST(c.atualizado_em, COALESCE(?::timestamptz, clock_timestamp()))
          FROM solicitacoes_svo_dados_externos AS d
+         JOIN solicitacoes_svo AS s ON s.id = d.solicitacao_id
         WHERE c.solicitacao_id = ?
           AND d.solicitacao_id = c.solicitacao_id
           AND c.revogada_em IS NULL
-          AND (d.consulta_publica_expira_em IS NULL OR d.consulta_publica_expira_em >= ?)
+          AND (
+            (s.status NOT IN ('CONCLUIDA', 'RECUSADA', 'CANCELADA') AND d.consulta_publica_expira_em IS NULL)
+            OR d.consulta_publica_expira_em > COALESCE(?::timestamptz, clock_timestamp())
+          )
        RETURNING c.solicitacao_id`,
-      [agora, agora, solicitacaoId, agora]
+      [agora ?? null, agora ?? null, solicitacaoId, agora ?? null]
     );
     return (resultado.rows?.length ?? 0) > 0;
+  },
+
+  async bloquearCredencialAtiva(
+    solicitacaoId: number,
+    agora: Date | undefined,
+    conexao: Knex
+  ): Promise<boolean> {
+    const credencial = await conexao('solicitacoes_svo_credenciais_externas')
+      .where({ solicitacao_id: solicitacaoId })
+      .whereNull('revogada_em')
+      .forUpdate()
+      .first('solicitacao_id');
+    if (!credencial) return false;
+
+    const registro = await conexao('solicitacoes_svo_dados_externos as d')
+      .join('solicitacoes_svo as s', 's.id', 'd.solicitacao_id')
+      .where('d.solicitacao_id', solicitacaoId)
+      .whereRaw(`(
+        (s.status NOT IN ('CONCLUIDA', 'RECUSADA', 'CANCELADA') AND d.consulta_publica_expira_em IS NULL)
+        OR d.consulta_publica_expira_em > COALESCE(?::timestamptz, clock_timestamp())
+      )`, [agora ?? null])
+      .first('s.id');
+    return Boolean(registro);
+  },
+
+  async descartarRecuperacoesExpiradas(limite: number, conexao: Knex): Promise<number> {
+    if (!Number.isInteger(limite) || limite < 1 || limite > 1000) {
+      throw new RangeError('O lote de descarte deve conter de 1 a 1000 registros');
+    }
+    const tabela = 'solicitacoes_svo_recuperacoes_tentativa';
+    return conexao(tabela)
+      .whereIn('solicitacao_id', conexao(tabela)
+        .select('solicitacao_id')
+        .whereNull('descartada_em')
+        .where('expira_em', '<=', conexao.raw('clock_timestamp()'))
+        .orderBy('expira_em')
+        .limit(limite)
+        .forUpdate()
+        .skipLocked())
+      .update({ descartada_em: conexao.raw('clock_timestamp()') });
   },
 
   async registrarInicioAnalise(
@@ -255,7 +310,7 @@ export const acompanhamentoExternoSvoModel = {
       .update({
         analise_iniciada_em: agora,
         analise_iniciada_por: autorId,
-        atualizado_em: agora,
+        atualizado_em: conexao.raw('GREATEST(atualizado_em, ?)', [agora]),
       });
     return linhas > 0;
   },
@@ -270,7 +325,7 @@ export const acompanhamentoExternoSvoModel = {
       .whereNull('encerrado_operacional_em')
       .update({
         encerrado_operacional_em: encerradoEm,
-        atualizado_em: encerradoEm,
+        atualizado_em: conexao.raw('GREATEST(atualizado_em, ?)', [encerradoEm]),
       });
   },
 
@@ -288,7 +343,7 @@ export const acompanhamentoExternoSvoModel = {
       .update({
         revogada_em: agora,
         revogada_motivo: motivo,
-        atualizado_em: agora,
+        atualizado_em: conexao.raw('GREATEST(atualizado_em, ?)', [agora]),
       })
       .returning([...COLUNAS_RETORNO_REVOGACAO]);
 
@@ -297,7 +352,7 @@ export const acompanhamentoExternoSvoModel = {
       .whereNull('descartada_em')
       .update({ descartada_em: agora });
 
-    if (atualizada) return atualizada;
+    if (atualizada) return { ...atualizada, alterada: true };
 
     return conexao<CredencialExternaRevogadaRow>('solicitacoes_svo_credenciais_externas')
       .where({ solicitacao_id: solicitacaoId })

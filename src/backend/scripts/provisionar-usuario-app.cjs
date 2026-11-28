@@ -427,7 +427,11 @@ async function provisionarUsuarioAplicacao() {
 
       if (await trx.schema.withSchema('public').hasTable(DADOS)) {
         const corrigida = !(await trx.schema.withSchema('public').hasColumn(DADOS, 'endereco_ocorrencia'));
-        await aplicarPrivilegiosSolicitacoesExternasSvo(trx, 'public', appUser, corrigida);
+        const { rows: [migracoes] } = await trx.raw("SELECT to_regclass('public.knex_migrations') AS tabela");
+        const acompanhamento = migracoes.tabela && await trx('public.knex_migrations')
+          .where({ name: '20261128100000_scrum_266_acompanhamento_e_recuperacao_svo.js' })
+          .first('id');
+        await aplicarPrivilegiosSolicitacoesExternasSvo(trx, 'public', appUser, corrigida, Boolean(acompanhamento));
       }
 
       // Validacao obrigatoria dos atributos efetivos e privilegios antes de confirmar a transacao

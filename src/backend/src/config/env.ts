@@ -310,9 +310,10 @@ function parsearSegredosAnterioresCredencialSvo(
       throw new Error('CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS deve usar versões numéricas inteiras >= 1');
     }
     const versao = Number(versaoTexto);
-    if (versao < 1 || versao === versaoAtual) {
+    if (!Number.isSafeInteger(versao) || versao < 1 || versao > 1000 ||
+        versao === versaoAtual || Object.hasOwn(mapa, versao)) {
       throw new Error(
-        'CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS deve conter apenas versões >= 1 distintas da versão atual'
+        'CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS deve conter versões únicas entre 1 e 1000, distintas da versão atual'
       );
     }
     mapa[versao] = validarSegredo(segredo, `CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS[${versao}]`);
@@ -344,6 +345,11 @@ function configuracaoCredencialExternaSvo(
     origem.CREDENCIAL_EXTERNA_SVO_PREVIOUS_SECRETS,
     versaoAtual
   );
+  const chaves = [segredoAtual, ...Object.values(segredosAnteriores)];
+  if (producao && recursoPublicoAtivo &&
+      chaves.some((segredo) => segredo === SEGREDO_DEV_CREDENCIAL_EXTERNA_SVO || segredo === origem.JWT_SECRET?.trim())) {
+    throw new Error('As chaves de credencial SVO em produção devem ser dedicadas e independentes do JWT');
+  }
   return Object.freeze({
     versaoAtual,
     segredoAtual,

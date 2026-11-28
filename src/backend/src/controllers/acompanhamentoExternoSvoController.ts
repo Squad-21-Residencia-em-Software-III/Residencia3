@@ -105,14 +105,16 @@ export const acompanhamentoExternoSvoController = {
     garantirSemCredencialNaQueryString(req);
 
     const body = recuperarComprovanteTentativaSchema.parse(req.body ?? {});
-    const chaveBruta =
-      body.chave_idempotencia ??
-      lerCabecalhoUnico(req, CABECALHO_CHAVE_IDEMPOTENCIA) ??
-      '';
-    const provaBruta =
-      body.prova_tentativa ??
-      lerCabecalhoUnico(req, CABECALHO_PROVA_TENTATIVA) ??
-      '';
+    const chaveHeader = lerCabecalhoUnico(req, CABECALHO_CHAVE_IDEMPOTENCIA);
+    const provaHeader = lerCabecalhoUnico(req, CABECALHO_PROVA_TENTATIVA);
+    if (
+      (body.chave_idempotencia !== undefined && chaveHeader !== undefined && body.chave_idempotencia !== chaveHeader) ||
+      (body.prova_tentativa !== undefined && provaHeader !== undefined && body.prova_tentativa !== provaHeader)
+    ) {
+      throw new AppError(MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA, 401, 'CREDENCIAL_EXTERNA_INVALIDA');
+    }
+    const chaveBruta = body.chave_idempotencia ?? chaveHeader ?? '';
+    const provaBruta = body.prova_tentativa ?? provaHeader ?? '';
 
     const chaveValidada = chaveIdempotenciaCriacaoSchema.safeParse(chaveBruta);
     const provaValidada = provaTentativaCriacaoSchema.safeParse(provaBruta);

@@ -51,12 +51,15 @@ async function validarRoleAplicacao(knex, appUser, schema) {
   }
 }
 
-async function aplicarPrivilegiosSolicitacoesExternasSvo(knex, schema, appUser, corrigida = true) {
+async function aplicarPrivilegiosSolicitacoesExternasSvo(knex, schema, appUser, corrigida = true, esquemaAtual) {
+  const catalogo = knex.schema.withSchema(schema);
+  const acompanhamento = esquemaAtual ?? await catalogo.hasColumn(DADOS, 'analise_iniciada_em');
   if (appUser) await validarRoleAplicacao(knex, appUser, schema);
   const { rows: [server] } = await knex.raw("SELECT current_setting('server_version_num')::int AS versao");
   const manutencao = server.versao >= 170000 ? ', MAINTAIN' : '';
 
   for (const [tabela, operacoes] of Object.entries(PERMISSOES)) {
+    if (!acompanhamento && tabela === RECUPERACOES) continue;
     const { rows: colunas } = await knex.raw(`
       SELECT a.attname AS nome, c.oid AS tabela_oid, a.attnum AS numero
         FROM pg_attribute a
@@ -66,17 +69,18 @@ async function aplicarPrivilegiosSolicitacoesExternasSvo(knex, schema, appUser, 
        ORDER BY a.attnum
     `, [schema, tabela]);
     if (!colunas.length) {
-      if (tabela === RECUPERACOES) continue;
       throw new Error(`solicitacoes externas svo: tabela protegida ausente: ${tabela}.`);
     }
 
     const nomes = colunas.map(({ nome }) => nome);
     const permissoes = corrigida
       ? {
-          insert: operacoes.insert.filter((col) => nomes.includes(col)),
-          update: operacoes.update.filter((col) => nomes.includes(col)),
+          insert: operacoes.insert,
+          update: operacoes.update.filter((col) => acompanhamento || !['analise_iniciada_em', 'analise_iniciada_por', 'cancelamento_mensagem_publica'].includes(col)),
         }
       : { insert: [], update: [] };
+    const ausentes = [...permissoes.insert, ...permissoes.update].filter((col) => !nomes.includes(col));
+    if (ausentes.length) throw new Error(`solicitacoes externas svo: colunas obrigatórias ausentes em ${tabela}: ${ausentes.join(', ')}`);
     const listaColunas = nomes.map(() => '??').join(', ');
     const destinatarios = appUser ? 'PUBLIC, ??' : 'PUBLIC';
     const bindingsRole = appUser ? [appUser] : [];
