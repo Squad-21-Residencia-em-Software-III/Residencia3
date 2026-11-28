@@ -1,5 +1,9 @@
 import type { BadgeTone } from '../../components/ui';
-import type { StatusOrdemSvo, StatusSolicitacaoSvo } from '../../types/solicitacaoSvo';
+import type {
+  CanalOrigemSolicitacaoSvo,
+  StatusOrdemSvo,
+  StatusSolicitacaoSvo,
+} from '../../types/solicitacaoSvo';
 
 export function toneStatusSolicitacao(status: StatusSolicitacaoSvo): BadgeTone {
   switch (status) {
@@ -16,6 +20,11 @@ export function toneStatusSolicitacao(status: StatusSolicitacaoSvo): BadgeTone {
     default:
       return 'neutral';
   }
+}
+
+/** O canal externo ganha destaque próprio; interno segue neutro. O texto do selo é o que distingue. */
+export function toneCanalOrigem(canal: CanalOrigemSolicitacaoSvo): BadgeTone {
+  return canal === 'EXTERNA' ? 'info' : 'neutral';
 }
 
 export function toneStatusOrdem(status: StatusOrdemSvo): BadgeTone {

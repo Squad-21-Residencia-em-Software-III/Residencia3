@@ -18,7 +18,13 @@ import type {
 } from '../types/solicitacaoSvo';
 
 vi.mock('../services/api/solicitacoesSvoApi', () => ({
-  solicitacoesSvoApi: { listar: vi.fn(), buscarPorId: vi.fn(), confirmar: vi.fn(), recusar: vi.fn() },
+  solicitacoesSvoApi: {
+    listar: vi.fn(),
+    buscarPorId: vi.fn(),
+    confirmar: vi.fn(),
+    recusar: vi.fn(),
+    iniciarAnalise: vi.fn(),
+  },
 }));
 
 const sessao = vi.hoisted(() => ({ perfil: 'GESTOR_SVO' }));
@@ -442,5 +448,88 @@ describe('TriagemSvoPage', () => {
     expect(
       await within(painel).findByRole('link', { name: /Agendar coleta em Viagens > SVO/ }),
     ).toHaveAttribute('href', '/viagens?aba=svo');
+  });
+});
+
+describe('TriagemSvoPage: chamados externos (SCRUM-270)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    sessao.perfil = 'GESTOR_SVO';
+    RECURSOS_BACKEND.recusaSvo = false;
+  });
+
+  afterEach(() => {
+    RECURSOS_BACKEND.recusaSvo = true;
+  });
+
+  const externa = (id: number, extra: Partial<SolicitacaoSvo> = {}) =>
+    solicitacao(id, { canal_origem: 'EXTERNA', protocolo: `SVO-2026-00000${id}`, ...extra });
+
+  it('mostra internos e externos na mesma fila, com o canal distinguível pelo texto', async () => {
+    api.listar.mockResolvedValue(
+      lista([externa(3), solicitacao(2, { canal_origem: 'INTERNA' }), solicitacao(1)]),
+    );
+
+    render(<TriagemSvoPage />);
+
+    expect(await screen.findByText('Rua 3, Aracaju')).toBeInTheDocument();
+    expect(screen.getAllByText('Externa')).toHaveLength(1);
+    // O registro sem canal_origem (dado antigo) conta como interno
+    expect(screen.getAllByText('Interna')).toHaveLength(2);
+    expect(api.listar).toHaveBeenCalledTimes(1);
+  });
+
+  it('no detalhe do chamado externo mostra canal e protocolo e oferece iniciar a análise', async () => {
+    api.listar.mockResolvedValue(lista([externa(5)]));
+    api.buscarPorId.mockResolvedValue({ ...externa(5), ordem: null });
+
+    render(<TriagemSvoPage />);
+    const painel = await abrirSolicitacao(5);
+
+    expect(await within(painel).findByText('SVO-2026-000005')).toBeInTheDocument();
+    expect(within(painel).getByText('Externa')).toBeInTheDocument();
+    expect(within(painel).getByRole('button', { name: 'Iniciar análise' })).toBeEnabled();
+  });
+
+  it('inicia a análise pela API e mostra o marco devolvido pelo servidor', async () => {
+    api.listar.mockResolvedValue(lista([externa(5)]));
+    api.buscarPorId.mockResolvedValue({ ...externa(5), ordem: null });
+    api.iniciarAnalise.mockResolvedValue({
+      solicitacao: externa(5),
+      analise_iniciada_em: '2026-11-28T15:00:00.000Z',
+    });
+
+    render(<TriagemSvoPage />);
+    const painel = await abrirSolicitacao(5);
+    await userEvent.click(await within(painel).findByRole('button', { name: 'Iniciar análise' }));
+
+    expect(api.iniciarAnalise).toHaveBeenCalledWith(5);
+    expect(await within(painel).findByText(/Análise iniciada em/)).toBeInTheDocument();
+    expect(within(painel).queryByRole('button', { name: 'Iniciar análise' })).not.toBeInTheDocument();
+  });
+
+  it('em falha ao iniciar a análise mostra o erro e permite tentar de novo', async () => {
+    api.listar.mockResolvedValue(lista([externa(5)]));
+    api.buscarPorId.mockResolvedValue({ ...externa(5), ordem: null });
+    api.iniciarAnalise.mockRejectedValue(new ApiError('Falha de comunicação', 500));
+
+    render(<TriagemSvoPage />);
+    const painel = await abrirSolicitacao(5);
+    await userEvent.click(await within(painel).findByRole('button', { name: 'Iniciar análise' }));
+
+    expect(await within(painel).findByText('Não foi possível iniciar a análise')).toBeInTheDocument();
+    expect(within(painel).getByRole('button', { name: 'Iniciar análise' })).toBeEnabled();
+  });
+
+  it('solicitação interna não oferece iniciar análise', async () => {
+    api.listar.mockResolvedValue(lista([solicitacao(4)]));
+    api.buscarPorId.mockResolvedValue({ ...solicitacao(4), ordem: null });
+
+    render(<TriagemSvoPage />);
+    const painel = await abrirSolicitacao(4);
+
+    expect(await within(painel).findByText('Interna')).toBeInTheDocument();
+    expect(within(painel).queryByRole('button', { name: 'Iniciar análise' })).not.toBeInTheDocument();
+    expect(api.iniciarAnalise).not.toHaveBeenCalled();
   });
 });

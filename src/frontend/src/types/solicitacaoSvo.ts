@@ -60,6 +60,21 @@ export interface ConfirmacaoSvo {
   ordem: OrdemSvo;
 }
 
+/** PATCH /solicitacoes-svo/:id/iniciar-analise (SCRUM-266): só solicitações externas em triagem. */
+export interface InicioAnaliseSvo {
+  solicitacao: SolicitacaoSvo;
+  analise_iniciada_em: string | null;
+}
+
+/** Registros antigos não trazem `canal_origem`: foram feitos pela equipe, ou seja, INTERNA. */
+export const canalDaSolicitacaoSvo = (s: Pick<SolicitacaoSvo, 'canal_origem'>): CanalOrigemSolicitacaoSvo =>
+  s.canal_origem === 'EXTERNA' ? 'EXTERNA' : 'INTERNA';
+
+export const LABELS_CANAL_ORIGEM_SVO: Record<CanalOrigemSolicitacaoSvo, string> = {
+  INTERNA: 'Interna',
+  EXTERNA: 'Externa',
+};
+
 export const LABELS_STATUS_SOLICITACAO_SVO: Record<StatusSolicitacaoSvo, string> = {
   EM_TRIAGEM: 'Aguardando análise',
   CONFIRMADA: 'Confirmada',
