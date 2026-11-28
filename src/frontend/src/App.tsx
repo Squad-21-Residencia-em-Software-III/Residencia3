@@ -1,4 +1,5 @@
-import { BrowserRouter } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import { BrowserRouter, useLocation } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { NotificacoesProvider } from './contexts/NotificacoesContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -12,7 +13,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
-        <AuthProvider>
+        <SessaoPorRota>
           <NotificacoesProvider>
             <BannerOffline />
             <AppRoutes />
@@ -20,8 +21,13 @@ export default function App() {
             <ToastNotificacao />
             <PromptAtualizacaoPwa />
           </NotificacoesProvider>
-        </AuthProvider>
+        </SessaoPorRota>
       </ErrorBoundary>
     </BrowserRouter>
   )
+}
+
+function SessaoPorRota({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation()
+  return <AuthProvider pathname={pathname}>{children}</AuthProvider>
 }

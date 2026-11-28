@@ -1,3 +1,4 @@
+import { versoesAvisoPrivacidadeSvo } from './avisoPrivacidadeSvo';
 import { createECDH } from 'node:crypto';
 import { isIP } from 'node:net';
 import path from 'node:path';
@@ -375,6 +376,9 @@ export function carregarEnv(origem: Origem = process.env) {
   const requestTimeoutMs = inteiroNaFaixa('REQUEST_TIMEOUT_MS', origem.REQUEST_TIMEOUT_MS, 15000, 1000, 120000);
   const maximoMapasMs = Math.min(12000, requestTimeoutMs - 500);
   const recursosOperacionais = carregarRecursosOperacionais(origem);
+  if (producao && recursosOperacionais.flags.portalSvo && !versoesAvisoPrivacidadeSvo(origem)) {
+    throw new Error('AVISO_PRIVACIDADE_SVO_VERSOES é obrigatória quando o cadastro público está ativo em produção');
+  }
 
   return {
     nodeEnv,
