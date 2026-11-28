@@ -39,6 +39,12 @@ vi.mock('../models/unidadeModel', async (importOriginal) => {
 });
 
 vi.mock('../config/database', () => ({ db: { transaction } }));
+vi.mock('../middlewares/protegerPortalSvo', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../middlewares/protegerPortalSvo')>();
+  // A suíte cobre o contrato de credenciais com DAO simulado. As cotas são exercitadas em portalSvoProtecao.test.ts.
+  const executarSemCotas: typeof original.protegerTrabalhoPortalSvo = (_operacao, executar) => executar;
+  return { ...original, protegerTrabalhoPortalSvo: executarSemCotas };
+});
 vi.mock('../services/authService', () => ({
   authService: { usuarioDoToken: vi.fn() },
 }));

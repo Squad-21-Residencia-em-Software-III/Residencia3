@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { env } from '../config/env';
 import { criarMapasService } from '../services/mapasService';
 import {
-  buscarMapaSchema, reversoMapaSchema, rotaMapaSchema, validarConsultaMapa,
+  buscarCepPublicoSchema, buscarMapaSchema, reversoMapaSchema, reversoPublicoSchema, rotaMapaSchema, validarConsultaMapa,
 } from '../validators/mapasSchemas';
 
 const service = criarMapasService(env.mapas);
@@ -29,6 +29,14 @@ async function responderMapa<T>(
 }
 
 export const mapasController = {
+  buscarCepPublico: (req: Request, res: Response) =>
+    responderMapa(res, (contexto) => service.buscar({
+      ...validarConsultaMapa(buscarCepPublicoSchema, req.query), operacao: 'SVO',
+    }, contexto)),
+  reversoPublico: (req: Request, res: Response) =>
+    responderMapa(res, (contexto) => service.reverso({
+      ...validarConsultaMapa(reversoPublicoSchema, req.query), operacao: 'SVO',
+    }, contexto)),
   buscar: (req: Request, res: Response) =>
     responderMapa(res, (contexto) => service.buscar(validarConsultaMapa(buscarMapaSchema, req.query), contexto)),
   reverso: (req: Request, res: Response) =>

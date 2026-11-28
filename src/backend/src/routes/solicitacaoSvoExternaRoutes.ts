@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import { solicitacaoSvoExternaController } from '../controllers/solicitacaoSvoExternaController';
 import { AppError } from '../errors/AppError';
 import { exigirRecursoAtivo } from '../middlewares/exigirRecursoAtivo';
+import { protegerTrabalhoPortalSvo, verificarHoneypotPortalSvo } from '../middlewares/protegerPortalSvo';
 
 // Nada trafega na URL: dado pessoal ou credencial em query string vai parar em log, proxy e histórico
 const rejeitarQueryString: RequestHandler = (req, _res, next) => {
@@ -17,6 +18,7 @@ export const solicitacaoSvoExternaRoutes = Router();
 // passar pelos guards do roteador interno e sem afrouxá-los. A flag vale só para esta rota:
 // as demais rotas de /externas (ex.: acompanhamento da SCRUM-266) têm flag própria.
 // O Cache-Control: no-store vem do app (app.ts), para valer também nos erros antecipados.
-// Integração futura (SCRUM-271): protegerPortalSvo('cadastrar') e verificarHoneypotPortalSvo entram nesta
-// cadeia, depois da flag e antes do controller (o honeypot website_hp sai do corpo antes do strictObject).
-solicitacaoSvoExternaRoutes.post('/', exigirRecursoAtivo('portalSvo'), rejeitarQueryString, solicitacaoSvoExternaController.criar);
+solicitacaoSvoExternaRoutes.post(
+  '/', exigirRecursoAtivo('portalSvo'), rejeitarQueryString, verificarHoneypotPortalSvo,
+  protegerTrabalhoPortalSvo('cadastrar', solicitacaoSvoExternaController.criar),
+);

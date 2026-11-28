@@ -27,7 +27,7 @@ app.use(logRequisicao);
 app.use(cabecalhosDeSeguranca());
 app.use(corsPorAmbiente());
 // Rotas públicas do portal SVO: nunca em cache, inclusive nos erros antecipados (JSON inválido, 413, 429, 503, 404)
-app.use('/api/solicitacoes-svo/externas', (_req, res, next) => {
+app.use(['/api/solicitacoes-svo/externas', '/api/portal-svo/mapas'], (_req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
   next();
 });

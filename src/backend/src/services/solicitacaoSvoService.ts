@@ -19,7 +19,10 @@ import type { ListaPaginada } from './usuarioService';
 type Autor = { id: number; perfil: Perfil };
 
 // Solicitação com a ordem de coleta ativa, quando houver (BL27)
-export type SolicitacaoSvoDetalhada = SolicitacaoSvo & { ordem: OrdemSvo | null };
+export type SolicitacaoSvoDetalhada = SolicitacaoSvo & {
+  ordem: OrdemSvo | null;
+  possivel_duplicidade?: boolean;
+};
 
 interface ConfirmacaoSvo {
   solicitacao: SolicitacaoSvo;
@@ -103,8 +106,14 @@ export const solicitacaoSvoService = {
     if (!solicitacao) {
       throw new AppError('Solicitação SVO não encontrada', 404);
     }
-    const ordem = await solicitacaoSvoModel.buscarOrdemAtiva(id);
-    return { ...solicitacao, ordem: ordem ?? null };
+    const [ordem, possivelDuplicidade] = await Promise.all([
+      solicitacaoSvoModel.buscarOrdemAtiva(id),
+      solicitacao.canal_origem === 'EXTERNA' ? solicitacaoSvoModel.temPossivelDuplicidadeExterna(id) : undefined,
+    ]);
+    return {
+      ...solicitacao, ordem: ordem ?? null,
+      ...(possivelDuplicidade === undefined ? {} : { possivel_duplicidade: possivelDuplicidade }),
+    };
   },
 
   // Marca início verificável da análise na triagem para solicitações externas (RECEBIDA -> EM_ANALISE)

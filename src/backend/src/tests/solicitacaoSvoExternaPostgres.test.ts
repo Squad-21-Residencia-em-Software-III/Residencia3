@@ -116,7 +116,8 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
 
   const rolesDoPortal = { PORTAL_SVO_ATIVO: 'true', ACOMPANHAMENTO_EXTERNO_SVO_ATIVO: 'true' };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await db('limites_portal_svo').delete();
     env.recursosOperacionais = carregarRecursosOperacionais(rolesDoPortal);
     configNotificacoes.ativas = true;
   });
@@ -250,7 +251,16 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
   it('concorrência com a mesma chave gera um chamado e um S1 por destinatário', async () => {
     const t = tentativa();
     const antes = await contarExternas();
-    const respostas = await Promise.all(Array.from({ length: 6 }, () => enviar(corpo(), t)));
+    const iniciais = await Promise.all(Array.from({ length: 6 }, () => enviar(corpo(), t)));
+    const respostas = [];
+    for (const resposta of iniciais) {
+      if (resposta.status === 429) {
+        expect(resposta.headers['retry-after']).toBe('1');
+        respostas.push(await enviar(corpo(), t));
+      } else {
+        respostas.push(resposta);
+      }
+    }
 
     expect(respostas.filter((r) => r.status === 201)).toHaveLength(1);
     expect(respostas.filter((r) => r.status === 200)).toHaveLength(5);

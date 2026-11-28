@@ -10,6 +10,13 @@ vi.mock('../services/solicitacaoSvoExternaService', () => ({
   solicitacaoSvoExternaService: { registrar: vi.fn() },
 }));
 
+vi.mock('../middlewares/protegerPortalSvo', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../middlewares/protegerPortalSvo')>();
+  // Estes casos exercitam o contrato HTTP e as cotas têm suíte própria com PostgreSQL real.
+  const executarSemCotas: typeof original.protegerTrabalhoPortalSvo = (_operacao, executar) => executar;
+  return { ...original, protegerTrabalhoPortalSvo: executarSemCotas };
+});
+
 // Todos os dados são sintéticos
 const URL = '/api/solicitacoes-svo/externas';
 const CHAVE = 'tentativa-teste-0001';
