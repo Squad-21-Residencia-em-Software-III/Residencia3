@@ -59,7 +59,8 @@ export const documentoModel = {
           'CNH' AS tipo_documento,
           'MOTORISTA' AS origem,
           m.id AS referencia_id,
-          m.numero_cnh AS identificacao,
+          -- SCRUM-308: a lista mostra só os 4 dígitos finais da CNH
+          '•••••••' || right(regexp_replace(m.numero_cnh, '[[:space:].-]', '', 'g'), 4) AS identificacao,
           m.validade_cnh AS data_vencimento
         FROM motoristas m
       ) AS documentos

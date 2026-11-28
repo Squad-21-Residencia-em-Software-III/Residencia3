@@ -3,7 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { Alert, Button, Input, Modal, Select } from '../../components/ui';
 import type { NovoAbastecimentoInput } from '../../types/abastecimento';
 import type { Veiculo } from '../../types/veiculo';
-import type { Motorista } from '../../types/motorista';
+import type { MotoristaBase } from '../../types/motorista';
 import { veiculosApi } from '../../services/api/veiculosApi';
 import { motoristasApi } from '../../services/api/motoristasApi';
 import { mensagemDeErro } from '../../services/api/http';
@@ -31,7 +31,7 @@ export function ModalAbastecimento({
     usuario?.perfil === 'MOTORISTA_SVO';
 
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
-  const [motoristas, setMotoristas] = useState<Motorista[]>([]);
+  const [motoristas, setMotoristas] = useState<MotoristaBase[]>([]);
   const [salvando, setSalvando] = useState(false);
 
   const [veiculoId, setVeiculoId] = useState<string>(veiculoIdInicial || '');

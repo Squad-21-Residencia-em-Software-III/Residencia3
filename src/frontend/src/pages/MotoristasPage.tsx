@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Avatar,
   Badge,
@@ -15,8 +15,12 @@ import {
 } from '../components/ui';
 import type { BadgeTone, MetricTone } from '../components/ui';
 import type { Motorista, StatusMotorista, TipoMotorista } from '../types/motorista';
+import { RECURSOS_BACKEND } from '../config/recursosBackend';
 import { mensagemDeErro } from '../services/api/http';
 import { motoristasApi } from '../services/api/motoristasApi';
+import { cnhVencida, mascararCnh } from '../utils/cnh';
+import { usePermissao } from '../utils/permissoes';
+import { ModalMotorista } from './motoristas/ModalMotorista';
 
 type FiltroTipo = 'TODOS' | TipoMotorista;
 type FiltroStatus = 'TODOS' | StatusMotorista;
@@ -58,10 +62,6 @@ const STATUS_MAP: Record<
   },
 };
 
-function cnhVencida(validade: string) {
-  return validade < new Date().toISOString().slice(0, 10);
-}
-
 function formatarData(iso: string) {
   const [ano, mes, dia] = iso.split('-');
   return `${dia}/${mes}/${ano}`;
@@ -75,14 +75,23 @@ export default function MotoristasPage() {
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('TODOS');
   const [busca, setBusca] = useState('');
   const [filtrosAbertosMobile, setFiltrosAbertosMobile] = useState(false);
+  const [modal, setModal] = useState<{ modo: 'criar' } | { modo: 'editar'; motoristaId: number } | null>(null);
+  const { pode, podeGerenciarMotorista } = usePermissao();
+  // SCRUM-308: a escrita depende da flag e da competência; o servidor repete as duas checagens.
+  const escritaAtiva = RECURSOS_BACKEND.escritaMotoristas && pode('motoristas.gerenciar');
 
-  useEffect(() => {
+  const carregar = useCallback(() => {
     motoristasApi
       .listar()
-      .then(setMotoristas)
+      .then((lista) => {
+        setMotoristas(lista);
+        setErroCarga(null);
+      })
       .catch((error) => setErroCarga(mensagemDeErro(error)))
       .finally(() => setCarregando(false));
   }, []);
+
+  useEffect(carregar, [carregar]);
 
   const totais = useMemo(
     () => ({
@@ -101,12 +110,8 @@ export default function MotoristasPage() {
         const bateTipo = filtroTipo === 'TODOS' || m.tipo_motorista === filtroTipo;
         const bateStatus = filtroStatus === 'TODOS' || m.status === filtroStatus;
         if (!bateTipo || !bateStatus) return false;
-        if (busca.trim()) {
-          const termo = busca.trim().toLowerCase();
-          const matchNome = m.nome.toLowerCase().includes(termo);
-          const matchCnh = (m.numero_cnh ?? '').toLowerCase().includes(termo);
-          if (!matchNome && !matchCnh) return false;
-        }
+        // A busca é só por nome: a lista não recebe o número da CNH (SCRUM-308).
+        if (busca.trim() && !m.nome.toLowerCase().includes(busca.trim().toLowerCase())) return false;
         return true;
       }),
     [motoristas, filtroTipo, filtroStatus, busca],
@@ -162,6 +167,13 @@ export default function MotoristasPage() {
           title="Motoristas"
           subtitle={`${filtrados.length} de ${motoristas.length} motoristas listados`}
           onFilter={() => setFiltrosAbertosMobile((f) => !f)}
+          actions={
+            escritaAtiva ? (
+              <Button size="sm" onClick={() => setModal({ modo: 'criar' })}>
+                Cadastrar motorista
+              </Button>
+            ) : undefined
+          }
           isFilterActive={
             filtroTipo !== 'TODOS' ||
             filtroStatus !== 'TODOS' ||
@@ -176,7 +188,7 @@ export default function MotoristasPage() {
           <SearchInput
             value={busca}
             onChange={setBusca}
-            placeholder="Buscar por nome ou CNH..."
+            placeholder="Buscar por nome..."
           />
 
           {/* Filtros em dropdown na sequência */}
@@ -229,12 +241,13 @@ export default function MotoristasPage() {
               <th>Validade da CNH</th>
               <th>Tipo</th>
               <th>Status</th>
+              {escritaAtiva && <th>Ações</th>}
             </tr>
           </thead>
           <tbody>
             {filtrados.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-slate-500">
+                <td colSpan={escritaAtiva ? 7 : 6} className="p-8 text-center text-slate-500">
                   {carregando ? 'Carregando motoristas...' : erroCarga ?? 'Nenhum motorista encontrado para este filtro.'}
                 </td>
               </tr>
@@ -250,7 +263,7 @@ export default function MotoristasPage() {
                       </span>
                     </td>
                     <td>
-                      <IdBadge id={m.numero_cnh} />
+                      <IdBadge id={mascararCnh(m.cnh_final)} />
                     </td>
                     <td>{m.categoria_cnh}</td>
                     <td>
@@ -265,6 +278,20 @@ export default function MotoristasPage() {
                     <td>
                       <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                     </td>
+                    {escritaAtiva && (
+                      <td>
+                        {podeGerenciarMotorista(m.tipo_motorista) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Editar CNH de ${m.nome}`}
+                            onClick={() => setModal({ modo: 'editar', motoristaId: m.id })}
+                          >
+                            Editar
+                          </Button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })
@@ -274,6 +301,14 @@ export default function MotoristasPage() {
 
         <Pagination showing={`1–${filtrados.length}`} total={filtrados.length} />
       </Card>
+
+      {modal && (
+        <ModalMotorista
+          {...modal}
+          onClose={() => setModal(null)}
+          onSalvo={carregar}
+        />
+      )}
     </div>
   );
 }

@@ -184,7 +184,7 @@ describe('ViagensPage: abas Administrativo/SVO (SCRUM-171)', () => {
       capacidade_maxima: 4, km_atual: 100, status: 'DISPONIVEL',
     }]);
     vi.mocked(motoristasApi.listar).mockResolvedValueOnce([{
-      id: 1, nome: 'Marcos', usuario_id: 10, numero_cnh: '1234', categoria_cnh: 'B',
+      id: 1, nome: 'Marcos', usuario_id: 10, cnh_final: '1234', categoria_cnh: 'B',
       validade_cnh: '2099-12-31', tipo_motorista: 'FROTA', status: 'DISPONIVEL',
     }]);
     api.criar.mockRejectedValueOnce(new ApiError('A solicitação expirou.', 409, [], 'SOLICITACAO_EXPIRADA'));

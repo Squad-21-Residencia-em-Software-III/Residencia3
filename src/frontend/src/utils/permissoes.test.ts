@@ -9,6 +9,7 @@ import {
   PERMISSOES,
   perfilPode,
   podeEditarFrota,
+  podeGerenciarMotorista,
   podeVerDetalhesDaFrota,
 } from './permissoes';
 import type { Permissao } from './permissoes';
@@ -242,5 +243,25 @@ describe('regra de frota (podeEditarFrota)', () => {
 
   it('sem usuário, nada é permitido', () => {
     expect(podeEditarFrota(null, 'SVO')).toBe(false);
+  });
+});
+
+describe('gestão de motoristas (SCRUM-308)', () => {
+  it('cada gestor gerencia só a própria operação; o Administrador, as duas', () => {
+    expect(podeGerenciarMotorista(ADMINISTRADOR, 'FROTA')).toBe(true);
+    expect(podeGerenciarMotorista(ADMINISTRADOR, 'SVO')).toBe(true);
+    expect(podeGerenciarMotorista(GESTOR_FROTA, 'FROTA')).toBe(true);
+    expect(podeGerenciarMotorista(GESTOR_FROTA, 'SVO')).toBe(false);
+    expect(podeGerenciarMotorista(GESTOR_SVO, 'SVO')).toBe(true);
+    expect(podeGerenciarMotorista(GESTOR_SVO, 'FROTA')).toBe(false);
+    expect(podeGerenciarMotorista(ADMINISTRADOR, 'OUTRO')).toBe(false);
+  });
+
+  it('motoristas e solicitantes não gerenciam', () => {
+    for (const perfil of [SOLICITANTE, MOTORISTA_FROTA, MOTORISTA_SVO]) {
+      expect(podeGerenciarMotorista(perfil, 'FROTA')).toBe(false);
+      expect(podeGerenciarMotorista(perfil, 'SVO')).toBe(false);
+    }
+    expect(podeGerenciarMotorista(null, 'FROTA')).toBe(false);
   });
 });

@@ -53,7 +53,8 @@ A matriz é verificada rota a rota por `src/backend/src/tests/matrizAcesso.test.
 | `POST /evidencias-odometro`, `GET /evidencias-odometro` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | 🔗⁷ | 🔗⁷ | ❌ |
 | `GET /evidencias-odometro/:id/arquivo` | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | ❌ | ❌ | ❌ |
 | `GET /motoristas/me` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `GET /motoristas` | ✅ | ❌ | ✅ | 🔗² | ❌ | ❌ | ❌ |
+| `GET /motoristas` (CNH só com os 4 dígitos finais) | ✅ | ❌ | ✅ | 🔗² | ❌ | ❌ | ❌ |
+| `GET /motoristas/usuarios-elegiveis`, `GET /motoristas/:id`, `POST /motoristas`, `PATCH /motoristas/:id` (SCRUM-308, atrás de `MOTORISTAS_ESCRITA_ATIVA`) | ✅ | ❌ | 🔗⁶ | 🔗²⁶ | ❌ | ❌ | ❌ |
 | `GET /unidades` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | `/notificacoes`: `GET vapid-public-key`, `POST subscribe`, `POST subscribe/status`, `DELETE unsubscribe`, `GET preferencias`, `PATCH preferencias/:codigo` (SCRUM-237) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `GET /notificacoes/metricas`: totais da fila e dos aparelhos, sem dado pessoal (SCRUM-241) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -72,7 +73,7 @@ Rotas públicas: `GET /status`, `POST /auth/login`, `POST /auth/refresh` e `POST
 3. **Competência administrativa.** Administrador e Gestor de Frota analisam solicitações administrativas. Para reprogramação A6, o Gestor de Frota precisa estar associado à unidade da solicitação. O Gestor SVO acompanha os próprios pedidos administrativos.
 4. **Solicitações próprias.** `/minhas` devolve apenas as solicitações do usuário autenticado (`solicitante_id` do token).
 5. **Segregação de funções.** Ninguém aprova nem recusa uma solicitação criada por si mesmo, nem o Administrador. A resposta é 403 "Você não pode analisar uma solicitação criada por você".
-6. **Tipo de operação.** O Gestor de Frota gerencia veículos e viagens da frota administrativa. O Gestor SVO gerencia os veículos e ordens SVO. O Administrador gerencia ambos.
+6. **Tipo de operação.** O Gestor de Frota gerencia veículos e viagens da frota administrativa. O Gestor SVO gerencia os veículos e ordens SVO. O Administrador gerencia ambos. Na CNH de motoristas (SCRUM-308), vale o mesmo: o Gestor de Frota cadastra, lê o número integral e corrige só motoristas `FROTA`, o Gestor SVO associado só `SVO`, e o Administrador os dois. O tipo vem do perfil do usuário no servidor, nunca do corpo. As rotas respondem 404 enquanto a escrita não for ativada, o que depende da confirmação institucional (`docs/scrum-308-cadastro-cnh.md`). Implementação: `motoristaService.tiposGerenciaveis`.
 7. **Viagens do motorista.** O motorista só lista, inicia e finaliza as próprias viagens ou ordens, e só do seu tipo de frota. O condutor designado pode solicitar dispensa de foto por fase. A decisão exige justificativa e é restrita a Administrador (ambas as operações), Gestor de Frota (Administrativo) ou Gestor SVO associado (SVO). O condutor que solicitou a dispensa fica impedido de decidi-la. A consulta de situação do motorista se limita ao seu registro e o arquivo fica disponível apenas aos gestores competentes.
 8. **Notificações.** Cada usuário, inclusive o Integrante SVO, só lista, conta e marca os próprios avisos, e só os da operação que o perfil alcança. O Gestor SVO precisa da associação para os avisos SVO. Aviso de outra pessoa responde 404. O conteúdo exige acesso atual ao registro de origem; sem ele, só aparece que houve um aviso (`docs/scrum-226-api-notificacoes.md`). Implementação: `notificacaoService`.
 
@@ -93,6 +94,7 @@ Outras proteções que já existiam:
 | Vínculo motorista–veículo | Pelas viagens e ordens ativas | DVP: "consulta dos veículos a ele vinculados". Não há tabela de vínculo fixo. |
 | Gestor SVO | Exige associação à unidade SVO em todas as operações SVO | Consistência com o encaminhamento por unidade (BL15) |
 | Disponibilidade | Gestor de Frota e Administrador | RF16 |
+| Cadastro e correção de CNH (SCRUM-308) | Administrador nos dois tipos, Gestor de Frota no FROTA, Gestor SVO associado no SVO. **Pendente de confirmação institucional por ação e unidade.** | Regra 6 e descrição do perfil Gestor de Frota ("cadastros de motoristas") |
 
 ### Navegação da SCRUM-166
 

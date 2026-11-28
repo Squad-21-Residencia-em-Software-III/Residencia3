@@ -108,6 +108,11 @@ const MATRIZ: Regra[] = [
 
   ['get', '/api/motoristas/me', TODOS],
   ['get', '/api/motoristas', [A, GF, GS], true],
+  // SCRUM-308: escrita de CNH (atrás de MOTORISTAS_ESCRITA_ATIVA; desligada responde 404 só aos permitidos)
+  ['get', '/api/motoristas/usuarios-elegiveis', [A, GF, GS], true],
+  ['get', '/api/motoristas/1', [A, GF, GS], true],
+  ['post', '/api/motoristas', [A, GF, GS], true],
+  ['patch', '/api/motoristas/1', [A, GF, GS], true],
 
   ['get', '/api/unidades', [A, S, GF, GS, MF, MS]],
   ['get', '/api/unidades/gestores', [A]],

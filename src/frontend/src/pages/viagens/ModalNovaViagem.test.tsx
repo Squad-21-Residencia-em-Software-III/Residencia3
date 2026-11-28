@@ -55,7 +55,7 @@ const motoristaSvo: Motorista = {
   id: 20,
   usuario_id: 5,
   nome: 'Marcos Oliveira',
-  numero_cnh: '123',
+  cnh_final: '0123',
   categoria_cnh: 'D',
   validade_cnh: '2030-01-01',
   tipo_motorista: 'SVO',
