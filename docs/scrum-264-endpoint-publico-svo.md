@@ -2,7 +2,7 @@
 
 Pai: SCRUM-249 (Sprint DEV 7). Depende do modelo de dados da SCRUM-263 (já na `develop`) e **do serviço de credencial da SCRUM-266 (PR #237)**, que emite e recupera a credencial dentro da transação deste endpoint.
 
-> **Ordem de entrega:** este PR contém o merge da branch da SCRUM-266. Enquanto o #237 não estiver na `develop`, o diff do PR inclui os arquivos dele. Depois do merge do #237, o diff encolhe para os arquivos próprios da 264 (ver "Alinhamento com o PR #237").
+> A base deste PR inclui a integração do #237 na `develop` (`89cd844`). Os arquivos compartilhados de credenciais e recuperação pertencem à SCRUM-266.
 
 ## Contrato
 
@@ -82,18 +82,14 @@ Resposta (sempre `Cache-Control: private, no-store`, inclusive em erros antecipa
 
 ## Alinhamento com o PR #237
 
-1. Este branch contém o merge de `feat/be-db-scrum-266-credenciais-acompanhamento-externo`.
-2. **Ajustes feitos aqui para o #245 ficar verde sem depender de correção no #237** (se o #237 corrigir de outra forma, **vale a versão do #237** ao resolver o conflito):
-   - `acompanhamentoExternoSvoService.ts`: `emitirCredencialNaTransacao` deixa de gravar `emitida_em` (usa o padrão do banco e devolve o valor do `RETURNING`). Sem isso a role restrita `frotas_app` falha com `42501`. Nenhum privilégio foi ampliado.
-   - `scripts/validar-schema-solicitacoes-externas-svo.cjs` (validador da 263): reverte a migration da 266 antes do `down` da 263. A 266 cria `solicitacoes_svo_recuperacoes_tentativa` com FK para a credencial, e o `down` da 263 falhava com `2BP01` no CI.
-3. `segurancaHttp.ts`/`segurancaHttp.test.ts` incluem `X-Credencial-Acompanhamento` (necessário para a consulta GET da 266). Se o #237 também alterar essas linhas, manter a lista com os três cabeçalhos.
-4. Depois do merge do #237: atualizar este branch com a `develop` (`git merge origin/develop`), rodar a suíte completa e a suíte PostgreSQL, e o diff deve ficar só com os arquivos da 264.
+- A emissão central usa o valor padrão de `emitida_em` do banco e o devolve com `RETURNING`, mantendo o privilégio de inserção restrito por coluna.
+- A `develop` fornece as migrations, os grants, a normalização do conteúdo recuperado e a configuração CORS compartilhada. O cadastro delega emissão e recuperação ao serviço central. A integração do parser no controller de recuperação valida o conteúdo conforme os campos do cadastro.
+- O serviço central gera cada caractere do protocolo com `crypto.randomInt`, preservando o alfabeto e o tratamento de colisão. O alerta histórico do CodeQL aponta para a implementação anterior.
 
 ## Pontos abertos
 
 - Política institucional para recuperar credencial perdida após a janela de 15 minutos.
 - Lista oficial de versões do aviso de privacidade; confirmação da regra de data futura e dos limites de texto.
-- Pontos do #237 tratados aqui de forma mínima (`emitida_em`, rollback da 263 no validador) e a ordem de validação da recuperação (a repetição daqui já confere a prova antes do 409); CORS da consulta GET.
 - Integrações com SCRUM-271 (honeypot, cotas) e SCRUM-272 (matriz de perfis) pendentes dos respectivos merges.
 
 ## Testes
@@ -110,7 +106,6 @@ Resposta (sempre `Cache-Control: private, no-store`, inclusive em erros antecipa
 
 ## Evidências
 
-- SHA: preencher após o commit (`git rev-parse --short HEAD`) e confirmar o SHA remoto do push.
-- Resultados da última execução local: preencher com a saída de `npm run typecheck`, `npm test -- --no-file-parallelism`,
-  suíte PostgreSQL (`ENDPOINT_PUBLICO_SVO_POSTGRES_TESTS=1`), `npm run build`, `npm audit` e CodeQL do CI.
-- Não executado: homologação física/manual, teste de carga, preflight em navegador real, validação com SCRUM-271/272 integradas.
+- Após integrar `89cd844`, `npm run typecheck` e `npm run build` passaram. A suíte HTTP/PostgreSQL executou 19 cenários com a role restrita, incluindo os sete estados públicos e a distinção entre alocação e saída efetiva.
+- PostgreSQL 18.6 descartável em loopback. A sequência `npm run migrate:status`, `npm run migrate` e `npm run migrate:status` passou de 36 migrations pendentes para zero.
+- O SHA remoto, os checks e a análise CodeQL (quando disponível) são registrados na descrição do PR.
