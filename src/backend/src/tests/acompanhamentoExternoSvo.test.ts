@@ -66,6 +66,7 @@ import {
   type RegistroAcompanhamentoExternoRow,
 } from '../models/acompanhamentoExternoSvoModel';
 import { authService } from '../services/authService';
+import { solicitacaoSvoExternaSchema } from '../validators/solicitacaoSvoExternaSchemas';
 import {
   JANELA_ACOMPANHAMENTO_APOS_ENCERRAMENTO_MS,
   MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA,
@@ -133,6 +134,10 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
       id: 101,
       canal_origem: 'EXTERNA',
       protocolo: PROTOCOLO_VALIDO_A,
+    });
+    vi.mocked(acompanhamentoExternoSvoModel.inserirCredencial).mockResolvedValue({
+      solicitacao_id: 101, algoritmo_digest: 'HMAC-SHA-256', versao_credencial: 1,
+      emitida_em: new Date('2026-11-27T12:00:00.000Z'),
     });
     vi.mocked(
       acompanhamentoExternoSvoModel.registrarAcessoValidoSeAutorizado
@@ -255,15 +260,22 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
       const provaCorreta = gerarSegredoCredencialExterna();
       const provaImpostor = gerarSegredoCredencialExterna();
       const payloadOriginal = {
+        tipo_solicitante: 'PESSOA_FISICA',
         nome_solicitante: 'Hospital Sintético',
+        telefone_solicitante: '(79) 99999-0000',
+        email_solicitante: 'sintetico@example.invalid',
+        cpf_solicitante: '529.982.247-25',
+        nome_falecido: 'Falecido Sintético',
         local_ocorrencia: 'Av. Beira Mar, 1500',
+        numero_imovel: '1500',
+        descricao_ocorrencia: 'Descrição sintética da ocorrência.',
+        data_hora_ocorrencia: '2026-01-10T10:00:00-03:00',
+        ciencia_aviso_privacidade: true,
+        versao_aviso_privacidade: '2026-11-v1',
       };
-      const payloadAdulterado = {
-        nome_solicitante: 'Outro Solicitante',
-        local_ocorrencia: 'Rua Diferente, 999',
-      };
+      const payloadAdulterado = { ...payloadOriginal, local_ocorrencia: 'Rua Diferente, 999' };
 
-      const payloadDigest = calcularDigestPayloadCriacao(payloadOriginal);
+      const payloadDigest = calcularDigestPayloadCriacao(solicitacaoSvoExternaSchema.parse(payloadOriginal));
       const provaDigest = calcularDigestProvaTentativa(
         chaveIdempotencia,
         provaCorreta
@@ -296,6 +308,7 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         versao_chave: 1,
         recuperacao_expira_em: new Date(Date.now() + 10 * 60 * 1000),
         recuperacao_descartada_em: null,
+        verificada_em: new Date(),
       };
 
       vi.mocked(
@@ -334,7 +347,7 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         .post('/api/solicitacoes-svo/externas/recuperar-comprovante')
         .set('Idempotency-Key', chaveIdempotencia)
         .set('X-Prova-Tentativa', provaImpostor)
-        .send({ payload: payloadOriginal });
+        .send({ payload: payloadAdulterado });
 
       expect(respImpostor.status).toBe(401);
       expect(respImpostor.body.erro).toBe(MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA);
@@ -438,9 +451,9 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         permiteCancelar: true,
       },
       {
-        cenario: 'Confirmada (mantem CONFIRMADA mesmo com ordem ALOCADA antes da saida)',
+        cenario: 'Confirmada após alocação real, antes da saída',
         overrides: {
-          status_solicitacao: 'CONFIRMADA' as const,
+          status_solicitacao: 'EM_ANDAMENTO' as const,
           analise_iniciada_em: new Date('2026-11-27T10:15:00.000Z'),
           confirmado_em: new Date('2026-11-27T11:00:00.000Z'),
           ordem_status: 'ALOCADA' as const,
@@ -588,12 +601,21 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         .post('/api/solicitacoes-svo/externas/acompanhamento')
         .send({ protocolo: PROTOCOLO_VALIDO_A, credencial: CREDENCIAL_A });
 
-      expect(resposta.status).toBe(200);
-      expect(resposta.body.atualizada_em).toBe(maisRecente.toISOString());
-      expect(resposta.body.encerrada_em).toBeNull();
-      expect(resposta.body.consulta_disponivel_ate).toBeNull();
-      expect(resposta.body.cancelamento.mensagem_decisao).toBeNull();
-      expect(JSON.stringify(resposta.body)).not.toContain(
+      expect(resposta.status).toBe(401);
+      expect(resposta.body.codigo).toBe('CREDENCIAL_EXTERNA_INVALIDA');
+
+      vi.mocked(acompanhamentoExternoSvoModel.buscarPorProtocolo).mockResolvedValueOnce({
+        ...registroComHistorico, status_solicitacao: 'CONFIRMADA',
+      });
+      const aberta = await request(app)
+        .post('/api/solicitacoes-svo/externas/acompanhamento')
+        .send({ protocolo: PROTOCOLO_VALIDO_A, credencial: CREDENCIAL_A });
+      expect(aberta.status).toBe(200);
+      expect(aberta.body.atualizada_em).toBe(maisRecente.toISOString());
+      expect(aberta.body.encerrada_em).toBeNull();
+      expect(aberta.body.consulta_disponivel_ate).toBeNull();
+      expect(aberta.body.cancelamento.mensagem_decisao).toBeNull();
+      expect(JSON.stringify(aberta.body)).not.toContain(
         'DADO_INTERNO_CONFIDENCIAL_CPF_000'
       );
     });
@@ -682,7 +704,7 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           PROTOCOLO_VALIDO_A,
           CREDENCIAL_A,
-          { agora: limiteExato30Dias }
+          { agora: new Date(limiteExato30Dias.getTime() - 1) }
         );
       expect(noLimite.status).toBe('CONCLUIDA');
 
@@ -708,7 +730,7 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           PROTOCOLO_VALIDO_A,
           CREDENCIAL_A,
-          { agora: limiteExato30Dias }
+          { agora: new Date(limiteExato30Dias.getTime() - 1) }
         )
       ).rejects.toMatchObject({ statusCode: 401 });
     });
@@ -732,7 +754,20 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
         .post('/api/solicitacoes-svo/externas/recuperar-comprovante')
         .set('Idempotency-Key', 'idem-flag-indep-01')
         .set('X-Prova-Tentativa', gerarSegredoCredencialExterna())
-        .send({ payload: { a: 1 } });
+        .send({ payload: {
+        tipo_solicitante: 'PESSOA_FISICA',
+        nome_solicitante: 'Hospital Sintético',
+        telefone_solicitante: '(79) 99999-0000',
+        email_solicitante: 'sintetico@example.invalid',
+        cpf_solicitante: '529.982.247-25',
+        nome_falecido: 'Falecido Sintético',
+        local_ocorrencia: 'Av. Beira Mar, 1500',
+        numero_imovel: '1500',
+        descricao_ocorrencia: 'Descrição sintética da ocorrência.',
+        data_hora_ocorrencia: '2026-01-10T10:00:00-03:00',
+        ciencia_aviso_privacidade: true,
+        versao_aviso_privacidade: '2026-11-v1',
+      } });
       expect(respRecComPortalLigado.status).toBe(401);
 
       // Acompanhamento ligado, portal desligado: consulta funciona normalmente
@@ -762,6 +797,7 @@ describe('SCRUM-266 — Credenciais e API segura de acompanhamento externo SVO',
       ).mockResolvedValueOnce({
         solicitacao_id: 101,
         revogada_em: new Date('2026-11-27T14:00:00.000Z'),
+        alterada: true,
         revogada_motivo: 'Solicitação de bloqueio por exposição acidental',
         atualizado_em: new Date('2026-11-27T14:00:00.000Z'),
       });

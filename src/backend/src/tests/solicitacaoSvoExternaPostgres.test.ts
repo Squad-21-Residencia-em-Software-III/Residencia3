@@ -1,3 +1,4 @@
+import { acompanhamentoExternoSvoModel } from '../models/acompanhamentoExternoSvoModel';
 import { randomBytes } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import knex, { type Knex } from 'knex';
@@ -197,9 +198,9 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     const recuperacao = await db('solicitacoes_svo_recuperacoes_tentativa').where({ solicitacao_id: s.id }).first();
     expect(JSON.stringify(recuperacao)).not.toContain(resposta.body.credencial);
     expect(JSON.stringify(recuperacao)).not.toContain(resposta.body.protocolo);
-    // 15 minutos, com margem: emitida_em vem do relógio do banco e expira_em, da aplicação
+    // Os dois prazos usam a mesma referência da emissão no banco.
     const janelaMs = new Date(recuperacao.expira_em).getTime() - new Date(credencial.emitida_em).getTime();
-    expect(Math.abs(janelaMs - 15 * 60 * 1000)).toBeLessThan(5_000);
+    expect(janelaMs).toBe(15 * 60 * 1000);
 
     // Na fila interna, sem dados pessoais
     const fila = await request(app).get('/api/solicitacoes-svo?status=EM_TRIAGEM&limite=100').set('Authorization', gestorSvo.token);
@@ -370,17 +371,16 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
       expect((await avisosS1(s.id)).map((a) => a.usuario_id)).toEqual(await audienciaEsperada());
     });
 
-    it('o endpoint de recuperação da SCRUM-266 devolve o mesmo comprovante (payload já normalizado)', async () => {
+    it('o endpoint de recuperação da SCRUM-266 devolve o mesmo comprovante (payload original)', async () => {
       const t = tentativa();
       const criada = await enviar(corpo(), t);
       expect(criada.status).toBe(201);
       criadas.push((await solicitacaoPorProtocolo(criada.body.protocolo)).id);
 
-      const normalizado = solicitacaoSvoExternaSchema.parse(corpo());
       const recuperada = await request(app)
         .post(`${URL_EXTERNA}/recuperar-comprovante`)
         .set({ 'Idempotency-Key': t.chave, 'X-Prova-Tentativa': t.prova })
-        .send({ payload: normalizado });
+        .send({ payload: corpo() });
       expect(recuperada.status).toBe(200);
       expect(recuperada.body.protocolo).toBe(criada.body.protocolo);
       expect(recuperada.body.credencial).toBe(criada.body.credencial);
@@ -399,6 +399,52 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
         solicitacaoSvoExternaService.registrar(dados, { chaveIdempotencia: t.chave, provaTentativa: t.prova }, { agora: depoisDaJanela }),
       ).rejects.toMatchObject({ statusCode: 401, codigo: 'CREDENCIAL_EXTERNA_INVALIDA' });
       expect(await contarExternas()).toBe(antes);
+    });
+
+    it('bloqueia consulta e recuperação em conexões separadas até a revogação concluir', async () => {
+      const t = tentativa();
+      const criada = await enviar(corpo(), t);
+      expect(criada.status).toBe(201);
+      const s = await solicitacaoPorProtocolo(criada.body.protocolo);
+      criadas.push(s.id);
+      const revogacao = await db.transaction();
+      const consulta = await db.transaction();
+      const recuperacao = await db.transaction();
+      try {
+        const { rows: [{ pid: pidConsulta }] } = await consulta.raw('SELECT pg_backend_pid() AS pid');
+        const { rows: [{ pid: pidRecuperacao }] } = await recuperacao.raw('SELECT pg_backend_pid() AS pid');
+        expect(pidConsulta).not.toBe(pidRecuperacao);
+        await acompanhamentoExternoSvoModel.revogarCredencial(s.id, 'revogação sintética', new Date(), revogacao);
+        const acessos = Promise.allSettled([
+          acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
+            criada.body.protocolo, criada.body.credencial, { conexao: consulta },
+          ).finally(() => consulta.rollback()),
+          acompanhamentoExternoSvoService.recuperarComprovanteTentativa({
+            chaveIdempotencia: t.chave,
+            provaTentativa: t.prova,
+            payloadNormalizado: solicitacaoSvoExternaSchema.parse(corpo()),
+          }, recuperacao).finally(() => recuperacao.rollback()),
+        ]);
+        await vi.waitFor(async () => {
+          const { rows: [bloqueios] } = await admin.raw(
+            'SELECT cardinality(pg_blocking_pids(?)) AS consulta, cardinality(pg_blocking_pids(?)) AS recuperacao',
+            [pidConsulta, pidRecuperacao],
+          );
+          expect(bloqueios.consulta).toBeGreaterThan(0);
+          expect(bloqueios.recuperacao).toBeGreaterThan(0);
+        });
+        await revogacao.commit();
+        expect(await acessos).toEqual([
+          { status: 'rejected', reason: expect.objectContaining({ statusCode: 401 }) },
+          { status: 'rejected', reason: expect.objectContaining({ statusCode: 401 }) },
+        ]);
+        const envelope = await admin('solicitacoes_svo_recuperacoes_tentativa').where({ solicitacao_id: s.id }).first();
+        expect(envelope).toMatchObject({ envelope_cifrado: null, descartada_em: expect.any(Date) });
+      } finally {
+        await Promise.all([revogacao, consulta, recuperacao].map(async (trx) => {
+          if (!trx.isCompleted()) await trx.rollback();
+        }));
+      }
     });
 
     it('credencial revogada: a repetição responde 401 uniforme e não cria novo chamado', async () => {

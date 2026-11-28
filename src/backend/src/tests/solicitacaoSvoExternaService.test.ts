@@ -159,6 +159,7 @@ describe('solicitacaoSvoExternaService.registrar (SCRUM-264)', () => {
 
   it('prova errada recebe 401 uniforme, mesmo com conteúdo divergente: nada vaza sobre a chave', async () => {
     vi.mocked(acompanhamentoExternoSvoModel.buscarTentativaPorChaveIdempotencia).mockResolvedValue(existente() as never);
+    vi.mocked(servico266.recuperarComprovanteTentativa).mockRejectedValue(new AppError('inválida', 401, 'CREDENCIAL_EXTERNA_INVALIDA'));
     const outro = { ...dados, descricao_ocorrencia: 'Outra descricao sintetica.' };
     for (const caso of [
       servico.registrar(dados, { ...tentativa, provaTentativa: 'Q'.repeat(43) }),
@@ -168,7 +169,7 @@ describe('solicitacaoSvoExternaService.registrar (SCRUM-264)', () => {
       expect(erro).toBeInstanceOf(AppError);
       expect(erro).toMatchObject({ statusCode: 401, codigo: 'CREDENCIAL_EXTERNA_INVALIDA' });
     }
-    expect(servico266.recuperarComprovanteTentativa).not.toHaveBeenCalled();
+    expect(servico266.recuperarComprovanteTentativa).toHaveBeenCalledTimes(2);
     nadaGravado();
   });
 
@@ -177,6 +178,7 @@ describe('solicitacaoSvoExternaService.registrar (SCRUM-264)', () => {
       ...existente(),
       prova_tentativa_digest: null,
     } as never);
+    vi.mocked(servico266.recuperarComprovanteTentativa).mockRejectedValueOnce(new AppError('inválida', 401, 'CREDENCIAL_EXTERNA_INVALIDA'));
     await expect(servico.registrar(dados, tentativa)).rejects.toMatchObject({ statusCode: 401 });
     nadaGravado();
   });

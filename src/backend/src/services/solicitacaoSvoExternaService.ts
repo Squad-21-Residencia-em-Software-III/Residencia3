@@ -1,15 +1,11 @@
 import { db } from '../config/database';
-import { AppError } from '../errors/AppError';
 import { acompanhamentoExternoSvoModel } from '../models/acompanhamentoExternoSvoModel';
 import { auditoriaModel, MODULOS_AUDITORIA } from '../models/auditoriaModel';
 import { solicitacaoSvoExternaModel } from '../models/solicitacaoSvoExternaModel';
 import type { CriarSolicitacaoSvoExternaInput } from '../validators/solicitacaoSvoExternaSchemas';
 import {
   acompanhamentoExternoSvoService,
-  calcularDigestProvaTentativa,
-  compararDigestsTempoConstante,
   gerarProtocoloExternoSvo,
-  MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA,
 } from './acompanhamentoExternoSvoService';
 import { notificacaoSvoService } from './notificacaoSvoService';
 
@@ -28,11 +24,6 @@ export interface ResultadoCriacaoExterna {
 
 const VIOLACAO_UNIQUE_POSTGRES = '23505';
 const TENTATIVAS_DE_PROTOCOLO = 3;
-
-// Mesma resposta (e mesmo código) da recuperação da SCRUM-266: prova errada, chave sem prova,
-// credencial revogada e janela expirada são indistinguíveis para quem não prova a posse da tentativa.
-const naoAutorizado = () =>
-  new AppError(MENSAGEM_CREDENCIAL_EXTERNA_INVALIDA, 401, 'CREDENCIAL_EXTERNA_INVALIDA');
 
 export const solicitacaoSvoExternaService = {
   /**
@@ -59,18 +50,6 @@ export const solicitacaoSvoExternaService = {
         trx,
       );
       if (existente) {
-        // 1º a prova de posse (tempo constante); só depois qualquer informação sobre o conteúdo
-        const provaDigest = calcularDigestProvaTentativa(
-          chaveIdempotencia,
-          provaTentativa,
-          existente.versao_credencial,
-        );
-        if (
-          !existente.prova_tentativa_digest ||
-          !compararDigestsTempoConstante(provaDigest, existente.prova_tentativa_digest)
-        ) {
-          throw naoAutorizado();
-        }
         const recuperada = await acompanhamentoExternoSvoService.recuperarComprovanteTentativa(
           { chaveIdempotencia, provaTentativa, payloadNormalizado: dados, agora: opcoes.agora },
           trx,

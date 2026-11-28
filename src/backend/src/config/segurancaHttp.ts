@@ -37,6 +37,7 @@ export function corsPorAmbiente() {
     credentials: true,
     methods: METODOS_CORS,
     allowedHeaders: CABECALHOS_CORS,
+    exposedHeaders: ['Retry-After'],
     maxAge: 600,
   });
 }

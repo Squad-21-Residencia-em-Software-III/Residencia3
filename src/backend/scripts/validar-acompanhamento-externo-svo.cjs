@@ -67,6 +67,7 @@ async function criarSchemaIsoladoScrum266(trx, schema) {
   await migrationScrum263.up(trx);
   await correcaoScrum263.up(trx);
   await migrationScrum266.up(trx);
+  await require('../database/migrations/20261128110000_descartar_envelopes_portal_svo').up(trx);
 }
 
 async function executarValidacaoPostgresScrum266() {
@@ -334,7 +335,7 @@ async function executarValidacaoPostgresScrum266() {
         await acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
           protocoloA,
           emissaoA.credencial,
-          { conexao: trx, agora: limite30Dias }
+          { conexao: trx, agora: new Date(limite30Dias.getTime() - 1) }
         );
       assert.equal(dtoConcluidaNoLimite.status, 'CONCLUIDA');
 
@@ -343,7 +344,7 @@ async function executarValidacaoPostgresScrum266() {
           acompanhamentoExternoSvoService.consultarAcompanhamentoPublico(
             protocoloA,
             emissaoA.credencial,
-            { conexao: trx, agora: new Date(limite30Dias.getTime() + 1) }
+            { conexao: trx, agora: limite30Dias }
           ),
         { statusCode: 401 }
       );
@@ -432,7 +433,7 @@ async function executarValidacaoPostgresScrum266() {
         );
       assert.equal(acessoAposRevogacao, false);
       relatorio.push(
-        '4. Revogacao atomica e bloqueio concorrente em registrarAcessoValidoSeAutorizado: OK'
+        '4. Negação de acesso após revogação na mesma transação: OK'
       );
     });
 

@@ -4,6 +4,7 @@ import {
   createHash,
   createHmac,
   randomBytes,
+  randomInt,
   timingSafeEqual,
 } from 'node:crypto';
 import type { Knex } from 'knex';
@@ -295,10 +296,9 @@ export function gerarProtocoloExternoSvo(agora = new Date()): string {
   const ano = String(agora.getUTCFullYear()).padStart(4, '0');
   const mes = String(agora.getUTCMonth() + 1).padStart(2, '0');
   const dia = String(agora.getUTCDate()).padStart(2, '0');
-  const bytes = randomBytes(COMPRIMENTO_SUFIXO_PROTOCOLO);
   let sufixo = '';
   for (let i = 0; i < COMPRIMENTO_SUFIXO_PROTOCOLO; i += 1) {
-    sufixo += ALFABETO_PROTOCOLO[bytes[i]! % ALFABETO_PROTOCOLO.length];
+    sufixo += ALFABETO_PROTOCOLO[randomInt(ALFABETO_PROTOCOLO.length)];
   }
   return `SVO-${ano}${mes}${dia}-${sufixo}`;
 }
@@ -331,6 +331,7 @@ export function mapearStatusPublicoAcompanhamentoSvo(
       status = registro.analise_iniciada_em ? 'EM_ANALISE' : 'RECEBIDA';
       break;
     case 'CONFIRMADA':
+    case 'EM_ANDAMENTO':
       // Programacao/alocacao de recursos nao inicia efetivamente o atendimento externo.
       // Apenas saida efetiva / deslocamento ou chegada ao local caracteriza EM_ANDAMENTO.
       status =
@@ -338,9 +339,6 @@ export function mapearStatusPublicoAcompanhamentoSvo(
         ['EM_DESLOCAMENTO', 'NO_LOCAL'].includes(registro.ordem_status)
           ? 'EM_ANDAMENTO'
           : 'CONFIRMADA';
-      break;
-    case 'EM_ANDAMENTO':
-      status = 'EM_ANDAMENTO';
       break;
     case 'CONCLUIDA':
       status = 'CONCLUIDA';
@@ -553,9 +551,9 @@ export const acompanhamentoExternoSvoService = {
       versaoAtual
     );
 
-    let emitidaEmBanco: Date | string;
+    let emitidaEm: Date;
     try {
-      const credencialEmitida = await acompanhamentoExternoSvoModel.inserirCredencial(
+      const emitida = await acompanhamentoExternoSvoModel.inserirCredencial(
         {
           solicitacao_id: input.solicitacaoId,
           segredo_digest: segredoDigest,
@@ -564,11 +562,10 @@ export const acompanhamentoExternoSvoService = {
           chave_idempotencia_criacao: chaveIdempotencia,
           payload_criacao_digest: payloadDigest,
           prova_tentativa_digest: provaDigest,
-          // emitida_em usa o padrão do banco: a role da aplicação não tem INSERT nessa coluna
         },
         trx
       );
-      emitidaEmBanco = credencialEmitida?.emitida_em ?? agora;
+      emitidaEm = new Date(emitida.emitida_em);
     } catch (erro) {
       if (codigoErroBanco(erro) === '23505') {
         throw new AppError(
@@ -583,7 +580,7 @@ export const acompanhamentoExternoSvoService = {
     let recuperacaoExpiraEm: Date | null = null;
     if (provaTentativa) {
       recuperacaoExpiraEm = new Date(
-        agora.getTime() + JANELA_RECUPERACAO_TENTATIVA_MS
+        emitidaEm.getTime() + JANELA_RECUPERACAO_TENTATIVA_MS
       );
       const envelopeCifrado = cifrarEnvelopeRecuperacao({
         credencial,
@@ -599,7 +596,7 @@ export const acompanhamentoExternoSvoService = {
           solicitacao_id: input.solicitacaoId,
           envelope_cifrado: envelopeCifrado,
           versao_chave: versaoAtual,
-          criado_em: agora,
+          criado_em: emitidaEm,
           expira_em: recuperacaoExpiraEm,
         },
         trx
@@ -610,7 +607,7 @@ export const acompanhamentoExternoSvoService = {
       solicitacaoId: input.solicitacaoId,
       protocolo,
       credencial,
-      emitidaEm: new Date(emitidaEmBanco).toISOString(),
+      emitidaEm: emitidaEm.toISOString(),
       recuperacaoExpiraEm: recuperacaoExpiraEm
         ? recuperacaoExpiraEm.toISOString()
         : null,
@@ -628,7 +625,9 @@ export const acompanhamentoExternoSvoService = {
     input: RecuperacaoTentativaInput,
     conexao: Knex = db
   ): Promise<EmissaoCredencialExternaResultado> {
-    const agora = input.agora ?? new Date();
+    if (!conexao.isTransaction) {
+      return conexao.transaction((trx) => this.recuperarComprovanteTentativa(input, trx));
+    }
     const chaveValidada = chaveIdempotenciaCriacaoSchema.safeParse(
       input.chaveIdempotencia
     );
@@ -671,22 +670,6 @@ export const acompanhamentoExternoSvoService = {
       throw erroCredencialInvalida();
     }
 
-    const payloadDigestAtual = calcularDigestPayloadCriacao(
-      input.payloadNormalizado
-    );
-    if (
-      !compararDigestsTempoConstante(
-        payloadDigestAtual,
-        tentativa.payload_criacao_digest
-      )
-    ) {
-      throw new AppError(
-        'Esta chave de tentativa já foi utilizada com dados diferentes.',
-        409,
-        'CONFLITO_IDEMPOTENCIA'
-      );
-    }
-
     const provaConfere =
       tentativa.prova_tentativa_digest !== null &&
       compararDigestsTempoConstante(
@@ -696,6 +679,7 @@ export const acompanhamentoExternoSvoService = {
 
     if (
       !provaConfere ||
+      !obterSegredoCredencialPorVersao(versao) ||
       tentativa.revogada_em !== null ||
       tentativa.recuperacao_descartada_em !== null ||
       !tentativa.envelope_cifrado ||
@@ -705,7 +689,8 @@ export const acompanhamentoExternoSvoService = {
     }
 
     const expiraEm = paraDataValida(tentativa.recuperacao_expira_em);
-    if (!expiraEm || agora.getTime() > expiraEm.getTime()) {
+    const agora = input.agora ?? tentativa.verificada_em;
+    if (!expiraEm || !paraDataValida(agora) || new Date(agora).getTime() >= expiraEm.getTime()) {
       throw erroCredencialInvalida();
     }
 
@@ -732,6 +717,22 @@ export const acompanhamentoExternoSvoService = {
       throw erroCredencialInvalida();
     }
 
+    const payloadDigestAtual = calcularDigestPayloadCriacao(
+      input.payloadNormalizado
+    );
+    if (
+      !compararDigestsTempoConstante(
+        payloadDigestAtual,
+        tentativa.payload_criacao_digest
+      )
+    ) {
+      throw new AppError(
+        'Esta chave de tentativa já foi utilizada com dados diferentes.',
+        409,
+        'CONFLITO_IDEMPOTENCIA'
+      );
+    }
+
     return {
       solicitacaoId: tentativa.solicitacao_id,
       protocolo: decifrado.protocolo,
@@ -754,7 +755,7 @@ export const acompanhamentoExternoSvoService = {
     encerradoEm: Date | null;
     consultaDisponivelAte: Date | null;
   }> {
-    const agora = opcoes?.agora ?? new Date();
+    const agora = opcoes?.agora;
     const conexao = opcoes?.conexao ?? db;
 
     const validacaoProtocolo = protocoloExternoSvoSchema.safeParse(protocoloBruto);
@@ -792,21 +793,29 @@ export const acompanhamentoExternoSvoService = {
       digestEsperado
     );
 
-    if (!registro || !credencialConfere || registro.revogada_em !== null) {
+    if (!registro || !credencialConfere || registro.revogada_em !== null ||
+        (algoritmo !== 'SHA-256' && !obterSegredoCredencialPorVersao(versao))) {
       throw erroCredencialInvalida();
     }
 
     const encerradoEm = resolverMomentoEncerramento(registro);
     const consultaDisponivelAte = resolverLimiteConsultaPublica(registro);
 
-    if (
-      consultaDisponivelAte &&
-      agora.getTime() > consultaDisponivelAte.getTime()
-    ) {
+    const terminal = ['CONCLUIDA', 'RECUSADA', 'CANCELADA'].includes(registro.status_solicitacao);
+    if ((terminal && (!encerradoEm || !consultaDisponivelAte)) ||
+        (agora && consultaDisponivelAte && agora >= consultaDisponivelAte)) {
       throw erroCredencialInvalida();
     }
 
-    if (opcoes?.registrarAcesso !== false) {
+    if (opcoes?.registrarAcesso === false && !conexao.isTransaction) {
+      throw new Error('A autorização sem registro de acesso exige a transação da operação');
+    }
+    if (opcoes?.registrarAcesso === false) {
+      const autorizada = await acompanhamentoExternoSvoModel.bloquearCredencialAtiva(
+        registro.solicitacao_id, agora, conexao
+      );
+      if (!autorizada) throw erroCredencialInvalida();
+    } else {
       const acessoAutorizado =
         await acompanhamentoExternoSvoModel.registrarAcessoValidoSeAutorizado(
           registro.solicitacao_id,
@@ -896,7 +905,7 @@ export const acompanhamentoExternoSvoService = {
         );
       }
 
-      await auditoriaModel.registrar(
+      if (revogada.alterada) await auditoriaModel.registrar(
         {
           usuario_id: autor.id,
           acao: `REVOGOU_CREDENCIAL_EXTERNA_SVO solicitacao_id=${solicitacaoId}`,

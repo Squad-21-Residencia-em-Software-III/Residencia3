@@ -45,7 +45,7 @@ acompanhamentoExternoSvoRoutes.get(
 acompanhamentoExternoSvoRoutes.post(
   '/recuperar-comprovante',
   aplicarCabecalhosSemCachePublicoMiddleware,
-  exigirRecursoAtivo('portalSvo', 'acompanhamentoExterno'),
+  exigirRecursoAtivo('portalSvo'),
   limitarTentativasAcompanhamentoExterno,
   acompanhamentoExternoSvoController.recuperarComprovanteTentativa
 );
