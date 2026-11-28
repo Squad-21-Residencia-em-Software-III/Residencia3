@@ -26,11 +26,11 @@ const URL_EXTERNA = '/api/solicitacoes-svo/externas';
 
 interface Conta { id: number; token: string }
 
-async function conta(admin: Knex, perfil: 'ADMINISTRADOR' | 'GESTOR_SVO' | 'SOLICITANTE', ativo = true): Promise<Conta> {
+async function conta(admin: Knex, perfil: 'ADMINISTRADOR' | 'GESTOR_SVO' | 'SOLICITANTE' | 'MOTORISTA_SVO' | 'INTEGRANTE_SVO', ativo = true): Promise<Conta> {
   const chave = nonce();
   const [u] = await admin('usuarios').insert({
     nome: `Teste ${chave}`, email: `${chave}@testes.invalid`, senha: 'hash-de-teste', perfil, ativo,
-    tipo_usuario: perfil,
+    tipo_usuario: perfil === 'MOTORISTA_SVO' ? 'MOTORISTA' : perfil,
   }).returning('*');
   if (perfil === 'GESTOR_SVO') {
     const unidade = await admin('unidades').where({ nome: 'SVO' }).first('id');
@@ -369,6 +369,80 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
       expect(await db('solicitacoes_svo').where({ protocolo: perdida.body.protocolo })).toHaveLength(1);
       expect(await db('solicitacoes_svo_credenciais_externas').where({ solicitacao_id: s.id })).toHaveLength(1);
       expect((await avisosS1(s.id)).map((a) => a.usuario_id)).toEqual(await audienciaEsperada());
+    });
+
+    it('percorre os sete estados públicos com as transições operacionais reais', async () => {
+      const criar = async () => {
+        const resposta = await enviar(corpo(), tentativa()).expect(201);
+        const { id } = await solicitacaoPorProtocolo(resposta.body.protocolo);
+        criadas.push(id);
+        return {
+          id,
+          estado: async (status: string) => {
+            const respostaPublica = await consultar(resposta.body.protocolo, resposta.body.credencial).expect(200);
+            expect(respostaPublica.body.status).toBe(status);
+            return respostaPublica.body;
+          },
+        };
+      };
+      const emAtendimento = await criar();
+      await emAtendimento.estado('RECEBIDA');
+      const fluxo = (id: number, acao: string) => request(app)
+        .patch('/api/solicitacoes-svo/' + id + '/' + acao).set('Authorization', gestorSvo.token);
+      const confirmar = async (id: number) => {
+        await fluxo(id, 'confirmar').expect(201);
+        return db('ordens_svo').where({ solicitacao_id: id }).first('id');
+      };
+      await fluxo(emAtendimento.id, 'iniciar-analise').expect(200);
+      await emAtendimento.estado('EM_ANALISE');
+      const ordem = await confirmar(emAtendimento.id);
+      await emAtendimento.estado('CONFIRMADA');
+
+      const condutor = await conta(admin, 'MOTORISTA_SVO');
+      const integrante = await conta(admin, 'INTEGRANTE_SVO');
+      const chave = nonce();
+      const [veiculo] = await admin('veiculos').insert({
+        placa: 'T' + chave, modelo: 'Veículo sintético', tipo_frota: 'SVO',
+        capacidade_maxima: 4, lotacao_cabine: 3, status: 'DISPONIVEL',
+      }).returning('id');
+      const [motorista] = await admin('motoristas').insert({
+        usuario_id: condutor.id, numero_cnh: chave, categoria_cnh: 'B',
+        validade_cnh: '2099-12-31', tipo_motorista: 'SVO', status: 'DISPONIVEL',
+      }).returning('id');
+      const [equipe] = await admin('equipes_svo').insert({ nome_equipe: 'Equipe sintética ' + chave }).returning('id');
+      await admin('equipes_svo_integrantes').insert({
+        equipe_id: equipe.id, usuario_id: integrante.id, vinculado_em: new Date(),
+      });
+      await request(app).post('/api/viagens').set('Authorization', gestorSvo.token).send({
+        tipo_operacao: 'SVO', solicitacao_id: emAtendimento.id, veiculo_id: veiculo.id,
+        motorista_id: motorista.id, equipe_id: equipe.id, integrantes_ids: [integrante.id],
+        inicio_previsto: new Date(Date.now() + 60_000).toISOString(),
+        fim_previsto: new Date(Date.now() + 3_600_000).toISOString(),
+      }).expect(200);
+      expect((await db('solicitacoes_svo').where({ id: emAtendimento.id }).first()).status).toBe('EM_ANDAMENTO');
+      await emAtendimento.estado('CONFIRMADA');
+
+      // Avança somente a janela da fixture para exercitar a liberação e saída reais sem esperar um minuto.
+      await admin('ordens_svo').where({ id: ordem.id }).update({ inicio_previsto: new Date(Date.now() - 60_000) });
+      const motoristaNaOrdem = (caminho: string) => request(app).patch('/api/viagens/' + caminho)
+        .set('Authorization', condutor.token);
+      await motoristaNaOrdem(ordem.id + '/iniciar').send({ tipo_operacao: 'SVO', km_inicial: 10 }).expect(200);
+      await emAtendimento.estado('EM_ANDAMENTO');
+      await motoristaNaOrdem('ordens-svo/' + ordem.id + '/chegar-local').expect(200);
+      await emAtendimento.estado('EM_ANDAMENTO');
+      await motoristaNaOrdem(ordem.id + '/finalizar').send({ tipo_operacao: 'SVO', km_final: 20 }).expect(200);
+      const encerrada = await emAtendimento.estado('CONCLUIDA');
+      expect(Date.parse(encerrada.consulta_disponivel_ate) - Date.parse(encerrada.encerrada_em)).toBe(30 * 86_400_000);
+
+      const recusada = await criar();
+      await fluxo(recusada.id, 'recusar').send({ motivo_recusa: 'Justificativa interna sintética' }).expect(200);
+      const naoAcolhida = await recusada.estado('NAO_ACOLHIDA');
+      expect(JSON.stringify(naoAcolhida)).not.toContain('Justificativa interna sintética');
+      const cancelada = await criar();
+      const ordemCancelada = await confirmar(cancelada.id);
+      await request(app).patch('/api/viagens/' + ordemCancelada.id + '/cancelar')
+        .set('Authorization', gestorSvo.token).send({ tipo_operacao: 'SVO', cancelar_solicitacao: true }).expect(200);
+      await cancelada.estado('CANCELADA');
     });
 
     it('o endpoint de recuperação da SCRUM-266 devolve o mesmo comprovante (payload original)', async () => {
