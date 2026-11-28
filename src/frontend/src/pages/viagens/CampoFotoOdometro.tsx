@@ -24,8 +24,10 @@ interface CampoFotoOdometroProps {
 export function CampoFotoOdometro({ fase, arquivo, erro, validando, onChange, obrigatoria, disabled = false }: CampoFotoOdometroProps) {
   const camera = useRef<HTMLInputElement>(null);
   const galeria = useRef<HTMLInputElement>(null);
+  const botaoGaleria = useRef<HTMLButtonElement>(null);
   const idAjuda = useId();
   const [ampliada, setAmpliada] = useState(false);
+  const [fotoRemovida, setFotoRemovida] = useState(false);
   const [previa, setPrevia] = useState<string | null>(null);
   const rotuloFase = LABELS_FASE_ODOMETRO[fase].toLowerCase();
 
@@ -44,7 +46,10 @@ export function CampoFotoOdometro({ fase, arquivo, erro, validando, onChange, ob
     const escolhido = e.target.files?.[0] ?? null;
     // Permite escolher o mesmo arquivo de novo depois de remover
     e.target.value = '';
-    if (escolhido && !bloqueado) void onChange(escolhido);
+    if (escolhido && !bloqueado) {
+      setFotoRemovida(false);
+      void onChange(escolhido);
+    }
   };
 
   const bloqueado = disabled || validando;
@@ -113,7 +118,11 @@ export function CampoFotoOdometro({ fase, arquivo, erro, validando, onChange, ob
               variant="danger-outline"
               className="min-h-11 justify-center"
               disabled={bloqueado}
-              onClick={() => void onChange(null)}
+              onClick={() => {
+                botaoGaleria.current?.focus();
+                setFotoRemovida(true);
+                void onChange(null);
+              }}
             >
               <Trash2 size={14} className="mr-1.5" /> Remover foto
             </Button>
@@ -123,25 +132,28 @@ export function CampoFotoOdometro({ fase, arquivo, erro, validando, onChange, ob
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Button
             type="button"
-            className="min-h-11 justify-center"
-            disabled={bloqueado}
-            onClick={() => camera.current?.click()}
+            className="min-h-11 justify-center aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+            disabled={disabled}
+            aria-disabled={validando || undefined}
+            onClick={() => { if (!bloqueado) camera.current?.click(); }}
           >
             <Camera size={15} className="mr-1.5 shrink-0" /> {arquivo ? 'Tirar outra foto' : 'Tirar foto agora'}
           </Button>
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 justify-center"
-            disabled={bloqueado}
-            onClick={() => galeria.current?.click()}
+            ref={botaoGaleria}
+            className="min-h-11 justify-center aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+            disabled={disabled}
+            aria-disabled={validando || undefined}
+            onClick={() => { if (!bloqueado) galeria.current?.click(); }}
           >
             <Upload size={15} className="mr-1.5 shrink-0" /> {arquivo ? 'Trocar foto na galeria' : 'Carregar foto'}
           </Button>
         </div>
 
       <p className={validando ? 'mt-2 text-xs text-slate-500' : 'sr-only'} role="status">
-        {validando ? 'Verificando a foto...' : arquivo ? `Foto selecionada: ${arquivo.name}` : ''}
+        {validando ? 'Verificando a foto...' : arquivo ? `Foto selecionada: ${arquivo.name}` : fotoRemovida ? 'Foto removida.' : ''}
       </p>
     </fieldset>
   );

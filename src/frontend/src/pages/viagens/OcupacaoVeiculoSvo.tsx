@@ -47,12 +47,13 @@ export function OcupacaoVeiculoSvoPainel({ veiculo, apenasInformativo = false }:
         <Badge tone={toneOcupacao(veiculo)}>{rotuloOcupacao(veiculo)}</Badge>
       </div>
       <div
-        className="h-2 w-full overflow-hidden rounded-full bg-slate-100"
+        className="barra-indicador h-2 w-full overflow-hidden rounded-full bg-slate-100"
         role="progressbar"
         aria-label="Ocupação do veículo"
         aria-valuemin={0}
         aria-valuemax={veiculo.capacidade_maxima}
         aria-valuenow={veiculo.capacidade_utilizada}
+        aria-valuetext={rotuloOcupacao(veiculo)}
       >
         <div
           className={bloqueio && !apenasInformativo ? 'h-full bg-danger' : 'h-full bg-primary'}

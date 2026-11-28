@@ -119,6 +119,8 @@ describe('AbastecimentoPage', () => {
     render(<AbastecimentoPage />);
     expect(await screen.findByText('10,0 km/L · Na meta ou acima')).toBeInTheDocument();
     expect(screen.getByText('5,0 km/L · Abaixo da meta')).toBeInTheDocument();
+    expect(screen.getByText('Veículo #1')).toBeInTheDocument();
+    expect(screen.getByText('Veículo #2')).toBeInTheDocument();
   });
 });
 

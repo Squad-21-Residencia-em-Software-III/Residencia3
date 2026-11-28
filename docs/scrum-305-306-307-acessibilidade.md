@@ -129,3 +129,18 @@ Chrome 158 com PostgreSQL descartável e API real. A composição passou pelo bu
 1. **Texto secundário**: a correção anterior escureceu `--color-text-muted` no padrão. Os cartões de métrica usam esse token e ajustam a quebra dos rótulos. A SCRUM-303 deve preservar o contraste nas duas bases do tema.
 2. **Tema escuro (SCRUM-303)**: conferir a combinação com alto contraste e paletas quando entrar. Se o tema redefinir `--color-text-muted` e afins, o alto contraste precisa vir depois na cascata (ele está em `styles/acessibilidade.css`, importado depois do `global.css`).
 3. **Conflitos esperados**: a troca de `px` por `rem` toca 42 telas. Quem tiver branch aberta nelas resolve trocando só o tamanho da fonte.
+
+## Regressão de foco, preferências e indicadores
+
+| Critério | Evidência automatizada |
+| --- | --- |
+| Odômetro | O acionador da câmera mantém o foco durante a validação, bloqueia acionamento repetido e volta a aceitar entrada após a validação. Remover foto move o foco para o seletor da galeria, anuncia a remoção e preserva o valor do odômetro. |
+| Preferências | Limpar o armazenamento em outra aba restaura o padrão na aba aberta. A suíte da seção valida troca de conta e restauração. A suíte de sessão e push cobre os efeitos de trocar de contexto. |
+| Consumo e ocupação SVO | Consumo mostra a relação com a meta e distingue veículos sem placa disponível pelo identificador. A ocupação anuncia vagas ocupadas no total. As duas barras usam as cores de sistema para manter trilho e preenchimento sob cores forçadas, com os rótulos visíveis. |
+| Agenda, CNH, multas e demais estados | Rótulos e padrões da agenda, ícones e rótulos dos selos, e métricas por teclado têm cobertura automatizada. A matriz de navegador anterior cobre os estados de aprovação e recusa em padrão, três deficiências simuladas e escala de cinza. A inspeção assistiva completa ainda está pendente. |
+
+A SCRUM-303 está em andamento no Jira e nenhuma implementação foi localizada na `develop` ou nas branches remotas consultadas. A homologação da combinação com tema escuro depende dessa entrega.
+
+### Preferências em Chrome desktop
+
+Em perfil temporário de Chrome, alto contraste, tritanopia e escala 150% sincronizaram com outra aba, sobreviveram ao fechamento da aba e reapareceram após reiniciar o navegador. Com o service worker ativo, as três preferências continuaram disponíveis em navegação offline. A verificação também confirmou que abrir e alterar preferências preserva o e-mail digitado no formulário de login e que a emulação de movimento reduzido do sistema é reconhecida. A tentativa de instalação pelo menu do Chrome foi interrompida pelo controle de interface do Windows. A reabertura como aplicativo instalado continua pendente.

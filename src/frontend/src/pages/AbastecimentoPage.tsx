@@ -126,6 +126,7 @@ export default function AbastecimentoPage() {
     });
 
     const listaConsumo: Array<{
+      veiculoId: number;
       placa: string;
       consumoNum: number;
       value: string;
@@ -133,7 +134,7 @@ export default function AbastecimentoPage() {
       belowTarget: boolean;
     }> = [];
 
-    porVeiculo.forEach((listaAbast) => {
+    porVeiculo.forEach((listaAbast, veiculoId) => {
       if (listaAbast.length < 2) return;
       const ordenados = [...listaAbast].sort((a, b) => Number(a.quilometragem) - Number(b.quilometragem));
       let somaKm = 0;
@@ -150,10 +151,11 @@ export default function AbastecimentoPage() {
 
       if (somaLitros > 0 && somaKm > 0) {
         const media = Number((somaKm / somaLitros).toFixed(1));
-        const placa = ordenados[0].veiculo_placa ?? 'Veículo';
+        const placa = ordenados[0].veiculo_placa ?? `Veículo #${veiculoId}`;
         const belowTarget = media < 8.5;
         const pct = Math.min(Math.round((media / 15) * 100), 100);
         listaConsumo.push({
+          veiculoId,
           placa,
           consumoNum: media,
           value: media.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
@@ -419,7 +421,7 @@ export default function AbastecimentoPage() {
                 </p>
               ) : (
                 consumoPorVeiculo.slice(0, 6).map((item) => (
-                  <div key={item.placa} className="flex flex-col gap-1">
+                  <div key={item.veiculoId} className="flex flex-col gap-1">
                     <div className="flex flex-wrap justify-between gap-x-2 text-xs">
                       <span className="font-medium text-slate-800">{item.placa}</span>
                       <span
@@ -431,7 +433,7 @@ export default function AbastecimentoPage() {
                         {item.value} km/L · {item.belowTarget ? 'Abaixo da meta' : 'Na meta ou acima'}
                       </span>
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+                    <div className="barra-indicador h-1.5 w-full overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
                       <div
                         className={cn(
                           'h-full rounded-full transition-all',

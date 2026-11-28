@@ -38,7 +38,9 @@ export function AcessibilidadeProvider({ children }: { children: ReactNode }) {
   // A mesma conta em outra aba: acompanha a mudança
   useEffect(() => {
     const aoMudarEmOutraAba = (evento: StorageEvent) => {
-      if (evento.key === chaveDe(dono)) setEstado({ dono, preferencias: carregarPreferencias(dono) });
+      if (evento.key !== null && evento.key !== chaveDe(dono)) return;
+      // clear() também remove as preferências desta conta, mas envia key=null.
+      setEstado({ dono, preferencias: carregarPreferencias(dono) });
     };
     window.addEventListener('storage', aoMudarEmOutraAba);
     return () => window.removeEventListener('storage', aoMudarEmOutraAba);

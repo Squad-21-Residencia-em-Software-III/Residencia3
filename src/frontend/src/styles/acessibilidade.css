@@ -57,8 +57,19 @@ html {
 /* Cores forçadas do sistema (ex.: Alto Contraste do Windows): o navegador troca as cores e some com sombras e
    anéis; o foco ganha contorno próprio, e os selos de status têm borda transparente, que passa a aparecer */
 @media (forced-colors: active) {
-  :focus-visible {
+  :root :focus-visible,
+  :root[data-contraste='alto'] :focus-visible {
     outline: 3px solid CanvasText;
     outline-offset: 3px;
+  }
+
+  .barra-indicador {
+    forced-color-adjust: none;
+    background-color: Canvas;
+    border: 1px solid CanvasText;
+  }
+
+  .barra-indicador > div {
+    background-color: Highlight;
   }
 }

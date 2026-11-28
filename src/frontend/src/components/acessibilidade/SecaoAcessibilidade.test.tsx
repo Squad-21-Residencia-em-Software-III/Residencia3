@@ -126,6 +126,18 @@ describe('SecaoAcessibilidade (SCRUM-305 e SCRUM-307)', () => {
     expect(within(grupo('Contraste')).getByRole('radio', { name: /Alto contraste/ })).toBeChecked();
   });
 
+  it('restaura as preferências quando outra aba limpa o armazenamento', async () => {
+    sessao.usuario = { id: 5 };
+    salvarPreferencias(5, { ...PREFERENCIAS_PADRAO, contraste: 'alto' });
+    renderizar();
+    expect(html.dataset.contraste).toBe('alto');
+    localStorage.clear();
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: null, storageArea: localStorage }));
+    });
+    expect(html.dataset.contraste).toBe('padrao');
+  });
+
   it('mostra um exemplo dos status com as cores escolhidas', () => {
     renderizar();
     const exemplo = screen.getByRole('group', { name: 'Exemplo de status com as cores escolhidas' });
