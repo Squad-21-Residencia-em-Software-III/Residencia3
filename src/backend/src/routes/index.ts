@@ -14,6 +14,7 @@ import { motoristaRoutes } from './motoristaRoutes';
 import { unidadeRoutes } from './unidadeRoutes';
 import { dashboardRoutes } from './dashboardRoutes';
 import { solicitacaoSvoRoutes } from './solicitacaoSvoRoutes';
+import { solicitacaoSvoExternaRoutes } from './solicitacaoSvoExternaRoutes';
 import { auditoriaRoutes } from './auditoriaRoutes';
 import { equipeSvoRoutes } from './equipeSvoRoutes';
 import { relatorioRoutes } from './relatorioRoutes';
@@ -48,6 +49,8 @@ routes.use('/viagens', viagemRoutes);
 routes.use('/motoristas', motoristaRoutes);
 routes.use('/unidades', unidadeRoutes);
 routes.use('/dashboard', dashboardRoutes);
+// Rota pública do portal (SCRUM-264): precisa vir ANTES da rota interna, que exige login
+routes.use('/solicitacoes-svo/externas', solicitacaoSvoExternaRoutes);
 routes.use('/solicitacoes-svo', solicitacaoSvoRoutes);
 routes.use('/auditorias', auditoriaRoutes);
 routes.use('/equipes-svo', equipeSvoRoutes);
