@@ -137,7 +137,7 @@ describe.skipIf(!habilitado)('Solicitação SVO externa em PostgreSQL descartáv
     ]) {
       try { if (criadas.length > 0) await comando(criadas); } catch { /* o banco é descartável */ }
     }
-    await admin.destroy();
+    await admin?.destroy();
     await db.destroy();
   });
 
