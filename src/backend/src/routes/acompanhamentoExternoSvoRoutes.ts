@@ -5,6 +5,7 @@ import {
 } from '../controllers/acompanhamentoExternoSvoController';
 import { exigirRecursoAtivo } from '../middlewares/exigirRecursoAtivo';
 import { criarLimitador } from '../middlewares/limitarTentativasLogin';
+import { protegerTrabalhoPortalSvo } from '../middlewares/protegerPortalSvo';
 
 const QUINZE_MINUTOS_MS = 15 * 60 * 1000;
 
@@ -29,7 +30,7 @@ acompanhamentoExternoSvoRoutes.post(
   aplicarCabecalhosSemCachePublicoMiddleware,
   exigirRecursoAtivo('acompanhamentoExterno'),
   limitarTentativasAcompanhamentoExterno,
-  acompanhamentoExternoSvoController.consultarPorPost
+  protegerTrabalhoPortalSvo('acompanhar', acompanhamentoExternoSvoController.consultarPorPost)
 );
 
 // 2. Consulta por GET com protocolo no path e credencial exclusivamente no header X-Credencial-Acompanhamento
@@ -38,7 +39,7 @@ acompanhamentoExternoSvoRoutes.get(
   aplicarCabecalhosSemCachePublicoMiddleware,
   exigirRecursoAtivo('acompanhamentoExterno'),
   limitarTentativasAcompanhamentoExterno,
-  acompanhamentoExternoSvoController.consultarPorProtocoloNoPath
+  protegerTrabalhoPortalSvo('acompanhar', acompanhamentoExternoSvoController.consultarPorProtocoloNoPath)
 );
 
 // 3. Recuperacao autenticada de comprovante (protocolo + credencial) apos perda da resposta no POST de criacao
@@ -47,5 +48,5 @@ acompanhamentoExternoSvoRoutes.post(
   aplicarCabecalhosSemCachePublicoMiddleware,
   exigirRecursoAtivo('portalSvo'),
   limitarTentativasAcompanhamentoExterno,
-  acompanhamentoExternoSvoController.recuperarComprovanteTentativa
+  protegerTrabalhoPortalSvo('recuperar', acompanhamentoExternoSvoController.recuperarComprovanteTentativa)
 );

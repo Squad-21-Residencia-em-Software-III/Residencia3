@@ -28,26 +28,19 @@ app.use(logRequisicao);
 // Antes das rotas, para valer também nas respostas de erro e no 404
 app.use(cabecalhosDeSeguranca());
 app.use(corsPorAmbiente());
-// Proteção contra excesso (docs/limites-e-timeouts.md): concorrência e tempo limite por requisição
-app.use(limitarConcorrencia);
-// O envio da foto do odômetro tem tempo próprio, maior (ver evidenciaOdometroRoutes)
-app.use((req, res, next) => (ehEnvioDeFotoOdometro(req) ? next() : limitarTempoRequisicao(req, res, next)));
-app.use(cookieParser());
 const criacaoExternaSvo = '/api/solicitacoes-svo/externas';
 const semCachePortalSvo: RequestHandler = (_req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
   next();
 };
-app.post(criacaoExternaSvo, semCachePortalSvo, exigirRecursoAtivo('portalSvo'), protegerPortalSvo('cadastrar'));
-// SCRUM-266 mantém a própria validação uniforme e a cota por IP de falhas.
-const acompanharSvo = criacaoExternaSvo + '/acompanhamento';
-const protegerAcompanhamentoSvo = [
-  semCachePortalSvo, exigirRecursoAtivo('acompanhamentoExterno'), protegerPortalSvo('acompanhar'),
-];
-app.post(acompanharSvo, ...protegerAcompanhamentoSvo);
-app.get(acompanharSvo + '/:protocolo', ...protegerAcompanhamentoSvo);
-app.post(criacaoExternaSvo + '/recuperar-comprovante',
-  semCachePortalSvo, exigirRecursoAtivo('portalSvo'), protegerPortalSvo('recuperar'));
+app.use([criacaoExternaSvo, '/api/portal-svo/mapas'], semCachePortalSvo);
+// Proteção contra excesso (docs/limites-e-timeouts.md): concorrência e tempo limite por requisição
+app.use(limitarConcorrencia);
+// O envio da foto do odômetro tem tempo próprio, maior (ver evidenciaOdometroRoutes)
+app.use((req, res, next) => (ehEnvioDeFotoOdometro(req) ? next() : limitarTempoRequisicao(req, res, next)));
+app.use(cookieParser());
+// Ponto de integração do cadastro enquanto a SCRUM-264 está em revisão.
+app.post(criacaoExternaSvo, exigirRecursoAtivo('portalSvo'), protegerPortalSvo('cadastrar'));
 app.use(express.json({ limit: '100kb' }));
 app.post(criacaoExternaSvo, verificarHoneypotPortalSvo);
 

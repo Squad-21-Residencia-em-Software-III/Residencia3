@@ -1,5 +1,6 @@
 import knex from 'knex';
 import { createHmac, randomBytes } from 'node:crypto';
+import { ipKeyGenerator } from 'express-rate-limit';
 import request from 'supertest';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
@@ -9,6 +10,7 @@ import { carregarRecursosOperacionais } from '../config/recursosOperacionais';
 import { PERFIS } from '../constants/perfis';
 import type { Usuario } from '../models/usuarioModel';
 import { authService } from '../services/authService';
+import { acompanhamentoExternoSvoService } from '../services/acompanhamentoExternoSvoService';
 
 const PUBLICO = '/api/portal-svo/mapas';
 const FORMULARIO = '/api/solicitacoes-svo/externas';
@@ -101,6 +103,42 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
     expect(await db(tabela).where('escopo', 'like', '%203.0.113%')).toEqual([]);
   });
 
+  it('usa o prefixo IPv6 do proxy autorizado e ignora o cabeçalho sem autorização', async () => {
+    const segredoAnterior = env.proxySecret;
+    const segredo = randomBytes(24).toString('hex');
+    env.proxySecret = segredo;
+    const chave = (ip: string) => 'geocodificar:' + createHmac('sha256', env.jwtSecret)
+      .update('portal-svo:' + ipKeyGenerator(ip)).digest('hex');
+    const porProxy = (ip: string) => cliente('203.0.113.42')
+      .set('X-Proxy-Secret', segredo).set('X-Vercel-Forwarded-For', ip);
+    try {
+      await porProxy('2001:db8:1234::1').expect(200);
+      await porProxy('2001:db8:1234::2').expect(200);
+      await cliente('203.0.113.42').set('X-Proxy-Secret', 'incorreto')
+        .set('X-Vercel-Forwarded-For', '2001:db8:5678::1').expect(200);
+      expect(await db(tabela).where({ escopo: chave('2001:db8:1234::1') }).sum({ total: 'total' }).first())
+        .toEqual({ total: '2' });
+      expect(await db(tabela).where({ escopo: chave('203.0.113.42') }).first()).toMatchObject({ total: 1 });
+      expect(await db(tabela).where({ escopo: chave('2001:db8:5678::1') }).first()).toBeUndefined();
+    } finally {
+      env.proxySecret = segredoAnterior;
+    }
+  });
+
+  it('limpa cotas vencidas em lotes e ignora uma linha bloqueada em outra conexão', async () => {
+    await admin(tabela).insert(Array.from({ length: 51 }, (_, indice) => ({
+      expira_em: indice + 1, escopo: `teste-vencido:${indice + 1}`, total: 1,
+    })));
+    const vencidas = () => admin(tabela).where('escopo', 'like', 'teste-vencido:%').orderBy('expira_em');
+    await admin.transaction(async (trx) => {
+      await trx(tabela).where({ expira_em: 1, escopo: 'teste-vencido:1' }).forUpdate().first();
+      await cliente('203.0.113.43').expect(200);
+      expect(await vencidas().transacting(trx)).toEqual([{ expira_em: '1', escopo: 'teste-vencido:1', total: 1 }]);
+    });
+    await cliente('203.0.113.43').expect(200);
+    expect(await vencidas()).toEqual([]);
+  });
+
   it('aplica a mesma cota de rajada ao cadastro e à geocodificação', async () => {
     await db.raw(`INSERT INTO limites_portal_svo (expira_em, escopo, total)
       SELECT (floor(extract(epoch FROM clock_timestamp()) / 10) + j) * 10, 'portal:rajada', 20
@@ -117,9 +155,36 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
     await db.raw(`INSERT INTO limites_portal_svo (expira_em, escopo, total)
       SELECT (floor(extract(epoch FROM clock_timestamp()) / 60) + j) * 60, 'acompanhar', 40
       FROM generate_series(1, 2) j`);
-    await request(app).post(acompanhamento).send({}).expect(429).expect('Cache-Control', 'private, no-store');
+    await request(app).post(acompanhamento).send({}).expect(429).expect('Cache-Control', /no-store/);
     await request(app).get(acompanhamento + '/PROTOCOLO-SINTETICO').expect(429)
       .expect(({ headers }) => expect(Number(headers['retry-after'])).toBeGreaterThan(0));
+  });
+
+  it('mantém as vagas da consulta depois do timeout até o trabalho real do controlador terminar', async () => {
+    env.recursosOperacionais = carregarRecursosOperacionais({ ACOMPANHAMENTO_EXTERNO_SVO_ATIVO: 'true' });
+    const timeoutAnterior = env.requestTimeoutMs;
+    env.requestTimeoutMs = 1_000;
+    let liberar!: () => void;
+    const pendente = new Promise<never>((_resolve, rejeitar) => {
+      liberar = () => rejeitar(new Error('Falha sintética do processamento'));
+    });
+    const consulta = vi.spyOn(acompanhamentoExternoSvoService, 'consultarAcompanhamentoPublico')
+      .mockReturnValue(pendente);
+    const caminho = FORMULARIO + '/acompanhamento';
+    const corpo = { protocolo: 'SVO-20261128-ABCDEFGHJKLM', credencial: 'a'.repeat(43) };
+    const consultar = () => request(app).post(caminho).send(corpo);
+    try {
+      await Promise.all(Array.from({ length: 4 }, () => consultar().expect(503)));
+      expect(consulta).toHaveBeenCalledTimes(4);
+      await consultar().expect(429).expect('Retry-After', '1');
+      expect(consulta).toHaveBeenCalledTimes(4);
+      consulta.mockRestore();
+      liberar();
+      await consultar().expect(401);
+    } finally {
+      env.requestTimeoutMs = timeoutAnterior;
+      liberar();
+    }
   });
 
   it('limita concorrência antes de alocar processamento no provedor', async () => {

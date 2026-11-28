@@ -4,10 +4,6 @@ import { mapasController } from '../controllers/mapasController';
 import { protegerTrabalhoPortalSvo } from '../middlewares/protegerPortalSvo';
 
 export const portalSvoMapasRoutes = Router();
-portalSvoMapasRoutes.use((_req, res, next) => {
-  res.set('Cache-Control', 'private, no-store');
-  next();
-});
 portalSvoMapasRoutes.use(exigirRecursoAtivo('portalSvo'), exigirRecursoAtivo('mapasSvo'));
 
 portalSvoMapasRoutes.use((req, res, next) => {
