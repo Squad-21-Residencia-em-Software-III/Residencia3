@@ -1,19 +1,14 @@
 import { Router } from 'express';
-import { env } from '../config/env';
+import { exigirRecursoAtivo } from '../middlewares/exigirRecursoAtivo';
 import { mapasController } from '../controllers/mapasController';
-import { protegerPortalSvo } from '../middlewares/protegerPortalSvo';
+import { protegerTrabalhoPortalSvo } from '../middlewares/protegerPortalSvo';
 
 export const portalSvoMapasRoutes = Router();
-const limitarGeocodificacao = protegerPortalSvo('geocodificar');
-
 portalSvoMapasRoutes.use((_req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
-  if (!env.fase3.flags.portalSvo || !env.fase3.flags.mapasSvo) {
-    res.status(404).json({ erro: 'Rota não encontrada', codigo: 'RECURSO_DESATIVADO' });
-    return;
-  }
   next();
 });
+portalSvoMapasRoutes.use(exigirRecursoAtivo('portalSvo'), exigirRecursoAtivo('mapasSvo'));
 
 portalSvoMapasRoutes.use((req, res, next) => {
   if (Buffer.byteLength(req.originalUrl) > 512) {
@@ -23,5 +18,5 @@ portalSvoMapasRoutes.use((req, res, next) => {
   next();
 });
 
-portalSvoMapasRoutes.get('/buscar', limitarGeocodificacao, mapasController.buscarCepPublico);
-portalSvoMapasRoutes.get('/reverso', limitarGeocodificacao, mapasController.reversoPublico);
+portalSvoMapasRoutes.get('/buscar', protegerTrabalhoPortalSvo('geocodificar', mapasController.buscarCepPublico));
+portalSvoMapasRoutes.get('/reverso', protegerTrabalhoPortalSvo('geocodificar', mapasController.reversoPublico));

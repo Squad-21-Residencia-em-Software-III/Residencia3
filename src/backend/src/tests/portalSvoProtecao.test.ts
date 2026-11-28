@@ -1,10 +1,12 @@
+import knex from 'knex';
+import knexConfig = require('../../knexfile');
 import { createHmac, randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../app';
 import { db } from '../config/database';
 import { env } from '../config/env';
-import { carregarFase3 } from '../config/fase3';
+import { carregarRecursosOperacionais } from '../config/recursosOperacionais';
 import { PERFIS } from '../constants/perfis';
 import type { Usuario } from '../models/usuarioModel';
 import { authService } from '../services/authService';
@@ -12,21 +14,21 @@ import { authService } from '../services/authService';
 const PUBLICO = '/api/portal-svo/mapas';
 const FORMULARIO = '/api/solicitacoes-svo/externas';
 const tabela = 'limites_portal_svo';
-const faseAnterior = env.fase3;
-const portalAtivo = { FASE3_PORTAL_SVO: 'true', FASE3_MAPAS_SVO: 'true' };
-const executarPostgres = process.env.SCRUM271_POSTGRES_TESTS === '1';
+const recursosAnteriores = env.recursosOperacionais;
+const portalAtivo = { PORTAL_SVO_ATIVO: 'true', MAPAS_SVO_ATIVOS: 'true' };
+const executarPostgres = process.env.PORTAL_SVO_POSTGRES_TESTS === '1';
 
 afterEach(() => {
-  env.fase3 = faseAnterior;
+  env.recursosOperacionais = recursosAnteriores;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 it('mantém o mapa público desligado e as rotas internas autenticadas', async () => {
-  env.fase3 = carregarFase3({ FASE3_PORTAL_SVO: 'true' });
+  env.recursosOperacionais = carregarRecursosOperacionais({ PORTAL_SVO_ATIVO: 'true' });
   await request(app).get(PUBLICO + '/buscar?cep=49000-000').expect(404).expect('Cache-Control', 'private, no-store');
   await request(app).get('/api/mapas/buscar?cep=49000-000').expect(401);
-  env.fase3 = carregarFase3({});
+  env.recursosOperacionais = carregarRecursosOperacionais({});
   await request(app).post(FORMULARIO).send({}).expect(404).expect('Cache-Control', 'private, no-store');
 });
 
@@ -34,13 +36,14 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
   const http = vi.fn<typeof fetch>();
   const cliente = (ip: string) => request(app).get(PUBLICO + '/reverso?lat=0&lon=0').set('X-Forwarded-For', ip);
   const appTrustProxy = app.get('trust proxy');
+  const admin = knex(knexConfig.criarConfigKnex({ ...process.env, DB_ROLE: 'migration' }));
 
   beforeEach(async () => {
     if (!['localhost', '127.0.0.1'].includes(process.env.POSTGRES_HOST ?? '') ||
         !process.env.POSTGRES_DB?.endsWith('_teste')) {
       throw new Error('Os testes exigem um PostgreSQL local descartável com sufixo _teste.');
     }
-    env.fase3 = carregarFase3(portalAtivo);
+    env.recursosOperacionais = carregarRecursosOperacionais(portalAtivo);
     app.set('trust proxy', 1);
     await db(tabela).delete();
     http.mockReset().mockImplementation(async () => Response.json({ type: 'FeatureCollection', features: [] }));
@@ -53,7 +56,7 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
   });
 
   afterAll(async () => {
-    await db.destroy();
+    await Promise.all([db.destroy(), admin.destroy()]);
   });
 
   it('expõe CEP e reverso e rejeita texto livre, parâmetros internos e roteirização', async () => {
@@ -101,7 +104,7 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
   it('cobre ambos os caminhos de acompanhamento com a mesma cota e flag independente', async () => {
     const acompanhamento = FORMULARIO + '/acompanhamento';
     await request(app).post(acompanhamento).send({}).expect(404);
-    env.fase3 = carregarFase3({ FASE3_ACOMPANHAMENTO_EXTERNO: 'true' });
+    env.recursosOperacionais = carregarRecursosOperacionais({ ACOMPANHAMENTO_EXTERNO_SVO_ATIVO: 'true' });
     await db.raw(`INSERT INTO limites_portal_svo (expira_em, escopo, total)
       SELECT (floor(extract(epoch FROM clock_timestamp()) / 60) + j) * 60, 'acompanhar', 40
       FROM generate_series(1, 2) j`);
@@ -134,7 +137,7 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
     const documento = 'DOC-' + randomBytes(8).toString('hex');
     const ids = await db.transaction(async (trx) => {
       const solicitacoes = [];
-      for (const documentoFalecido of [documento, documento, documento + '-DISTINTO']) {
+      for (const [indice, documentoFalecido] of [documento, documento, documento + '-DISTINTO', null].entries()) {
         const protocolo = 'SVO-' + randomBytes(12).toString('hex').toUpperCase();
         const [{ id }] = await trx('solicitacoes_svo').insert({
           canal_origem: 'EXTERNA', protocolo, dados_solicitante: 'Solicitação externa',
@@ -147,7 +150,7 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
           cpf_solicitante: '52998224725', nome_falecido: 'Falecido sintético',
           documento_falecido: documentoFalecido,
           sem_numero_imovel: true, descricao_ocorrencia: 'Ocorrência sintética',
-          data_hora_ocorrencia: new Date('2025-01-01T10:00:00Z'),
+          data_hora_ocorrencia: new Date(Date.UTC(2025, 0, 1, 10, indice)),
           ciencia_aviso_privacidade: true, versao_aviso_privacidade: 'teste',
         });
         await trx('solicitacoes_svo_credenciais_externas').insert({
@@ -174,7 +177,7 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
       auth.mockResolvedValue({ id: 2, perfil: PERFIS.MOTORISTA_SVO, ativo: true } as Usuario);
       await consultar(ids[0]!).expect(403);
     } finally {
-      await db.transaction(async (trx) => {
+      await admin.transaction(async (trx) => {
         await trx('solicitacoes_svo_credenciais_externas').whereIn('solicitacao_id', ids).delete();
         await trx('solicitacoes_svo_dados_externos').whereIn('solicitacao_id', ids).delete();
         await trx('solicitacoes_svo').whereIn('id', ids).delete();
@@ -183,7 +186,7 @@ describe.skipIf(!executarPostgres)('portal SVO por HTTP com PostgreSQL descartá
   });
 
   it('aplica honeypot, tamanho e no-store sem depender dos mapas', async () => {
-    env.fase3 = carregarFase3({ FASE3_PORTAL_SVO: 'true' });
+    env.recursosOperacionais = carregarRecursosOperacionais({ PORTAL_SVO_ATIVO: 'true' });
     await request(app).post(FORMULARIO).send({ website_hp: 'valor-sintetico' }).expect(400)
       .expect('Cache-Control', 'private, no-store');
     await request(app).post(FORMULARIO).send({ endereco: 'a'.repeat(103000) }).expect(413);

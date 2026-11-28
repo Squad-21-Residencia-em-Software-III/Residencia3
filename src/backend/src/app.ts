@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { env } from './config/env';
 import { cabecalhosDeSeguranca, corsPorAmbiente } from './config/segurancaHttp';
 import { errorHandler, rotaNaoEncontrada } from './middlewares/errorHandler';
-import { exigirRecursoFase3 } from './middlewares/exigirRecursoFase3';
+import { exigirRecursoAtivo } from './middlewares/exigirRecursoAtivo';
 import { protegerPortalSvo, verificarHoneypotPortalSvo } from './middlewares/protegerPortalSvo';
 import { identificarCliente } from './middlewares/identificarCliente';
 import { logRequisicao } from './middlewares/logRequisicao';
@@ -38,14 +38,16 @@ const semCachePortalSvo: RequestHandler = (_req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
   next();
 };
-app.post(criacaoExternaSvo, semCachePortalSvo, exigirRecursoFase3('portalSvo'), protegerPortalSvo('cadastrar'));
+app.post(criacaoExternaSvo, semCachePortalSvo, exigirRecursoAtivo('portalSvo'), protegerPortalSvo('cadastrar'));
 // SCRUM-266 mantém a própria validação uniforme e a cota por IP de falhas.
 const acompanharSvo = criacaoExternaSvo + '/acompanhamento';
 const protegerAcompanhamentoSvo = [
-  semCachePortalSvo, exigirRecursoFase3('acompanhamentoExterno'), protegerPortalSvo('acompanhar'),
+  semCachePortalSvo, exigirRecursoAtivo('acompanhamentoExterno'), protegerPortalSvo('acompanhar'),
 ];
 app.post(acompanharSvo, ...protegerAcompanhamentoSvo);
 app.get(acompanharSvo + '/:protocolo', ...protegerAcompanhamentoSvo);
+app.post(criacaoExternaSvo + '/recuperar-comprovante',
+  semCachePortalSvo, exigirRecursoAtivo('portalSvo'), protegerPortalSvo('recuperar'));
 app.use(express.json({ limit: '100kb' }));
 app.post(criacaoExternaSvo, verificarHoneypotPortalSvo);
 
