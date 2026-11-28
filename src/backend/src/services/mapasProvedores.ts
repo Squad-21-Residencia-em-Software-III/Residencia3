@@ -108,6 +108,7 @@ const osrmSemRotaSchema = z.object({ code: z.enum(['NoRoute', 'NoSegment', 'TooB
 const osrmSchema = z.discriminatedUnion('code', [
   z.object({ code: z.literal('Ok'), routes: z.array(z.object({
     distance: z.number().nonnegative().max(1e9),
+    duration: z.number().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
     geometry: z.string().min(4).max(256 * 1024).refine(polyline5Valida),
   })).length(1) }),
   osrmSemRotaSchema,
