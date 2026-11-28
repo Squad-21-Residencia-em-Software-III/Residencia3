@@ -13,7 +13,7 @@ import {
   TableToolbar,
 } from '../components/ui';
 import type { Abastecimento, NovoAbastecimentoInput } from '../types/abastecimento';
-import type { Motorista } from '../types/motorista';
+import type { MotoristaBase } from '../types/motorista';
 import { veiculosApi } from '../services/api/veiculosApi';
 import { motoristasApi } from '../services/api/motoristasApi';
 import { abastecimentosApi } from '../services/api/abastecimentosApi';
@@ -62,7 +62,7 @@ export default function AbastecimentoPage() {
 
       const veiculos = await veiculosApi.listar();
 
-      let motoristas: Motorista[] = [];
+      let motoristas: MotoristaBase[] = [];
       let falhaMotoristas = false;
       try {
         motoristas = await motoristasApi.listar();

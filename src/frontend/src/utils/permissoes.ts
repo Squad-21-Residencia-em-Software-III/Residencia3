@@ -91,6 +91,8 @@ export const PERMISSOES = {
 
   // Equipe: motoristas (gestores) e usuários/perfis (só Administrador)
   'equipe.acessar': GESTORES,
+  /** Cadastrar e corrigir CNH (SCRUM-308): use com `podeGerenciarMotorista`, cada gestor na própria operação. */
+  'motoristas.gerenciar': GESTORES,
   'equipeSvo.gerenciar': [ADMINISTRADOR, GESTOR_SVO],
   'usuarios.gerenciar': [ADMINISTRADOR],
 
@@ -147,6 +149,19 @@ export function podeVerDetalhesDaFrota(
   return podeEditarFrota(perfil, tipoFrota);
 }
 
+/**
+ * Motoristas que o perfil cadastra e edita (regra 6 da matriz): Administrador nos dois tipos, Gestor de
+ * Frota no FROTA e Gestor SVO no SVO. O servidor repete a regra e exige a associação SVO.
+ */
+export function podeGerenciarMotorista(
+  perfil: Perfil | null | undefined,
+  tipoMotorista: string | null | undefined,
+): boolean {
+  if (!perfilPode(perfil, 'motoristas.gerenciar')) return false;
+  const frota = tipoMotorista === 'FROTA' ? 'ADMINISTRATIVA' : tipoMotorista === 'SVO' ? 'SVO' : null;
+  return podeEditarFrota(perfil, frota);
+}
+
 /** Tipos de operação que o perfil pode agendar (administrativa) ou alocar (SVO) em Viagens. */
 export function operacoesAgendaveis(perfil: Perfil | null | undefined): TipoFrota[] {
   const tipos: TipoFrota[] = [];
@@ -201,5 +216,8 @@ export function usePermissao() {
     /** Abas Administrativo/SVO de Viagens e de Veículos que o perfil pode ver. */
     abasDeViagens: () => abasDeViagens(perfil, recursoAtivo('minhasViagensAdministrativas')),
     abasDeVeiculos: () => abasDeVeiculos(perfil),
+    /** Cadastro e edição de CNH do motorista desse tipo (SCRUM-308). */
+    podeGerenciarMotorista: (tipoMotorista: string | null | undefined) =>
+      podeGerenciarMotorista(perfil, tipoMotorista),
   };
 }

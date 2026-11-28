@@ -23,8 +23,8 @@ const veiculos: Veiculo[] = [
   { id: 2, placa: 'SVO2B22', modelo: 'Rabecão', tipo_frota: 'SVO', capacidade_maxima: 4, lotacao_cabine: 3, km_atual: 0, status: 'DISPONIVEL' },
 ];
 const motoristas: Motorista[] = [
-  { id: 5, usuario_id: 5, nome: 'Ana SVO', numero_cnh: '1', categoria_cnh: 'D', validade_cnh: '2030-01-01', tipo_motorista: 'SVO', status: 'DISPONIVEL' },
-  { id: 6, usuario_id: 6, nome: 'Beto Frota', numero_cnh: '2', categoria_cnh: 'B', validade_cnh: '2030-01-01', tipo_motorista: 'FROTA', status: 'DISPONIVEL' },
+  { id: 5, usuario_id: 5, nome: 'Ana SVO', cnh_final: '0001', categoria_cnh: 'D', validade_cnh: '2030-01-01', tipo_motorista: 'SVO', status: 'DISPONIVEL' },
+  { id: 6, usuario_id: 6, nome: 'Beto Frota', cnh_final: '0002', categoria_cnh: 'B', validade_cnh: '2030-01-01', tipo_motorista: 'FROTA', status: 'DISPONIVEL' },
 ];
 const ordem = {
   ordem_id: 40,

@@ -33,6 +33,12 @@ export const RECURSOS_BACKEND = {
   recusaSvo: true,
 
   /**
+   * SCRUM-308: cadastro e edição de CNH na aba Motoristas (`POST`/`PATCH /motoristas`). Desligado até a
+   * confirmação institucional da matriz; ligue junto com MOTORISTAS_ESCRITA_ATIVA no backend.
+   */
+  escritaMotoristas: env.VITE_MOTORISTAS_ESCRITA_ATIVA === 'true',
+
+  /**
    * SCRUM-179: `GET /viagens/minhas`, viagens administrativas das solicitações do próprio usuário
    * (Gestor SVO acompanha só as próprias). Serviço: `viagensApi.listarMinhasAdministrativas`.
    */
