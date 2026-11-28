@@ -136,7 +136,12 @@ export function ModalIniciarViagem({ viagem, onClose, onSalvar, compacto = false
               Voltar
             </Button>
           )}
-          <Button type="submit" disabled={salvando || foto.consultando || foto.validandoArquivo}>
+          <Button
+            type="submit"
+            disabled={foto.consultando || foto.validandoArquivo}
+            aria-disabled={salvando || undefined}
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+          >
             {salvando ? (foto.enviando ? 'Enviando foto...' : 'Iniciando...') : falhaAoSalvar ? 'Tentar novamente' : 'Confirmar Saída'}
           </Button>
         </div>

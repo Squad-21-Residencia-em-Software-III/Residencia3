@@ -251,9 +251,11 @@ describe('ModalIniciarViagem com foto do odômetro (SCRUM-205/214)', () => {
     await screen.findByRole('button', { name: /Carregar foto/ });
     await escolherFoto();
     informarKm('35000');
+    screen.getByRole('button', { name: /Confirmar Saída/ }).focus();
     confirmar();
 
     expect(await screen.findByText(/A saída não foi confirmada/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toHaveFocus();
     expect(onSalvar).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/Odômetro de Saída/)).toHaveValue(35000);
     expect(screen.getByAltText(/Prévia/)).toBeInTheDocument();

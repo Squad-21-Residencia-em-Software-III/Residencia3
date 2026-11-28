@@ -159,7 +159,12 @@ export function ModalFinalizarViagem({ viagem, onClose, onSalvar, compacto = fal
               Cancelar
             </Button>
           )}
-          <Button type="submit" disabled={salvando || foto.consultando || foto.validandoArquivo}>
+          <Button
+            type="submit"
+            disabled={foto.consultando || foto.validandoArquivo}
+            aria-disabled={salvando || undefined}
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+          >
             {salvando ? (foto.enviando ? 'Enviando foto...' : 'Concluindo...') : falhaAoSalvar ? 'Tentar novamente' : compacto ? 'Confirmar chegada' : 'Confirmar Chegada e Concluir'}
           </Button>
         </div>
